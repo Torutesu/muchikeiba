@@ -18,6 +18,9 @@ import { memoryOps } from '../src/ops/memoryOps.js';
 import { ACTIVITY_KINDS, ACTIVITY_META, ACTIVITY_SCREENS } from '../src/domain/activity.js';
 import { ACTIVITY_KIND_NAMES, ACTIVITY_SCREEN_NAMES } from '../src/domain/kpi.js';
 import { DELETION_STEPS, runAccountDeletion, type DeletionPorts } from '../src/domain/accountDeletion.js';
+import { helpArticle, helpIndex } from '../src/domain/help.js';
+import { quickChatOf } from '../src/domain/quickChat.js';
+import { hasJapanese } from '../src/i18n/locale.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildExportDocument, classifyKey, DEX_EXTENSION_KEYS } from '../src/domain/dataExport.js';
@@ -286,5 +289,21 @@ describe('account deletion clears Round 18 state (REQ-DEX-013, REQ-QCHAT-010, RE
     expect(items.map((x) => x.qchat!.phraseId)).toEqual(['thanks_player']);
     expect(items[0]!.qchat!.slots[0]).toMatchObject({ name: 'player', ref: '', qchatValue: '元メンバー' });
     expect(JSON.stringify(w.teamsMem.cores.get(teamId)!.feed)).not.toContain('"gone"');
+  });
+});
+
+describe('§48 help center × Round 18 (data export, quick chat, practice, horse goals)', () => {
+  it('each feature has an article with numbers from data, the privacy screen links to the data export article, English side by side', () => {
+    expect(helpIndex(m, 'ja').contexts).toMatchObject({ privacy: 'data_export' });
+    const dex = helpArticle(m, 'data_export', 'ja');
+    const c = m.progression.dataExport!;
+    expect(dex.body).toContain(`${c.cooldownDays}日ごと`);
+    expect(dex.body).toContain(`${c.linkTtlMinutes}分で切れます`);
+    expect(dex.links.map((l) => (l as { screen?: string }).screen ?? (l as { doc?: string }).doc)).toEqual(['privacy', 'privacy']);
+    const qc = helpArticle(m, 'quick_chat', 'en');
+    expect(qc.body).toContain(`every ${Math.round(quickChatOf(m).config.postIntervalMs / 1000)} seconds`);
+    expect(helpArticle(m, 'practice_races', 'ja').body).toContain('何ももらえず');
+    expect(helpArticle(m, 'horse_goals', 'en').body).toContain('Hosted cups, practice and weekly challenges do not count');
+    for (const id of ['data_export', 'quick_chat', 'practice_races', 'horse_goals']) expect(hasJapanese(helpArticle(m, id, 'en').body), id).toBe(false);
   });
 });

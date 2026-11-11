@@ -28,6 +28,8 @@ import { enWordingProblems } from '../i18n/catalog.js';
 import { dayRule, gameDayKey, gameDayStartMs, addJstDays } from './time.js';
 import type { Locale } from '../i18n/locale.js';
 import { recordActivity } from './activity.js';
+import { DATA_EXPORT_DEFAULTS } from './dataExport.js';
+import { quickChatOf } from './quickChat.js';
 
 // ------------------------------------------------------------------------------------------------ master
 
@@ -38,13 +40,15 @@ export type HelpCategoryId = typeof HELP_CATEGORY_IDS[number];
 export const HELP_SCREENS = [
   'home', 'settings', 'race_lobby', 'tutorial', 'training', 'breeding', 'stable', 'collection', 'gacha', 'gacha_odds', 'shop', 'history',
   'gift_box', 'activity', 'accessibility', 'account_link', 'deletion', 'inquiry', 'my_inquiries',
+  // Round 18 integration: settings › privacy (§51), the branch feed (§52 quick chat), practice races (§50)
+  'privacy', 'team_feed', 'practice',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
 export const LEGAL_DOCS = ['terms', 'privacy', 'tokushoho', 'shikin'] as const;
 export type LegalDoc = typeof LEGAL_DOCS[number];
 /** REQ-HELP-008: screens that deep-link to an article. */
-export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility'] as const;
+export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_whip', 'race_result', 'training', 'breeding', 'history', 'gift_box', 'account_link', 'deletion', 'accessibility', 'privacy'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -99,6 +103,9 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   deletion: { ja: 'アカウント削除を開く', en: 'Open account deletion' },
   inquiry: { ja: '問い合わせる', en: 'Contact us' },
   my_inquiries: { ja: '自分の問い合わせを見る', en: 'See your inquiries' },
+  privacy: { ja: 'プライバシーを開く', en: 'Open privacy' },
+  team_feed: { ja: '支部のフィードを開く', en: 'Open the branch feed' },
+  practice: { ja: '練習レースを開く', en: 'Open practice races' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
@@ -160,6 +167,12 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'coin_history_days': return String(HISTORY_LIMITS.coinDays);
     case 'gacha_history_days': return String(HISTORY_LIMITS.gachaDays);
     case 'max_whips': return String(env.maxWhips);
+    // Round 18 integration: §51 data export and §52 quick chat limits (remote config)
+    case 'export_cooldown_days': return String({ ...DATA_EXPORT_DEFAULTS, ...(m.progression.dataExport ?? {}) }.cooldownDays);
+    case 'export_keep_days': return String({ ...DATA_EXPORT_DEFAULTS, ...(m.progression.dataExport ?? {}) }.keepDays);
+    case 'export_link_minutes': return String({ ...DATA_EXPORT_DEFAULTS, ...(m.progression.dataExport ?? {}) }.linkTtlMinutes);
+    case 'qchat_interval_sec': return String(Math.round(quickChatOf(m).config.postIntervalMs / 1000));
+    case 'qchat_per_day': return String(quickChatOf(m).config.postsPerDay);
     default: throw new Error(`unknown token ${name}`);
   }
 }

@@ -2629,9 +2629,9 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ```
 - カテゴリ `id` は8つ：`getting_started`（はじめに）・`races`（レース・ムチ）・`horses`（馬・配合）・`scout`（スカウト・提供割合・天井）・`purchases`（購入・返金）・`account`（アカウント・引き継ぎ）・`deletion`（アカウント削除）・`accessibility`（アクセシビリティ）。全部そろっていて、それぞれ記事が1件以上。
 - 記事 `id` は `^[a-z0-9_]{2,40}$` で重ならない。`title` は1〜`titleMaxChars` 文字、`body` は1〜`bodyMaxChars` 文字（トークンを埋める前）、`keywords` は各言語20個まで・各20文字まで。日本語と英語でトークンの組が同じ。`related` は存在する別の記事。
-- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`。
+- 画面 `screen`：`home`・`settings`・`race_lobby`・`tutorial`・`training`・`breeding`・`stable`・`collection`・`gacha`・`gacha_odds`・`shop`・`history`・`gift_box`・`activity`・`accessibility`・`account_link`・`deletion`・`inquiry`・`my_inquiries`・`privacy`・`team_feed`・`practice`（後ろの3つは Round 18 統合）。
 - トークン：`pity_pulls:<バナー>`（天井までの回数）・`pity_coins:<バナー>`（天井までのコイン）・`pity_cost:<天井グループ>`・`rate:<バナー>:<レア度>`・`guarantee_rate:<バナー>:<レア度>`（10枠目の保証の表）・`price_single:<バナー>`・`price_ten:<バナー>`・`monthly_limit:<年齢帯>`（上限のある帯だけ）・`guardian_age`・`deletion_days`・`purchase_keep_days`・`coin_history_days`・`gacha_history_days`・`max_whips`。知らないトークン・無いバナー／グループ／帯は検査で落とす（リモート設定でバナーを外して記事が壊れる版は有効にできない）。
-- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility` → 記事 id。全部そろっていて、存在する記事を指す。
+- `contexts`（画面からの案内、REQ-HELP-008）：`gacha_odds`・`coin_shortfall`・`purchase`・`race_whip`・`race_result`・`training`・`breeding`・`history`・`gift_box`・`account_link`・`deletion`・`accessibility`・`privacy`（Round 18 統合：プライバシーの画面 → `data_export`） → 記事 id。Round 18 統合で記事 `data_export`・`quick_chat`・`practice_races`・`horse_goals` を足した（数字はトークン `export_cooldown_days`・`export_keep_days`・`export_link_minutes`・`qchat_interval_sec`・`qchat_per_day` から）。全部そろっていて、存在する記事を指す。
 
 ### 48.2 `GET /v1/help`（要認証、読むだけ・プレイヤーの状態に触れない）
 ```json

@@ -2582,6 +2582,8 @@ async function Privacy() {
   Kicker('含めないもの', 36, 412, q, { rule: false, size: 15 });
   Txt('他のプレイヤーの情報・運営のメモ・処理用の内部記録', 36, 446, 496, 15, MUTED, q, { lh: 1.6 });
   Txt('JSON は機械で読める形式、概要は人が読めるテキストです。', 36, 520, 496, 15, MUTED, q, { lh: 1.6 });
+  // round 18 integration: the help article for this screen (§48 context `privacy`)
+  TextLink('データのダウンロードについて（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy'), 'context', () => Privacy()), q).dataset.helpContext = 'privacy';
   Back(Settings, 'BACK', 40, 834);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
@@ -6598,6 +6600,8 @@ const helpGo = (screen, back) => ({
   gacha_odds: () => Odds('standard'), shop: () => Store('coins'), history: () => History('purchases'), gift_box: () => GiftBox('box'),
   activity: () => { actState.cursor = null; actState.stack = []; return Activity(); }, accessibility: () => A11ySettings(),
   account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
+  // round 18 integration: privacy (§51), the branch feed's quick chat (§52), practice races (§50)
+  privacy: () => Privacy(), team_feed: () => TeamFeed('chat'), practice: () => Practice(),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {

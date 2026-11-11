@@ -14,6 +14,7 @@
  *
  * Pure functions on master + state; the PlayerService runs the state changes inside its transaction.
  */
+import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
 import helpJson from '../../master/help.json';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
@@ -160,6 +161,7 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'coin_history_days': return String(HISTORY_LIMITS.coinDays);
     case 'gacha_history_days': return String(HISTORY_LIMITS.gachaDays);
     case 'max_whips': return String(env.maxWhips);
+    case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
     default: throw new Error(`unknown token ${name}`);
   }
 }

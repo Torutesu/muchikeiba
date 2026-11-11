@@ -230,7 +230,8 @@
       "keywords": { "ja": ["整理", "並び替え", "ロック", "まとめて引退", "絞り込み"], "en": ["organise", "sort", "lock", "retire in bulk", "filter"] },
       "links": [ { "type": "screen", "screen": "stable" } ],
       "related": ["breeding", "training"]
-    }
+    },
+    {"id": "spectator_cheer", "category": "races", "title": {"ja": "観戦中の応援", "en": "Cheering while you watch"}, "body": {"ja": "レースを観戦している時に、馬番を選んで「いけ！」「差せ！」「粘れ！」の応援を送れます。\n\n・応援は無料で、何ももらえず、レースの結果にも影響しません\n・送れるのは{{cheer_interval_sec}}秒ごとに1つまでです。文字は自由に書けません\n・誰が応援したかは表示されず、届くのは数だけです\n・ブロックしている相手（ブロックされている相手）の応援は数えません\n・走っている人には、自分の馬への応援の数が画面の隅に小さく出ます。設定の「レース中の応援表示」でオフにできます\n・動きを減らす設定がオンなら、光や動きは出ません", "en": "While watching a race, pick a horse number and send a cheer: \"Go!\", \"Close in!\" or \"Hang on!\".\n\n• Cheers are free, give no rewards and never change the race result\n• You can send one every {{cheer_interval_sec}} seconds. There is no free text\n• Nobody sees who cheered; only the counts arrive\n• Cheers from players you blocked (or who blocked you) are not counted\n• Riders see the number of cheers for their own horse in a small corner. Turn it off with \"Show cheers during races\" in Settings\n• With Reduce motion on, there is no light or movement"}, "keywords": {"ja": ["応援", "観戦", "いけ", "差せ", "粘れ", "応援表示"], "en": ["cheer", "spectate", "watch", "cheers", "indicator"]}, "links": [{"type": "screen", "screen": "settings"}], "related": ["race_modes", "accessibility_settings"]}
   ],
   "contexts": {
     "gacha_odds": "pity",

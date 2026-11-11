@@ -14,6 +14,9 @@ import { jstDateKey } from './time.js';
 import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
 
+/** REQ-LINK-021: how a link reached the app (universal / app link, the custom scheme, the Android install referrer, typed). */
+export const DEEP_LINK_ENTRIES = ['universal', 'scheme', 'referrer', 'typed'] as const;
+export const DEEP_LINK_KPI_TYPES = ['room', 'cup', 'replay', 'invite', 'friend', 'team', 'help', 'none'] as const;
 const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
 const PRACTICE_FIELD = z.number().int().min(2).max(12);
 const PRACTICE_STRENGTH = z.string().regex(PRACTICE_ID_RE);
@@ -216,6 +219,9 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
   z.object({ name: z.literal('cheer_seen'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), role: z.enum(['racer', 'spectator']), count: z.number().int().min(1).max(100_000) }).strict() }),
+  // REQ-LINK-021 (§63.9): a link reached the app — how it arrived and its type once resolved (`none` when it did not open).
+  // Never the token, the target or any id (strict).
+  z.object({ name: z.literal('deep_link_open'), at: z.number().int(), props: z.object({ entry: z.enum(DEEP_LINK_ENTRIES), type: z.enum(DEEP_LINK_KPI_TYPES) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -272,6 +278,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'tip_context_open': return { name: e.name, s1: e.props.context, s2: e.props.tipId };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
+    case 'deep_link_open': return { name: e.name, s1: e.props.entry, s2: e.props.type };
   }
 }
 

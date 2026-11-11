@@ -206,6 +206,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 19 (§54, REQ-TRF-016): 引き継ぎコード is account access like sign-in and deletion — a player changing phones is
   // never locked out by a window or an old app. It moves no coins; ops stop it with progression.transfer.enabled.
   'GET /v1/transfer/code', 'POST /v1/transfer/code', 'DELETE /v1/transfer/code', 'POST /v1/transfer/redeem',
+  // Round 21 (§63, REQ-LINK-009): opening a link answers with a maintenance / update state of its target instead of failing
+  // (the link is kept; the screen says when to open it again). Making, listing and revoking links stay in group `social`.
+  'POST /v1/links/resolve',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
@@ -217,7 +220,7 @@ const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
   ['/v1/tournaments', 'tournaments'],
   ['/v1/training', 'training'],
   ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'],
-  ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'],
+  ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'], ['/v1/links', 'social'],
   ['/v1/cups', 'cups'],
 ];
 

@@ -82,7 +82,13 @@ export class MatchmakerCore<P = unknown> {
 }
 
 /** REQ-MM-004: friend rooms joined by passphrase; host starts; no rating change. */
-export interface FriendRoom<P = unknown> { passphrase: string; hostId: string; createdAt: number; members: { playerId: string; payload: P }[] }
+export interface FriendRoom<P = unknown> {
+  passphrase: string; hostId: string; createdAt: number; members: { playerId: string; payload: P }[];
+  /** REQ-LINK-015: a rematch room races on the previous race's conditions (snapshot), not the host's current preset. */
+  conditions?: import('./presets.js').RoomConditions | null;
+  /** REQ-LINK-015: the race this room is the rematch of. */
+  rematchOf?: string;
+}
 
 /** Upper bound of open rooms in one matchmaker (each host has at most one; this caps total storage). */
 export const MAX_OPEN_ROOMS = 20_000;
@@ -137,6 +143,25 @@ export class FriendRooms<P = unknown> {
     this.rooms.set(pass, room);
     return room;
   }
+
+  /**
+   * REQ-LINK-015: a rematch room, opened with its members already in (the host must not host another open room; the caller
+   * checks). Same passphrase space and lifetime as any friend room.
+   */
+  createWith(hostId: string, members: { playerId: string; payload: P }[], conditions: import('./presets.js').RoomConditions | null, rematchOf: string, now: number, rng: Rng): FriendRoom<P> {
+    this.gc(now);
+    if (this.hostedBy(hostId)) throw new AppError('CONFLICT', 'the host already has an open room');
+    if (this.rooms.size >= this.maxRooms) throw new AppError('RATE_LIMITED', 'too many open friend rooms; try again later');
+    let pass: string;
+    do pass = String(randInt(rng, 1_000_000)).padStart(6, '0');
+    while (this.rooms.has(pass));
+    const room: FriendRoom<P> = { passphrase: pass, hostId, createdAt: now, members: members.slice(0, this.maxPlayers).map((m) => ({ ...m })), conditions, rematchOf };
+    this.rooms.set(pass, room);
+    return room;
+  }
+
+  /** REQ-LINK-007: is the room still open (a room link opens only then)? */
+  isOpen(passphrase: string, now: number) { this.gc(now); return this.rooms.has(passphrase); }
 
   join(passphrase: string, playerId: string, payload: P, now: number): FriendRoom<P> {
     this.gc(now);

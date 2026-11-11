@@ -20,6 +20,16 @@ export const CODE_EN: Record<string, string> = {
   'よく使われるパスワードは使えません': 'No common passwords',
   'この端末のデータは別の端末に引き継がれました': 'This account has moved to another device',
 
+  // ---- ディープリンク (deepLinks.ts SHARE_TEXT, protocol §63; REQ-LINK-003): no rewards, no urgency, no names
+  'ムチ一閃のフレンド部屋に招待します': 'Join my friend room in Muchi Issen',
+  'ムチ一閃の主催カップに招待します': 'Join my cup in Muchi Issen',
+  'ムチ一閃のリプレイを見てください': 'Watch this replay in Muchi Issen',
+  'ムチ一閃を一緒に遊びませんか': 'Play Muchi Issen with me',
+  'ムチ一閃でフレンドになりませんか': 'Be my friend in Muchi Issen',
+  'ムチ一閃の支部に招待します': 'Join my branch in Muchi Issen',
+  'ムチ一閃のヘルプ': 'Muchi Issen help',
+  'お互いの共有リンクが開けず、再戦でも同じ部屋に入りません': 'Neither of you can open the other\'s shared links, and rematches never put you in the same room',
+
   // ---- shop (shop.ts productContents / firstPurchaseBonusOf; REQ-UXS-022)
   '無償コイン{n}枚': '{n} free coins',
   '有償コイン{n}枚': '{n} paid coins',

@@ -7,6 +7,11 @@ import { eventPlayersFrom, friendIdsFrom, handle, makeFriendSuggestService, make
 import { bearer, verifyFirebaseSession } from './http/auth.js';
 import { signerFromEnv } from './http/customToken.js';
 import { TransferService } from './domain/transferService.js';
+import { LinkService } from './domain/linkService.js';
+import { linksConfig } from './domain/deepLinks.js';
+import { maintenanceOf } from './domain/maintenance.js';
+import { dayRule } from './domain/time.js';
+import type { RematchResult } from './http/app.js';
 import { SessionGuard, transferConfig } from './domain/transferCode.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -57,7 +62,7 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory, shardedTransferDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory, shardedTransferDirectory, shardedLinkDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
@@ -453,6 +458,16 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       ...(env.KPI_SALT ? { limitSalt: env.KPI_SALT } : {}),
       onRedeemed: (uid, cutoffAt) => sessionGuardFor(env).note(uid, cutoffAt),
     }),
+    // REQ-LINK-*: ディープリンク (directory shards + player objects; the targets come from this context per request)
+    links: new LinkService({
+      party: (u) => player(u).invoke('linkParty', u),
+      checkCreate: (u) => player(u).invoke('linkCheckCreate', u),
+      note: (u, name, s1, s2, count) => player(u).invoke('linkNote', u, name, s1, s2, count),
+    }, shardedLinkDirectory(env.DIRECTORY), () => linksConfig(master), {
+      ...(env.KPI_SALT ? { limitSalt: env.KPI_SALT } : {}),
+      maintenance: () => maintenanceOf(master),
+      dayRule: () => dayRule(master),
+    }),
     player,
     match: {
       enqueue: (p, e: RaceEntry) => call(mm().enqueue!(p, e)),
@@ -463,6 +478,11 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       friendStart: (pass, p) => call(mm().friendStart!(pass, p)),
       tutorial: (p, e) => call(mm().tutorial!(p, e)),
       friendMember: async (pass, p) => (await call(mm().friendMember!(pass, p))) as boolean,
+      // REQ-LINK-007 / REQ-LINK-014..017 (§63)
+      friendRoomOpen: async (pass) => (await call(mm().friendRoomOpen!(pass))) as boolean,
+      rematchPress: async (r, p, e, b) => (await call(mm().rematchPress!(r, p, e, b))) as RematchResult,
+      rematchDecline: async (r, p) => (await call(mm().rematchDecline!(r, p))) as RematchResult,
+      rematchStatus: async (r, p) => (await call(mm().rematchStatus!(r, p))) as RematchResult,
     },
     race: {
       websocket: (raceId, req) => (env.RACE_ROOM.get(env.RACE_ROOM.idFromName(raceId)) as unknown as { fetch(r: Request): Promise<Response> }).fetch(req),

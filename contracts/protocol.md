@@ -3403,3 +3403,92 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
 - `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
 - 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。
+
+## 63. ディープリンク・招待リンクと再戦（deep links, invite links & rematch、REQ-LINK-001〜024、`server/src/domain/deepLinks.ts`・`linkService.ts`・`rematch.ts`・`server/src/do/matchmaker.ts`・`server/src/do/directory.ts`、C# `DeepLinks.cs`（`DeepLinkParser`・`DeepLinkRoutes`・`ResolvedLink`・`RematchView`）・`Muchi.Game.DeepLinkModel`／`RematchModel`、docs/handoff-codex-round21-deep-links.md、docs/ops/deep-links.md）
+共有できるもの（フレンド部屋・主催カップ・リプレイ・招待コード・フレンド申請（プロフィール）・支部への招待・ヘルプ記事）を、**1つの形のリンク**で送れるようにする。リンクは**短い不透明なトークン**で、中身はサーバーが引く。**リンクそのものは何も配らない**（E番号なし）。招待コードの報酬（§19）は今までどおり招待コードの入力（`POST /v1/invite/redeem`）でだけ動き、リンクは入力画面にコードを入れて開くだけ（自動で入力しない）。
+
+**決まりごと**
+- URL：`https://<リンクのホスト>/l/<token>`（ユニバーサルリンク／App Links）とアプリのスキーム `muchi://l/<token>`。ホストは `progression.links.baseUrl`（既定は仮の `https://link.muchi-issen.example`）。**URL にプレイヤー ID・表示名・部屋の合言葉・カップのコードなどを入れない**。
+- トークン：22文字、`23456789abcdefghjkmnpqrstuvwxyz`（31文字、0・1・o・i・l を使わない）。1文字目は作った人のディレクトリのシャード（文字の位置 mod 16）、残り21文字は暗号論的な乱数（約104ビット）。推測して当てられない。入力は NFKC・空白とハイフンを除く・小文字にする（手で入れても同じ）。
+- **オラクルを作らない**：知らない・期限切れ・取り消し・作った人が BAN／削除済み・ブロックの関係・行き先が無くなった（部屋が閉じた・カップが終わった・記事が消えた）は、どれも同じ `200 { "state": "unavailable" }`。形が違う文字列も同じ。
+- **引く回数の制限**：見る人ごと・IP ごと（SHA-256 にして数える）に1時間 `resolvesPerHour` 回（既定60）、`unavailable` の答えは失敗として1時間 `failuresPerHour` 回（既定10）。超えると `429 RATE_LIMITED`（`details.retryAfterSec`、`Retry-After`）で `lockMinutes` 分。トークンに関係しない制限なのでオラクルにならない。
+- **期限**：部屋のリンクは `roomMinutes`（既定30分＝部屋の寿命）、カップのリンクはカップの締め切り（`closesAt`）か `cupDaysMax` 日の早い方、他は `defaultDays`（既定30日）。
+
+### 63.1 種類と行き先（REQ-LINK-002/007）
+| `type` | 作る時の本文 `target` | 作れる人 | 開いた時の `target`（見る人に返す） | 画面（`screen`） | メンテナンスのグループ（§46） |
+|---|---|---|---|---|---|
+| `room` | `{ "passphrase": "123456" }` | その部屋の参加者 | `{ "passphrase" }`（参加は見る人が馬を選んで `POST /v1/friend-rooms/:passphrase/join`） | `friend_room_join` | `ranked` |
+| `cup` | `{ "cupId": "…" }` | 主催者・参加者（コードが見える人） | `{ "code", "preview": CupPreview }`（参加は `POST /v1/cups/join`、§42。コードの試行回数に数える） | `cup_join` | `cups` |
+| `replay` | `{ "raceId": "…" }` | 自分の**公開**した保存リプレイ（§37） | `{ "ownerId", "raceId", "replayTitle" }`（フレンドだけ。フレンドでなければ `state: "friends_only"`） | `friend_replay` | `social` |
+| `invite` | `{}` | 誰でも（自分の招待コード） | `{ "code" }`（§19 の入力画面に入れるだけ。入力の条件・報酬は §19 のまま） | `invite_redeem` | `social` |
+| `friend` | `{}` | 誰でも（自分のフレンドコード） | `{ "friendCode", "displayName" }`（申請は見る人が押す。自分のリンクは `self: true`） | `friend_request` | `social` |
+| `team` | `{}` | 支部の仲間 | `{ "teamId", "teamName" }`（参加の申請は §18 のまま） | `team_view` | `teams` |
+| `help` | `{ "articleId": "…" }` | 誰でも | `{ "articleId" }` | `help_article` | （止めない：ヘルプは §46 の EXEMPT） |
+
+### 63.2 `POST /v1/links`（要認証、グループ `social`）
+- 本文 `{ "type": "room", "target": { … } }` → `{ "token", "url": "https://…/l/<token>", "appUrl": "muchi://l/<token>", "type", "createdAt", "expiresAt", "created": true | false, "shareText" }`。
+- **冪等**：同じ人・同じ種類・同じ行き先で、期限内の取り消していないリンクがあれば、それを返す（`created: false`、日の回数に数えない）。
+- 作れるのはゲーム日（04:00 JST）ごとに `createsPerDay` 本（既定30）まで → 超えたら `429 LINK_LIMIT`。BAN 中は `403 BANNED`、削除の予約中は `409 DELETION_PENDING`。行き先を共有できない（部屋の参加者でない・公開していない・支部にいない・記事が無いなど）→ `404 NOT_FOUND`。`progression.links.enabled` が false → `404 NOT_FOUND`。
+- `shareText`：OS の共有シートにそのまま渡す文（例「ムチ一閃のフレンド部屋に招待します」＋改行＋URL）。報酬・額・煽り（「今だけ」など）を入れない。プレイヤーの名前を入れない。
+
+### 63.3 `POST /v1/links/resolve`（要認証、**メンテナンスの窓でも古いアプリからでも止めない**＝§46 の EXEMPT。代わりに答えの `state` で言う）
+本文 `{ "token": "…" }` または `{ "url": "https://…/l/…" | "muchi://l/…" }`。順番：
+1. 制限（63 の決まりごと）→ `429 RATE_LIMITED`。
+2. トークンを引く。無い・期限切れ・取り消し・作った人が退会済み／BAN・見る人と作った人のどちらかがブロック（§47 の1つの一覧）・見る人が BAN（ヘルプ以外）→ `{ "state": "unavailable" }`。
+3. 種類が新しいアプリを要る（`minClientVersion[type]` より `x-client-version` が古い）→ `{ "state": "update_required", "type", "minVersion", "storeUrl" }`（§46 のストアの URL）。版の分からない要求は止めない。
+4. その種類のグループにメンテナンスの窓がある → `{ "state": "maintenance", "type", "endAt", "endsAtJst", "message" }`（§46 と同じ窓。リンクは消えない。終わったらもう一度開く）。
+5. 行き先を確かめる（63.1）。無くなっていれば `unavailable`。
+6. `{ "state": "ok", "type", "screen", "target": { … }, "expiresAt" }`。自分のリンクも開ける。
+- 答えに作った人のプレイヤー ID を入れない（例外：`replay` はフレンドにだけ、既存のフレンドのリプレイの口に要る `ownerId`）。
+
+### 63.4 `GET /v1/links`・`DELETE /v1/links/:token`（要認証、グループ `social`）
+- `GET` → `{ "enabled", "links": [ { "token", "url", "type", "createdAt", "expiresAt" } ]（期限内・取り消していないもの、新しい順）, "createsToday", "createsPerDay" }`。
+- `DELETE` は自分のリンクを取り消す → `{ "revoked": true | false }`（無い・他人の・もう取り消したものは `false`、何度送っても同じ）。取り消したリンクは `unavailable`。
+
+### 63.5 アプリが入っていない時（REQ-LINK-010/011、docs/ops/deep-links.md）
+- `GET /l/:token`（認証なし、Worker の最小のテンプレート）：静的な案内の文（日英）・アプリで開くボタン（`muchi://l/<token>`）・App Store／Google Play への案内。**トークンを引かない**（どの文字列でも同じページ＝オラクルなし、個人のデータなし）。`x-robots-tag: noindex`、`referrer-policy: no-referrer`。
+- **あとから開く（deferred deep link、クリップボードを使わない）**：
+  - Android：Google Play の URL に `referrer=link%3D<token>` を付ける。初回起動で Install Referrer を読み、`DeepLinkParser.FromInstallReferrer` がトークンを取り出して `DeepLinkModel` に渡す。
+  - iOS：App Store はインストールに値を運べない。ページにトークンを区切って見せ、インストール後に「リンクを開く」に入れてもらう（正直に書く：自動では開かない。クリップボードは読まない）。
+- `GET /.well-known/apple-app-site-association`・`GET /.well-known/assetlinks.json`：`progression.links.apple.appIds`／`progression.links.android`（`packageName`・`sha256CertFingerprints`）が設定されている時だけ返す（無ければ 404）。リポジトリに置くのは仮の値だけ。
+
+### 63.6 再戦（REQ-LINK-014〜019）
+フレンド部屋のレースが終わったら、参加者は全員「再戦」を押せる。
+- `POST /v1/friend-rooms/rematch/:raceId`（本文 `{ "horseId" }`）・`GET /v1/friend-rooms/rematch/:raceId`・`DELETE /v1/friend-rooms/rematch/:raceId`（やめる）→ `RematchView`：
+```json
+{ "raceId": "r-…", "state": "waiting" | "opened" | "closed", "reason": null | "too_few" | "not_included" | "expired",
+  "you": "pressed" | "declined" | "none", "pressed": 2, "eligible": 4, "windowSec": 20, "deadlineAt": 1794279620000,
+  "room": { "passphrase": "123456", "members": 3, "host": true } | null }
+```
+- フレンド部屋のレースが始まった時、マッチメーカーが**再戦の受付**（参加者・主催者・部屋の条件の写し）を `rematchOfferMinutes`（既定15分）だけ覚える。参加者でない・知らない `raceId` は `404 NOT_FOUND`。
+- **最初に押した時から `rematchWindowSec` 秒**（既定20、5〜120）の間に押した人が入る。全員（やめた人を除く）が押したらすぐ締める。締めた時に2人以上なら、**同じ条件**（前のレースの部屋の条件の写し。主催者がその後に条件を変えても前のまま）で**新しいフレンド部屋**を開き、押した人を全員入れる。主催者は前の主催者（入っていて、他の部屋を主催していなければ）、いなければ最初に押した人。シードは新しく引く（`createRace` の乱数、同じレースにならない）。始めるのは主催者の「出走」（今のフレンド部屋のまま、2人以上）。
+- **入れない人**：押していない・やめた（抜けた）・BAN 中（押せない、`403 BANNED`）・削除の予約中（押せない）・締めた時に他のレース中／キュー中・**お互いのどちらかがブロック**している人（押した順に入れ、先に入った人とブロックの関係がある人を飛ばす。誰が誰をかは言わない：`not_included`）。
+- **安全**：押すのは何度でも同じ（馬を選び直すだけ）。2人が同時に押しても、マッチメーカーの1つのオブジェクトで順に処理する。締め切りはアラームでも、次の要求でも処理する（オフラインの人は戻った時に `GET` で見る。部屋は通常の寿命30分）。締めた後に押した人は `closed`（`not_included`）。
+- **ランクに関係しない**：フレンド部屋のレース（`mode: "friend"`）のまま。レート・報酬の扱いはフレンド部屋と同じ。何も買わない・何も配らない。
+
+### 63.7 保存
+- **ディレクトリ**（`DirectoryDO` のシャード＝トークンの1文字目＝作った人のシャード。新しい表を足すだけで wrangler の移行は不要）：
+  - `links`：`token`・`owner_id`・`type`・`target_key`・`data`（行き先の JSON：部屋の合言葉・カップの ID とコード・リプレイの raceId・招待コード・フレンドコード・支部の ID・記事の ID）・`day`・`created_at`・`expires_at`・`revoked_at`。期限から7日で消す。
+  - `link_limits`：`key`（`lu:<hash>`／`lip:<hash>`、ハッシュの先頭でシャード）・`window_start`・`lookups`・`failures`・`locked_until`。
+- **再戦**：マッチメーカーの行 `m|<raceId>`（受付・押した人・締めた結果）。
+- **プレイヤーの状態に新しいキーは足さない**（§51 の分類の追加なし）。
+- **アカウント削除**：ディレクトリの `forget` がその人の `links` の行を消す（＝全部のリンクが `unavailable` になる）。
+
+### 63.8 設定 `progression.links`（起動時とリモート設定の版ごとに検査）
+`{ enabled, baseUrl（https）, appScheme, createsPerDay 1..200, roomMinutes 5..120, cupDaysMax 1..30, defaultDays 1..90, resolvesPerHour 10..600, failuresPerHour 3..100（≤ resolvesPerHour）, lockMinutes 5..1440, minClientVersion: { <type>: "x.y.z" }, rematchWindowSec 5..120, rematchOfferMinutes 5..60, apple?: { appIds: string[] }, android?: { packageName, sha256CertFingerprints: string[] } }`。
+
+### 63.9 KPI（REQ-LINK-021）
+| イベント | 送り手 | s1 | s2 | count |
+|---|---|---|---|---|
+| `link_create` | サーバー（作った人） | 種類 | `new` / `existing` | |
+| `link_resolve` | サーバー（見た人） | 種類（`unavailable` は `none`） | `ok`・`unavailable`・`friends_only`・`maintenance`・`update_required` | |
+| `link_revoke` | サーバー | 種類 | | |
+| `rematch` | サーバー | `press`・`decline`・`opened`（主催者に1行）・`too_few` | | 部屋の人数 |
+| `deep_link_open` | クライアント | 入口 `universal`・`scheme`・`referrer`・`typed` | 種類 | |
+
+トークン・行き先・プレイヤー ID は入れない。クエリは docs/ops/kpi-queries.md「ディープリンク・再戦」。
+
+### 63.10 クライアント
+- `Muchi.Client`：`DeepLinkParser`（URL・スキーム・手入力・Install Referrer → トークン。サーバーと同じ正規化）、`DeepLinkRoutes`（種類 → 画面）、`CreatedLink`・`ResolvedLink`・`LinkList`・`RematchView`、`ApiClient.CreateLinkAsync`・`ResolveLinkAsync`・`ListLinksAsync`・`RevokeLinkAsync`・`RematchPressAsync`・`RematchStatusAsync`・`RematchDeclineAsync`。
+- `Muchi.Game`：`DeepLinkModel`（受け取ったトークンを引いて画面へ。**FTUE の間は1つだけ貯めて、終わってから開く**。オフラインも貯める。メンテナンス・更新・`unavailable` は案内の文。**何も自動で使わない・入力しない・参加しない**：開く画面は確認から始まる）、`RematchModel`（押す・待つ・締め切りの表示・部屋へ）。
+- 画面が守ること：docs/handoff-codex-round21-deep-links.md。

@@ -1240,3 +1240,30 @@
 - REQ-TUT-016 ゲート：`/v1/tips*` はグループ `core`（`all` のメンテナンスだけが閉じる）。
 - REQ-TUT-017 クライアント：C# `ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、Unity `TipsModel`（一覧・NEW・見た印のまとめ送り・オフラインの貯め置き・「？」・ツアー）と `TutorialReplayModel`（レッスンのレース・オンボーディングに触れない・KPI）。
 - REQ-TUT-018 プロトタイプ：設定の「ヒント」・カード・ツアー・4つの画面の「？」・ムチ一閃の調子で本物の WASM エンジンを使ったレースのレッスン。日本語と英語、文字の大きさの設定に合わせる。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+
+## 63. ディープリンク・招待リンクと再戦（TS＋C#、`src/domain/deepLinks.ts`・`src/domain/linkService.ts`・`src/domain/rematch.ts`・`src/do/matchmaker.ts`・`src/do/directory.ts`・`Muchi.Client/DeepLinks.cs`・`Muchi.Game.DeepLinkModel`／`RematchModel`、`contracts/protocol.md` §63）
+拘束条件：リンクは何も配らない（E番号なし）。招待コードの報酬（§19）は今までどおり。URL にプレイヤー ID・個人のデータを入れない。知らない・期限切れのリンクは1つの答え（オラクルなし）。再戦はランクに関係しない。
+- REQ-LINK-001 1つの形：`https://<host>/l/<token>` と `muchi://l/<token>`。部屋・カップ・リプレイ・招待コード・フレンド申請・支部・ヘルプ記事の7種類。
+- REQ-LINK-002 トークン：22文字（31文字の読みやすい文字）、1文字目がシャード、21文字が暗号論的な乱数（約104ビット）。入力は NFKC・空白とハイフンを除く・小文字。
+- REQ-LINK-003 作る：`POST /v1/links`。同じ人・種類・行き先の期限内のリンクは同じものを返す（冪等、回数に数えない）。ゲーム日ごとに `createsPerDay` 本（`429 LINK_LIMIT`）。BAN は `BANNED`、削除の予約中は `DELETION_PENDING`、共有できない行き先は `404`。
+- REQ-LINK-004 期限：部屋は `roomMinutes`、カップは締め切りか `cupDaysMax` 日の早い方、他は `defaultDays`。
+- REQ-LINK-005 開く：`POST /v1/links/resolve` が種類・画面・見る人に要る行き先を返す。答えに作った人の ID を入れない（`replay` のフレンドだけ例外）。
+- REQ-LINK-006 オラクルなし：知らない・期限切れ・取り消し・形の違う・作った人が退会／BAN・ブロックの関係・行き先が無い、はどれも `{ state: "unavailable" }`。
+- REQ-LINK-007 確かめる行き先：部屋が開いている・カップのコードが生きている（§42 の検査と試行回数）・リプレイが公開でフレンド（違えば `friends_only`）・支部がある・記事がある。
+- REQ-LINK-008 制限：見る人ごと・IP ごとに1時間の回数と失敗の回数。超えたら `429 RATE_LIMITED`（`retryAfterSec`）。IP はハッシュで数える。
+- REQ-LINK-009 メンテナンスと版：resolve は §46 の EXEMPT。行き先のグループに窓があれば `maintenance`、種類の `minClientVersion` より古いアプリには `update_required`（ストアの URL）で答える。
+- REQ-LINK-010 Web の案内：`GET /l/:token` はトークンを引かない静的な日英の案内（アプリで開く・ストアへ）。個人のデータを出さない。
+- REQ-LINK-011 あとから開く：Android はストアの referrer（`link=<token>`）を初回起動で読む。iOS は自動では開けないので、ページのトークンを「リンクを開く」に入れてもらう（クリップボードは使わない）。
+- REQ-LINK-012 アプリの関連付け：`apple-app-site-association`・`assetlinks.json` は設定があれば Worker が返す。リポジトリには仮の値だけ（docs/ops/deep-links.md）。
+- REQ-LINK-013 取り消し・一覧：`DELETE /v1/links/:token`（自分のものだけ、冪等）、`GET /v1/links`。
+- REQ-LINK-014 再戦の受付：フレンド部屋のレースが始まると、マッチメーカーが参加者・主催者・条件の写しを `rematchOfferMinutes` 覚える。
+- REQ-LINK-015 再戦の締め：最初に押してから `rematchWindowSec` 秒、または全員が押した時に締める。2人以上なら同じ条件・新しいシードで新しいフレンド部屋を開き、押した人を入れる。
+- REQ-LINK-016 入れない人：押していない・やめた・BAN・削除の予約中・他のレース中・ブロックの関係（押した順に入れ、先に入った人とブロックの関係がある人を飛ばす）。理由は分けて言わない。
+- REQ-LINK-017 安全：二度押しは同じ、同時に押しても1つのオブジェクトで順に処理、締め切りはアラームと次の要求の両方で処理、オフラインの人は戻って状態を見る。
+- REQ-LINK-018 ランク：再戦はフレンド部屋（`mode: "friend"`）のまま。レート・報酬に影響しない。
+- REQ-LINK-019 再戦の画面：結果画面の「再戦」・待ち・締め切り・部屋へ。
+- REQ-LINK-020 アカウント削除：その人のリンクを全部消す（`unavailable` になる）。プレイヤーの状態に新しいキーは足さない。
+- REQ-LINK-021 KPI：`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）、`deep_link_open`（クライアント）。トークン・行き先・ID は入れない。
+- REQ-LINK-022 設定：`progression.links`（起動時とリモート設定で範囲を検査）。
+- REQ-LINK-023 クライアント：C# `DeepLinkParser`・`DeepLinkRoutes`・API、Unity `DeepLinkModel`（FTUE の間は貯める・何も自動で使わない）・`RematchModel`。
+- REQ-LINK-024 プロトタイプとヘルプ：共有シート・「リンクを開く」の画面・フレンド部屋の結果の「再戦」（ムチ一閃の調子、日英、最大の文字でもはみ出さない）、ヘルプ記事「リンクで招待・共有する」。

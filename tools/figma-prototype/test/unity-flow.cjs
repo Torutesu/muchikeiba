@@ -687,7 +687,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('career-map-after', 400);
     const after = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ r: v.rating, s: v.season, paid: v.wallet.paid }); });
     assert.equal(after, before, 'career: rating, season and paid coins unchanged');
-    const kpi = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name.startsWith('career_')).map((e) => e.name));
+    const kpi = await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog().filter((e) => e.name.startsWith('career_')).map((e) => e.name));
     assert.ok(kpi.filter((x) => x === 'career_start').length >= 2, 'career KPI: career_start per run');
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }

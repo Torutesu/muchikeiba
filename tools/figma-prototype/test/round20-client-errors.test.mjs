@@ -72,5 +72,16 @@ assert.strictEqual(L.clientErrors.samplesOf('local').length, 0, 'no player id ke
 const bad = JSON.parse(b2); bad.batchId = 'b_badbadbad1'; bad.items = [{ category: 'desync', at: T0, raceId: 'r1', tick: 3, mode: 'ranked', inputs: [1] }];
 assert.strictEqual(L.clientErrors.ingest(JSON.stringify(bad), true).status, 400);
 assert.strictEqual(L.clientErrors.ingest('x'.repeat(40000), true).status, 413);
+
+// R20 integration (§58.10): the server keeps no player id while the analytics choice is off, even for attachPlayer: true
+const V = (await L.privacy.view()).policyVersion;
+const att = JSON.parse(b2); att.batchId = 'b_r20consent1'; att.attachPlayer = true;
+assert.strictEqual(L.clientErrors.ingest(JSON.stringify(att), true).body.accepted, 2);
+assert.strictEqual(L.clientErrors.samplesOf('local').length, 2, 'analytics on + attachPlayer → the id is kept');
+await L.privacy.set({ privacyVersion: V, source: 'settings', analytics: false });
+att.batchId = 'b_r20consent2';
+assert.strictEqual(L.clientErrors.ingest(JSON.stringify(att), true).body.accepted, 2, 'the report is still accepted');
+assert.strictEqual(L.clientErrors.samplesOf('local').length, 2, 'analytics off → no new sample carries the id');
+await L.privacy.set({ privacyVersion: V, source: 'settings', analytics: true });
 console.log('round 20 client errors: ok');
 process.exit(0);

@@ -1682,6 +1682,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const ceDup = await page.evaluate((b) => globalThis.__muchi.logic.clientErrors.ingest(JSON.stringify(b), true).body, ceBatches[0]);
   assert.equal(ceDup.duplicate, true, 'the same batch id again adds nothing');
   assert.equal((await page.evaluate(() => globalThis.__muchi.logic.clientErrors.samplesOf('local'))).length, 0, 'no sample carries the player id');
+  // R20 integration (§58.10): the switch was the §58 analytics choice — it is off on the server now; put it back on
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.privacy.view())).analytics.value, false, 'the diagnostics switch is 分析への協力');
+  await page.locator('.screen.in [data-ce-consent="on"]').click(); await page.waitForTimeout(400);
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.privacy.view())).analytics.effective, true);
   await shot('diagnostics-sent', 300);
   await page.evaluate(() => globalThis.__muchi.show('Privacy')); await waitScreen('privacy'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in .btn[data-action="diagnostics"]').count(), 1, 'プライバシー links to the diagnostics screen');

@@ -66,6 +66,7 @@ import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceCo
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../../../server/src/domain/clientErrors.js';
 import { ClientErrorsCore, MemoryClientErrorRepo } from '../../../server/src/ops/clientErrors.js';
+import { analyticsAllowed } from '../../../server/src/domain/privacyChoices.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
@@ -914,7 +915,10 @@ export const MuchiLogic = {
       if (!p.success || p.data.items.length > cfg.maxItems) return { status: 400, body: { error: { code: 'BAD_REQUEST', message: p.success ? 'too many items' : p.error.issues[0]?.message ?? 'invalid' } } };
       if (!cfg.enabled) return { status: 200, body: { accepted: 0, dropped: p.data.items.length, duplicate: false, ...view, enabled: false } };
       try {
-        const r = clientErrorCore.ingest(p.data, { playerId: signedIn ? ID : null, installId: p.data.installId }, now(), cfg);
+        // R20 integration (§58.10 / §60.6): the server keeps the player id only while the player's analytics choice is effective
+        const st = signedIn && p.data.attachPlayer ? repo.get(ID) : null;
+        const attach = signedIn && p.data.attachPlayer && (st ? analyticsAllowed(master, st, now()) : true);
+        const r = clientErrorCore.ingest(p.data, { playerId: attach ? ID : null, installId: p.data.installId }, now(), cfg);
         return { status: 200, body: { accepted: r.accepted, dropped: r.dropped, duplicate: r.duplicate, ...view } };
       } catch (e) {
         const err = e as AppError;

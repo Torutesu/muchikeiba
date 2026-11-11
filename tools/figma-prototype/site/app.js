@@ -2862,8 +2862,8 @@ async function PrivacyChoices() {
 // window.onerror / unhandledrejection feed the REAL reporter: Muchi.Game ClientErrorModel + Muchi.Client ErrorReporter in WASM
 // (scrubber, fingerprint, sampling, the queue kept across reloads, batch ids), and its batches go to the server's domain code
 // (L.clientErrors.ingest = POST /v1/client-errors on ClientErrorsCore). The screen shows what the device holds before
-// sending (already scrubbed), the consent stand-in (§58 is not on this base: ErrorReporter.AllowsDiagnostics) and the ops
-// console's view of the same data. Nothing here is player-facing in the app: the screen exists to make the pipeline visible.
+// sending (already scrubbed), the consent (R20 integration, §58.10: ErrorReporter.AllowsDiagnostics follows the §58 analytics
+// choice — the on / off here IS 分析への協力, and the server checks the same choice) and the ops console's view of the same data. Nothing here is player-facing in the app: the screen exists to make the pipeline visible.
 const CE_KEY = 'muchi.clientErrors.queue';
 const CE_CAT = { exception: '例外', api: '通信', desync: 'レースの同期', asset: 'ダウンロード', stall: '画面の固まり' };
 let ceReady = false;
@@ -2884,9 +2884,18 @@ function ceInit() {
   window.addEventListener('error', (e) => { const er = e.error; report(er?.name, er?.message ?? e.message, er?.stack); });
   window.addEventListener('unhandledrejection', (e) => { const er = e.reason; report(er?.name ?? 'UnhandledRejection', er?.message ?? String(er), er?.stack); });
 }
+/** §58.10: the reporter's consent hook follows the analytics choice (ConsentState.AllowsDiagnostics = analytics.effective). */
+async function ceSyncConsent() {
+  if (!ceReady) return true;
+  let allows = true;
+  try { allows = (await L.privacy.view()).analytics.effective === true; } catch { /* no view: the server decides */ }
+  engine.CeSetConsent(allows);
+  return allows;
+}
 /** Sends the queue now (as the app does on going to the background): the WASM reporter's batch → the server code → the answer. */
 async function ceSend() {
   if (!ceReady) return;
+  await ceSyncConsent();
   engine.CeFlush(Date.now());
   for (let i = 0, idle = 0; i < 40 && idle < 4; i++) {
     await new Promise((r) => setTimeout(r, 0));
@@ -2902,6 +2911,7 @@ async function ceSend() {
 async function Diagnostics() {
   currentScreen = Diagnostics;
   ceInit();
+  await ceSyncConsent();
   const st = ceReady ? JSON.parse(engine.CeState()) : { items: [], pending: 0, sent: 0, consent: true };
   Clear('diagnostics'); SetArt('Art/home-paddock', false); Shade('dim');
   TopBar('その他　/　エラーの自動送信', 'アプリで起きた問題を、原因を調べるために運営へ知らせます', { wallet: false });
@@ -2916,10 +2926,18 @@ async function Diagnostics() {
   Txt('メールアドレス・名前・入力した文・レースの操作', 36, 322, 488, 16, WHITE, a, { weight: 500, nowrap: true });
   Hair(36, 378, 488, a);
   Txt('プレイヤーIDを添える', 36, 404, 300, 19, WHITE, a, { weight: 500, nowrap: true });
-  const on = Btn('オン', 316, 396, 96, 46, () => { engine?.CeSetConsent(true); Diagnostics(); }, 'choice' + (st.consent ? ' on' : ''), a);
-  const off = Btn('オフ', 420, 396, 96, 46, () => { engine?.CeSetConsent(false); Diagnostics(); }, 'choice' + (!st.consent ? ' on' : ''), a);
+  // R20 integration (§58.10): the switch is the §58 analytics choice (分析への協力), saved on the server like the settings row
+  const setAnalytics = async (val) => {
+    const v = await L.privacy.view();
+    if (v.analytics.locked) { toast(CNS_LOCK[v.analytics.locked] ?? '年齢の設定により、オフになっています'); return; }
+    const r = await L.privacy.set({ privacyVersion: v.policyVersion, source: 'settings', analytics: val });
+    if (!r.ok) toast(r.message);
+    Diagnostics();
+  };
+  const on = Btn('オン', 316, 396, 96, 46, () => setAnalytics(true), 'choice' + (st.consent ? ' on' : ''), a);
+  const off = Btn('オフ', 420, 396, 96, 46, () => setAnalytics(false), 'choice' + (!st.consent ? ' on' : ''), a);
   on.dataset.ceConsent = 'on'; off.dataset.ceConsent = 'off';
-  Txt('オフにすると、記録は名前のない記録として届きます。', 36, 460, 488, 15, SOFT, a, { lh: 1.6 });
+  Txt('「広告と分析」の「分析への協力」と同じ設定です。オフにすると、記録は名前のない記録として届きます。', 36, 460, 488, 15, SOFT, a, { lh: 1.6 });
   Txt('レースの同期のずれは公平さに関わるため、いつも送ります（レースの番号と時点だけ）。', 36, 540, 488, 15, SOFT, a, { lh: 1.6 });
   // ② the device's queue (scrubbed) and the send
   const q = Glass('Queue', 616, 134, 948, 400, undefined, .88);

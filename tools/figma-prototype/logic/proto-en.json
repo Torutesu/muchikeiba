@@ -1425,6 +1425,7 @@
   "メールアドレス・名前・入力した文・レースの操作": "Email, names, text you typed, your race inputs",
   "プレイヤーIDを添える": "Include my player ID",
   "オフ": "Off",
+  "「広告と分析」の「分析への協力」と同じ設定です。オフにすると、記録は名前のない記録として届きます。": "Same setting as Help with analytics under Ads and analytics. When off, records arrive without a name.",
   "オフにすると、記録は名前のない記録として届きます。": "When off, records arrive without any player ID.",
   "レースの同期のずれは公平さに関わるため、いつも送ります（レースの番号と時点だけ）。": "Race sync problems affect fairness, so they are always sent (only the race number and the moment).",
   "送る前の記録（この端末）": "Waiting to be sent (this device)",

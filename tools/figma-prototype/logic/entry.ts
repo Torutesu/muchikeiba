@@ -36,6 +36,9 @@ import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
 import { tipsOf } from '../../../server/src/domain/tips.js';
+import { ShowcaseService, showcaseCopy, type ShowcaseInput } from '../../../server/src/domain/showcase.js';
+import { publicProfile } from '../../../server/src/domain/stats.js';
+import visualsJson from '../../../server/master/visuals.json';
 import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
 import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
@@ -158,6 +161,56 @@ async function fsugRepublish(ids: string[]) {
     if (card) await fsugCards.put(card); else await fsugCards.remove(id);
   }
 }
+// round 21 (REQ-SHOW-*): トレーナーカード on the real ShowcaseService. Other players' cards are read from the profile directory
+// (the same memory directory the おすすめフレンド profiles use; DirectoryDO in production), with both block lists checked.
+// Three demo players: a friend with a decorated card, an under-13 player (no player-typed names on the card) and a player
+// who blocked you (a neutral card).
+const showcaseSvc = new ShowcaseService({
+  profiles: (ids) => fsugProfiles.profiles(ids),
+  viewer: (u) => svc.showcaseViewer(u),
+  blocks: async (u) => (await svc.showcaseViewer(u)).blocked,
+  mine: (u, l) => svc.showcaseMine(u, l),
+}, () => master);
+const SC_DEMO: { id: string; name: string; horse: string; birthYear: number | null; phrase: string; bg: string }[] = [
+  { id: 'demo_sc_1', name: 'アオイ', horse: 'サクラフブキ', birthYear: null, phrase: 'time_attack', bg: 'turf_stretch' },
+  { id: 'demo_sc_kid', name: 'ハル', horse: 'ハルカゼ', birthYear: 2015, phrase: 'hello', bg: 'dawn' },
+  { id: 'demo_sc_blk', name: 'クロガネ', horse: 'クロノツバサ', birthYear: null, phrase: 'race_anytime', bg: 'dawn' },
+];
+/** The memory directory does not survive a reload: write the demo profile (with its card copy) again from the stored state. */
+async function scPublish(id: string) {
+  const s = await svc.state(id);
+  await fsugProfiles.putProfile(publicProfile(s, master.bannedSilks, now(), showcaseCopy(master, s, now())));
+}
+async function showcaseDemo() {
+  const track = master.tracks[0]!.id;
+  for (const d of SC_DEMO) {
+    if (!(await repo.get(d.id))) {
+      await svc.bootstrap(d.id);
+      await svc.setDisplayName(d.id, d.name);
+      await svc.grantPartner(d.id, d.horse, `c:sc:${d.id}`);
+      await svc.tx(d.id, null, (s, t) => {
+        const hid = s.horses[0]!.id;
+        s.stats.races = 42; s.stats.wins = 7; s.stats.top3 = 16; s.season.races = 9;
+        for (const ti of master.titles.slice(0, 2)) if (!s.titles.includes(ti.id)) s.titles.push(ti.id);
+        s.timeAttack = { sessions: [], daily: { date: '', count: 0 }, seasonBest: {}, allTimeBest: { [track]: { timeMs: 94_800, finishTick: 1896, finishFrac: 0, sessionId: 'proto_sc', horseId: hid, horseName: d.horse, at: t } }, milestones: [] };
+        s.cups = { active: [], invites: [], history: [{ cupId: 'cup_protoshowcasecup1', cupName: '春の小さな杯', format: 'single', rank: 1, points: 10, entrants: 6, at: t, status: 'finished', partial: false, cancelReason: null, trophy: 'gold' }], trophies: { gold: 1, silver: 0, bronze: 0 }, codeAttempts: { hour: 0, count: 0 } };
+        s.tournaments = { ...(s.tournaments ?? {}), proto_sc_autumn: { name: '青葉スプリント杯', rank: 1, at: t, reward: null } };
+        if (d.birthYear) s.age = { birthYear: d.birthYear, birthMonth: 4, guardianConsent: true, setAt: t };
+      });
+      const st = await svc.state(d.id);
+      await svc.showcaseSave(d.id, {
+        horseId: st.horses[0]!.id,
+        pins: [{ kind: 'tournament', id: 'proto_sc_autumn' }, { kind: 'cup_trophy', id: 'cup_protoshowcasecup1' }, { kind: 'title', id: st.titles[0]! }],
+        taTrackIds: [track], phraseId: d.phrase, backgroundId: d.bg,
+      });
+      if (d.id === 'demo_sc_1') { await fsugFriends.requestTo(d.id, ID).catch(() => undefined); await fsugFriends.accept(ID, d.id).catch(() => undefined); }
+      if (d.id === 'demo_sc_blk') await svc.blockSet(d.id, ID, true, 'blocks');
+    }
+    await scPublish(d.id);
+  }
+  return SC_DEMO.map((d) => ({ playerId: d.id, displayName: d.name }));
+}
+const SC_HEX = new Map((visualsJson as { palette: { id: string; hex: string }[] }).palette.map((p) => [p.id, p.hex]));
 // round 14 (REQ-HOF-*): 殿堂 on the real HallService. A demo friend (demo_hof_1, アオバ) has a hall of their own to visit.
 const hallDir = new MemoryHallDirectory();
 const hallSvc = new HallService(hallPlayersFrom(() => rivalInvoker), hallDir, () => hallConfig(master));
@@ -1175,6 +1228,25 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 21: トレーナーカード (REQ-SHOW-*, contracts/protocol.md §62)
+  showcase: {
+    /** GET /v1/showcase in the screen's language (phrases and background names are picked from their JA + EN pair). */
+    mine: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.showcaseMine(ID, lang)),
+    /** PUT /v1/showcase (ids only; ownership checked by the real rules). */
+    save: (input: ShowcaseInput, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.showcaseSave(ID, input, lang)),
+    /** GET /v1/showcase/:playerId (the directory copy, re-checked; blocks / deleted / banned → the neutral card). */
+    card: (playerId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => showcaseSvc.card(ID, playerId, lang)),
+    /** The three demo players (a friend, an under-13 player, one who blocked you). */
+    demo: () => wrap(() => showcaseDemo()),
+    /** Block / unblock a player on the one list (§47.1), to see the neutral card from your side. */
+    block: (playerId: string, on: boolean) => wrap(() => svc.blockSet(ID, playerId, on, 'blocks')),
+    /** Silks colour ids → hex (master/visuals.json palette) for the card's silks chips. */
+    hex: (id: string) => SC_HEX.get(id) ?? '#888888',
+    /** Client KPI rows (showcase_view / showcase_share) through the server's strict schema. */
+    kpi: (name: 'showcase_view' | 'showcase_share', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+    /** Server KPI rows seen so far (showcase_save). */
+    serverKpi: () => serverKpi.filter((k) => k.name === 'showcase_save'),
+  },
   // ---------------------------------------------------------------- round 14: 殿堂・引退式 (REQ-HOF-*, contracts/protocol.md §34)
   hall: {
     mine: (cursor: string | null = null, limit: number | null = null) => wrap(() => hallSvc.mine(ID, cursor, limit)),

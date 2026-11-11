@@ -406,6 +406,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   help: x('helpInquiries'), reports: x('reportsMade'),
   // Round 19 integration: §57 tip cards read (ids) and §54 transfer code history / expiry (never the code id or password hash)
   tips: x('play'), transfer: x('account'),
+  // §62 (Round 21): the showcase selection (own horse / pin / course ids, phrase and background ids; nothing about other players)
+  showcase: x('profile'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -510,6 +512,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       silksEditor: clone(st.silksEditor) ?? null,
       stats: clone(s.stats), rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces },
       season: clone(s.season), seasonHistory: clone(s.seasonHistory),
+      // §62: the trainer card selection as saved (what others see is derived from it)
+      showcase: clone(s.showcase) ?? null,
     },
     settings: {
       accessibility: clone(s.accessibility) ?? null, assist: clone(s.assist) ?? null, commentaryPack: clone(s.commentaryPack) ?? null,

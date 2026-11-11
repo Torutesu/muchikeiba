@@ -7,6 +7,7 @@ import { silksEditorOf } from './silksEditor.js';
 import type { Master } from './master.js';
 import { DIRT_GOINGS, TURF_GOINGS } from './schemas.js';
 import { stableConfig } from './stable.js';
+import { showcaseOf } from './showcase.js';
 import { collectionOf } from './collection.js';
 import { stampAsset, stampsOf } from './teamFeed.js';
 import { commentaryPacksOf } from './commentaryPacks.js';
@@ -62,6 +63,7 @@ export function buildAssetManifest(m: Master, commentary: CommentaryJson, v: Vis
   stampsOf(m).stamps.forEach((s) => add(stampAsset(s.id))); // REQ-TEAMFEED-001: every team-feed stamp
   for (const cat of PHOTO_CATEGORIES) photoOf(m)[cat].forEach((d) => add(photoAsset(cat, d.id))); // REQ-PHOTO-005: every photo look / frame / stamp
   stableConfig(m).themes.forEach((t) => add(assetKeys.stableTheme(t.id))); // REQ-STABLE-001
+  showcaseOf(m).backgrounds.forEach((b) => add(assetKeys.showcaseBg(b.id))); // REQ-SHOW-006
   m.gacha.banners.forEach((b) => add(assetKeys.gachaBanner(b.id)));
   m.events.forEach((e) => add(assetKeys.eventBanner(e.id)));
   m.titles.forEach((t) => add(assetKeys.title(t.id)));

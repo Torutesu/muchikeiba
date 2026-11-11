@@ -470,6 +470,26 @@ export const CODE_EN: Record<string, string> = {
   '含めていないもの：重複や処理用の内部記録、運営のメモ、他のプレイヤーの情報。': 'Not included: duplicate and processing records, operator notes, and other players\' information.',
   'ご不明な点はゲーム内のお問い合わせからご連絡ください。': 'If you have questions, please use Contact in the game.',
 
+  // ---- プロフィールのショーケース (showcase.ts pinView / seasonClassLabel / SHOWCASE_NOTICE, protocol §62; REQ-SHOW-013).
+  // Phrases and background names carry their own English (master/showcase.json); horse / cup names are never translated.
+  '称号': 'Title',
+  '実績 {tier}段目': 'Achievement, tier {tier}',
+  'プレイヤー主催カップ': 'Player-hosted cup',
+  '金トロフィー': 'Gold trophy',
+  '銀トロフィー': 'Silver trophy',
+  '銅トロフィー': 'Bronze trophy',
+  '殿堂入りの馬': 'Hall of Fame horse',
+  '殿堂入りの銘板': 'Hall of Fame plaque',
+  '目標を達成した馬': 'Horse that met every goal',
+  '目標達成のリボン': 'Goal ribbon',
+  '大会の記録': 'Tournament record',
+  '大会優勝': 'Tournament win',
+  '大会 {n}位': 'Tournament: {n:ord}',
+  '今シーズン {cls}クラス': 'This season: Class {cls}',
+  'カードに出せるのは自分で手に入れたものだけです。': 'Your card shows only things you earned yourself.',
+  '引退した馬や手元にないものは自動で外れます。': 'Retired horses and things you no longer have come off automatically.',
+  '一言は決まった文から選びます。': 'Your line is picked from a fixed list.',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

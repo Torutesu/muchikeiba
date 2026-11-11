@@ -51,6 +51,8 @@ export const HELP_SCREENS = [
   'privacy_choices',
   // Round 20: settings › notifications (push categories, quiet hours and the device reminders, §61)
   'notifications',
+  // Round 21 (§62): the トレーナーカード editor (settings)
+  'showcase',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -61,7 +63,9 @@ export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_
   // Round 20 (§58): settings › privacy › ads and analytics, and the pre-prompt sheet
   'privacy_choices',
   // Round 20 (§61): settings › notifications (the device reminders article)
-  'notifications'] as const;
+  'notifications',
+  // Round 21 (§62): the トレーナーカード editor
+  'showcase'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -124,6 +128,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   storage: { ja: 'ストレージを開く', en: 'Open storage' },
   tips: { ja: 'ヒントを開く', en: 'Open tips' },
   privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
+  showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
 };
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },

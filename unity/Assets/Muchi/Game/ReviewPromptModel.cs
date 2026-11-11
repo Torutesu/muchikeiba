@@ -36,7 +36,7 @@ namespace Muchi.Game
         public const string YesLabel = "はい";
         public const string NoLabel = "いまいち";
         public const string CloseLabel = "閉じる";
-        public const string SoftKicker = "ひとこと";
+        public const string SoftKicker = "ちょっと質問";
         public const string FeedbackLead = "ご意見をお聞かせください。お問い合わせの画面を開きます。";
 
         private readonly IStoreReview _store;

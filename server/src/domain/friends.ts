@@ -210,7 +210,8 @@ export class FriendsService {
     const st = await this.players.friendsState(uid);
     const profiles = await this.dir.profiles([...st.ids, ...st.incoming.map((x) => x.from), ...st.outgoing.map((x) => x.to)]);
     // REQ-ACT-012: the moderation mark is only for the activity list's neutral name, never shown to friends
-    const byId = new Map(profiles.map(({ banned: _banned, ...p }) => [p.playerId, p]));
+    // REQ-SHOW-005: the showcase card is opened on its own (GET /v1/showcase/:playerId); the list does not carry it
+    const byId = new Map(profiles.map(({ banned: _banned, showcase: _showcase, ...p }) => [p.playerId, p]));
     const view = (id: string) => byId.get(id) ?? { playerId: id, displayName: '???', titleId: null, classId: 'C', rating: 0, stats: { races: 0, wins: 0, top3: 0 }, lastSeenAt: 0 };
     return {
       friends: st.ids.map(view),

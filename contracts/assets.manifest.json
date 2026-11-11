@@ -104,6 +104,12 @@
    "dynamic": false,
    "count": 4
   },
+  "showcase/bg": {
+   "fallback": "showcase/bg/default",
+   "description": "トレーナーカード（ショーケース）の背景（実績で解放。REQ-SHOW-006）",
+   "dynamic": false,
+   "count": 8
+  },
   "item": {
    "fallback": "item/default",
    "description": "アイテムのアイコン",
@@ -530,6 +536,14 @@
   "sfx/ui/level_up",
   "sfx/ui/reward",
   "sfx/ui/tap",
+  "showcase/bg/dawn",
+  "showcase/bg/default",
+  "showcase/bg/dirt_dust",
+  "showcase/bg/every_course",
+  "showcase/bg/golden_gate",
+  "showcase/bg/night_lights",
+  "showcase/bg/stopwatch",
+  "showcase/bg/turf_stretch",
   "silks/cap/checks",
   "silks/cap/default",
   "silks/cap/diamond",

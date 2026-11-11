@@ -75,6 +75,7 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
 import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
+import { forgetShowcase, setShowcase, showcaseCopy, showcaseCopyKey, showcaseMine, type ShowcaseInput } from './showcase.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -220,7 +221,8 @@ export interface PlayerServiceDeps {
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
-const profileKey = (s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned', s.cups?.trophies ?? null]);
+// REQ-SHOW-005: the showcase copy is part of the key, so a retired / gone horse or a revoked title leaves the card on the next push
+const profileKey = (m: Master, s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned', s.cups?.trophies ?? null, showcaseCopyKey(m, s, now)]);
 
 const IDEM_KEEP = 200;
 /**
@@ -275,7 +277,7 @@ export class PlayerService {
     settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
-    const profileBefore = profileKey(draft, now);
+    const profileBefore = profileKey(this.d.master, draft, now);
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
@@ -305,7 +307,7 @@ export class PlayerService {
     // directory profile and board rows step by step; a later transaction of the same run or a retry must not put them
     // back), and after the balances were forfeited the paid balance is not reported (retainDeleted removes that row).
     const deleting = draft.deletion?.status === 'deleting';
-    const pushProfile = !deleting && this.d.onProfile && (profileKey(draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
+    const pushProfile = !deleting && this.d.onProfile && (profileKey(this.d.master, draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     // REQ-FSUG-011: the card is re-derived on every transaction and written when it changed (first write included), and
     // again with the periodic profile push, so a write lost to a directory outage heals within profilePushIntervalMs
@@ -319,7 +321,7 @@ export class PlayerService {
     const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.writeKpi(id, draft, now, kpi); // REQ-CNS-013: optional events only with analytics on
-    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks, now));
+    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks, now, showcaseCopy(this.d.master, draft, now)));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
     if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
       // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
@@ -1590,6 +1592,18 @@ export class PlayerService {
   async tips(id: string, lang: Locale = 'ja', maxWhips = 6) { return tipsIndex(this.d.master, await this.load(id), this.d.clock(), lang, maxWhips); }
   /** REQ-TUT-007: mark open cards seen (idempotent; never grants anything). */
   tipsSeen(id: string, ids: string[]) { return this.tx(id, null, (s, now) => markTipsSeen(this.d.master, s, ids, now)); }
+
+  // ---- プロフィールのショーケース (REQ-SHOW-*, protocol §62)
+  /** GET /v1/showcase: the selection, every choice with eligibility and the self preview (read only). */
+  async showcaseMine(id: string, lang: Locale = 'ja') { return showcaseMine(this.d.master, await this.load(id), this.d.clock(), lang); }
+  /** PUT /v1/showcase: validated replace; the public copy follows through the profile push (profileKey includes it). */
+  showcaseSave(id: string, input: ShowcaseInput, lang: Locale = 'ja') {
+    return this.tx(id, null, (s, now, emit) => { setShowcase(this.d.master, s, input, now, emit); return showcaseMine(this.d.master, s, now, lang); });
+  }
+  /** The viewer's side of GET /v1/showcase/:playerId: friends and the one block list (§47.1). No writes. */
+  async showcaseViewer(id: string) { const s = await this.load(id); return { friendIds: [...s.friends.ids], blocked: [...blockIds(s)] }; }
+  /** REQ-SHOW-018: account deletion step (the copy leaves with the directory profile; the state is wiped at the end anyway). */
+  showcaseForget(id: string) { return this.tx(id, null, (s) => forgetShowcase(s)); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

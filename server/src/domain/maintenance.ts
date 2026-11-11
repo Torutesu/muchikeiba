@@ -228,6 +228,7 @@ const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
   ['/v1/training', 'training'],
   ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'],
   ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'],
+  ['/v1/showcase', 'social'], // REQ-SHOW-016 (§62): the trainer card is a social view
   ['/v1/cups', 'cups'],
 ];
 

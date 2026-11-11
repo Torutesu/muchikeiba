@@ -28,6 +28,7 @@ import photoJson from '../../master/photo.json';
 import helpJson from '../../master/help.json';
 import practiceJson from '../../master/practice.json';
 import tipsJson from '../../master/tips.json';
+import showcaseJson from '../../master/showcase.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -433,6 +434,8 @@ export interface Master {
   practice?: import('./practice.js').PracticeMaster;
   /** REQ-TUT-*: チュートリアルのやり直しとヒント集 (master/tips.json; tips.ts tipsOf falls back to it when absent; remote config `tips` replaces it). */
   tips?: import('./tips.js').TipsMaster;
+  /** REQ-SHOW-* (§62): プロフィールのショーケース — phrases and backgrounds (master/showcase.json; showcase.ts showcaseOf falls back to it; remote config `showcase` replaces it). */
+  showcase?: import('./showcase.js').ShowcaseMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -589,6 +592,7 @@ export function loadMaster(): Master {
     help: helpJson as unknown as import('./help.js').HelpMaster,
     practice: practiceJson as unknown as import('./practice.js').PracticeMaster,
     tips: tipsJson as unknown as import('./tips.js').TipsMaster,
+    showcase: showcaseJson as unknown as import('./showcase.js').ShowcaseMaster,
   };
   cached = m;
   return m;

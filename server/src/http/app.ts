@@ -37,6 +37,7 @@ import type { StableService } from '../domain/stable.js';
 import type { HallService } from '../domain/hallOfFame.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
+import { ShowcaseService, SHOWCASE_HARD_LIMITS, SHOWCASE_ID_RE, SHOWCASE_PIN_KINDS, SHOWCASE_REF_RE, type ShowcaseInput } from '../domain/showcase.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
@@ -111,6 +112,7 @@ export type PlayerMethod =
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
   | 'tips' | 'tipsSeen'
+  | 'showcaseMine' | 'showcaseSave' | 'showcaseViewer' | 'showcaseForget'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
@@ -454,6 +456,14 @@ const invite = (c: AppContext) => {
 };
 /** REQ-INV-005: the app's install id (random per install, kept in the keychain / keystore). Only a hash is stored. */
 const installIdSchema = z.string().min(8).max(128).regex(/^[\w\-.:]+$/);
+/** REQ-SHOW-003 (§62): PUT /v1/showcase (ids only; ownership is checked in the owner's object). */
+const showcaseBodySchema = z.object({
+  horseId: z.string().min(1).max(40).regex(SHOWCASE_REF_RE).nullable(),
+  pins: z.array(z.object({ kind: z.enum(SHOWCASE_PIN_KINDS), id: z.string().regex(SHOWCASE_REF_RE) }).strict()).max(SHOWCASE_HARD_LIMITS.pinsMax),
+  taTrackIds: z.array(z.string().regex(/^[a-z0-9_]{1,64}$/)).max(SHOWCASE_HARD_LIMITS.taMax),
+  phraseId: z.string().regex(SHOWCASE_ID_RE).nullable(),
+  backgroundId: z.string().regex(SHOWCASE_ID_RE),
+}).strict();
 const playerIdParam = (s: string) => {
   if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
   return s;
@@ -1195,6 +1205,19 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ ids: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).min(1).max(50) }).strict());
     return c.player(u).invoke('tipsSeen', u, b.ids);
   } },
+  // プロフィールのショーケース (REQ-SHOW-*, protocol §62; gate group `social`). The card of another player is read from the
+  // directory copy of their public profile (never their state), with both block lists checked → a neutral card.
+  { method: 'GET', path: '/v1/showcase', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('showcaseMine', u, resolveLocale(r)) },
+  { method: 'PUT', path: '/v1/showcase', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, showcaseBodySchema);
+    return c.player(u).invoke('showcaseSave', u, b as ShowcaseInput, resolveLocale(r));
+  } },
+  { method: 'GET', path: '/v1/showcase/:playerId', auth: 'player', handler: async (r, p, c, u) => new ShowcaseService({
+    profiles: (ids) => c.friends.profilesOf(ids),
+    viewer: (x) => c.player(x).invoke('showcaseViewer', x),
+    blocks: (x) => c.player(x).invoke('blockIds', x),
+    mine: (x, l) => c.player(x).invoke('showcaseMine', x, l),
+  }, () => c.master, c.clock).card(u, playerIdParam(p.playerId!), resolveLocale(r)) },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');

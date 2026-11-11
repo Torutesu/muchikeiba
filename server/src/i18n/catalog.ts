@@ -186,7 +186,9 @@ export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName',
  * REQ-QCHAT-009/013: quick chat texts are built in the viewer's language by the domain (the phrase pair plus player-sourced
  * values that are never translated), so the boundary leaves them as they are.
  */
-export const PRE_LOCALIZED_KEYS = new Set(['qchatText', 'qchatTemplate', 'qchatValue']);
+export const PRE_LOCALIZED_KEYS = new Set(['qchatText', 'qchatTemplate', 'qchatValue',
+  // REQ-SHOW-007 (§62): showcase phrases and background names are picked in the viewer's language from their JA + EN pair
+  'phraseText', 'backgroundName']);
 /** `name:シンセイアカツキ`, `voice/ja/name/…`: an identifier, not a text. */
 const ID_LIKE = /^[a-z][a-z0-9_]*[:/]/;
 

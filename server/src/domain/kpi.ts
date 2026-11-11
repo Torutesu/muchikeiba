@@ -142,6 +142,8 @@ const perfSettingProps = z.object({
 export const TIP_VIEW_SOURCES = ['list', 'context', 'tour', 'lesson'] as const;
 export const TIP_CONTEXT_NAMES = ['gacha_odds', 'breeding', 'training', 'roster_bulk_retire'] as const;
 const tipId = z.string().regex(/^[a-z0-9_]{2,40}$/);
+/** REQ-SHOW-015 (§62): where a trainer card was opened (the screens of protocol §62.6). */
+export const SHOWCASE_SOURCES = ['settings', 'friends', 'rival', 'activity', 'cup_lobby', 'spectate', 'hall', 'stable', 'leaderboard', 'team'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
@@ -221,6 +223,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
   z.object({ name: z.literal('cheer_seen'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), role: z.enum(['racer', 'spectator']), count: z.number().int().min(1).max(100_000) }).strict() }),
+  // REQ-SHOW-015 (§62): a trainer card was opened (where from, whose: self / friend / other, neutral or not) / its image
+  // handed to the OS share sheet (how many pins and records it showed). Never the other player's id.
+  z.object({ name: z.literal('showcase_view'), at: z.number().int(), props: z.object({ source: z.enum(SHOWCASE_SOURCES), relation: z.enum(['self', 'friend', 'other']), neutral: z.boolean() }).strict() }),
+  z.object({ name: z.literal('showcase_share'), at: z.number().int(), props: z.object({ pins: z.number().int().min(0).max(3), records: z.number().int().min(0).max(4), horse: z.boolean() }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -279,6 +285,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
     case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };
     case 'lnotif_permission': return { name: e.name, s1: e.props.result };
+    case 'showcase_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, s3: e.props.neutral ? 'neutral' : 'card' };
+    case 'showcase_share': return { name: e.name, count: e.props.pins, value: e.props.records, s1: e.props.horse ? 'horse' : 'none' };
   }
 }
 

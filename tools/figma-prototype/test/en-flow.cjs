@@ -496,6 +496,17 @@ await shot('diagnostics', 600);
   await show('StartLesson', 'race_whip'); await waitScreen('race-tutorial'); await waitScreen('lesson-result', 90000); await shot('lesson-result', 600);
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
+
+  // round 21: トレーナーカード in English (REQ-SHOW-014): the phrase and background from their JA + EN pair, labels from the
+  // server's table, names as typed; the editor tabs, the share image and the neutral card
+  await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
+  await show('ShowcaseCard', 'demo_sc_1', 'friends'); await waitScreen('showcase'); await shot('showcase-card', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Hooked on time attack/, 'showcase: the phrase in English');
+  assert.match(await page.locator('.screen.in').innerText(), /Pinned/, 'showcase: the labels in English');
+  await show('ShowcaseShare', 'demo_sc_1'); await waitScreen('showcase-share'); await shot('showcase-share', 400);
+  await show('ShowcaseCard', 'demo_sc_blk', 'activity'); await waitScreen('showcase'); await shot('showcase-neutral', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Player/, 'showcase: the neutral name in English');
+  for (const tab of ['horse', 'pins', 'courses', 'phrase', 'background']) { await show('ShowcaseEdit', tab); await waitScreen('showcase-edit'); await shot('showcase-edit-' + tab, 400); }
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');
   await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await shot('team-goal-progress', 700);

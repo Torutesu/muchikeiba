@@ -61,7 +61,7 @@ assert.deepStrictEqual(kpi, ['review_prompt_eligible:first_win', 'review_prompt_
   'review_prompt_eligible:horse_goal_chain', 'review_soft_answer:yes', 'review_prompt_shown:horse_goal_chain']);
 await L.reviewPrompt.demo(false);
 
-for (const t of ['ムチ一閃を楽しんでいますか？', 'はい', 'いまいち', 'ひとこと', 'ご意見をお聞かせください。お問い合わせの画面を開きます。', '答えなくてもかまいません。ゲームの内容は何も変わりません。',
+for (const t of ['ムチ一閃を楽しんでいますか？', 'はい', 'いまいち', 'ちょっと質問', 'ご意見をお聞かせください。お問い合わせの画面を開きます。', '答えなくてもかまいません。ゲームの内容は何も変わりません。',
   '「ムチ一閃」を気に入っていますか？', 'App Store で評価するには、星をタップしてください。', '今はしない', '大会の初優勝', '目標の物語を走りきった']) {
   const en = L.l10n.translate(t);
   assert.ok(en && !/[぀-ヿ一-鿿]/.test(en), 'English: ' + t + ' → ' + en);

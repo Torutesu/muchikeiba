@@ -274,6 +274,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Storage'); await waitScreen('storage'); await shot('storage', english, 500);
     // Round 19: 観戦中の応援 (the spectate screen with a window of cheers) at the largest size
     await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(1300); await shot('spectate', english, 300);
+    // Round 21: トレーナーカード — a friend's card, the neutral card, the share image and the editor's tabs (REQ-SHOW-*)
+    await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
+    await show('ShowcaseCard', 'demo_sc_1', 'friends'); await waitScreen('showcase'); await page.waitForSelector('.screen.in .sc-card', { timeout: 15000 }); await shot('showcase-card', english, 500);
+    await show('ShowcaseCard', 'demo_sc_blk', 'activity'); await waitScreen('showcase'); await shot('showcase-neutral', english, 400);
+    await show('ShowcaseShare', 'demo_sc_1'); await waitScreen('showcase-share'); await shot('showcase-share', english, 400);
+    for (const tab of ['horse', 'pins', 'phrase', 'background']) { await show('ShowcaseEdit', tab); await waitScreen('showcase-edit'); await shot('showcase-edit-' + tab, english, 400); }
     // Round 19: 引き継ぎコード — the issue screen (checklist, ID), the redeem screen and the old device's notice (REQ-TRF-020)
     await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);

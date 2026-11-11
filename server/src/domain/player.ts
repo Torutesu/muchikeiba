@@ -242,6 +242,8 @@ export interface PlayerState {
   dataExport?: import('./dataExport.js').DataExportState;
   /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
   tips?: import('./tips.js').TipsState;
+  /** REQ-SHOW-* (§62): プロフィールのショーケース — the card's selection (showcase.ts setShowcase; re-checked whenever the card is derived). */
+  showcase?: import('./showcase.js').ShowcaseState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
   /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */

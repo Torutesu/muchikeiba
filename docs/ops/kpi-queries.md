@@ -1418,3 +1418,27 @@ WHERE blob1 = 'lnotif_permission' AND timestamp > NOW() - INTERVAL '28' DAY
 GROUP BY result
 ORDER BY n DESC
 ```
+
+## トレーナーカード：保存・閲覧・共有（REQ-SHOW-015、contracts/protocol.md §62.9、Round 21）
+
+**カードを飾る人がいるか、どこから開かれているか、画像が共有されているか**。`showcase_save`（サーバー、選んだものが変わった保存のときだけ。`blob8` = 背景 id、`blob9` = `horse` / `none`、`blob10` = `phrase` / `none`、`double5`（count）= ピン留めの数、`double9`（value）= タイムアタックのコースの数）、`showcase_view`（クライアント、カードを開いたとき。`blob8` = 入口 `settings`・`friends`・`rival`・`activity`・`cup_lobby`・`spectate`・`hall`・`stable`・`leaderboard`・`team`、`blob9` = `self` / `friend` / `other`、`blob10` = `card` / `neutral`）、`showcase_share`（クライアント、画像を共有シートに渡したとき。`double5` = ピン留めの数、`double9` = 記録の数、`blob8` = `horse` / `none`）。どれも相手のプレイヤー ID を持たない。
+
+```sql
+-- 入口ごとの閲覧（自分・フレンド・その他）と、空のカード（ブロック・削除・停止）の割合
+SELECT blob8 AS source, blob9 AS relation,
+  sum(_sample_interval) AS views,
+  sum(if(blob10 = 'neutral', _sample_interval, 0)) AS neutral
+FROM muchi_kpi
+WHERE blob1 = 'showcase_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source, relation ORDER BY views DESC
+```
+
+```sql
+-- 保存で選ばれた背景とピン留めの数（背景が既定のままの人が多いなら、解放の条件を見直す）
+SELECT blob8 AS background, avg(double5) AS avg_pins, sum(_sample_interval) AS saves
+FROM muchi_kpi
+WHERE blob1 = 'showcase_save' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY background ORDER BY saves DESC
+```
+
+- `showcase_share` ÷ `showcase_view`（`relation = self`）が共有の割合。共有は何も配らない（報酬なし）。

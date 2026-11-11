@@ -330,7 +330,8 @@
       "keywords": { "ja": ["通知", "つうち", "リマインダー", "お知らせ", "ロック画面"], "en": ["notification", "notifications", "reminder", "reminders", "lock screen"] },
       "links": [ { "type": "screen", "screen": "notifications" } ],
       "related": ["training", "gift_box"]
-    }
+    },
+    {"id": "showcase", "category": "getting_started", "title": {"ja": "トレーナーカード（ショーケース）", "en": "Trainer card (showcase)"}, "body": {"ja": "プロフィールのトレーナーカードに、愛馬・自分で手に入れた記録・一言・背景を飾れます。その他の「トレーナーカード」で編集し、フレンド・ライバル・お知らせ・カップの待合室・観戦・殿堂から相手のカードを開けます。\n\n・飾れるのは自分で手に入れたものだけです（称号・実績・カップのトロフィー・殿堂入りの馬・目標のリボン・大会の表彰台・タイムアタックの記録）。引退した馬・貸し出し中の馬や手元にないものは自動で外れます\n・一言は決まった文から選びます。自由に文字を書くことはできません\n・背景は実績で解放されます。購入はできず、能力やレースには影響しません\n・ブロックした相手・ブロックされた相手には、名前を伏せた空のカードが出ます\n・カードの画像を共有できます。画像にはプレイヤーIDは入りません", "en": "Decorate the trainer card on your profile with a featured horse, records you earned, a line and a background. Edit it from Trainer card under More, and open other players' cards from friends, rivals, activity, the cup lobby, spectating and the Hall of Fame.\n\n• Only things you earned yourself can go on the card (titles, achievements, cup trophies, Hall of Fame horses, goal ribbons, tournament podiums and time-attack records). Retired horses, horses out on loan and things you no longer have come off automatically\n• Your line is picked from a fixed list. There is no free text\n• Backgrounds are unlocked by achievements. They cannot be bought and do not affect stats or races\n• Players you blocked, and players who blocked you, see an empty card without a name\n• You can share an image of your card. The image never shows your player ID"}, "keywords": {"ja": ["トレーナーカード", "ショーケース", "プロフィール", "愛馬", "背景", "ピン留め"], "en": ["trainer card", "showcase", "profile", "featured horse", "background", "pin"]}, "links": [{"type": "screen", "screen": "showcase"}], "related": ["horse_goals", "tips_replay"]}
   ],
   "contexts": {
     "gacha_odds": "pity",
@@ -349,6 +350,7 @@
     "storage": "data_storage",
     "practice": "practice_races",
     "privacy_choices": "ads_analytics_privacy",
-    "notifications": "local_reminders"
+    "notifications": "local_reminders",
+    "showcase": "showcase"
   }
 }

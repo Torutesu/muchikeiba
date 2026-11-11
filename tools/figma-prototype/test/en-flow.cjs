@@ -293,6 +293,27 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.horseGoals.pin(null));
   }
 
+  // round 20: レビュー依頼 in English (REQ-REV-015): the soft pre-question and the simulated OS sheet
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await waitIn('.rev-soft'); await shot('review-soft', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Are you enjoying Muchi Issen\?/, 'review: the question in English');
+    await page.locator('.screen.in .rev-yes').click(); await waitScreen('review-native'); await waitIn('.rev-os'); await shot('review-native', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Not Now/, 'review: the OS sheet in English');
+    await page.locator('.screen.in .rev-os-later').click(); await waitScreen('home');
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+  }
+
+  // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog
+  {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(async () => { localStorage.setItem('muchi.lnotif.os', 'granted'); await globalThis.__muchi.logic.localNotify.seedDemo(); await globalThis.__muchi.logic.localNotify.setCategory('reminders', true); });
+    await show('NotifySettings'); await waitScreen('notify-settings'); await waitIn('.ln-next'); await shot('notify-settings', 500);
+    assert.ok(!/[぀-ヿ一-鿿]/.test(await page.locator('.screen.in .ln-upcoming').innerText()), 'notify: the upcoming reminders in English');
+    await show('LnotifPrePrompt'); await waitScreen('ln-primer'); await waitIn('.ln-primer'); await shot('reminders-primer', 400);
+    await page.evaluate(async () => { localStorage.removeItem('muchi.lnotif.os'); await globalThis.__muchi.logic.localNotify.setCategory('reminders', false); });
+  }
+
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
@@ -423,6 +444,9 @@ module.exports = async function enFlow(browser, base, out, errors) {
 
   // round 17: 通報とブロック in English (REQ-RPT-018): the block list (player names as written, the effects from the server),
   // the unblock confirmation and the report sheet (reasons from the server, the note counter)
+// round 20 (REQ-CERR-*): the diagnostics screen (queue, consent stand-in, the ops view) in English
+await page.evaluate(() => globalThis.__muchi.demo('errors')); await waitScreen('diagnostics', 60000); await page.waitForTimeout(400);
+await shot('diagnostics', 600);
   await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000);
   await shot('blocks', 600);
   const blEn = await page.locator('.screen.in').innerText();
@@ -554,6 +578,11 @@ module.exports = async function enFlow(browser, base, out, errors) {
   }
   await page.waitForSelector('.screen.in [data-dex="json"]', { timeout: 20000 }); await shot('privacy-ready', 400);
   assert.match(await page.locator('.screen.in .dex-status').innerText(), /Ready to download/, 'privacy: the status in English');
+  // round 20 (REQ-CNS-018/019): the pre-prompt sheet, the simulated ATT dialog and settings › privacy › ads and analytics in English
+  await show('ConsentPrompt'); await waitScreen('consent-prompt'); await page.waitForSelector('.screen.in [data-cns="continue"]', { timeout: 15000 }); await shot('consent-prompt', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /About ads and analytics/, 'consent: the sheet in English');
+  await show('PrivacyChoices'); await waitScreen('privacy-choices'); await page.waitForSelector('.screen.in [data-cns-row="analytics"]', { timeout: 15000 }); await shot('privacy-choices', 400);
+  assert.match(await page.locator('.screen.in [data-cns-row="personalized_ads"]').innerText(), /Personalised ads/, 'consent: the settings rows in English');
 
 
   // round 19: 引き継ぎコード in English (REQ-TRF-020): the issue screen (rules from the server, the generated password), the

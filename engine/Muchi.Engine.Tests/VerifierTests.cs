@@ -74,7 +74,7 @@ namespace Muchi.Engine.Tests
             Assert.True(JsonNode.Parse(json).Has("error"));
         }
 
-        private static JsonNode ValidLog()
+        internal static JsonNode ValidLog()
         {
             var doc = JsonNode.Parse(File.ReadAllText(Directory.GetFiles(GoldenDir, "race-*.json").OrderBy(x => x).First()));
             return doc.Get("log");
@@ -100,16 +100,6 @@ namespace Muchi.Engine.Tests
             var log = ValidLog();
             log.Set("inputs", JsonNode.Parse(inputs));
             Assert.Equal(400, VerifyService.Verify(log.ToString()).status);
-        }
-
-        [Fact]
-        public void VerificationIsFast()
-        {
-            var body = ValidLog().ToString();
-            VerifyService.Verify(body);
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            for (int i = 0; i < 10; i++) Assert.Equal(200, VerifyService.Verify(body).status);
-            Assert.True(sw.ElapsedMilliseconds / 10 < 1000, "REQ-VER-003");
         }
     }
 }

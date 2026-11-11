@@ -69,4 +69,8 @@ node "$HERE/test/round18-quick-chat.test.mjs"   # round 18: 支部の定型チ�
 node "$HERE/test/round19-tips.test.mjs" # round 19: ヒント — index (JA/EN), numbers from data, unlocks, seen marks, the 「？」 contexts, KPI, the whip lesson = the FTUE tutorial race in WASM (never assisted), no first-time reward touched
 node "$HERE/test/round19-cheer.test.mjs" # round 19: 観戦中の応援 — the 2 s pace, windows fanned out with the block list, no ids, moments, one KPI row per race, English
 node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコード — issue (rules, generated once, hash only), redeem with confirm / one key / replay, single use, the old-device cut-off, no oracle, KPI, English
+node "$HERE/test/round20-consent.test.mjs"   # round 20: 広告・分析の同意 — no pre-prompt in the FTUE, ad_offer moment, ATT answer, npa, analytics off withholds optional events, policy update, English
+node "$HERE/test/round20-client-errors.test.mjs" # round 20: クライアントのエラー報告 — window.onerror → WASM ErrorReporter (collapse, scrub, saved queue, same batch id on retry, consent) → the server ingest, device fingerprint = server
+node "$HERE/test/round20-review-prompt.test.mjs" # round 20: レビュー依頼 — FTUE / session / cool-down / loss, native once, soft → store or inquiry (never the store after いまいち), no reward, English
+node "$HERE/test/round20-local-notifications.test.mjs" # round 20: 端末のローカル通知 — the digest, the shared planner, push categories / quiet hours switch the local kinds, cap, details off, English, the diff
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

@@ -216,7 +216,7 @@ describe('REQ-PRAC-011 practice grants nothing and has no server path for a resu
       ] });
       const r = await w.req('p', 'POST', '/v1/analytics/events', ev(1));
       expect(r.status).toBe(200);
-      expect(r.body).toEqual({ accepted: 2, dropped: 0 });
+      expect(r.body).toEqual({ accepted: 2, dropped: 0, withheld: 0 });
     }
     const after = w.repo.get('p')!;
     expect(after.wallet).toEqual(wallet0);

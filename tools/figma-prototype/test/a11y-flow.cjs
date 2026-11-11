@@ -209,13 +209,22 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Recaps'); await waitScreen('recaps', 30000); await page.waitForSelector('.screen.in .rc-card', { timeout: 30000 }); await shot('recaps', english, 600);
     await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await page.waitForSelector('.screen.in .rc-big', { timeout: 30000 }); await shot('recap', english, 950);
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
+    // Round 20: 通知 — push categories, the device reminders and the upcoming list; the pre-permission dialog
+    await page.evaluate(async () => { localStorage.setItem('muchi.lnotif.os', 'granted'); await globalThis.__muchi.logic.localNotify.seedDemo(); await globalThis.__muchi.logic.localNotify.setCategory('reminders', true); });
+    await show('NotifySettings'); await waitScreen('notify-settings'); await page.waitForSelector('.screen.in .ln-next', { timeout: 20000 }); await shot('notify-settings', english, 600);
+    await show('LnotifPrePrompt'); await waitScreen('ln-primer'); await page.waitForSelector('.screen.in .ln-primer', { timeout: 15000 }); await shot('reminders-primer', english, 500);
     // Round 18: 馬ごとの目標 — the panel on the horse detail and the full chain
     await show('Stable'); await page.waitForSelector('.screen.in .hg-panel', { timeout: 15000 }); await shot('stable-goals', english, 500);
+    await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await page.waitForSelector('.screen.in .rev-soft', { timeout: 15000 }); await shot('review-soft', english, 500); // round 20 (REQ-REV-015)
+    await page.locator('.screen.in .rev-yes').click(); await waitScreen('review-native'); await page.waitForSelector('.screen.in .rev-os', { timeout: 15000 }); await shot('review-native', english, 500);
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
     await show('HorseGoals', await page.evaluate(async () => (await globalThis.__muchi.logic.view()).flags.partnerHorseId)); await waitScreen('horse-goals'); await page.waitForSelector('.screen.in .hg-row', { timeout: 15000 }); await shot('horse-goals', english, 500);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
     // Round 17: 通報とブロック — the block list and the report sheet at the largest size (REQ-RPT-019)
     await show('BlockList'); await waitScreen('blocks'); await shot('blocks', english, 600);
+    // Round 20: エラーの自動送信 (REQ-CERR-*) at the largest size
+    await show('Diagnostics'); await waitScreen('diagnostics'); await shot('diagnostics', english, 600);
     await page.evaluate(() => globalThis.__muchi.show('Report', { playerId: 'demo_rpt_x', name: 'ヨルノカラス', kind: 'display_name', source: 'profile' })); await page.waitForTimeout(800);
     await shot('report-sheet', english, 300);
     // Round 17: the maintenance screen, the update-required screen and the maintenance notice (REQ-MNT-015)
@@ -269,6 +278,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
     await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
+    // Round 20: the pre-prompt sheet, settings › privacy › ads and analytics and its help article (context privacy_choices)
+    await show('ConsentPrompt'); await waitScreen('consent-prompt'); await page.waitForSelector('.screen.in [data-cns="continue"]', { timeout: 15000 }); await shot('consent-prompt', english, 500);
+    await show('PrivacyChoices'); await waitScreen('privacy-choices'); await page.waitForSelector('.screen.in [data-cns-row="analytics"]', { timeout: 15000 }); await shot('privacy-choices', english, 500);
+    await page.locator('.screen.in [data-help-context="privacy_choices"]').click(); await waitScreen('help-article'); await shot('help-ads-analytics', english, 500);
     await show('Settings'); await waitScreen('settings'); await boxesClear('settings lists (largest)', SETTINGS_LISTS, english);
     // R19 integration: その他's second page (見た目・お世話・仲間) at the largest size too
     await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(400);

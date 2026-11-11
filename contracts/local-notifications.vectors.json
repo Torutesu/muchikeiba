@@ -1,0 +1,3778 @@
+{
+  "_note": "REQ-LNOTIF-003 (contracts/protocol.md §61.2): server/src/domain/localNotify.ts planLocalNotifications and C# Muchi.Client LocalNotificationPlanner.Plan must agree (items with texts in both languages, dropped reasons, status). Regenerate with UPDATE_VECTORS=1 npx vitest run test/local-notify.test.ts.",
+  "v": 1,
+  "cases": [
+    {
+      "name": "everything, ja",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "everything, en",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "en",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "Finish your training",
+            "body": "A training session is waiting to be finished (until 12:08)"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "Login bonus",
+            "body": "Today's login bonus is ready to collect"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "Event exchange",
+            "body": "The exchange closes on 12/11 at 4:00. Leftover points become materials"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "Gift box",
+            "body": "A gift box item can be collected until 12/12 at 0:00"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "Weekly challenges",
+            "body": "This week's challenges change on 12/14 at 4:00"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "Rival",
+            "body": "This rival week ends on 12/14 at 4:00"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "everything, details ja",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": true,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "アカツキの調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "120ポイント残っています。交換所は12月11日 4:00に閉まります（残りは素材になります）"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が近い品が2件あります（最初は12月12日 0:00）"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "未クリアのチャレンジが2つあります。12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週はまだランク戦を走っていません。ライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "everything, details en",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "en",
+        "permission": "granted",
+        "showDetails": true,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "Finish your training",
+            "body": "アカツキ's training session is waiting to be finished (until 12:08)"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "Login bonus",
+            "body": "Today's login bonus is ready to collect"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "Event exchange",
+            "body": "120 points left. The exchange closes on 12/11 at 4:00 (leftovers become materials)"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "Gift box",
+            "body": "2 gift box items expire soon (the first on 12/12 at 0:00)"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "Weekly challenges",
+            "body": "2 challenges left to clear. They change on 12/14 at 4:00"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "Rival",
+            "body": "No ranked race yet this week. The rival week ends on 12/14 at 4:00"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "cap 4",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 4,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "cap 1",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 1,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "reason": "daily_cap"
+          }
+        ]
+      }
+    },
+    {
+      "name": "max pending 2",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 2,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "reason": "max_pending"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "reason": "max_pending"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "reason": "max_pending"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "reason": "max_pending"
+          }
+        ]
+      }
+    },
+    {
+      "name": "reminders off",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": false
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "reason": "category_off"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "reason": "category_off"
+          }
+        ]
+      }
+    },
+    {
+      "name": "events and gifts off",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": false,
+            "comeback": false,
+            "gifts": false,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "reason": "category_off"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "reason": "category_off"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "reason": "category_off"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no quiet hours",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 4,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": null,
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796842800000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796914800000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797102000000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797102000000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "quiet 0-6",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 4,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 0,
+            "endHour": 6
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796850000000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796936400000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797109200000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797109200000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "quiet 23-11 (daily bonus moved)",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 9,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 23,
+            "endHour": 11
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796781600000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796868000000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796954400000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797127200000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797127200000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "short lead into quiet",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 2,
+              "rival_week_closing": 3,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "reason": "quiet_hours"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "reason": "quiet_hours"
+          }
+        ]
+      }
+    },
+    {
+      "name": "late session (quiet)",
+      "snapshot": {
+        "now": 1796734500000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "x",
+            "horseId": "h1",
+            "expiresAt": 1796735100000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.training_session.x",
+            "kind": "training_session",
+            "reason": "quiet_hours"
+          }
+        ]
+      }
+    },
+    {
+      "name": "nothing open",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": null,
+            "horseId": null,
+            "expiresAt": null,
+            "trainedEver": true
+          },
+          "weeklyChallenge": null,
+          "rival": null,
+          "exchanges": [],
+          "gifts": []
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "only gifts, singular en",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "en",
+        "permission": "granted",
+        "showDetails": true,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": null,
+            "horseId": null,
+            "expiresAt": null,
+            "trainedEver": true
+          },
+          "weeklyChallenge": null,
+          "rival": null,
+          "exchanges": [],
+          "gifts": [
+            1797001200000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "Login bonus",
+            "body": "Today's login bonus is ready to collect"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "Gift box",
+            "body": "1 gift box item can be collected until 12/12 at 0:00"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "two exchanges",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": true,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 4,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_b",
+              "points": 1,
+              "closesAt": 1797102000000
+            },
+            {
+              "eventId": "ev_a",
+              "points": 30,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "アカツキの調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_a",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_a",
+            "title": "イベント交換所",
+            "body": "30ポイント残っています。交換所は12月11日 4:00に閉まります（残りは素材になります）"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が近い品が2件あります（最初は12月12日 0:00）"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_b",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1797030000000,
+            "screen": "event_exchange",
+            "refId": "ev_b",
+            "title": "イベント交換所",
+            "body": "1ポイント残っています。交換所は12月13日 4:00に閉まります（残りは素材になります）"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "未クリアのチャレンジが2つあります。12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週はまだランク戦を走っていません。ライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "past and horizon",
+      "snapshot": {
+        "now": 1796871600000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1798642800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "reason": "past"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "reason": "past"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "reason": "past"
+          },
+          {
+            "id": "lnotif.gift_expiring.1798642800000",
+            "kind": "gift_expiring",
+            "reason": "horizon"
+          }
+        ]
+      }
+    },
+    {
+      "name": "rival raced, challenge cleared",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 0
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 2
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "locked bonus and challenge",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": false
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": false,
+            "endsAt": 1797188400000,
+            "uncleared": 3
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "kinds subset",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "gift_expiring",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "reason": "kind_off"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "reason": "kind_off"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "reason": "kind_off"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "reason": "kind_off"
+          }
+        ]
+      }
+    },
+    {
+      "name": "daily hour 21, next day Sunday",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1797102000000,
+          "nextDay": "2026-12-13",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 21,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": [
+          {
+            "id": "lnotif.daily_bonus.2026-12-13",
+            "kind": "daily_bonus",
+            "reason": "daily_cap"
+          }
+        ]
+      }
+    },
+    {
+      "name": "no permission",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "denied",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "no_permission",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "provisional",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "provisional",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "ok",
+        "items": [
+          {
+            "id": "lnotif.training_session.ts1",
+            "kind": "training_session",
+            "category": "reminders",
+            "fireAt": 1796699100000,
+            "screen": "training",
+            "refId": "h1",
+            "title": "調教の仕上げ",
+            "body": "始めた調教が仕上げを待っています（12:08まで）"
+          },
+          {
+            "id": "lnotif.daily_bonus.2026-12-09",
+            "kind": "daily_bonus",
+            "category": "reminders",
+            "fireAt": 1796785200000,
+            "screen": "home",
+            "refId": null,
+            "title": "ログインボーナス",
+            "body": "今日のログインボーナスを受け取れます"
+          },
+          {
+            "id": "lnotif.exchange_closing.ev_autumn",
+            "kind": "exchange_closing",
+            "category": "events",
+            "fireAt": 1796857200000,
+            "screen": "event_exchange",
+            "refId": "ev_autumn",
+            "title": "イベント交換所",
+            "body": "交換所は12月11日 4:00に閉まります。残ったポイントは素材になります"
+          },
+          {
+            "id": "lnotif.gift_expiring.1797001200000",
+            "kind": "gift_expiring",
+            "category": "gifts",
+            "fireAt": 1796943600000,
+            "screen": "gift_box",
+            "refId": null,
+            "title": "プレゼントボックス",
+            "body": "受け取り期限が12月12日 0:00の品があります"
+          },
+          {
+            "id": "lnotif.weekly_challenge_closing.1797188400000",
+            "kind": "weekly_challenge_closing",
+            "category": "events",
+            "fireAt": 1797116400000,
+            "screen": "weekly_challenge",
+            "refId": null,
+            "title": "週替わりチャレンジ",
+            "body": "今週のチャレンジは12月14日 4:00に入れ替わります"
+          },
+          {
+            "id": "lnotif.rival_week_closing.1797188400000",
+            "kind": "rival_week_closing",
+            "category": "friends",
+            "fireAt": 1797116400000,
+            "screen": "rival",
+            "refId": null,
+            "title": "ライバル",
+            "body": "今週のライバルの週は12月14日 4:00に締まります"
+          }
+        ],
+        "dropped": []
+      }
+    },
+    {
+      "name": "signed out",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": false,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "signed_out",
+        "items": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "deleting",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": true,
+          "onboarding": false,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "off",
+        "items": [],
+        "dropped": []
+      }
+    },
+    {
+      "name": "onboarding",
+      "snapshot": {
+        "now": 1796698800000,
+        "locale": "ja",
+        "permission": "granted",
+        "showDetails": false,
+        "signedIn": true,
+        "digest": {
+          "v": 1,
+          "enabled": true,
+          "now": 1796698800000,
+          "nextDayAt": 1796756400000,
+          "nextDay": "2026-12-09",
+          "config": {
+            "kinds": [
+              "training_session",
+              "gift_expiring",
+              "exchange_closing",
+              "weekly_challenge_closing",
+              "rival_week_closing",
+              "daily_bonus"
+            ],
+            "dailyCap": 2,
+            "dailyHourJst": 12,
+            "horizonDays": 7,
+            "maxPending": 8,
+            "trainingLeadMin": 3,
+            "leadHours": {
+              "weekly_challenge_closing": 24,
+              "rival_week_closing": 24,
+              "exchange_closing": 24,
+              "gift_expiring": 24
+            },
+            "prePrompt": {
+              "maxAsks": 2,
+              "retryDays": 14
+            }
+          },
+          "categories": {
+            "season": true,
+            "friends": true,
+            "invites": true,
+            "events": true,
+            "comeback": false,
+            "gifts": true,
+            "reminders": true
+          },
+          "quietHours": {
+            "startHour": 22,
+            "endHour": 8
+          },
+          "deleting": false,
+          "onboarding": true,
+          "loginBonus": {
+            "unlocked": true
+          },
+          "training": {
+            "sessionId": "ts1",
+            "horseId": "h1",
+            "expiresAt": 1796699280000,
+            "trainedEver": true
+          },
+          "weeklyChallenge": {
+            "unlocked": true,
+            "endsAt": 1797188400000,
+            "uncleared": 2
+          },
+          "rival": {
+            "weekEndsAt": 1797188400000,
+            "rankedRaces": 0
+          },
+          "exchanges": [
+            {
+              "eventId": "ev_autumn",
+              "points": 120,
+              "closesAt": 1796929200000
+            }
+          ],
+          "gifts": [
+            1797001200000,
+            1797019200000,
+            1797778800000
+          ]
+        },
+        "horseNames": {
+          "h1": "アカツキ"
+        }
+      },
+      "expect": {
+        "status": "off",
+        "items": [],
+        "dropped": []
+      }
+    }
+  ]
+}

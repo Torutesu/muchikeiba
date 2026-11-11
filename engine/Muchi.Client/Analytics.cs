@@ -429,9 +429,20 @@ namespace Muchi.Client
         public int Pending { get { lock (_gate) return _queue.Count; } }
         public bool Flushing { get { lock (_gate) return _inFlight != null && !_inFlight.IsCompleted; } }
 
+        /// <summary>
+        /// REQ-CNS-013 (§58.7): consent gate. When set and it returns false for an event name, <see cref="Track"/> drops the
+        /// event on the device (counted in <see cref="Withheld"/>). The server drops optional events as well, so a stale
+        /// gate only wastes a request. Typically <c>name => consent.AllowsClientEvent(name)</c>.
+        /// </summary>
+        public Func<string, bool> Gate { get; set; }
+        /// <summary>Events dropped by <see cref="Gate"/> (never queued).</summary>
+        public int Withheld { get; private set; }
+
         public void Track(AnalyticsEvent e)
         {
             if (e == null) throw new ArgumentNullException(nameof(e));
+            var gate = Gate;
+            if (gate != null && !gate(e.Name)) { lock (_gate) Withheld++; return; }
             lock (_gate)
             {
                 _queue.Add(e);

@@ -64,12 +64,16 @@ import { MemoryTransferDirectory, TransferService, type TransferRecord } from '.
 import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
+import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../../../server/src/domain/clientErrors.js';
+import { ClientErrorsCore, MemoryClientErrorRepo } from '../../../server/src/ops/clientErrors.js';
+import { analyticsAllowed } from '../../../server/src/domain/privacyChoices.js';
 // REQ-L10N-*: the server's English tables (master/locale-en.json + i18n/en.ts), the client's (ui-en.json) and the
 // prototype's own screen texts (proto-en.json), in one catalog with the server's template rules (katakana names romanized)
 import { compileCatalogWith, translateText, romanizeName } from '../../../server/src/i18n/catalog.js';
 import { CODE_EN } from '../../../server/src/i18n/en.js';
 import uiEn from '../../../engine/Muchi.Client/Resources/Muchi/ui-en.json';
 import protoEn from './proto-en.json';
+import { diffLocalNotifications, localNotifyRows, planLocalNotifications, type LocalNotifySnapshot, type LocalRemindersView } from '../../../server/src/domain/localNotify.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
@@ -84,6 +88,8 @@ class LocalRepo implements PlayerRepo {
 }
 
 const master = loadMaster();
+/** Round 20 (§58): the shipped policy versions (a demo may publish a newer privacy policy; reset puts it back). */
+const SHIPPED_CONSENT = master.progression.consent;
 // Demo clock (REQ-UXP-002 home states 初日 / 3日目 / 7日目): the real rules run on Date.now() + whole days, so
 // unlocks by day, the beginner login bonus and the season end all come from the server code, not from the UI.
 const DAY_KEY = 'muchi.proto.dayOffset';
@@ -101,6 +107,8 @@ const store = new FakeStoreVerifier();
 const teams = new MemoryTeams(() => master, now);
 const repo = new LocalRepo();
 const serverKpi: { name: string; s1?: string; s2?: string; s3?: string }[] = [];
+// round 20 (REQ-REV-005): each review check carries its own idempotency key (two checks in one millisecond must not share one)
+let revKeySeq = 0;
 const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
@@ -298,6 +306,8 @@ async function rivalDemoSeed() {
 }
 // round 17 (REQ-RPT-*): 通報とブロック on the real ReportsService / PlayerService; the ops queue is the IntegrityDO's
 // PlayerReportsCore in memory. A race report is allowed for a race the local player ran (its replay ref is on the state).
+// round 20 (REQ-CERR-*): the client error store (ClientErrorsDO's core) in memory
+const clientErrorCore = new ClientErrorsCore(new MemoryClientErrorRepo());
 const reportRepo = new MemoryPlayerReportRepo();
 const reportCore = new PlayerReportsCore(reportRepo);
 const reportQueue: PlayerReportsApi = {
@@ -505,6 +515,7 @@ export const MuchiLogic = {
     trfDir.codes.clear(); trfDir.limits.clear(); trfDir.rows.length = 0; try { localStorage.removeItem(TRF_KEY); } catch { /* ignore */ } // round 19
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
+    master.progression.consent = SHIPPED_CONSENT; // round 20: the shipped privacy policy version
   },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
@@ -889,6 +900,38 @@ export const MuchiLogic = {
     return svc.view(ID);
   },
 
+  // ---------------------------------------------------------------- round 20: クライアントのエラー報告 (REQ-CERR-*, contracts/protocol.md §60)
+  // POST /v1/client-errors on the real route logic (schema, size cap, config, ClientErrorsCore = the ClientErrorsDO's core in
+  // memory) and the console view (GET /v1/admin/client-errors). The batch comes from the WASM ErrorReporter (window.onerror).
+  clientErrors: {
+    /** → { status, body } like the route: 200 with the answer, 400 / 413 / 429 with the error. */
+    ingest: (batchJson: string, signedIn = true) => {
+      const cfg = clientErrorsConfig(master);
+      const view = clientErrorsClientView(cfg);
+      if (new TextEncoder().encode(batchJson).length > cfg.maxBodyBytes) return { status: 413, body: { error: { code: 'BAD_REQUEST', message: 'too large' } } };
+      let raw: unknown;
+      try { raw = JSON.parse(batchJson); } catch { return { status: 400, body: { error: { code: 'BAD_REQUEST', message: 'invalid JSON' } } }; }
+      const p = clientErrorBatchSchema.safeParse(raw);
+      if (!p.success || p.data.items.length > cfg.maxItems) return { status: 400, body: { error: { code: 'BAD_REQUEST', message: p.success ? 'too many items' : p.error.issues[0]?.message ?? 'invalid' } } };
+      if (!cfg.enabled) return { status: 200, body: { accepted: 0, dropped: p.data.items.length, duplicate: false, ...view, enabled: false } };
+      try {
+        // R20 integration (§58.10 / §60.6): the server keeps the player id only while the player's analytics choice is effective
+        const st = signedIn && p.data.attachPlayer ? repo.get(ID) : null;
+        const attach = signedIn && p.data.attachPlayer && (st ? analyticsAllowed(master, st, now()) : true);
+        const r = clientErrorCore.ingest(p.data, { playerId: attach ? ID : null, installId: p.data.installId }, now(), cfg);
+        return { status: 200, body: { accepted: r.accepted, dropped: r.dropped, duplicate: r.duplicate, ...view } };
+      } catch (e) {
+        const err = e as AppError;
+        return { status: err.status ?? 500, body: { error: { code: err.code ?? 'INTERNAL', message: err.message } } };
+      }
+    },
+    /** The ops console's list (top errors by fingerprint). */
+    list: () => clientErrorCore.list({ limit: 20 }, now(), clientErrorsConfig(master)),
+    get: (fp: string) => clientErrorCore.get(fp, now()),
+    /** Test hook: the samples that carry the local player's id (only when the batch allowed it). */
+    samplesOf: (pid: string) => clientErrorCore.madeBy(pid),
+  },
+
   // ---------------------------------------------------------------- round 17: 通報とブロック (REQ-RPT-*, contracts/protocol.md §47)
   // POST /v1/reports, GET /v1/reports/options, GET / PUT / DELETE /v1/blocks — the same domain code as the routes.
   reports: {
@@ -1158,7 +1201,66 @@ export const MuchiLogic = {
     /** Demo: confirmed ranked races for one of my horses (places as given), the race room's result path. */
     demoRaces: (horseId: string, places: number[]) => wrap(() => hallRaces(ID, horseId, places)),
   },
+  // ---------------------------------------------------------------- round 20: レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59)
+  // The real PlayerService / reviewPrompt.ts rules on the local player: GET (rules + server facts), check (records only a yes),
+  // answer (soft → store / help inquiry; native_requested once). The prototype plays an iOS device; the OS sheet is simulated.
+  // Nothing is granted for a review, anywhere.
+  reviewPrompt: {
+    status: () => wrap(() => svc.reviewPrompt(ID)),
+    check: (moment: string, sessionId: string, client: { inFtue: boolean; minutesSinceLoss: number | null; minutesSinceError: number | null; minutesSinceMaintenanceNotice: number | null }) =>
+      wrap(() => svc.reviewPromptCheck(ID, { moment, platform: 'ios', sessionId, client }, `c:/v1/review-prompt/check:${sessionId}:${moment}:${Date.now()}:${++revKeySeq}`)),
+    answer: (promptId: string, step: 'soft_yes' | 'soft_no' | 'soft_dismiss' | 'native_requested') => wrap(() => svc.reviewPromptAnswer(ID, promptId, step)),
+    /**
+     * Demo state: a settled player (installed 10 days ago, 12 races, FTUE done, no earlier prompt) and the pre-question on or off
+     * for iOS (the shipped rules keep it off; ops may turn it on for iOS only — §59.6).
+     */
+    demo: (soft: boolean) => wrap(async () => {
+      const rp = (master.progression as { reviewPrompt?: { softAsk: { ios: boolean; android: boolean } } }).reviewPrompt;
+      if (rp) rp.softAsk = { ios: soft, android: false };
+      await svc.tx(ID, null, (st) => { st.createdAt = Math.min(st.createdAt, now() - 10 * DAY_MS); st.stats.races = Math.max(st.stats.races, 12); st.flags.tutorialGachaUsed = true; delete st.reviewPrompt; });
+      return true;
+    }),
+  },
+  // ---------------------------------------------------------------- round 20: 端末のローカル通知 (REQ-LNOTIF-*, contracts/protocol.md §61)
+  // The real digest (bootstrap / GET /v1/player localReminders), the shared planner (= C# LocalNotificationPlanner), the push
+  // preferences the settings screen switches (one screen for push and local) and a demo state with every source present.
+  localNotify: {
+    digest: async (): Promise<LocalRemindersView> => ((await svc.view(ID)) as unknown as { localReminders: LocalRemindersView }).localReminders,
+    plan: (snapshot: LocalNotifySnapshot) => planLocalNotifications(snapshot),
+    rows: (digest: LocalRemindersView | null) => localNotifyRows(digest),
+    diff: (previous: Record<string, string>, items: ReturnType<typeof planLocalNotifications>['items']) => diffLocalNotifications(previous, items),
+    prefs: () => wrap(() => svc.pushPreferences(ID)),
+    setCategory: (category: string, on: boolean) => wrap(() => svc.setPushPreferences(ID, { categories: { [category]: on } })),
+    setQuietHours: (q: { startHour: number; endHour: number } | null) => wrap(() => svc.setPushPreferences(ID, { quietHours: q })),
+    /**
+     * Demo: 4 game days of play for a new player (training, the login bonus and the weekly challenge open), a gift that expires in 2 days, and
+     * a training session left open on the partner (the reminder a few minutes before its deadline).
+     */
+    async seedDemo(openSession = true) {
+      const d0 = await this.digest();
+      if (!d0.enabled || d0.onboarding) await this.seedDemoDays(); // a player already past onboarding keeps its days (and the clock)
+      await svc.adminGrant(ID, { freeCoins: 30 }, 'campaign', 'ops', 'demo-lnotif-gift', true, { expiryDays: 2 });
+      if (openSession) {
+        const s = await svc.state(ID);
+        const h = s.horses.find((x) => x.id === s.flags.partnerHorseId) ?? s.horses.find((x) => x.status === 'active');
+        if (h) await wrap(() => svc.trainingStart(ID, h.id, 'pool', key()));
+      }
+      return this.digest();
+    },
+    seedDemoDays: () => MuchiLogic.seedDemo(4, [3, 3, 3, 3]),
+  },
   // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
+  // ---------------------------------------------------------------- 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)
+  // The real privacyChoices rules on the local player: the pre-prompt moment (never in the FTUE; first before the first ad offer),
+  // the choices under the current policy version, the simulated ATT answer (the prototype plays an iPhone), KPI gating.
+  privacy: {
+    view: () => svc.privacyChoices(ID),
+    set: (body: { privacyVersion: string; source: 'prompt' | 'settings'; personalizedAds?: boolean; analytics?: boolean }) => wrap(() => svc.setPrivacyChoices(ID, body)),
+    platform: (body: { os: 'ios' | 'android' | 'other'; att?: 'not_determined' | 'restricted' | 'denied' | 'authorized' | 'unavailable'; gdprApplies?: boolean | null; cmp?: 'not_required' | 'required' | 'obtained' | 'unknown' }) => wrap(() => svc.setPrivacyPlatform(ID, body)),
+    shown: (privacyVersion: string) => wrap(() => svc.notePrivacyPromptShown(ID, privacyVersion)),
+    /** Demo / tests: the operator publishes a new privacy policy version (the server asks again on the next home). */
+    publishPolicy(privacyVersion: string) { master.progression.consent = { ...master.progression.consent!, privacyVersion }; return svc.privacyChoices(ID); },
+  },
   // The real DataExportService / dataExport rules on the local player. The "alarm" (runDataExportJob) is started by the page a
   // moment after the request (the server builds it in the player object's alarm, never on the request path); the files are kept
   // in localStorage (the private R2 prefix) and handed to the browser as a download through the signed link.

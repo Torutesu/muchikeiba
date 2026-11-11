@@ -16,10 +16,13 @@ import { activityProblems } from './activity.js';
 import { nextActionProblems } from './nextAction.js';
 import { horseGoalsProblems } from './horseGoals.js';
 import { transferProblems } from './transferCode.js';
+import { reviewPromptProblems } from './reviewPrompt.js';
+import { localNotificationsProblems } from './localNotify.js';
 import { seasonRecapProblems } from './seasonRecap.js';
 import { dataExportProblems } from './dataExport.js';
 import { hostedCupsProblems } from './hostedCups.js';
 import { reportsProblems } from './reports.js';
+import { clientErrorsProblems } from './clientErrors.js';
 import { fsugProblems } from './friendSuggest.js';
 import { z } from 'zod';
 import { AppError } from './errors.js';
@@ -445,7 +448,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
     ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m),
-    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...activityProblems(m), ...fsugProblems(m), ...nextActionProblems(m), ...seasonRecapProblems(m), ...hostedCupsProblems(m), ...reportsProblems(m), ...horseGoalsProblems(m), ...dataExportProblems(m), ...transferProblems(m)]; // REQ-RPT-015, REQ-HGOAL-*, REQ-DEX-*, REQ-TRF-*, REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-ACT-010, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-FSUG-012
+    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...activityProblems(m), ...fsugProblems(m), ...nextActionProblems(m), ...seasonRecapProblems(m), ...hostedCupsProblems(m), ...reportsProblems(m), ...horseGoalsProblems(m), ...dataExportProblems(m), ...transferProblems(m), ...clientErrorsProblems(m), ...reviewPromptProblems(m), ...localNotificationsProblems(m)]; // REQ-CERR-001, REQ-REV-002, REQ-LNOTIF-019, REQ-RPT-015, REQ-HGOAL-*, REQ-DEX-*, REQ-TRF-*, REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-ACT-010, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-FSUG-012
 }
 
 /**

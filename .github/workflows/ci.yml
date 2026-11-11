@@ -74,7 +74,11 @@ jobs:
         run: npm ci
       - name: Install console deps (Playwright only; the console itself has none)
         working-directory: tools/ops-console
-        run: npm ci && npx playwright install --with-deps chromium
+        # The hosted runner image already has Chromium's system libraries; --with-deps only adds
+        # fonts via apt. When the Ubuntu mirrors are unreachable, fall back to the browser alone.
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium || npx playwright install chromium
       - name: Build + unit tests
         working-directory: tools/ops-console
         run: node build.mjs && npm test

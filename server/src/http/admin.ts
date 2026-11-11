@@ -24,6 +24,8 @@ import { adminWindowView, bannerPreview, DEFAULT_MAINTENANCE, maintenanceConfigS
 import { INQUIRY_CATEGORIES, type InquiryCategory, type InquirySummary } from '../domain/help.js';
 import { INQUIRY_STATUSES, type InquiryQuery } from '../ops/inquiries.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
+import { CLIENT_ERROR_CATEGORIES, CLIENT_ERROR_PLATFORMS, clientErrorsConfig, type ClientErrorBatch, type ClientErrorCategory, type ClientErrorPlatform, type ClientErrorsConfig } from '../domain/clientErrors.js';
+import type { ClientErrorQuery, ClientErrorsCore, IngestWho } from '../ops/clientErrors.js';
 
 const dl = (ctx: AdminContext): DeadLetterApi => {
   if (!ctx.ops.deadLetters) throw new AppError('NOT_FOUND', 'dead letters are not available');
@@ -76,12 +78,22 @@ export interface OpsApi {
   deadLetters?: DeadLetterApi;
   /** REQ-RPT-007/013/016: the player-report queue in IntegrityDO (absent = reports are not available). */
   playerReports?: PlayerReportsApi;
+  /** REQ-CERR-*: client error reports (§60). */
+  clientErrors?: ClientErrorsApi;
   /** REQ-HELP-016: the inquiry index (no text; absent = the inquiry list answers NOT_FOUND). */
   inquiries?: {
     upsert(items: InquirySummary[]): Promise<{ stored: number }>;
     list(q: InquiryQuery): Promise<InquirySummary[]>;
     forgetPlayer(playerId: string): Promise<{ removed: number }>;
   };
+}
+/** REQ-CERR-*: the client error store (ClientErrorsDO; absent = reports are accepted and dropped, the console answers NOT_FOUND). */
+export interface ClientErrorsApi {
+  ingest(b: ClientErrorBatch, who: IngestWho, now: number, cfg: ClientErrorsConfig): Promise<{ accepted: number; dropped: number; duplicate: boolean }>;
+  list(q: ClientErrorQuery, now: number, cfg: ClientErrorsConfig): Promise<ReturnType<ClientErrorsCore['list']>>;
+  get(fingerprint: string, now: number): Promise<ReturnType<ClientErrorsCore['get']>>;
+  madeBy(playerId: string): Promise<ReturnType<ClientErrorsCore['madeBy']>>;
+  forget(playerId: string): Promise<{ anonymised: number; rates: number }>;
 }
 export interface PlayerReportsApi {
   submit(x: SubmitInput, now: number, cfg: ReportsConfig): Promise<{ report: PlayerReport; outcome: SubmitOutcome }>;
@@ -130,6 +142,13 @@ const preps = (ctx: AdminContext): PlayerReportsApi => {
 /** The reports config of the master in effect (remote config resolved on the shipped master). */
 const reportsCfgOf = async (ctx: AdminContext, now: number) => (ctx.baseMaster ? reportsConfig((await masterFor(ctx, null, now)).master) : reportsConfig({ progression: {} } as never));
 const NAME_RESET_OF: Partial<Record<ReportContentKind, 'display' | 'horse' | 'stable'>> = { display_name: 'display', horse_name: 'horse', stable_name: 'stable' };
+
+const cerr = (ctx: AdminContext): ClientErrorsApi => {
+  if (!ctx.ops.clientErrors) throw new AppError('NOT_FOUND', 'client error reports are not available');
+  return ctx.ops.clientErrors;
+};
+/** The client error config of the master in effect. */
+const clientErrorsCfgOf = async (ctx: AdminContext, now: number) => (ctx.baseMaster ? clientErrorsConfig((await masterFor(ctx, null, now)).master) : clientErrorsConfig({ progression: {} } as never));
 
 const inq = (ctx: AdminContext) => {
   if (!ctx.ops.inquiries) throw new AppError('NOT_FOUND', 'inquiries are not available');
@@ -685,6 +704,38 @@ export const adminRoutes: AdminRoute[] = [
     const { replies, duplicate, ...summary } = out;
     await reindex(r.ctx, playerId, [summary]);
     return { result: { ...summary, replies, duplicate }, target: `player:${playerId}`, before: null, after: { ticketId, status: summary.status, replies } };
+  } },
+
+  // ---- クライアントのエラー報告 (REQ-CERR-014..016, contracts/protocol.md §60.7) ----
+  { method: 'GET', path: '/v1/admin/client-errors', role: 'viewer', write: false, action: 'client_errors.list', handler: async (r) => {
+    const q: ClientErrorQuery = { limit: num(r.query, 'limit', 100) };
+    const cat = r.query.get('category');
+    if (cat) { if (!(CLIENT_ERROR_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', `category must be one of ${CLIENT_ERROR_CATEGORIES.join('|')}`); q.category = cat as ClientErrorCategory; }
+    const plat = r.query.get('platform');
+    if (plat) { if (!(CLIENT_ERROR_PLATFORMS as readonly string[]).includes(plat)) throw new AppError('BAD_REQUEST', `platform must be one of ${CLIENT_ERROR_PLATFORMS.join('|')}`); q.platform = plat as ClientErrorPlatform; }
+    const ver = r.query.get('appVersion');
+    if (ver) q.appVersion = parse(z.string().regex(/^[A-Za-z0-9.+_\-]{1,32}$/), ver);
+    const sort = r.query.get('sort');
+    if (sort) { if (sort !== 'count' && sort !== 'last' && sort !== 'new') throw new AppError('BAD_REQUEST', 'sort must be count|last|new'); q.sort = sort; }
+    return { result: await cerr(r.ctx).list(q, r.now, await clientErrorsCfgOf(r.ctx, r.now)) };
+  } },
+  { method: 'GET', path: '/v1/admin/client-errors/:fingerprint', role: 'viewer', write: false, action: 'client_errors.view', handler: async (r) => {
+    const fp = parse(z.string().regex(/^([0-9a-f]{16}|overflow:[a-z]+)$/), r.params.fingerprint);
+    const g = await cerr(r.ctx).get(fp, r.now);
+    // REQ-CERR-016: a desync sample links to the race replay and, with a player id, to the verifier's integrity events of that race
+    const samples = await Promise.all(g.samples.map(async (s) => {
+      if (g.category !== 'desync' || typeof s.context.raceId !== 'string') return s;
+      const raceId = s.context.raceId;
+      let integrity: unknown = null;
+      if (s.playerId) {
+        try {
+          const v = (await r.ctx.ops.integrity.view(s.playerId, r.now)) as { status: string; events: { raceId: string; kind: string; at: number }[] };
+          integrity = { status: v.status, events: v.events.filter((e) => e.raceId === raceId) };
+        } catch { integrity = null; }
+      }
+      return { ...s, race: { raceId, tick: s.context.tick ?? null, replay: `/v1/admin/replays/${raceId}`, integrity } };
+    }));
+    return { result: { ...g, samples } };
   } },
 
   { method: 'GET', path: '/v1/admin/reports', role: 'viewer', write: false, action: 'reports.list', handler: async (r) => {

@@ -1,0 +1,1633 @@
+{
+  "_note": "REQ-REV-003 (contracts/protocol.md §59.3): server/src/domain/reviewPrompt.ts decideReviewPrompt and C# Muchi.Client ReviewPromptPolicy.Decide must agree. Regenerate with UPDATE_VECTORS=1 npx vitest run test/review-prompt.test.ts.",
+  "v": 1,
+  "cases": [
+    {
+      "name": "eligible native",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "eligible soft (ios on)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": true,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "soft"
+      }
+    },
+    {
+      "name": "soft rules, android → native",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": true,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "android",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "soft rules, editor follows ios",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": true,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "editor",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "soft"
+      }
+    },
+    {
+      "name": "disabled",
+      "rules": {
+        "enabled": false,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "disabled",
+        "style": null
+      }
+    },
+    {
+      "name": "moment not listed",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "hall_induction",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "moment",
+        "style": null
+      }
+    },
+    {
+      "name": "unknown moment",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "shop_visit",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "moment",
+        "style": null
+      }
+    },
+    {
+      "name": "account closing beats ftue",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": true,
+        "accountClosing": true,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "account_closing",
+        "style": null
+      }
+    },
+    {
+      "name": "ftue beats session",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": true,
+        "accountClosing": false,
+        "sessionPrompted": true,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "ftue",
+        "style": null
+      }
+    },
+    {
+      "name": "session",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": true,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "session",
+        "style": null
+      }
+    },
+    {
+      "name": "maintenance visible",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": true,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "maintenance",
+        "style": null
+      }
+    },
+    {
+      "name": "maintenance notice 59 min ago",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": 59
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "maintenance",
+        "style": null
+      }
+    },
+    {
+      "name": "maintenance notice 60 min ago (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": 60
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "coin debt",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": true,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "refund",
+        "style": null
+      }
+    },
+    {
+      "name": "refund 29 days ago",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": 41760,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "refund",
+        "style": null
+      }
+    },
+    {
+      "name": "refund 30 days ago (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": 43200,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "purchase 10 min ago",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": 10,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "purchase",
+        "style": null
+      }
+    },
+    {
+      "name": "purchase a day ago (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": 1440,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "error just now",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": 0,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "error",
+        "style": null
+      }
+    },
+    {
+      "name": "loss 29 min ago",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": 29,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "loss",
+        "style": null
+      }
+    },
+    {
+      "name": "loss 30 min ago (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": 30,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "installed 2 days 23 h ago",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1794024000000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "too_new",
+        "style": null
+      }
+    },
+    {
+      "name": "installed exactly 3 days ago (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1794020400000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "9 races",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 9,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": []
+      },
+      "expect": {
+        "show": false,
+        "reason": "too_few_races",
+        "style": null
+      }
+    },
+    {
+      "name": "3 in the year",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": [
+          1783479600000,
+          1772679600000,
+          1763175600000
+        ]
+      },
+      "expect": {
+        "show": false,
+        "reason": "year_cap",
+        "style": null
+      }
+    },
+    {
+      "name": "3 but one is 365 days old (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": [
+          1783479600000,
+          1772679600000,
+          1762743600000
+        ]
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "cool-down 119 days",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": [
+          1783998000000
+        ]
+      },
+      "expect": {
+        "show": false,
+        "reason": "cool_down",
+        "style": null
+      }
+    },
+    {
+      "name": "cool-down 120 days (ok)",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": [
+          1783911600000
+        ]
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "max 1 a year",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 1,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": [
+          1776999600000
+        ]
+      },
+      "expect": {
+        "show": false,
+        "reason": "year_cap",
+        "style": null
+      }
+    },
+    {
+      "name": "zero quiet minutes",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 0,
+          "purchase": 0,
+          "refund": 0,
+          "error": 0,
+          "maintenanceNotice": 0
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": 0,
+          "purchase": 0,
+          "refund": 0,
+          "error": 0,
+          "maintenanceNotice": 0
+        },
+        "history": []
+      },
+      "expect": {
+        "show": true,
+        "reason": null,
+        "style": "native"
+      }
+    },
+    {
+      "name": "history unsorted",
+      "rules": {
+        "enabled": true,
+        "moments": [
+          "first_win",
+          "first_tournament_win",
+          "hall_induction",
+          "horse_goal_chain"
+        ],
+        "minDaysSinceInstall": 3,
+        "minRacesPlayed": 10,
+        "maxPerYear": 3,
+        "coolDownDays": 120,
+        "quietMinutes": {
+          "loss": 30,
+          "purchase": 1440,
+          "refund": 43200,
+          "error": 30,
+          "maintenanceNotice": 60
+        },
+        "softAsk": {
+          "ios": false,
+          "android": false
+        }
+      },
+      "summary": {
+        "platform": "ios",
+        "moment": "first_win",
+        "now": 1794279600000,
+        "installedAt": 1793415600000,
+        "racesPlayed": 12,
+        "inFtue": false,
+        "accountClosing": false,
+        "sessionPrompted": false,
+        "maintenanceVisible": false,
+        "coinDebt": false,
+        "minutesSince": {
+          "loss": null,
+          "purchase": null,
+          "refund": null,
+          "error": null,
+          "maintenanceNotice": null
+        },
+        "history": [
+          1768359600000,
+          1793415600000,
+          1776999600000
+        ]
+      },
+      "expect": {
+        "show": false,
+        "reason": "year_cap",
+        "style": null
+      }
+    }
+  ]
+}

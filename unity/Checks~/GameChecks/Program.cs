@@ -136,6 +136,14 @@ static class Program
         await RosterChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 馬ごとの目標 (HorseGoalsModel: goals panel rows, ribbon, pin / unpin, home pinned card, KPI, next-action kind, English; REQ-HGOAL-*)");
         await HorseGoalsChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
+        await ReviewPromptChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 20: クライアントのエラー報告 (ClientErrorModel: Unity log lines, no loop, stalls / pause, API failures, desync race id + tick, asset, consent hook, send on pause; REQ-CERR-*)");
+        await ClientErrorChecks.Run(Check);
+        Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");
+        await LocalNotificationChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 20 integration: one system-ish prompt per session (consent → reminders → review), the error reporter follows the analytics choice, an account change resets reminders / error queue / review session");
+        await Round20IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
@@ -148,6 +156,8 @@ static class Program
         await PracticeChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 18: 支部の定型チャット (QuickChatModel: tabs, phrases, slots from the server's options, preview, cooldown, errors as sentences, rows; REQ-QCHAT-*)");
         await QuickChatChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 20: 広告・分析の同意 (ConsentModel: pre-prompt moment, ATT once, later, rows and reasons, OS settings, UMP review, IAdConsent, analytics gate, English; REQ-CNS-*)");
+        await ConsentChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

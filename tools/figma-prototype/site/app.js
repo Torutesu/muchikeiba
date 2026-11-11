@@ -29,6 +29,16 @@ const prefs = {
   int(k, d) { const v = parseInt(this.get(k, ''), 10); return Number.isFinite(v) ? v : d; },
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+// R20 integration (contracts/protocol.md §58.11; = unity SessionPromptGate): at most ONE system-ish prompt per session — the
+// ads / analytics pre-prompt (then ATT), the reminders pre-permission card (then the OS dialog) or the review request. The
+// first one shown claims the session; the others stay due for a later session. Order when several are due: consent →
+// notifications → review. A change of account (transfer) starts a new session.
+const sessionPrompt = {
+  shown: null,
+  can(kind) { return this.shown === null || this.shown === kind; },
+  claim(kind) { if (!this.can(kind)) return false; this.shown = kind; (globalThis.__muchiPrompts ??= []).push(kind); return true; },
+  reset() { this.shown = null; },
+};
 
 // ---------------------------------------------------------------- localisation (LocaleService; Japanese is the default)
 let JA = {};
@@ -1207,6 +1217,9 @@ async function Home() {
   // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
   const comeback = await cbView();
   if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
+  // round 20 (REQ-CNS-008): a new privacy policy version asks again on the next home (decided before home is drawn)
+  const cnsDue = await consentHomeDue();
+  if (cnsDue) return ConsentPrompt(Home, cnsDue);
   const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
@@ -1264,6 +1277,7 @@ async function Home() {
   await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
+  lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -1944,7 +1958,8 @@ async function AdOfferSlot(surface, x, y, w, h, back, parent) {
   Kicker('動画で受け取る', 28, 24, card, { size: 16, color: p.left > 0 ? CYAN : SOFT });
   Txt(p.left > 0 ? p.rewardLabel : '今日の分は受け取りました', 28, 84, w - 56, p.left > 0 ? 24 : 19, p.left > 0 ? WHITE : MUTED, card, { weight: 700, nowrap: true });
   Txt(p.left > 0 ? `今日あと${p.left}回　·　自分で選んだ時だけ再生します` : 'また明日どうぞ（4:00 にリセット）', 28, 120, w - 56, 14, MUTED, card);
-  if (p.left > 0) Cta('動画を見る', 28, h - 72, Math.min(260, w - 56), () => AdPlayer(p, back), card, 'small ad-cta');
+  // round 20 (§58): the pre-prompt comes right before the first rewarded ad, when the server names this moment
+  if (p.left > 0) Cta('動画を見る', 28, h - 72, Math.min(260, w - 56), () => ConsentBeforeAd(() => AdPlayer(p, back)), card, 'small ad-cta');
   globalThis.__muchi && (globalThis.__muchi.lastKpi = p.left > 0 ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
   return card;
 }
@@ -2573,8 +2588,8 @@ async function Settings(tab) {
   // ② looks / care and the legal pages: thin-divider lists
   const m = Glass('More', 556, 134, 480, 676, undefined, .9);
   // R19 integration: fifteen rows no longer fit one list at the largest text (R18 left twelve at 30 px), so その他 has two
-  // pages behind letter-spaced tabs — 設定・サポート (help, tips, accessibility, graphics & data, privacy, the two race
-  // switches, blocks) and 見た目・お世話・仲間 (the looks / care / friends entries). Rows are 36 px again; a NEW / unread
+  // pages behind letter-spaced tabs — 設定・サポート (help, tips, notifications, accessibility, graphics & data, privacy, the
+  // two race switches) and 見た目・お世話・仲間 (the looks / care / friends entries, blocks). Rows are 36 px again; a NEW / unread
   // badge on a row of the other page puts a dot on its tab. Coming back from a looks entry opens the looks page again.
   const moreTab = tab === 'looks' || tab === 'settings' ? tab : Settings.backTab ?? 'settings';
   Settings.backTab = undefined;
@@ -2582,17 +2597,20 @@ async function Settings(tab) {
   const tipsBadge = (player?.tips?.newCount ?? 0) > 0 ? `NEW ${player.tips.newCount}` : undefined;
   const morePages = {
     // round 15: アクセシビリティ — reachable in the FTUE too (text size before the first race); round 18: プライバシー;
-    // round 19: ヒント (REQ-TUT-001), 画質・通信量 (REQ-PERF-016), レース中の応援表示 (REQ-CHEER-010, a device setting)
+    // round 19: ヒント (REQ-TUT-001), 画質・通信量 (REQ-PERF-016), レース中の応援表示 (REQ-CHEER-010, a device setting);
+    // round 20: 通知 (REQ-LNOTIF-004) — push categories, quiet hours and the device reminders on one screen. R20 integration:
+    // プライバシー is the privacy sub-screen (データのダウンロード, 広告と分析, エラーの自動送信), and 通報とブロック moved to the
+    // 見た目・お世話・仲間 page next to 支部の応援 / 友達招待 so this page stays at eight rows at the largest text
     settings: [['ヘルプ・お問い合わせ', () => HelpCenter(Settings), 'help', helpBadge], ['ヒント', () => Tips(Settings), 'tips', tipsBadge],
-      ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'],
+      ['通知', () => NotifySettings(), 'notify'], ['アクセシビリティ', () => A11ySettings(), 'a11y'], ['画質・通信量', () => PerfSettings(), 'perf'], ['プライバシー', () => Privacy(), 'privacy'],
       // round 15 (REQ-ADV-009): the pre-race advice switch (a device setting, default on)
       ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
-      ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ'],
-      // round 17 (REQ-RPT-011): the block list and what a block does
-      ['通報とブロック', () => BlockList(), 'blocks']],
+      ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ']],
     // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
     looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
-      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite']],
+      ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
+      // round 17 (REQ-RPT-011): the block list and what a block does (R20 integration: on this page, see above)
+      ['通報とブロック', () => BlockList(), 'blocks']],
   };
   Kicker('その他', 36, 30, m);
   [['settings', '設定・サポート'], ['looks', '見た目・お世話・仲間']].forEach(([k, label], i) => {
@@ -2709,7 +2727,263 @@ async function Privacy() {
   Txt('JSON は機械で読める形式、概要は人が読めるテキストです。', 36, 520, 496, 15, MUTED, q, { lh: 1.6 });
   // round 18 integration: the help article for this screen (§48 context `privacy`)
   TextLink('データのダウンロードについて（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy'), 'context', () => Privacy()), q).dataset.helpContext = 'privacy';
+  // round 20 (§58): settings › privacy › ads and analytics
+  TextLink('広告と分析の設定 ›', 36, 636, 496, () => PrivacyChoices(), q).dataset.action = 'privacy-choices';
+  // round 20 (REQ-CERR-*): what the app sends when something goes wrong
+  TextLink('エラーの自動送信', 36, 672, 496, () => Diagnostics(), q).dataset.action = 'diagnostics';
   Back(Settings, 'BACK', 40, 834);
+}
+// ================================================================= round 20: 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)
+// Mirrors unity/Assets/Muchi/Game/ConsentModel.cs on the real privacyChoices rules. The pre-prompt comes right before the first
+// rewarded ad (「動画を見る」), never in the FTUE, once per policy version; after a policy update it comes on the next home.
+// The prototype plays an iPhone: 「続ける」 is followed by a simulated system dialog (App Tracking Transparency) whose answer is
+// the personalised-ads choice. 「あとで」 never shows it. Refusing changes no reward (the copy says so; the server never uses it).
+const CNS_LOCK = {
+  minor: '年齢の設定により、オフになっています', under18: '18歳未満のため、オフになっています',
+  age_unknown: '年齢が未登録のため、広告はパーソナライズされません', att: '端末の設定でトラッキングが許可されていません', cmp: '広告の同意がまだのため、オフになっています',
+};
+const CNS_ATT = { authorized: '許可済み', denied: '許可しない', restricted: '制限されています', not_determined: 'まだ確認していません', unavailable: 'なし' };
+/** The simulated device (an iPhone): its ATT status lives on the device, like the real OS. */
+const cnsDevice = { get att() { return prefs.get('muchi.att', 'not_determined'); }, set att(v) { prefs.set('muchi.att', v); } };
+const cnsView = () => L.privacy.view();
+/** Before the first rewarded ad: the pre-prompt when the server names this moment (never in the FTUE). */
+async function ConsentBeforeAd(next) {
+  if (ftue || !sessionPrompt.can('consent')) return next(); // §58.11: another prompt showed this session → the ad as is
+  const v = await cnsView();
+  if (!v.prompt) return next();
+  return ConsentPrompt(next, v);
+}
+/** On the home after a policy update (decided before, asked again): drawn before home like the comeback welcome. */
+async function consentHomeDue() {
+  if (ftue || !sessionPrompt.can('consent')) return null;
+  const v = await cnsView();
+  return v.prompt === 'next_home' && v.decidedVersion ? v : null;
+}
+async function ConsentPrompt(next, v0) {
+  const v = v0 ?? await cnsView();
+  sessionPrompt.claim('consent');
+  currentScreen = () => ConsentPrompt(next); Clear('consent-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
+  const box = Dialog('Consent prompt', 1040, 700);
+  box.dataset.prompt = v.prompt ?? '';
+  Kicker('プライバシー', 52, 44, box);
+  Txt('広告と分析について', 52, 108, 936, 32, WHITE, box, { weight: 700 });
+  const attNext = cnsDevice.att === 'not_determined' && !v.minor;
+  const lines = ['動画広告は、見たい時だけ自分で選んで再生します。', '許可すると、興味に合った広告が出やすくなります。許可しなくても、受け取れる無償コインや遊べる内容は変わりません。',
+    '遊び方の分析（よく使う画面など）はゲームの改善に使います。購入などの記録は法律に基づき保存します。'];
+  lines.forEach((t, i) => Txt(t, 52, 172 + i * 70, 936, 17, i === 0 ? WHITE : MUTED, box, { weight: i === 0 ? 500 : 400, lh: 1.6 }).classList.add('cns-line'));
+  // the analytics choice on the sheet (personalised ads follow the device's question)
+  let analytics = v.analytics.value;
+  const row = el('cns-row', 52, 392, 936, 64, box);
+  Txt('分析への協力', 0, 14, 360, 20, WHITE, row, { weight: 500 });
+  const draw = () => {
+    row.querySelectorAll('.btn').forEach((b) => b.remove());
+    [[false, 'オフ'], [true, 'オン']].forEach(([val, l], i) => {
+      const b = Btn(l, 560 + i * 188, 0, 176, 56, () => { analytics = val; draw(); }, 'choice' + (analytics === val ? ' on' : '') + (v.analytics.locked ? ' disabled' : ''), row);
+      b.dataset.cnsAnalytics = String(val);
+    });
+  };
+  draw();
+  Txt(attNext ? 'このあと端末の確認が表示されます。' : '', 52, 480, 936, 15, SOFT, box, { lh: 1.6 }).classList.add('cns-line');
+  Txt('設定 › プライバシー から、いつでも変えられます。', 52, 510, 936, 15, SOFT, box, { lh: 1.6 }).classList.add('cns-line');
+  const go = Cta('続ける', 52, 584, 420, async () => {
+    disable(go);
+    await L.privacy.shown(v.policyVersion);
+    let att = cnsDevice.att;
+    if (att === 'not_determined' && !v.minor) att = await AttSimulated();
+    await L.privacy.platform({ os: 'ios', att });
+    const adsLocked = v.personalizedAds.locked === 'minor' || v.personalizedAds.locked === 'under18';
+    const r = await L.privacy.set({ privacyVersion: v.policyVersion, source: 'prompt', ...(adsLocked ? {} : { personalizedAds: att === 'authorized' }), ...(v.analytics.locked ? {} : { analytics }) });
+    toast(r.ok ? '保存しました' : r.message);
+    globalThis.__muchi && (globalThis.__muchi.lastConsent = r.ok ? r.value : null);
+    next();
+  }, box);
+  go.dataset.cns = 'continue';
+  Ghost('あとで', 600, 590, 388, 60, async () => { await L.privacy.shown(v.policyVersion); next(); }, box, 'quiet').dataset.cns = 'later';
+}
+/** The simulated system dialog of iOS App Tracking Transparency (the real one is the OS's; Codex calls ATTrackingManager). */
+function AttSimulated() {
+  return new Promise((done) => {
+    Clear('att-dialog'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+    const box = Dialog('ATT simulated', 720, 420);
+    Kicker('端末の確認　/　シミュレーション', 48, 40, box, { size: 15, color: SOFT });
+    Txt('「ムチ一閃」に、ほかの会社のアプリやウェブサイトでのアクティビティの追跡を許可しますか？', 48, 104, 624, 20, WHITE, box, { weight: 500, lh: 1.6 });
+    Txt('広告を興味に合わせるために使います。', 48, 220, 624, 15, MUTED, box);
+    const pick = (a) => { cnsDevice.att = a; done(a); };
+    Ghost('許可しない', 48, 300, 300, 64, () => pick('denied'), box, 'quiet').dataset.att = 'denied';
+    Ghost('許可', 372, 300, 300, 64, () => pick('authorized'), box).dataset.att = 'authorized';
+  });
+}
+/** Settings › Privacy › 広告と分析 (ConsentModel.Rows). */
+async function PrivacyChoices() {
+  currentScreen = PrivacyChoices;
+  // the device may have changed ATT in the OS settings: report it first (like ConsentModel.SyncPlatformAsync)
+  let v = await cnsView();
+  if (!v.platform || v.platform.att !== cnsDevice.att) { const r = await L.privacy.platform({ os: 'ios', att: cnsDevice.att }); if (r.ok) v = r.value; }
+  Clear('privacy-choices'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　プライバシー　/　広告と分析', '広告と分析への協力を選べます。いつでも変えられます', { wallet: false });
+  const p = Glass('Choices', 36, 134, 940, 676, undefined, .9);
+  Kicker('広告と分析', 36, 30, p);
+  const save = async (body) => {
+    const r = await L.privacy.set({ privacyVersion: v.policyVersion, source: 'settings', ...body });
+    toast(r.ok ? '保存しました' : r.message);
+    PrivacyChoices();
+  };
+  const rowOf = (key, y, label, desc, choice, onPick, note, noteColor) => {
+    const row = el('cns-row', 36, y, 868, 150, p); row.dataset.cnsRow = key;
+    Txt(label, 0, 0, 440, 21, WHITE, row, { weight: 500 });
+    Txt(desc, 0, 36, 440, 14, MUTED, row, { lh: 1.5 });
+    const locked = choice.locked === 'minor' || choice.locked === 'under18' || (key === 'analytics' && !!choice.locked);
+    [[false, 'オフ'], [true, 'オン']].forEach(([val, l], i) => {
+      const on = (locked ? choice.effective : choice.value) === val;
+      const b = Btn(l, 480 + i * 196, 0, 184, 56, () => { if (on || locked) return; onPick(val); }, 'choice' + (on ? ' on' : '') + (locked ? ' disabled' : ''), row);
+      b.dataset.cnsChoice = String(val); b.style.whiteSpace = 'nowrap';
+    });
+    if (note) Txt(note, 0, 104, 868, 15, noteColor ?? SOFT, row, { lh: 1.5 }).classList.add('cns-note');
+    return row;
+  };
+  const ads = v.personalizedAds;
+  rowOf('personalized_ads', 96, 'パーソナライズ広告', '興味に合った動画広告が出やすくなります。オフでも受け取れる無償コインは同じです', ads, async (val) => {
+    if (val && cnsDevice.att === 'not_determined') { const a = await AttSimulated(); await L.privacy.platform({ os: 'ios', att: a }); if (a !== 'authorized') return PrivacyChoices(); }
+    else if (val && cnsDevice.att !== 'authorized') { toast('端末の設定でトラッキングが許可されていません'); return PrivacyChoices(); }
+    save({ personalizedAds: val });
+  }, ads.locked ? CNS_LOCK[ads.locked] : null, ads.locked ? GOLD : SOFT);
+  const an = v.analytics;
+  rowOf('analytics', 270, '分析への協力', 'よく使う画面などの記録をゲームの改善に使います', an, (val) => save({ analytics: val }),
+    an.locked === 'minor' ? '保護者の同意があるとオンにできます' : '購入などの記録は、オフでも法律に基づき保存します');
+  Hair(36, 444, 868, p);
+  Kicker('端末のトラッキング許可', 36, 466, p, { rule: false, size: 15 });
+  Txt(CNS_ATT[cnsDevice.att] ?? '', 36, 500, 400, 22, WHITE, p, { weight: 700, nowrap: true }).classList.add('cns-att');
+  if (cnsDevice.att === 'denied' || cnsDevice.att === 'restricted') TextLink('端末の設定を開く', 36, 546, 400, () => toast('iPhone の設定アプリが開きます（プロトタイプでは開きません）'), p).dataset.cns = 'os-settings';
+  Txt('iPhone では、端末の設定アプリでも変えられます。', 36, 604, 868, 14, SOFT, p, { lh: 1.5 });
+  // the policy version and what is always kept
+  const q = Glass('Policy', 996, 134, 568, 676, undefined, .86);
+  Kicker('プライバシーポリシー', 36, 30, q);
+  Txt('いまの版', 36, 112, 300, 14, MUTED, q, { weight: 500, nowrap: true });
+  Txt(v.policyVersion ?? '', 36, 136, 496, 30, WHITE, q, { weight: 700, nowrap: true, cls: 'num' }).classList.add('cns-version');
+  Txt(v.decidedAt ? `最後に選んだ日：${dexDay(v.decidedAt)}` : 'まだ選んでいません', 36, 190, 496, 16, MUTED, q, { weight: 500, nowrap: true }).classList.add('cns-decided');
+  TextLink('プライバシーポリシーを読む', 36, 230, 496, () => Legal('privacy', PrivacyChoices), q);
+  Hair(36, 292, 496, q);
+  Kicker('いつも保存するもの', 36, 312, q, { rule: false, size: 15 });
+  Txt('購入・返金・同意・アカウント削除・データの開示・通報の記録は、法律や安全のために保存します。', 36, 346, 496, 15, MUTED, q, { lh: 1.6 });
+  Txt('チュートリアル中に確認の画面は出ません。', 36, 460, 496, 15, MUTED, q, { lh: 1.6 });
+  TextLink('広告と分析について（ヘルプ）', 36, 600, 496, () => HelpArticle(L.helpContext('privacy_choices'), 'context', () => PrivacyChoices()), q).dataset.helpContext = 'privacy_choices';
+  Back(Privacy, 'BACK', 40, 834);
+}
+// ================================================================= round 20: クライアントのエラー報告 (REQ-CERR-*, contracts/protocol.md §60)
+// window.onerror / unhandledrejection feed the REAL reporter: Muchi.Game ClientErrorModel + Muchi.Client ErrorReporter in WASM
+// (scrubber, fingerprint, sampling, the queue kept across reloads, batch ids), and its batches go to the server's domain code
+// (L.clientErrors.ingest = POST /v1/client-errors on ClientErrorsCore). The screen shows what the device holds before
+// sending (already scrubbed), the consent (R20 integration, §58.10: ErrorReporter.AllowsDiagnostics follows the §58 analytics
+// choice — the on / off here IS 分析への協力, and the server checks the same choice) and the ops console's view of the same data. Nothing here is player-facing in the app: the screen exists to make the pipeline visible.
+const CE_KEY = 'muchi.clientErrors.queue';
+const CE_CAT = { exception: '例外', api: '通信', desync: 'レースの同期', asset: 'ダウンロード', stall: '画面の固まり' };
+let ceReady = false;
+function ceSave() { try { localStorage.setItem(CE_KEY, JSON.parse(engine.CeState()).stored); } catch { /* private mode */ } }
+function ceInit() {
+  if (ceReady || !engine) return;
+  let stored = '';
+  try { stored = localStorage.getItem(CE_KEY) ?? ''; } catch { /* */ }
+  engine.CeInit('editor', 'proto', 'Browser', 'Web', Date.now(), stored);
+  ceReady = true;
+  const report = (name, message, stack) => {
+    try {
+      engine.CeOnError(`${name || 'Error'}: ${message || ''}`, stack || '', cur?.dataset.screen ?? '', Date.now());
+      ceSave();
+      if (currentScreen === Diagnostics) Diagnostics();
+    } catch { /* the reporter never throws into the page */ }
+  };
+  window.addEventListener('error', (e) => { const er = e.error; report(er?.name, er?.message ?? e.message, er?.stack); });
+  window.addEventListener('unhandledrejection', (e) => { const er = e.reason; report(er?.name ?? 'UnhandledRejection', er?.message ?? String(er), er?.stack); });
+}
+/** §58.10: the reporter's consent hook follows the analytics choice (ConsentState.AllowsDiagnostics = analytics.effective). */
+async function ceSyncConsent() {
+  if (!ceReady) return true;
+  let allows = true;
+  try { allows = (await L.privacy.view()).analytics.effective === true; } catch { /* no view: the server decides */ }
+  engine.CeSetConsent(allows);
+  return allows;
+}
+/** Sends the queue now (as the app does on going to the background): the WASM reporter's batch → the server code → the answer. */
+async function ceSend() {
+  if (!ceReady) return;
+  await ceSyncConsent();
+  engine.CeFlush(Date.now());
+  for (let i = 0, idle = 0; i < 40 && idle < 4; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    const b = engine.CeTakeOutbox();
+    if (!b) { idle += 1; continue; }
+    idle = 0;
+    (globalThis.__muchiCeBatches ??= []).push(JSON.parse(b));
+    const res = L.clientErrors.ingest(b, true);
+    engine.CeAnswer(res.status, JSON.stringify(res.body));
+  }
+  ceSave();
+}
+async function Diagnostics() {
+  currentScreen = Diagnostics;
+  ceInit();
+  await ceSyncConsent();
+  const st = ceReady ? JSON.parse(engine.CeState()) : { items: [], pending: 0, sent: 0, consent: true };
+  Clear('diagnostics'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　エラーの自動送信', 'アプリで起きた問題を、原因を調べるために運営へ知らせます', { wallet: false });
+  // ① what is sent / never sent, and the consent stand-in
+  const a = Glass('What is sent', 36, 134, 560, 676, undefined, .9);
+  Kicker('エラーの自動送信', 36, 30, a);
+  Txt('アプリが止まった・通信に失敗した・レースの同期がずれた時に、短い記録を運営に送ります。', 36, 92, 488, 16, MUTED, a, { lh: 1.7 });
+  Hair(36, 186, 488, a);
+  Kicker('送るもの', 36, 206, a, { rule: false, size: 14 });
+  Txt('エラーの種類・アプリの版・端末の機種・OSの版', 36, 238, 488, 16, WHITE, a, { weight: 500, nowrap: true });
+  Kicker('送らないもの', 36, 290, a, { rule: false, size: 14 });
+  Txt('メールアドレス・名前・入力した文・レースの操作', 36, 322, 488, 16, WHITE, a, { weight: 500, nowrap: true });
+  Hair(36, 378, 488, a);
+  Txt('プレイヤーIDを添える', 36, 404, 300, 19, WHITE, a, { weight: 500, nowrap: true });
+  // R20 integration (§58.10): the switch is the §58 analytics choice (分析への協力), saved on the server like the settings row
+  const setAnalytics = async (val) => {
+    const v = await L.privacy.view();
+    if (v.analytics.locked) { toast(CNS_LOCK[v.analytics.locked] ?? '年齢の設定により、オフになっています'); return; }
+    const r = await L.privacy.set({ privacyVersion: v.policyVersion, source: 'settings', analytics: val });
+    if (!r.ok) toast(r.message);
+    Diagnostics();
+  };
+  const on = Btn('オン', 316, 396, 96, 46, () => setAnalytics(true), 'choice' + (st.consent ? ' on' : ''), a);
+  const off = Btn('オフ', 420, 396, 96, 46, () => setAnalytics(false), 'choice' + (!st.consent ? ' on' : ''), a);
+  on.dataset.ceConsent = 'on'; off.dataset.ceConsent = 'off';
+  Txt('「広告と分析」の「分析への協力」と同じ設定です。オフにすると、記録は名前のない記録として届きます。', 36, 460, 488, 15, SOFT, a, { lh: 1.6 });
+  Txt('レースの同期のずれは公平さに関わるため、いつも送ります（レースの番号と時点だけ）。', 36, 540, 488, 15, SOFT, a, { lh: 1.6 });
+  // ② the device's queue (scrubbed) and the send
+  const q = Glass('Queue', 616, 134, 948, 400, undefined, .88);
+  q.classList.add('ce-queue'); q.dataset.pending = String(st.pending);
+  Kicker('送る前の記録（この端末）', 36, 30, q);
+  Txt(`${st.items.length}件`, 700, 72, 212, 15, SOFT, q, { align: 'right', cls: 'num', nowrap: true });
+  if (!st.items.length) Txt('いまは送る記録はありません', 36, 112, 860, 18, MUTED, q).dataset.ceEmpty = '1';
+  st.items.slice(0, 4).forEach((it, i) => {
+    const row = el('ce-row', 36, 106 + i * 56, 876, 50, q);
+    row.dataset.category = it.category; row.dataset.fingerprint = it.fingerprint;
+    Txt(CE_CAT[it.category] ?? it.category, 0, 2, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(it.title, 0, 22, 760, 16, WHITE, row, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    Txt(`×${it.count}`, 776, 20, 100, 16, GOLD, row, { align: 'right', cls: 'num', nowrap: true });
+  });
+  Ghost('テスト用のエラーを起こす', 36, 324, 360, 52, () => {
+    // a synthetic error event: the same window.onerror path as a real uncaught exception (the page keeps running)
+    const err = new TypeError("Cannot read properties of undefined (reading 'horse') for player ハヤテ");
+    window.dispatchEvent(new ErrorEvent('error', { error: err, message: err.message }));
+  }, q, 'quiet small').dataset.action = 'ce-test';
+  Cta('今すぐ送る', 552, 316, 360, async () => { await ceSend(); toast('記録を送りました'); Diagnostics(); }, q, 'small').dataset.action = 'ce-send';
+  // ③ the ops console's view of the same data (aggregated by fingerprint on the server)
+  const o = Glass('Ops view', 616, 554, 948, 256, undefined, .82);
+  o.classList.add('ce-ops');
+  Kicker('運営の画面での見え方', 36, 24, o);
+  const top = L.clientErrors.list().groups.slice(0, 3);
+  o.dataset.groups = String(top.length);
+  if (!top.length) Txt('まだ届いた記録はありません', 36, 92, 860, 16, MUTED, o);
+  top.forEach((g, i) => {
+    const row = el('ce-op', 36, 84 + i * 50, 876, 44, o);
+    row.dataset.fingerprint = g.fingerprint;
+    Txt(g.title, 0, 4, 620, 15, WHITE, row, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    Txt(g.fingerprint, 0, 26, 300, 12, SOFT, row, { cls: 'num keep-ja', nowrap: true });
+    Txt(`${g.count}件`, 676, 10, 200, 16, GOLD, row, { align: 'right', cls: 'num', nowrap: true });
+  });
+  Back(Privacy, 'BACK', 40, 834);
 }
 // ================================================================= round 12: かんたん操作 (REQ-ASSIST-*, contracts/protocol.md §27)
 // Mirrors unity/Assets/Muchi/Game/AssistModel.cs on the real server rules (setting default off, the last-place streak, the
@@ -3084,8 +3358,10 @@ function ConfirmDeletion(v) {
 async function Demo(kind) {
   L.reset();
   ftue = false; // every demo state is a player past the first run
+  // R20 integration (§58.11): a demo state is a fresh player opening the app — a new session for the one-prompt rule
+  sessionPrompt.reset(); revPrompted = false;
   document.querySelectorAll('.toast').forEach((t) => t.remove());
-  for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends']) { try { localStorage.removeItem(k); } catch { /* */ } }
+  for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends', 'muchi.att']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
   taCache = null;
   globalThis.__cbWhatsNewClosed = false;
@@ -3104,6 +3380,14 @@ async function Demo(kind) {
   if (kind === 'activity') { await L.seedActivity(); await refresh(); actState.cursor = null; actState.stack = []; return Activity(); }
   // round 17: two blocked players (one deleted since) and support's request in the activity list → 通報とブロック
   if (kind === 'safety') { await L.reports.seedSafety(); await refresh(); return BlockList(); }
+  // round 20 (REQ-CERR-*): a fresh queue with one report from the page's window.onerror → the diagnostics screen
+  if (kind === 'errors') {
+    await L.seedDemo(3, [2, 2, 2]); await refresh(); ceInit();
+    try { localStorage.removeItem(CE_KEY); } catch { /* */ }
+    const err = new RangeError('Invalid array length 4294967296 at index 12');
+    window.dispatchEvent(new ErrorEvent('error', { error: err, message: err.message }));
+    return Diagnostics();
+  }
   if (kind === 'gifts') { await L.seedGifts(); await refresh(); giftState.tab = 'box'; giftState.page = 0; return GiftBox('box'); }
   // round 12: a week of play, then three ranked races in last place (settled by the real applyRace) → the one-time suggestion
   if (kind === 'assist') { await L.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]); ftue = false; await L.demoLastPlaces(3); await refresh(); return AssistThen(Home); }
@@ -3743,6 +4027,83 @@ async function GoalPinStrip() {
   let seen = null; try { seen = localStorage.getItem(HG_HOME_VIEWED); } catch { /* */ }
   if (seen !== day) { try { localStorage.setItem(HG_HOME_VIEWED, day); } catch { /* */ } hgKpi('home', pin.doneCount); }
   return s;
+}
+
+// ================================================================= round 20: レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59)
+// The store review is asked only through the OS's own in-app review API, only at a happy moment (first win, first tournament
+// title, hall induction, a horse's goal chain complete), on the real reviewPrompt.ts rules (never after a loss / purchase /
+// error / refund / maintenance notice, never in the FTUE, once per session, ≤ 3 a year with a cool-down). The optional soft
+// pre-question (ops, iOS only, default off): はい → the OS sheet, いまいち → the inquiry form (never the store). The OS sheet is
+// simulated here (a demo state). Nothing is granted for a review, ever. Mirrors unity/Assets/Muchi/Game/ReviewPromptModel.cs.
+const REV_SESSION = 's_' + Math.random().toString(36).slice(2, 12).padEnd(10, '0');
+const REV_MOMENT_JA = { first_win: '初勝利', first_tournament_win: '大会の初優勝', hall_induction: '殿堂入り', horse_goal_chain: '目標の物語を走りきった' };
+let revPrompted = false;
+function revLog(x) { (globalThis.__muchiReview ??= []).push(x); }
+/** A happy moment's screen was closed: ask (or not) on the real rules. Returns the outcome. */
+async function reviewMoment(moment, after = Home) {
+  if (!sessionPrompt.can('review')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11: another prompt showed
+  if (revPrompted) { revLog({ moment, skipped: 'session' }); return 'skipped'; }
+  const r = await L.reviewPrompt.check(moment, REV_SESSION, { inFtue: false, minutesSinceLoss: null, minutesSinceError: null, minutesSinceMaintenanceNotice: null });
+  if (!r.ok || !r.value.show) { revLog({ moment, skipped: r.ok ? r.value.reason : r.code }); return 'skipped'; }
+  revPrompted = true;
+  sessionPrompt.claim('review');
+  revLog({ moment, style: r.value.style, promptId: r.value.promptId });
+  if (r.value.style === 'soft') { ReviewSoft(r.value.promptId, moment, after); return 'soft'; }
+  await ReviewNativeSim(r.value.promptId, moment, after); return 'native';
+}
+/** The scene behind both sheets: the moment that just closed (art, one quiet line), nothing else on screen. */
+function revScene(name, moment) {
+  Clear(name); SetArt('Art/race-result', false); Shade('left');
+  Kicker(REV_MOMENT_JA[moment] ?? '', 64, 48, undefined, { w: 600, size: 16 }).classList.add('rev-moment');
+}
+/** The soft pre-question: one question, two answers of the same size and weight, close = no answer. */
+function ReviewSoft(promptId, moment, after = Home) {
+  currentScreen = () => ReviewSoft(promptId, moment, after);
+  revScene('review-ask', moment);
+  const d = Dialog('Review ask', 720, 400);
+  d.classList.add('rev-soft'); d.dataset.prompt = promptId;
+  Kicker('ひとこと', 48, 36, d, { w: 400 });
+  Txt('ムチ一閃を楽しんでいますか？', 48, 118, 624, 30, WHITE, d, { weight: 700, nowrap: true }).classList.add('rev-question');
+  Txt('答えなくてもかまいません。ゲームの内容は何も変わりません。', 48, 172, 624, 15, MUTED, d, { lh: 1.5 });
+  const answer = async (step) => {
+    const a = await L.reviewPrompt.answer(promptId, step);
+    revLog({ step, next: a.ok ? a.value.next : a.code });
+    if (!a.ok) { toast(a.message); return after(); }
+    if (a.value.next === 'store_review') return ReviewNativeSim(promptId, moment, after);
+    if (a.value.next === 'help_inquiry') { toast('ご意見をお聞かせください。お問い合わせの画面を開きます。'); return InquiryForm(a.value.helpCategory ?? 'other'); }
+    return after();
+  };
+  Ghost('はい', 48, 236, 300, 64, () => answer('soft_yes'), d).classList.add('rev-yes');
+  Ghost('いまいち', 372, 236, 300, 64, () => answer('soft_no'), d).classList.add('rev-no');
+  TextLink('閉じる', 48, 324, 200, () => answer('soft_dismiss'), d).classList.add('rev-close');
+}
+/** DEMO: what the OS shows for the in-app review API (on a phone the OS draws it; the game never learns the result). */
+async function ReviewNativeSim(promptId, moment, after = Home) {
+  currentScreen = () => ReviewNativeSim(promptId, moment, after);
+  revScene('review-native', moment);
+  await L.reviewPrompt.answer(promptId, 'native_requested'); // the API was called (once; the result is never known)
+  const note = Glass('Review demo note', 64, 770, 1000, 60, undefined, .8);
+  Txt('デモ：OS の標準のレビュー画面です。実機では OS が表示し、ゲームは結果を受け取りません。', 24, 18, 952, 15, MUTED, note, { nowrap: true }).classList.add('rev-demo-note');
+  const os = el('rev-os', 530, 220, 540, 344);
+  os.dataset.name = 'OS review sheet';
+  Txt('「ムチ一閃」を気に入っていますか？', 30, 34, 480, 22, '#111', os, { weight: 700, align: 'center', nowrap: true });
+  Txt('App Store で評価するには、星をタップしてください。', 30, 82, 480, 15, '#444', os, { align: 'center', lh: 1.5 });
+  const stars = el('rev-stars', 120, 150, 300, 56, os);
+  for (let i = 0; i < 5; i++) {
+    const b = Btn(`rev-star-${i + 1}`, i * 60, 0, 56, 56, () => { revLog({ osStars: i + 1 }); after(); }, 'rev-star', stars, '☆');
+    b.setAttribute('aria-label', String(i + 1));
+  }
+  Hair(0, 268, 540, os).classList.add('rev-os-hair');
+  Btn('今はしない', 0, 276, 540, 60, () => { revLog({ osDismissed: true }); after(); }, 'rev-os-later', os);
+}
+/** Demo entry (show('ReviewPrompt', 'soft' | 'native')): a settled player, the first win's result just closed. */
+async function ReviewDemo(style = 'native') {
+  await L.reviewPrompt.demo(style === 'soft');
+  revPrompted = false;
+  sessionPrompt.reset(); // the demo state is a settled player opening the app (a new session)
+  const o = await reviewMoment('first_win');
+  if (o === 'skipped') { toast('今回は依頼しません'); Home(); }
+  return o;
 }
 
 // ================================================================= round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
@@ -4770,6 +5131,8 @@ async function TrainingResult(res) {
   const m = ms.ok ? ms.value.find((x) => x.kind === 'training' && x.progress >= x.target && !x.claimed) : null;
   if (m) Ghost('ミッション報酬を受け取る', 420, 570, 300, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
   EnToggle();
+  // round 20 (REQ-LNOTIF-010): after the first training, the reminders pre-permission card (inline, at most maxAsks times)
+  await LnotifPrePromptCard(() => TrainingResult(res));
 }
 
 // ================================================================= round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
@@ -6436,6 +6799,7 @@ function TransferConfirm(d, state) {
   Ghost('やめる', 496, 336, 220, 50, () => TransferRedeem(state), box, 'quiet').classList.add('trf-confirm-no');
 }
 function TransferDone(v) {
+  deviceAccountChanged();
   Shade('dim heavy');
   const box = Dialog('Transfer done', 880, 440);
   box.classList.add('trf-done');
@@ -6446,8 +6810,21 @@ function TransferDone(v) {
   Cta('前の端末の画面を見る', 52, 326, 420, () => TransferReplaced(), box, 'small trf-done-old');
   Ghost('ホームへ', 496, 332, 200, 50, () => Home(), box, 'quiet');
 }
+/**
+ * R20 integration (§58.11, §54 × §59–§61; = unity AccountChangeReset): the account on this device changed (SESSION_REPLACED on the
+ * old device, a redeemed code on the new one) — the device reminders are cancelled and forgotten, the error reporter sends what it
+ * queued without a player id, and the review / one-prompt session starts again.
+ */
+function deviceAccountChanged() {
+  lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
+  try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
+  revPrompted = false;
+  sessionPrompt.reset();
+  globalThis.__muchiAccountChanges = (globalThis.__muchiAccountChanges ?? 0) + 1;
+}
 /** The old device after the move (401 SESSION_REPLACED on its next request). */
 function TransferReplaced() {
+  deviceAccountChanged();
   currentScreen = TransferReplaced;
   Clear('transfer-replaced'); SetArt('Art/home-paddock', false); Shade('left');
   Kicker('引き継ぎ', 82, 112, undefined, { size: 18 });
@@ -7278,6 +7655,9 @@ const helpGo = (screen, back) => ({
   account_link: () => Settings(), deletion: () => Settings(), inquiry: () => InquiryForm(), my_inquiries: () => MyInquiries(),
   // round 18 integration: privacy (§51), the branch feed's quick chat (§52), practice races (§50)
   privacy: () => Privacy(), team_feed: () => TeamFeed('chat'), practice: () => Practice(),
+  privacy_choices: () => PrivacyChoices(), // round 20 (§58)
+  // round 20: settings › notifications (push and the device reminders, §61)
+  notifications: () => NotifySettings(),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -7688,6 +8068,166 @@ function fit() {
 window.addEventListener('resize', fit);
 fit();
 
+// ================================================================= round 20: 端末のローカル通知 (REQ-LNOTIF-*, contracts/protocol.md §61)
+// One settings screen for push and the device reminders: the push categories and quiet hours (the real push.ts preferences on
+// the local player) switch the local kinds too. The plan is the shared planner (= C# LocalNotificationPlanner) over the real
+// bootstrap digest; the prototype's "OS" is localStorage (the permission state is simulated with the review buttons). The
+// pre-permission card sits on the training result after the first training (never on first launch, never modal); the OS
+// dialog is shown once. Mirrors unity/Assets/Muchi/Game/LocalNotificationModel.cs. No shop link, no urgency words.
+const LN_OS = 'muchi.lnotif.os';
+const LN_DETAILS = 'muchi.lnotif.details';
+const LN_ASKS = 'muchi.lnotif.asks';
+const LN_TRAINED = 'muchi.lnotif.trainingStarted';
+const LN_SCHEDULED = 'muchi.lnotif.scheduled';
+const LN_KIND_LABEL = {
+  training_session: '調教の仕上げ', daily_bonus: 'ログインボーナス（1日1回）', weekly_challenge_closing: '週替わりチャレンジの入れ替わり',
+  rival_week_closing: 'ライバルの週の締め', exchange_closing: 'イベント交換所が閉まる', gift_expiring: 'プレゼントの受け取り期限',
+};
+const LN_CAT_LABEL = { season: 'シーズン', events: 'イベント', friends: 'フレンド', invites: '招待', gifts: 'プレゼント', comeback: 'お知らせ（復帰）', reminders: 'リマインダー' };
+const LN_CATS = ['season', 'events', 'friends', 'invites', 'gifts', 'comeback', 'reminders'];
+const LN_QUIET = [[{ startHour: 22, endHour: 8 }, '22時〜8時'], [{ startHour: 23, endHour: 7 }, '23時〜7時'], [null, 'なし']];
+const LN_OS_TEXT = { granted: '通知は許可されています', provisional: '通知センターに静かに届きます（仮の許可）', denied: '端末の設定で通知がオフになっています', unknown: '通知はまだ許可されていません' };
+const lnGet = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const lnSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch { /* private mode */ } };
+const lnOs = () => lnGet(LN_OS) ?? 'unknown';
+const lnDetails = () => lnGet(LN_DETAILS) === '1';
+/** 「12月9日 12:00」 (JST; EN through the {m}月{n}日 {hm} template). */
+const lnWhen = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')}`; };
+function lnSnapshot(digest, locale = isJa() ? 'ja' : 'en') {
+  return { now: L.now(), locale, permission: lnOs(), showDetails: lnDetails(), signedIn: true, digest, horseNames: Object.fromEntries((player?.horses ?? []).map((h) => [h.id, h.name])) };
+}
+function lnKpi(name, props) { L.kpi([{ name, at: L.now(), props }]); (globalThis.__muchiLnotifKpi ??= []).push({ name, ...props }); }
+/** Plan and apply the difference to the simulated OS (KPI lnotif_scheduled once per new id); nothing scheduled without the permission. */
+async function lnRefresh() {
+  const d = await L.localNotify.digest();
+  const plan = L.localNotify.plan(lnSnapshot(d));
+  let prev = {}; try { prev = JSON.parse(lnGet(LN_SCHEDULED) ?? '{}').ids ?? {}; } catch { /* */ }
+  if (plan.status !== 'ok') { lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} })); return { d, plan }; }
+  const diff = L.localNotify.diff(prev, plan.items);
+  for (const id of diff.added) lnKpi('lnotif_scheduled', { kind: plan.items.find((i) => i.id === id).kind });
+  lnSet(LN_SCHEDULED, JSON.stringify({ ids: Object.fromEntries(plan.items.map((i) => [i.id, `${i.fireAt}|${i.title}|${i.body}`])) }));
+  return { d, plan };
+}
+const lnAsks = () => { const [n, t] = (lnGet(LN_ASKS) ?? '0|0').split('|').map(Number); return { n: n || 0, last: t || 0 }; };
+function lnPrePromptDue(d) {
+  if (!d?.enabled || d.onboarding || d.deleting || d.categories.reminders || lnOs() === 'denied') return false;
+  if (lnGet(LN_TRAINED) !== '1' && !d.training.trainedEver) return false;
+  const a = lnAsks();
+  return a.n < d.config.prePrompt.maxAsks && (a.last === 0 || L.now() - a.last >= d.config.prePrompt.retryDays * 86_400_000);
+}
+const lnCountAsk = () => lnSet(LN_ASKS, `${lnAsks().n + 1}|${L.now()}`);
+/** 「お知らせを受け取る」: the reminders category on, then the OS dialog once (simulated: allowed). */
+async function lnAccept(after) {
+  lnCountAsk();
+  const r = await L.localNotify.setCategory('reminders', true);
+  if (!r.ok) { toast(r.message); return after(); }
+  if (lnOs() === 'unknown') { lnSet(LN_OS, 'granted'); toast('端末の確認：通知を許可しました（プロトタイプでは確認画面を出しません）'); }
+  lnKpi('lnotif_permission', { result: lnOs() === 'denied' ? 'denied' : lnOs() });
+  await lnRefresh();
+  after();
+}
+function lnDecline(after) { lnCountAsk(); lnKpi('lnotif_permission', { result: 'later' }); after(); }
+/** The pre-permission card (inline, never modal) on the training result. */
+async function LnotifPrePromptCard(after) {
+  if (cur?.dataset.screen !== 'training-result') return null;
+  lnSet(LN_TRAINED, '1');
+  const d = await L.localNotify.digest();
+  if (!lnPrePromptDue(d) || !sessionPrompt.can('notifications') || cur?.dataset.screen !== 'training-result') return null; // §58.11
+  sessionPrompt.claim('notifications');
+  const c = Glass('Reminders primer', 836, 134, 640, 420, undefined, .9);
+  c.classList.add('ln-primer', 'rise');
+  lnPrimerBody(c, d, after, 600);
+  return c;
+}
+function lnPrimerBody(c, d, after, w) {
+  Kicker('リマインダー', 40, 34, c);
+  Txt('調教とログインボーナスのお知らせ', 40, 98, w - 80, 26, WHITE, c, { weight: 700 });
+  Txt(`調教の仕上げや、ログインボーナスを受け取れる日を、この端末からお知らせします。1日${d.config.dailyCap}件まで・静かな時間帯は送りません。あとから設定で変えられます。`, 40, 150, w - 80, 16, MUTED, c, { lh: 1.7 }).classList.add('ln-primer-body');
+  Txt('購入やスカウトを勧めるお知らせはありません', 40, 262, w - 80, 14, SOFT, c);
+  Cta('お知らせを受け取る', 40, 314, 330, () => lnAccept(after), c, 'small').dataset.action = 'ln-accept';
+  Ghost('今はしない', 392, 320, w - 432, 52, () => lnDecline(after), c, 'quiet small').dataset.action = 'ln-later';
+}
+/** Review: the pre-permission card as a dialog over the training art (show('LnotifPrePrompt')). */
+async function LnotifPrePrompt() {
+  currentScreen = LnotifPrePrompt; Clear('ln-primer'); SetArt('Art/home-paddock', false); Shade('dim');
+  const d = await L.localNotify.digest();
+  const box = Dialog('Reminders primer', 720, 430);
+  box.classList.add('ln-primer');
+  lnPrimerBody(box, d.enabled ? d : { config: { dailyCap: 2 } }, () => NotifySettings(), 720);
+}
+/** Settings › 通知: push categories and quiet hours (left), the device reminders (right). */
+async function NotifySettings() {
+  currentScreen = NotifySettings;
+  const pr = await L.localNotify.prefs();
+  const { d, plan } = await lnRefresh();
+  const shown = L.localNotify.plan(lnSnapshot(d));
+  const rows = L.localNotify.rows(d);
+  Clear('notify-settings'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　通知', 'プッシュ通知と端末のリマインダーを、ここでまとめて切り替えます', { wallet: false });
+  // ① push: categories and quiet hours (they apply to the device reminders too)
+  const p = Glass('Push', 36, 134, 600, 676, undefined, .9);
+  p.classList.add('ln-push');
+  Kicker('通知の種類', 36, 26, p, { size: 16 });
+  const cats = pr.ok ? pr.value.categories : {};
+  LN_CATS.forEach((cat, i) => {
+    const row = el('ln-cat', 36, 92 + i * 56, 528, 50, p); row.dataset.lnCat = cat;
+    Txt(LN_CAT_LABEL[cat], 0, 12, 250, 19, WHITE, row, { weight: 500, nowrap: true });
+    [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
+      const b = Btn(l, 280 + j * 128, 0, 116, 46, async () => { if (!!cats[cat] === v) return; const r = await L.localNotify.setCategory(cat, v); if (!r.ok) toast(r.message); NotifySettings(); }, 'choice' + (!!cats[cat] === v ? ' on' : ''), row);
+      b.dataset.lnChoice = String(v); b.style.whiteSpace = 'nowrap';
+    });
+  });
+  Hair(36, 494, 528, p);
+  Txt('静かな時間帯', 36, 512, 250, 19, WHITE, p, { weight: 500, nowrap: true });
+  const q = pr.ok ? pr.value.quietHours : null;
+  LN_QUIET.forEach(([v, l], i) => {
+    const on = (v === null && q === null) || (v && q && v.startHour === q.startHour && v.endHour === q.endHour);
+    const b = Btn(l, 36 + i * 178, 550, 168, 50, async () => { const r = await L.localNotify.setQuietHours(v); if (!r.ok) toast(r.message); NotifySettings(); }, 'choice' + (on ? ' on' : ''), p);
+    b.dataset.lnQuiet = v ? `${v.startHour}-${v.endHour}` : 'none'; b.style.whiteSpace = 'nowrap'; b.style.fontSize = '16px';
+  });
+  Txt(`プッシュは1日${pr.ok ? pr.value.dailyCap : 2}件まで。静かな時間帯は端末のリマインダーにも使われます。`, 36, 618, 528, 13, SOFT, p, { lh: 1.55 });
+  // ② the device reminders: permission, the kinds (on = their category), details, what comes next
+  const r = Glass('Device reminders', 656, 134, 908, 676, undefined, .9);
+  r.classList.add('ln-device'); r.dataset.lnStatus = plan.status;
+  Kicker('端末のリマインダー', 36, 26, r, { size: 16 });
+  Txt(`この端末の中で予約するお知らせです。左の通知の種類と静かな時間帯がそのまま使われます。1日${d.enabled ? d.config.dailyCap : 2}件まで。`, 36, 82, 836, 14, MUTED, r, { lh: 1.6 });
+  Txt(LN_OS_TEXT[lnOs()], 36, 138, 520, 16, lnOs() === 'denied' ? GOLD : lnOs() === 'unknown' ? MUTED : OK, r, { weight: 500, nowrap: true }).classList.add('ln-os');
+  if (lnOs() === 'denied') Ghost('端末の設定を開く', 600, 118, 272, 46, () => toast('端末の設定を開きます（プロトタイプでは開きません）'), r, 'small').dataset.action = 'ln-os-settings';
+  rows.forEach((x, i) => {
+    const row = el('ln-kind', 36, 186 + i * 46, 400, 42, r); row.dataset.lnKind = x.kind; row.dataset.on = String(x.on);
+    Txt(LN_KIND_LABEL[x.kind], 0, 0, 290, 16, x.on ? WHITE : SOFT, row, { weight: 500, nowrap: true });
+    Txt(LN_CAT_LABEL[x.category], 0, 22, 200, 12, SOFT, row, { nowrap: true, ls: '.08em' });
+    Txt(x.on ? 'オン' : 'オフ', 300, 6, 100, 16, x.on ? CYAN : DIM, row, { weight: 700, align: 'right', nowrap: true });
+  });
+  Hair(36, 470, 400, r);
+  Txt('ロック画面に詳しく表示', 36, 486, 400, 16, WHITE, r, { weight: 500, nowrap: true });
+  [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
+    const b = Btn(l, 36 + j * 128, 520, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
+    b.dataset.lnDetails = String(v); b.style.whiteSpace = 'nowrap';
+  });
+  Txt('オンにすると、件数や馬の名前が通知に出ます（オフでは出しません）。', 36, 574, 400, 13, SOFT, r, { lh: 1.55 });
+  // what comes next (in the app language; the notifications themselves follow the device language)
+  Kicker('次の予定', 472, 168, r, { size: 15, rule: false, w: 400 });
+  const up = el('ln-upcoming', 472, 200, 400, 410, r);
+  const items = shown.items.slice(0, 5);
+  if (!items.length) Txt('予定はありません', 0, 8, 400, 16, MUTED, up);
+  items.forEach((it, i) => {
+    const row = el('ln-next', 0, i * 80, 400, 74, up); row.dataset.lnNext = it.kind;
+    Txt(lnWhen(it.fireAt), 0, 0, 400, 12, CYAN, row, { weight: 700, nowrap: true, ls: '.06em', cls: 'num' });
+    Txt(it.title, 0, 18, 400, 16, WHITE, row, { weight: 700, nowrap: true });
+    Txt(it.body, 0, 42, 400, 12, MUTED, row, { nowrap: true });
+  });
+  if (plan.status === 'no_permission' && items.length) Txt('通知が許可されると、この予定で届きます', 472, 616, 400, 12, SOFT, r, { nowrap: true });
+  TextLink('端末のお知らせについて（ヘルプ）', 36, 630, 400, () => HelpArticle(L.helpContext('notifications'), 'context', () => NotifySettings()), r).dataset.helpContext = 'notifications';
+  // review only: the demo state and the simulated OS permission
+  const demo = el('ln-demo', 472, 640, 400, 30, r);
+  Ghost('デモの予定', 0, -6, 132, 36, async () => { await L.localNotify.seedDemo(); ftue = false; await refresh(); NotifySettings(); }, demo, 'quiet small').dataset.action = 'ln-demo';
+  [['unknown', '未確認'], ['granted', '許可済み'], ['denied', '拒否']].forEach(([k, l], i) => {
+    const b = Ghost(l, 140 + i * 88, -6, 82, 36, () => { lnSet(LN_OS, k); NotifySettings(); }, demo, 'quiet small' + (lnOs() === k ? ' on' : '')); b.dataset.lnOsDemo = k; b.style.fontSize = '13px';
+  });
+  Back(Settings, 'BACK', 40, 834);
+}
+
 async function boot() {
   const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn, commentaryPacks] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
@@ -7707,6 +8247,7 @@ async function boot() {
   engine = (await runtime.getAssemblyExports(runtime.getConfig().mainAssemblyName)).MuchiRace;
   engine.Init(ruleset, commentary);
   engine.SetCommentaryPacks(commentaryPacks); // round 14 (REQ-CMT-001): the client copy of server/master/commentary-packs.json
+  ceInit(); // round 20 (REQ-CERR-*): window.onerror → the WASM ErrorReporter
   await syncA11y(); // round 15: the unsent device change, or the account's value (REQ-A11Y-004); sets the whip input
   applyLanguage(); // REQ-L10N-012: English commentary when EN is on
   l10nObserver.observe($stage, { subtree: true, childList: true, characterData: true });
@@ -7717,8 +8258,10 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
+    // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
+    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,

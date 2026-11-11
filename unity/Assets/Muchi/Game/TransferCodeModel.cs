@@ -218,6 +218,8 @@ namespace Muchi.Game
 
         // ------------------------------------------------------------------ redeem screen
         public RedeemState State { get; private set; } = RedeemState.Idle;
+        /// <summary>R20 integration (§54 × §59–§61): raised after a redeemed code signed in on this device (see AccountChangeReset).</summary>
+        public event Action Redeemed;
         public string RedeemMessage { get; private set; }
         public TransferConfirm Confirm { get; private set; }
         /// <summary>Player-typed name of the account that arrived — its own line under <see cref="DoneText"/>, never translated.</summary>
@@ -279,6 +281,7 @@ namespace Muchi.Game
             ForgetKey();
             Confirm = null;
             State = RedeemState.Done;
+            try { Redeemed?.Invoke(); } catch (Exception) { /* listeners never undo a redeemed code */ }
             return true;
         }
 

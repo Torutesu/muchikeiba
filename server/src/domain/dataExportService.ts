@@ -16,7 +16,7 @@ import type { PlayerInvoker } from '../http/app.js';
 import { catalogFor, localize } from '../i18n/catalog.js';
 import {
   buildExportDocument, dataExportConfig, dexKey, renderSummary, serializeExport, summaryLines, DEX_FILES,
-  type DexExternal, type DexFile, type DexLang, type DexReadyInfo,
+  type DexClientErrorRow, type DexExternal, type DexFile, type DexLang, type DexReadyInfo,
 } from './dataExport.js';
 import type { PlayerReportMade } from './dataExport.js';
 import type { GachaLogEntry } from './history.js';
@@ -47,6 +47,8 @@ export interface DataExportJobPorts {
   playerReportsMade?(uid: string): Promise<PlayerReportMade[]>;
   /** Analytics rows tied to the player's pseudonymous id. Optional; null = not configured. */
   kpiEvents?(uid: string): Promise<{ rows: Record<string, unknown>[]; windowDays: number } | null>;
+  /** REQ-CERR-019 (§60.9): client error samples tied to the player (ClientErrorsDO). Optional; null = could not be read. */
+  clientErrors?(uid: string): Promise<DexClientErrorRow[]>;
   store: ExportStore;
   ready(uid: string, requestId: string, info: DexReadyInfo): Promise<unknown>;
   failed(uid: string, requestId: string, reason: string): Promise<unknown>;
@@ -80,6 +82,7 @@ export async function runDataExportJob(p: DataExportJobPorts, uid: string): Prom
       reportsMade: await soft(p.reportsMade ? () => p.reportsMade!(uid) : undefined),
       playerReportsMade: p.playerReportsMade ? await soft(() => p.playerReportsMade!(uid)) : [],
       kpiEvents: await soft(p.kpiEvents ? () => p.kpiEvents!(uid) : undefined),
+      clientErrors: p.clientErrors ? await soft(() => p.clientErrors!(uid)) : [],
     };
     let doc = buildExportDocument(m, s, ext, t.requestId, t.lang, src.now);
     if (t.lang === 'en') {

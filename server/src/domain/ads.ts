@@ -24,6 +24,7 @@ import { moderationOf, type PlayerState } from './player.js';
 import { dayRule, gameDayIndex, gameDayKey, sameGameDay, ageAt, DAY_MS } from './time.js';
 import { grantFree } from './wallet.js';
 import { taState } from './timeAttack.js';
+import { adRequestConfig } from './privacyChoices.js';
 import type { Rng } from './rng.js';
 
 export type AdSurface = 'home' | 'result' | 'time_attack' | 'shop';
@@ -145,6 +146,8 @@ export type AdRejectReason =
 export interface AdSession {
   id: string; placementId: string; createdAt: number; expiresAt: number; status: AdSessionStatus;
   txId?: string; at?: number; reason?: AdRejectReason; reward?: AdRewardDef;
+  /** REQ-CNS-011: 1 = the ad was requested non-personalised (§58). Absent on sessions opened before §58. */
+  npa?: 0 | 1;
 }
 export interface AdsState {
   pref: AdPref;
@@ -210,12 +213,12 @@ export function adRewardLabel(r: AdRewardDef): string {
 }
 
 /**
- * Ad request hints for the native SDK (REQ-AD-009): no personalised ads unless the player is a registered adult
- * (unknown age → non-personalised), and the "under the age of consent" tag for registered players under 16.
+ * Ad request hints for the native SDK (REQ-AD-009, REQ-CNS-010): no personalised ads unless the player is a registered
+ * adult (unknown age → non-personalised) AND chose personalised ads with the OS / CMP allowing it (§58.3); the "under
+ * the age of consent" tag for registered players under 16; `npa` / `extras.npa` for the AdMob request.
  */
-export function adRequestHints(s: PlayerState, now: number) {
-  const age = s.age ? ageAt(s.age.birthYear, s.age.birthMonth, now) : null;
-  return { nonPersonalized: age === null || age < 18, underAgeOfConsent: age !== null && age < 16, ageKnown: age !== null };
+export function adRequestHints(m: Master, s: PlayerState, now: number) {
+  return adRequestConfig(m, s, now);
 }
 
 /** GET /v1/ads: the offer cards, today's counts and why ads are hidden (REQ-AD-003). Read-only (no state written). */
@@ -247,7 +250,7 @@ export function adsView(m: Master, s0: PlayerState, now: number) {
         dailyCap: p.dailyCap, used, left, adUnitKey: p.adUnitKey, available: reason === null && left > 0 && startsLeft > 0,
       };
     }),
-    adRequest: adRequestHints(s, now),
+    adRequest: adRequestHints(m, s, now),
     open: a.sessions.filter((x) => x.status === 'open').map((x) => ({ sessionId: x.id, placementId: x.placementId, expiresAt: x.expiresAt })),
   };
 }
@@ -274,7 +277,9 @@ export function startAd(m: Master, s: PlayerState, placementId: string, rng: Rng
   if (a.sessions.filter((x) => x.status === 'open').length >= c!.maxOpenSessions) throw new AppError('RATE_LIMITED', 'ads: too many open sessions');
   const id = 'ad_' + [rng.nextU32(), rng.nextU32()].map((x) => x.toString(16).padStart(8, '0')).join('');
   a.starts += 1;
-  const sess: AdSession = { id, placementId: p.id, createdAt: now, expiresAt: now + c!.sessionTtlMs, status: 'open' };
+  // REQ-CNS-011: the npa the ad was requested with is kept on the session; it never changes the reward or the caps
+  const adRequest = adRequestHints(m, s, now);
+  const sess: AdSession = { id, placementId: p.id, createdAt: now, expiresAt: now + c!.sessionTtlMs, status: 'open', npa: adRequest.npa as 0 | 1 };
   a.sessions.push(sess);
   if (a.sessions.length > AD_SESSIONS_KEEP) {
     // drop the oldest finished ones first
@@ -284,7 +289,7 @@ export function startAd(m: Master, s: PlayerState, placementId: string, rng: Rng
   }
   return {
     sessionId: id, placementId: p.id, network: c!.network, adUnitKey: p.adUnitKey, customData: id, userId: s.id,
-    expiresAt: sess.expiresAt, rewardLabel: adRewardLabel(p.reward), adRequest: adRequestHints(s, now),
+    expiresAt: sess.expiresAt, rewardLabel: adRewardLabel(p.reward), adRequest,
   };
 }
 
@@ -371,7 +376,7 @@ export function adSessionView(m: Master, s0: PlayerState, sessionId: string, now
   if (!x) throw new AppError('NOT_FOUND', `ad session ${sessionId}`);
   return {
     sessionId: x.id, placementId: x.placementId, status: x.status, expiresAt: x.expiresAt,
-    reward: x.reward ?? null, rewardLabel: x.reward ? adRewardLabel(x.reward) : null, reason: x.reason ?? null,
+    reward: x.reward ?? null, rewardLabel: x.reward ? adRewardLabel(x.reward) : null, reason: x.reason ?? null, npa: x.npa ?? 1,
     wallet: { paid: s.wallet.paid, free: s.wallet.free, total: s.wallet.paid + s.wallet.free, debt: s.wallet.debt },
   };
 }

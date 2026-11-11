@@ -88,6 +88,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.ok(r.timing.perfect + r.timing.good === 5 && r.grade !== 'normal', `every beat hit (${JSON.stringify(r.timing)})`);
     assert.ok(r.total > 0 && r.trainedTotal >= r.total, 'growth applied');
     await shot('training-result', 400);
+    // round 20 (REQ-LNOTIF-010): after the first training, the reminders pre-permission card (inline, not modal) → 今はしない
+    await waitIn('.ln-primer');
+    assert.ok(!(await page.locator('.screen.in .ln-primer').innerText()).includes('ショップ'), 'reminders primer: no shop words');
+    await shot('training-result-reminders-primer', 300);
+    await click('今はしない'); await waitScreen('training-result'); await page.waitForTimeout(600);
+    assert.equal(await page.locator('.screen.in .ln-primer').count(), 0, 'reminders primer: not again right after 今はしない');
+    assert.ok(await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).some((k) => k.name === 'lnotif_permission' && k.result === 'later')), 'reminders primer: KPI later');
     await click('ミッション報酬を受け取る'); await waitScreen('training-result');
     await page.waitForTimeout(400);
     assert.equal(await page.evaluate(() => globalThis.__muchi.state().player.items.training_apple), 1, 'the daily mission gave the apple');
@@ -456,6 +463,35 @@ module.exports = async function unityFlow(browser, base, out, errors) {
 
   // round 16 (REQ-ORG-*): 厩舎の整理 — the stable's list → more demo horses → sort (rating) → filter (active) → lock → select two →
   // the confirmation (every horse, nothing given back, cancel and confirm the same size) → retired, all on the real rules
+  // round 20 (REQ-REV-*): レビュー依頼 — a settled player's first win: the OS review sheet (simulated, native by default), once per
+  // session; the soft pre-question (ops on, iOS): いまいち → the inquiry form (never the store), はい → the OS sheet; no reward
+  async function reviewPromptFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
+    await page.evaluate(() => { globalThis.__muchiReview = []; return globalThis.__muchi.show('ReviewPrompt', 'native'); });
+    await waitScreen('review-native'); await waitIn('.rev-os');
+    assert.match(await page.locator('.screen.in .rev-demo-note').innerText(), /ゲームは結果を受け取りません/, 'review: the demo note');
+    await shot('review-native', 500);
+    await click('今はしない'); await waitScreen('home');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog().filter((k) => k.name === 'review_prompt_shown').length), 1, 'review: native_requested once');
+    await page.evaluate(() => globalThis.__muchi.show('ReviewPrompt', 'soft')); await waitScreen('review-ask'); await waitIn('.rev-soft');
+    const yes = await page.locator('.screen.in .rev-yes').boundingBox(), no = await page.locator('.screen.in .rev-no').boundingBox();
+    assert.ok(Math.abs(yes.width - no.width) < 1 && Math.abs(yes.height - no.height) < 1, 'review: はい and いまいち are the same size');
+    assert.equal(await page.locator('.screen.in .rev-soft .btn.cta').count(), 0, 'review: neither answer is the primary CTA');
+    const text = await page.locator('.screen.in').innerText();
+    for (const w of ['報酬', 'もらえる', 'プレゼント', 'コイン', '★', '倍', '今だけ']) assert.ok(!text.includes(w), 'review: no reward / star / urgency word: ' + w);
+    await shot('review-soft', 500);
+    await click('いまいち'); await waitScreen('inquiry-form'); await waitIn('.inquiry-form[data-category="other"]');
+    await shot('review-soft-inquiry', 500);
+    await page.evaluate(() => globalThis.__muchi.show('ReviewPrompt', 'soft')); await waitScreen('review-ask'); await waitIn('.rev-soft');
+    await click('はい'); await waitScreen('review-native'); await waitIn('.rev-os');
+    await page.locator('.screen.in .rev-star').nth(4).click(); await waitScreen('home');
+    const log = await page.evaluate(() => globalThis.__muchiReview);
+    assert.deepEqual(log.filter((x) => x.step).map((x) => `${x.step}>${x.next}`), ['soft_no>help_inquiry', 'soft_yes>store_review'], 'review: soft answers');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'review: nothing granted');
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+  }
+
   // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
   // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
   async function horseGoalsFlow() {
@@ -772,6 +808,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // nothing built on the request path) → the "alarm" builds it → ready with the expiry date and size → the activity entry →
   // the JSON (own data, paid / free apart, no other players' private data) and the summary downloaded → asking again inside the
   // cooldown is refused with the date
+  // round 20 (REQ-LNOTIF-*): settings › 通知 — the push categories and quiet hours, the device reminders (rows = their category),
+  // no permission → planned only, the demo plan, the OS allowed → scheduled (KPI once per id), reminders on → training / daily
+  // bonus rows on, details off by default, an OS denial → the settings link, the help article, the pre-permission dialog
+  async function notifyFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => { localStorage.removeItem('muchi.lnotif.os'); localStorage.removeItem('muchi.lnotif.scheduled'); globalThis.__muchiLnotifKpi = []; });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+    await page.locator('.screen.in [data-action="notify"]').click(); await waitScreen('notify-settings'); await waitIn('.ln-device');
+    assert.equal(await page.locator('.screen.in .ln-kind').count(), 6, 'notify: six device reminder rows');
+    assert.equal(await page.locator('.screen.in .ln-cat').count(), 7, 'notify: seven push categories (reminders included)');
+    assert.equal(await page.locator('.screen.in .ln-device').getAttribute('data-ln-status'), 'no_permission', 'notify: nothing scheduled before the OS permission');
+    assert.equal(await page.locator('.screen.in .ln-kind[data-ln-kind="daily_bonus"]').getAttribute('data-on'), 'false', 'notify: reminders are off by default');
+    await shot('notify-settings', 400);
+    await page.locator('.screen.in [data-action="ln-demo"]').click(); await waitScreen('notify-settings'); await waitIn('.ln-next');
+    await page.locator('.screen.in [data-ln-os-demo="granted"]').click(); await waitIn('.ln-device[data-ln-status="ok"]');
+    const kpi1 = await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).filter((k) => k.name === 'lnotif_scheduled').length);
+    assert.ok(kpi1 >= 1, 'notify: lnotif_scheduled once the OS allows');
+    await page.locator('.screen.in .ln-cat[data-ln-cat="reminders"] [data-ln-choice="true"]').click(); await waitIn('.ln-kind[data-ln-kind="daily_bonus"][data-on="true"]');
+    assert.equal(await page.locator('.screen.in .ln-kind[data-ln-kind="training_session"]').getAttribute('data-on'), 'true');
+    const text = await page.locator('.screen.in').innerText();
+    assert.ok(!/ショップ|今だけ|残りわずか|お得/.test(text), 'notify: no shop or urgency words');
+    await shot('notify-settings-reminders', 400);
+    // the same plan again: nothing new is reported
+    const kpi2 = await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).filter((k) => k.name === 'lnotif_scheduled').length);
+    await page.evaluate(() => globalThis.__muchi.show('NotifySettings')); await waitScreen('notify-settings'); await waitIn('.ln-device'); await page.waitForTimeout(300);
+    assert.equal(await page.evaluate(() => (globalThis.__muchiLnotifKpi ?? []).filter((k) => k.name === 'lnotif_scheduled').length), kpi2, 'notify: an unchanged plan reports nothing new');
+    await page.locator('.screen.in [data-ln-os-demo="denied"]').click(); await waitIn('[data-action="ln-os-settings"]');
+    assert.equal(await page.locator('.screen.in .ln-device').getAttribute('data-ln-status'), 'no_permission');
+    await shot('notify-settings-denied', 300);
+    await page.locator('.screen.in [data-help-context="notifications"]').click(); await waitScreen('help-article');
+    assert.match(await page.locator('.screen.in').innerText(), /端末のお知らせ（リマインダー）/, 'notify: the help article');
+    await page.evaluate(() => globalThis.__muchi.show('LnotifPrePrompt')); await waitScreen('ln-primer'); await waitIn('.ln-primer');
+    await shot('reminders-primer', 300);
+    await page.evaluate(async () => { localStorage.removeItem('muchi.lnotif.os'); await globalThis.__muchi.logic.localNotify.setCategory('reminders', false); });
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
   async function privacyFlow() {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
@@ -806,6 +879,56 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     const again = await page.evaluate(async () => { await globalThis.__muchi.logic.dataExport.view(); return globalThis.__muchi.logic.dataExport.request('ja'); });
     assert.ok(again.ok && again.value.created === false, 'privacy: asking again while ready returns the same export');
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 20 (REQ-CNS-*): プライバシー › 広告と分析 — the privacy screen's link → the two switches with their reasons, the device's
+  // ATT status, the policy version → analytics off (optional client events withheld by the server, essential ones still written)
+  // → a new privacy policy version asks again on the next home → 「あとで」 → home
+  async function consentFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => globalThis.__muchi.show('Privacy')); await waitScreen('privacy');
+    await page.locator('.screen.in [data-action="privacy-choices"]').click(); await waitScreen('privacy-choices'); await waitIn('[data-cns-row="analytics"]');
+    assert.equal(await page.locator('.screen.in .cns-version').innerText(), await page.evaluate(() => globalThis.__muchi.logic.consentVersions.privacyVersion), 'privacy choices: the policy version');
+    assert.match(await page.locator('.screen.in [data-cns-row="personalized_ads"]').innerText(), /年齢が未登録|トラッキングが許可されていません/, 'privacy choices: why personalised ads do not apply');
+    await shot('privacy-choices', 300);
+    await page.locator('.screen.in [data-cns-row="analytics"] [data-cns-choice="false"]').click();
+    await page.waitForFunction(() => document.querySelector('.screen.in [data-cns-row="analytics"] [data-cns-choice="false"].on'), null, { timeout: 10000 });
+    const r = await page.evaluate(async () => {
+      const L = globalThis.__muchi.logic;
+      const v = await L.privacy.view();
+      // a client batch while analytics is off: accepted (rate limit) but withheld by the server
+      const k = await L.kpi([{ name: 'screen_view', at: L.now(), props: { screen: 'privacy_choices' } }]);
+      return { analytics: v.analytics.effective, optional: v.kpi.optional, withheld: k.ok ? k.value.withheld : -1 };
+    });
+    assert.equal(r.analytics, false); assert.equal(r.optional, false);
+    assert.equal(r.withheld, 1, 'analytics off: the optional client event is withheld by the server');
+    const kpi = (await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog())).filter((k) => k.name === 'consent_change').map((k) => `${k.s1}:${k.s2}:${k.s3}`);
+    assert.ok(kpi.includes('analytics:off:settings'), 'consent_change analytics off (essential, still written): ' + kpi.join(' '));
+    await shot('privacy-choices-analytics-off', 200);
+    // a new privacy policy version → asked again on the next home; 「あとで」 keeps the earlier choices
+    await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy('2027-01-01'));
+    // R20 integration (§58.11): another prompt already showed this session (the reminders card after the first training) →
+    // the home stays the home; the sheet waits for the next launch
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest?.('notifications'); });
+    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) === 'notifications') {
+      await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
+      assert.equal(await page.locator('.screen.in').getAttribute('data-screen'), 'home', 'no consent sheet in a session that showed the reminders card');
+    }
+    await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('consent-prompt');
+    assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'next_home');
+    await shot('consent-prompt-policy-update', 250);
+    await page.locator('.screen.in [data-cns="later"]').click(); await waitScreen('home');
+    // R20 integration (§58.11): the consent sheet claimed this session — no review and no second consent sheet until a new session
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'consent', 'the consent sheet claims the session');
+    await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.review('first_win')), 'skipped', 'no review right after the consent sheet');
+    assert.equal((await page.evaluate(() => globalThis.__muchiReview)).at(-1).skipped, 'session_prompt');
+    await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
+    const after = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
+    assert.equal(after.prompt, null, 'later: not again for this version');
+    assert.equal(after.analytics.effective, false, 'the earlier choice keeps applying');
+    await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy(globalThis.__muchi.logic.consentVersions.privacyVersion));
   }
 
   // round 16 (REQ-RECAP-*): シーズンの振り返り — the stable's entry → the list (short / full / year) → a full recap stepped through
@@ -1047,7 +1170,19 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('ad-offer-home', 200);
   const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
   const paid0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.paid);
-  await click('動画を見る'); await waitScreen('ad-player'); await shot('ad-player-simulated', 300);
+  // round 20 (REQ-CNS-007): the first 「動画を見る」 brings the pre-prompt (why, refusing costs nothing) → the simulated ATT dialog
+  await click('動画を見る'); await waitScreen('consent-prompt');
+  assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'ad_offer');
+  const cnsText = await page.locator('.screen.in').innerText();
+  assert.match(cnsText, /許可しなくても、受け取れる無償コインや遊べる内容は変わりません/, 'pre-prompt: refusing changes nothing');
+  assert.ok(!/倍|お得|今だけ|残りわずか/.test(cnsText), 'pre-prompt: no pressure words');
+  await shot('consent-prompt', 300);
+  await page.locator('.screen.in [data-cns="continue"]').click(); await waitScreen('att-dialog'); await shot('att-dialog-simulated', 250);
+  await page.locator('.screen.in [data-att="denied"]').click(); await waitScreen('ad-player'); await shot('ad-player-simulated', 300);
+  const cns = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
+  assert.equal(cns.required, false, 'pre-prompt: decided under the current policy version');
+  assert.equal(cns.personalizedAds.effective, false, 'ATT denied → non-personalised');
+  assert.equal(cns.adRequest.npa, 1, 'the ad request carries npa=1');
   await waitScreen('ad-watched', 30000);
   assert.equal(await page.evaluate(() => globalThis.__muchi.lastAd), 'rewarded');
   await shot('ad-watched', 300);
@@ -1118,12 +1253,15 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await silksFlow();
   await myReplaysFlow();
   await horseGoalsFlow();
+  await reviewPromptFlow();
   await rosterFlow();
   await recapFlow();
   await cupsFlow();
   await practiceFlow(); // round 18: 練習レース
   await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await cheerFlow();
+  await consentFlow(); // round 20: プライバシー › 広告と分析
+  await notifyFlow(); // round 20: 通知 (push + device reminders)
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
@@ -1531,6 +1669,40 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .act-row.unread').count(), 0, 'read rows on the next visit');
   await page.locator('.screen.in [data-act="gift_arrived"] [data-act-go]').click(); await waitScreen('gift-box', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name === 'activity_tap').length)) >= 1, 'activity_tap sent');
+  // ------------------------------------------------------------------ round 20: クライアントのエラー報告 (REQ-CERR-*)
+  // the page's window.onerror feeds the WASM ErrorReporter (ClientErrorModel): the demo's report is queued scrubbed; a test
+  // error with a player name collapses / scrubs; the send goes through the server's ingest (one batch, an id, attachPlayer
+  // follows the consent stand-in) and the ops view lists the fingerprints; a resend of the same batch is a duplicate
+  await page.evaluate(() => globalThis.__muchi.demo('errors')); await waitScreen('diagnostics', 60000); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ce-row').count(), 1, 'the demo error is queued on the device');
+  assert.equal(await page.locator('.screen.in .ce-row').first().getAttribute('data-category'), 'exception');
+  assert.match(await page.locator('.screen.in .ce-row').first().innerText(), /RangeError: Invalid array length <n> at index #/, 'scrubbed and shaped like the fingerprint');
+  await page.locator('.screen.in [data-action="ce-test"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="ce-test"]').click(); await page.waitForTimeout(400);
+  const ceRows = await page.locator('.screen.in .ce-row').allInnerTexts();
+  assert.equal(ceRows.length, 2, 'the same error twice is one row');
+  assert.ok(ceRows.some((t) => /×2/.test(t) && /TypeError/.test(t)), 'with a count of 2');
+  assert.ok(!ceRows.join(' ').includes('ハヤテ'), 'the player name never reaches the queue');
+  await shot('diagnostics', 300);
+  await page.locator('.screen.in [data-ce-consent="off"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-action="ce-send"]').click(); await page.waitForTimeout(1200);
+  assert.equal(await page.locator('.screen.in .ce-row').count(), 0, 'sent: nothing left on the device');
+  const ceBatches = await page.evaluate(() => globalThis.__muchiCeBatches);
+  assert.equal(ceBatches.length, 1, 'one batch');
+  assert.match(ceBatches[0].batchId, /^b_[0-9a-f]{16}$/);
+  assert.equal(ceBatches[0].attachPlayer, false, 'consent off → no player id');
+  assert.ok(!JSON.stringify(ceBatches[0]).includes('ハヤテ'), 'no player name leaves the device');
+  assert.equal(await page.locator('.screen.in .ce-ops').getAttribute('data-groups'), '2', 'the ops view lists both fingerprints');
+  const ceDup = await page.evaluate((b) => globalThis.__muchi.logic.clientErrors.ingest(JSON.stringify(b), true).body, ceBatches[0]);
+  assert.equal(ceDup.duplicate, true, 'the same batch id again adds nothing');
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.clientErrors.samplesOf('local'))).length, 0, 'no sample carries the player id');
+  // R20 integration (§58.10): the switch was the §58 analytics choice — it is off on the server now; put it back on
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.privacy.view())).analytics.value, false, 'the diagnostics switch is 分析への協力');
+  await page.locator('.screen.in [data-ce-consent="on"]').click(); await page.waitForTimeout(400);
+  assert.equal((await page.evaluate(() => globalThis.__muchi.logic.privacy.view())).analytics.effective, true);
+  await shot('diagnostics-sent', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Privacy')); await waitScreen('privacy'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="diagnostics"]').count(), 1, 'プライバシー links to the diagnostics screen');
   // ------------------------------------------------------------------ 6. round 17: 通報とブロック (REQ-RPT-*)
   // two blocked players (one deleted since → 「プレイヤー」) and support's request in the activity list; the block screen
   // (what a block does per feature), unblock only after the confirmation, the settings row, and the report sheet from a
@@ -1549,6 +1721,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .bl-row[data-player="demo_bl_2"]').count(), 0, 'unblocked');
   assert.equal(await page.locator('.screen.in .bl-list').getAttribute('data-count'), '2');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  // R20 integration: 通報とブロック is on その他's 見た目・お世話・仲間 page (通知 joined the 設定・サポート page)
+  await page.locator('.screen.in [data-more-tab="looks"]').click(); await waitScreen('settings'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in .btn[data-action="blocks"]').count(), 1, 'その他 has the 通報とブロック row');
   await page.locator('.screen.in .btn[data-action="blocks"]').click(); await waitScreen('blocks');
   await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
@@ -2088,8 +2262,14 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .trf-confirm').count(), 1, 'this device has progress: confirm first');
   assert.match(await page.locator('.screen.in .trf-confirm-line').innerText(), /この端末のデータ（.+）は、引き継ぎの後に使えなくなります。/);
   await shot('transfer-confirm', 300);
+  // R20 integration (§58.11 / §54 × §59–§61): a prompt claimed the session and reminders were planned before the redeem
+  await page.evaluate(() => { localStorage.setItem('muchi.lnotif.scheduled', JSON.stringify({ ids: { 'lnotif.daily_bonus.x': '1|a|b' } })); });
+  const changesBefore = await page.evaluate(() => globalThis.__muchiAccountChanges ?? 0);
   await page.locator('.screen.in .trf-confirm-yes').click(); await page.waitForTimeout(1200);
   assert.equal(await page.locator('.screen.in .trf-done').count(), 1);
+  assert.equal(await page.evaluate(() => globalThis.__muchiAccountChanges), changesBefore + 1, 'a redeemed code resets the device state once');
+  assert.deepEqual(await page.evaluate(() => JSON.parse(localStorage.getItem('muchi.lnotif.scheduled')).ids), {}, 'the old account\'s device reminders are forgotten');
+  assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), null, 'a new session: any prompt may show again');
   assert.match(await page.locator('.screen.in .trf-done').innerText(), /ハヤテ/);
   assert.ok(typeof (await page.evaluate(() => globalThis.__muchi.logic.transfer.oldDeviceCutoff())) === 'number', 'the previous phone is cut off');
   assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.transfer.kpi().filter((k) => k.name === 'transfer_redeem').map((k) => k.s1 + ':' + (k.s2 ?? ''))), ['fail:invalid', 'ok:'], 'KPI: outcome and reason category only');

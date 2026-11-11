@@ -236,12 +236,16 @@ export interface PlayerState {
   cups?: import('./hostedCups.js').PlayerCupsState;
   /** REQ-HGOAL-*: 馬ごとの目標 — goal completion times per horse and the horse pinned to the home (horseGoals.ts ensureHorseGoals). */
   horseGoals?: import('./horseGoals.js').HorseGoalsState;
+  /** REQ-REV-*: レビュー依頼 — when the store review was asked, the pre-question answer, the last session (reviewPrompt.ts). Nothing is ever granted. */
+  reviewPrompt?: import('./reviewPrompt.js').ReviewPromptState;
   /** REQ-DEX-*: 個人データの開示・ダウンロード — the current request, cooldown start, audit log, R2 keys still to delete (dataExport.ts). */
   dataExport?: import('./dataExport.js').DataExportState;
   /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
   tips?: import('./tips.js').TipsState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
+  /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
+  privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

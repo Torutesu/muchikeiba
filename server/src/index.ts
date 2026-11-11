@@ -28,6 +28,7 @@ export { LeaderboardDO } from './do/leaderboard.js';
 export { DirectoryDO } from './do/directory.js';
 export { OpsDO } from './do/ops.js';
 export { IntegrityDO } from './do/integrity.js';
+export { ClientErrorsDO } from './do/clientErrors.js';
 export { TeamDO, TeamDirectoryDO } from './do/team.js';
 export { EventDO } from './do/event.js';
 export { TournamentDO } from './do/tournament.js';
@@ -52,7 +53,7 @@ import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
 import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
-import type { OpsApi } from './http/admin.js';
+import type { ClientErrorsApi, OpsApi } from './http/admin.js';
 import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
@@ -342,6 +343,16 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       release: (pid, reason, by, now) => call(integ().release!(pid, reason, by, now)),
     },
     deadLetters: makeDeadLetters(env),
+    // REQ-CERR-*: client error reports in their own singleton (ClientErrorsDO, wrangler migration v7)
+    ...(env.CLIENT_ERRORS ? {
+      clientErrors: {
+        ingest: (b, who, now, cfg) => call(stub(env.CLIENT_ERRORS!, 'global').ceIngest!(b, who, now, cfg)),
+        list: (q, now, cfg) => call(stub(env.CLIENT_ERRORS!, 'global').ceList!(q, now, cfg)),
+        get: (fp, now) => call(stub(env.CLIENT_ERRORS!, 'global').ceGet!(fp, now)),
+        madeBy: (pid) => call(stub(env.CLIENT_ERRORS!, 'global').ceMadeBy!(pid)),
+        forget: (pid) => call(stub(env.CLIENT_ERRORS!, 'global').ceForget!(pid)),
+      } satisfies ClientErrorsApi,
+    } : {}),
     // REQ-HELP-016: the inquiry index (OpsDO)
     inquiries: {
       upsert: (items) => call(ops().inqUpsert!(items)),

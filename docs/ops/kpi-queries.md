@@ -90,6 +90,7 @@
 | `commentary_pack_buy` | サーバー（実況パックをコインで買った） | パック | 通貨 `any`/`paidOnly` | | `double2` 有償コイン、`double3` 無償コイン、`double9` 値段 |
 | `commentary_pack_sample` | クライアント（試聴を始めた） | パック | `owned`/`not_owned` | | |
 | `consent` | サーバー | 規約の版 | プライバシーポリシーの版 | | |
+| `consent_change` | サーバー（広告・分析の同意が変わった項目ごとに1行、必須のイベント、REQ-CNS-014） | `personalized_ads`／`analytics`／`att`／`cmp` | 新しい値 | `prompt`／`settings`／`platform` | |
 | `partner_granted` | サーバー | テンプレートID（`t_partner`） | | | |
 | `ab_assign` | サーバー（初回の bootstrap、実験ごとに1回） | 実験ID | バケットID | | |
 | `account_delete` | サーバー | `requested`/`cancelled`/`deleted` | | | `deleted` は `double2`/`double3` 放棄したコイン |
@@ -1344,3 +1345,76 @@ GROUP BY screen, tip ORDER BY opens DESC
 ```
 
 - `tip_view` の入口が `context` のカードの後に同じ日の `help_article_view`（`source = link`）が多いなら、カードが短すぎる。
+
+## 広告・分析の同意：選択の変化（REQ-CNS-014、Round 20、contracts/protocol.md §58）
+列：`consent_change`（サーバー、**必須**のイベント＝分析がオフの人でも書く）`blob8` = 項目（`personalized_ads`／`analytics`／`att`／`cmp`）、`blob9` = 新しい値（`on`／`off`、ATT は `not_determined`／`restricted`／`denied`／`authorized`／`unavailable`、CMP は `not_required`／`required`／`obtained`／`unknown`）、`blob10` = 入口（`prompt` 事前の画面／`settings` 設定／`platform` 端末の報告）。
+
+**注意（§58.7）**：分析がオフのプレイヤーの任意のイベント（セッション・画面・レースの結果など、`server/src/domain/kpiConsent.ts` の `optional`）はこの表に**書かれない**。継続率・ファネルのクエリは「分析に協力している人」の数字になる（偏りの目安として下のオフの割合を一緒に見る）。購入・返金・ガチャ・広告の報酬・同意・削除・開示・通報は `essential` で全員の分が残る。
+
+**事前の画面の結果と ATT の許可率**（週ごと）：
+
+```sql
+SELECT
+  toStartOfWeek(timestamp) AS week,
+  sumIf(_sample_interval, blob8 = 'analytics' AND blob9 = 'off') AS analytics_off,
+  sumIf(_sample_interval, blob8 = 'analytics' AND blob9 = 'on') AS analytics_on,
+  sumIf(_sample_interval, blob8 = 'personalized_ads' AND blob9 = 'on') AS personalized_on,
+  sumIf(_sample_interval, blob8 = 'att' AND blob9 = 'authorized') AS att_authorized,
+  sumIf(_sample_interval, blob8 = 'att' AND blob9 IN ('denied', 'restricted')) AS att_denied,
+  round(sumIf(_sample_interval, blob8 = 'att' AND blob9 = 'authorized') / sumIf(_sample_interval, blob8 = 'att' AND blob9 IN ('authorized', 'denied', 'restricted')), 3) AS att_rate
+FROM muchi_kpi
+WHERE blob1 = 'consent_change' AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week
+ORDER BY week DESC
+```
+
+## レビュー依頼：頼めた・OS の API を呼んだ・前置きの答え（REQ-REV-012、Round 20、contracts/protocol.md §59）
+列（すべてサーバー）：`review_prompt_eligible`（check が頼むと決めた時に1回）`blob8` = 瞬間（`first_win`・`first_tournament_win`・`hall_induction`・`horse_goal_chain`）、`blob9` = platform（`ios`・`android`・`editor`）、`blob10` = `native`／`soft`。`review_prompt_shown`（端末が OS の API を呼んだ時に1回）`blob8` = 瞬間、`blob9` = platform、`blob10` = style。`review_soft_answer`（前置きの答え、1回）`blob8` = `yes`／`not_really`／`dismissed`、`blob9` = 瞬間、`blob10` = platform。星の数・レビューの本文は取れない（OS が返さない）。
+
+**瞬間ごとに頼めた数と OS の API を呼んだ数**（週ごと。`shown / eligible` が低ければ端末が落ちている・OS の上限に当たっている）：
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS moment, blob9 AS platform,
+  sumIf(_sample_interval, blob1 = 'review_prompt_eligible') AS eligible,
+  sumIf(_sample_interval, blob1 = 'review_prompt_shown') AS shown
+FROM muchi_kpi
+WHERE blob1 IN ('review_prompt_eligible', 'review_prompt_shown') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, moment, platform
+ORDER BY week DESC, eligible DESC
+```
+
+**前置きの答え**（前置きを ON にした時だけ。`not_really` はお問い合わせの「その他」と合わせて読む）：
+
+```sql
+SELECT blob8 AS answer, blob9 AS moment, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'review_soft_answer' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY answer, moment
+ORDER BY n DESC
+```
+
+## 端末のローカル通知：予約・開いた・許可（REQ-LNOTIF-013、Round 20、contracts/protocol.md §61）
+列：`lnotif_scheduled`（クライアント、その出来事の id を新しく予約した時だけ。時刻・文言の付け替えでは送らない）`blob8` = 種類（`training_session`・`daily_bonus`・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`）。`lnotif_opened`（クライアント、通知から開いた時）`blob8` = 種類。`lnotif_permission`（クライアント、前置きの答え）`blob8` = `granted`／`provisional`／`denied`／`later`（前置きで「今はしない」）。予定の時刻・文言・馬の名前は送らない。
+
+**種類ごとの開封率**（週ごと）：予約した数に対して開いた数。低い種類（例：ライバルの週の締め）は `leadHours`・`kinds`（リモート設定 `progression.localNotifications`）で弱める・外す。1日の上限（`dailyCap`）を上げる前に、ここで余計な通知になっていないかを見る。
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS kind,
+  sumIf(_sample_interval, blob1 = 'lnotif_scheduled') AS scheduled,
+  sumIf(_sample_interval, blob1 = 'lnotif_opened') AS opened,
+  round(sumIf(_sample_interval, blob1 = 'lnotif_opened') / greatest(1, sumIf(_sample_interval, blob1 = 'lnotif_scheduled')), 3) AS open_rate
+FROM muchi_kpi
+WHERE blob1 IN ('lnotif_scheduled', 'lnotif_opened') AND timestamp > NOW() - INTERVAL '56' DAY
+GROUP BY week, kind
+ORDER BY week DESC, scheduled DESC
+```
+
+**前置きの答え**：OS の許可・仮の許可・拒否・あとで。拒否が多ければ前置きの時期（最初の調教の後）か文言を見直す。
+
+```sql
+SELECT blob8 AS result, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'lnotif_permission' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY result
+ORDER BY n DESC
+```

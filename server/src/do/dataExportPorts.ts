@@ -2,7 +2,7 @@ import type { Env } from '../env.js';
 import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
 import type { DataExportJobPorts, ExportStore } from '../domain/dataExportService.js';
-import type { PlayerReportMade } from '../domain/dataExport.js';
+import type { DexClientErrorRow, PlayerReportMade } from '../domain/dataExport.js';
 import { shardedDirectory } from './directory.js';
 import { unwrap, type Envelope } from './rpc.js';
 import { kpiEventSourceFromEnv } from '../push/kpiExport.js';
@@ -39,6 +39,13 @@ export function dataExportPortsFromEnv(env: Env, svc: PlayerService, master: () 
       },
     } : {}),
     ...(kpiEvents ? { kpiEvents } : {}),
+    // §60.9 (REQ-CERR-019): client error samples tied to the player
+    ...(env.CLIENT_ERRORS ? {
+      clientErrors: async (uid: string) => {
+        const s = env.CLIENT_ERRORS!.get(env.CLIENT_ERRORS!.idFromName('global')) as unknown as { ceMadeBy(u: string): Promise<Envelope<DexClientErrorRow[]>> };
+        return unwrap(await s.ceMadeBy(uid));
+      },
+    } : {}),
     store,
     ready: (uid, rid, info) => svc.dataExportReady(uid, rid, info),
     failed: (uid, rid, reason) => svc.dataExportFailed(uid, rid, reason),

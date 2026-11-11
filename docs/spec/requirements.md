@@ -1240,3 +1240,92 @@
 - REQ-TUT-016 ゲート：`/v1/tips*` はグループ `core`（`all` のメンテナンスだけが閉じる）。
 - REQ-TUT-017 クライアント：C# `ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、Unity `TipsModel`（一覧・NEW・見た印のまとめ送り・オフラインの貯め置き・「？」・ツアー）と `TutorialReplayModel`（レッスンのレース・オンボーディングに触れない・KPI）。
 - REQ-TUT-018 プロトタイプ：設定の「ヒント」・カード・ツアー・4つの画面の「？」・ムチ一閃の調子で本物の WASM エンジンを使ったレースのレッスン。日本語と英語、文字の大きさの設定に合わせる。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+
+## 58. 広告・分析の同意管理（ad tracking & analytics consent、TS＋C#、`src/domain/privacyChoices.ts`・`src/domain/kpiConsent.ts`・`Muchi.Client/Consent.cs`・`Muchi.Game.ConsentModel`、`contracts/protocol.md` §58）
+拘束条件：規約・プライバシーポリシーの同意（REQ-UXS-001）とは別。断っても報酬・機能は減らない。FTUE 中に事前の画面・ATT を出さない。本物の ATT・UMP の呼び出しは Codex（インターフェースの後ろ）。コイン・アイテムは動かない（E 番号なし）。メンテナンス・強制アップデートで閉じない。
+- REQ-CNS-001 状態 `privacyChoices`（PlayerState のトップレベル）：選んだ値（未選択は null）・選んだ時のポリシーの版と時刻・`rev`・事前の画面を出した時刻と版・端末の状態（OS・ATT・`gdprApplies`・CMP）・履歴（50件）。§51 の分類は `account`。
+- REQ-CNS-002 API：`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、`GET /v1/player`・ブートストラップの `privacyChoices`。
+- REQ-CNS-003 既定：パーソナライズ広告はオフ（オプトイン）。分析はオン、ただし子ども・`gdprApplies` はオフ。
+- REQ-CNS-004 効いている値と `locked`（`minor`・`under18`・`age_unknown`・`att`・`cmp`）：protocol §58.3 の表のとおり。読む時に毎回計算する（年齢の登録・ATT の変更がすぐ効く）。
+- REQ-CNS-005 PUT：`privacyVersion` は今の版（違えば `409 CONSENT_VERSION_MISMATCH`）、送らない項目は効いている値で確定、同じ内容は何も変えない（冪等）、余分な項目は `400`、`deleting` は `DELETION_PENDING`。
+- REQ-CNS-006 子ども：13歳未満、または EEA で16歳未満（既存の年齢と `ageBand` の数え方）。パーソナライズ広告は常にオフ、分析は既定でオフで保護者の同意がある時だけオン（無ければ `403 NOT_ELIGIBLE`）。
+- REQ-CNS-007 事前の画面の時：FTUE 中（§21 の `minRankedRaces`・`minGameDay` を満たす前）は出さない。初めては最初のリワード広告のカードの直前（`ad_offer`、広告が出ない人は `next_home`）。同じ版で1回だけ。
+- REQ-CNS-008 再確認：プライバシーポリシーの版が上がったら `required: true`・`prompt: "next_home"`。選んでいた値はそのまま効く。
+- REQ-CNS-009 端末の状態：`PUT /v1/privacy/platform` は ATT・UMP の結果を記録（変わった項目ごとに KPI）。ATT が `authorized` でない iOS・CMP の同意が無い EEA はパーソナライズ広告が効かない。
+- REQ-CNS-010 広告のリクエスト：§21 の `adRequest` は効いている値から作る（`npa`・`extras.npa`・`tagForChildDirected`）。REQ-AD-009 の判定は残す（強い方）。
+- REQ-CNS-011 SSV：セッションに `npa` を記録し、`npa` で報酬・上限・弾く理由を変えない（非パーソナライズでも同じ報酬）。
+- REQ-CNS-012 KPI の分類：すべてのイベント名を `essential`／`optional` に分類（`KPI_EVENT_CLASS`）。分類の無い名前は `optional`。テストがコードのイベント名を全部集めて確かめる。
+- REQ-CNS-013 サーバーで強制：分析が効いていない人の `optional` のイベントはサーバーのイベントもクライアントのバッチも書かない（`withheld` で数を返す）。`essential`（購入・返金・有償コインの使用・広告の報酬・同意・削除・開示・通報・問い合わせ）はいつも書く。
+- REQ-CNS-014 KPI `consent_change`（essential）：`s1` 項目・`s2` 値・`s3` 入口、変わった項目ごとに1行。クエリは `docs/ops/kpi-queries.md`。
+- REQ-CNS-015 ゲートの群：§46 の `EXEMPT_ROUTES` に入れる（規約の同意と同じく閉じない）。
+- REQ-CNS-016 ヘルプ：記事 `ads_analytics_privacy`（カテゴリ `account`、文脈 `privacy_choices`、画面 `privacy_choices`）。日本語・英語。
+- REQ-CNS-017 クライアント：`Muchi.Client` の `ConsentState`・`IConsentPlatform`・`AdRequestConfig`・`ApiClient` の各メソッド・`AnalyticsClient.Gate`。Unity のゲーム層 `ConsentModel`（`IAdConsent` を実装）。ネイティブは `docs/handoff-codex-round20-consent.md`。
+- REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
+- REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
+- REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
+- REQ-CNS-021 R20 統合：お願いの画面（§58 の事前の画面・§61 の通知の前置き・§59 のレビュー依頼）は1セッションに1つ、重なる時は 同意 → 通知 → レビュー の順（`SessionPromptGate`、プロトタイプ `sessionPrompt`、テスト）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッションとこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
+
+## 59. レビュー依頼のタイミング（in-app store review prompt、TS＋C#、`src/domain/reviewPrompt.ts`・`progression.reviewPrompt`・`Muchi.Client/ReviewPrompt.cs`・`Muchi.Game.ReviewPromptModel`、`contracts/protocol.md` §59、docs/planning/03「レビュー依頼」）
+拘束条件：レビューには何も配らない（Apple 5.6.1・Google Play のポリシー。E 番号なし）。OS の標準のアプリ内レビュー API だけを使い、独自の★の画面を作らない。負け・購入・エラー・返金・メンテナンスのお知らせの直後と FTUE の途中には頼まない。1セッションに1回まで。
+- REQ-REV-001 うれしい瞬間：`first_win`・`first_tournament_win`・`hall_induction`・`horse_goal_chain`。規則の `moments` に無いものは頼まない。端末は結果・表彰・式の画面を閉じた後に1回だけ聞く。
+- REQ-REV-002 規則 `progression.reviewPrompt`：`enabled`・`moments`・`minDaysSinceInstall`（0〜365）・`minRacesPlayed`（0〜1000）・`maxPerYear`（1〜3）・`coolDownDays`（30〜365）・`quietMinutes`（5つ全部、0〜525600）・`softAsk { ios, android }`。知らないキー（報酬の項目を含む）は落ちる。起動時と各リモート設定の版で検証。
+- REQ-REV-003 判断：`decideReviewPrompt(rules, summary)` は純粋な関数。理由の順は §59.3 の表のとおり。TS と C# `ReviewPromptPolicy.Decide` は共有ベクター `contracts/review-prompt.vectors.json` で同じ。
+- REQ-REV-004 サーバーの要約：インストール日（`createdAt`）・戦績のレース数・削除の予約・無料10連の有無（FTUE）・最後の購入・返金（台帳の `refund`／`debt`）とコインの借り・メンテナンスのお知らせ（§46 `visibleWindows`）・頼んだ記録・最後のセッション。端末の言うことと合わせ、FTUE はどちらかが途中なら途中。
+- REQ-REV-005 check：`POST /v1/review-prompt/check`（冪等キー必須）。頼む時だけ記録（最新10件・400日）と `review_prompt_eligible`。頼んだ時点で回数に数える。頼まない時は状態を変えない。
+- REQ-REV-006 回数：直近365日に `maxPerYear` 回まで、前回から `coolDownDays` 日あける、同じ `sessionId` では2回目を頼まない。記録はサーバーにあるので入れ直しても数え直さない。
+- REQ-REV-007 answer：`POST /v1/review-prompt/:promptId/answer`。前置きの答えは1回（同じ答えは冪等、違う答えは 409）。`native_requested` は native か soft_yes の後だけ、1回だけ `review_prompt_shown`。いまいち → お問い合わせ（§48 `other`）、ストアには送らない。
+- REQ-REV-008 前置きの質問：既定 OFF。`softAsk.android: true` は検証で落ちる（Google Play の In-App Review のガイドライン）。iOS は運用で入れられるが、法務・ストアの確認の後（docs/planning/03）。
+- REQ-REV-009 報酬なし：check・answer・規則のどこにも報酬の経路が無い（ウォレット・アイテム・ミッション・XP が変わらないことをテスト、規則に報酬のキーを書くと落ちる）。OS からレビューの有無・点数を受け取らない。
+- REQ-REV-010 端末 `IStoreReview`：標準 API を呼ぶだけ（結果は「呼んだ」だけ）。`Available` が false なら check を呼ばない。オフラインでは頼まない。
+- REQ-REV-011 状態 `reviewPrompt`：§51 の分類は `analytics`。アカウント削除の `wipe` で消える。
+- REQ-REV-012 KPI（サーバー）：`review_prompt_eligible`（moment・platform・style）、`review_prompt_shown`（moment・platform・style）、`review_soft_answer`（yes／not_really／dismissed・moment・platform）。
+- REQ-REV-013 メンテナンスの区分：3つの経路は `core`。
+- REQ-REV-014 クライアント：`Muchi.Client` の `ReviewPromptPolicy`・`IStoreReview`・`ApiClient` の3メソッド。Unity のゲーム層 `ReviewPromptModel`（セッションの旗・負け／エラー／お知らせの時刻・瞬間 → check → 前置き or 標準 API → answer）。描画は `docs/handoff-codex-round20-review-prompt.md`。
+- REQ-REV-015 文言：前置きの文言に英語（`ui-en.json`・`proto-en.json`）。煽り・点数の誘導・報酬を約束する言葉なし。2つのボタンは同じ強さ。
+- REQ-REV-016 プロトタイプ：前置きのシート（ムチ一閃の見た目）と標準のレビューのシミュレーション（デモの状態）、日本語・英語、文字の大きさ（§41）。e2e・en-flow・a11y-flow。
+
+## 60. クライアントのエラー報告（TS＋C#、`src/domain/clientErrors.ts`・`src/ops/clientErrors.ts`・`src/do/clientErrors.ts`・`Muchi.Client/ClientErrors.cs`・`Muchi.Game.ClientErrorModel`、`contracts/protocol.md` §60）
+拘束条件：外部の SDK を使わない。個人情報（メール・トークン・プレイヤー名・自由な文・入力の列）を保存しない。プレイヤーの状態に何も足さない。コイン・アイテム・ランク戦は動かない。保存は上限と保存期間つき。
+- REQ-CERR-001 設定 `progression.clientErrors`（§60.10）：起動時とリモート設定の各版で検査。抽出率は種類ごとに 0〜1000‰、ズレ（`desync`）は 1000 のみ。知らないキーは問題。
+- REQ-CERR-002 種類は `exception`・`api`・`desync`・`asset`・`stall` の5つ。種類ごとに決まったキーだけ受け付け（strict）、ズレに入力・チェックサムのキーがあれば 400。
+- REQ-CERR-003 `POST /v1/client-errors`：認証は任意（無効なトークンは匿名として扱い 401 にしない）。応答に次の抽出率と送る間隔。
+- REQ-CERR-004 メンテナンス・アップデート必須の門で閉じない（`EXEMPT_ROUTES`）。
+- REQ-CERR-005 何度送っても同じ：`installId`+`batchId` を 48 時間覚え、2回目は何も足さず `duplicate: true`。
+- REQ-CERR-006 大きさの上限（本文 `maxBodyBytes` → 413、項目 `maxItems`、文字列の長さ）。
+- REQ-CERR-007 回数の制限：プレイヤーごと・端末ごと（1時間の束の数）、匿名の束は全体で1分ごと。超えたら 429 `RATE_LIMITED`。`enabled: false` なら保存せず `enabled: false` を返す。
+- REQ-CERR-008 スクラブ：端末とサーバーの両方で同じ規則（共有ベクター）。パスはファイル名だけ、引用符の中・ASCII 以外の文字・メール・トークン・URL・長い id・長い数字を置き換える。機種と OS の版は決まった文字だけ。
+- REQ-CERR-009 指紋：サーバーがスクラブ後の中身から FNV-1a 64 で計算（行番号・アドレスは入れない）。TS と C# は共有ベクターで同じ。
+- REQ-CERR-010 保存：指紋ごとの集計（数・推定の数・最初と最後・版・プラットフォーム）、日 × 版 × プラットフォームの数、指紋ごとに新しい見本 `samplesPerGroup` 件。
+- REQ-CERR-011 上限：指紋の行は `maxGroups` まで、超えた分は種類ごとの `overflow:<category>` に足す。
+- REQ-CERR-012 保存期間：`retentionDays` を過ぎた日の行・見本・指紋を受け付けるたびに少しずつ消す。重複の記録は 48 時間、回数の記録は 1 時間。
+- REQ-CERR-013 同意のフック：`ErrorReporter.AllowsDiagnostics`（既定 true）が false なら `attachPlayer: false`、サーバーは playerId を残さない。R20 統合：フックは §58 の分析の選択（`ConsentState.AllowsDiagnostics` = `analytics.effective`、`ErrorReporter.FollowConsent`）。サーバーも認証された束でプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（読めない時も）。アカウントが変わった時（§54 の `SESSION_REPLACED`・引き継ぎ）は `ErrorReporter.AccountChanged()` で、それまでの項目を ID なしで送る（protocol §58.10・§60.6）。
+- REQ-CERR-014 運営の一覧 `GET /v1/admin/client-errors`（viewer）：種類・プラットフォーム・版で絞り、数・最後・最初の順に並べる。直近の通知と種類ごとの合計。
+- REQ-CERR-015 運営の詳細 `GET /v1/admin/client-errors/:fingerprint`（viewer）：直近 14 日の数と見本。
+- REQ-CERR-016 ズレの見本はレースのリプレイ（`/v1/admin/replays/<raceId>`）と、playerId がある時は検証の結果（不正対策の記録）につながる。
+- REQ-CERR-017 通知のフック：新しい指紋（最初に見てから `spikeWindowHours` 以内）の推定の数が `spikeMinCount` に届いたら1回だけ記録し、構造化ログ `client_error_spike` を出す（Logpush の規則で通知）。
+- REQ-CERR-018 アカウント削除：手順に `client_errors` の段。見本の playerId を null に（匿名化）、回数の行を消す。
+- REQ-CERR-019 開示（§51）：`analytics.clientErrors` にそのプレイヤーの id が付いた見本。
+- REQ-CERR-020 クライアント：`Muchi.Client` の `ErrorReporter`（指紋・スクラブ・オフラインの列・抽出・束の id・再送）、`StallDetector`、`ApiClient.SendClientErrorsAsync`・`RequestFailed`、`LockstepClient.Desync`。Unity のゲーム層 `ClientErrorModel`。プロトタイプは `window.onerror` を本物の報告の経路（WASM の `ClientErrorModel` → サーバーのドメイン）につなぐデモ。運営の画面に一覧と詳細。
+
+## 61. 端末のローカル通知（TS＋C#、`src/domain/localNotify.ts`・`Muchi.Client/LocalNotifications.cs`・`Muchi.Game.LocalNotificationModel`、`contracts/protocol.md` §61）
+
+- REQ-LNOTIF-001 種類：`training_session`（調教の仕上げの期限）・`daily_bonus`（次のゲーム日のログインボーナス、1日1回）・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`。期限はデータの本当の時刻だけ。購入・ショップ・ガチャへ誘う種類は無く、開く画面はコードで固定。
+- REQ-LNOTIF-002 持ち主：出来事ごとにプッシュかローカルのどちらか1つ（`LNOTIF_OWNERSHIP`）。push.json の全テンプレートが表にあり、ローカルの種類と同じ出来事を持たない（テスト）。
+- REQ-LNOTIF-003 純粋な関数：`planLocalNotifications(snapshot)`。同じスナップショットなら同じ結果。TS と C# は共有ベクター `contracts/local-notifications.vectors.json` で同じ。
+- REQ-LNOTIF-004 カテゴリ：各種類はプッシュの種類に対応（`reminders`／`events`／`friends`／`gifts`）。カテゴリがオフなら予約しない。設定画面の「通知」1か所で両方を切り替える。
+- REQ-LNOTIF-005 静かな時間帯：プッシュと同じ JST の `quietHours`。調教は送らない、ほかは終わりへ遅らせ、期限の1時間前を過ぎるなら送らない。
+- REQ-LNOTIF-006 上限：予約する時刻のゲーム日ごとに `dailyCap`（既定2）。優先の順で残す。全体で `maxPending` 件まで、`horizonDays` 日先まで。
+- REQ-LNOTIF-007 文言：日本語・英語を端末の言語で選ぶ。時刻は JST の日付と時刻。プレイヤーが付けた名前は既定で入れない（`showDetails` の時だけ件数・ポイント・馬の名前）。
+- REQ-LNOTIF-008 digest：ブートストラップ・`GET /v1/player` の `localReminders`（読むだけ。新しい状態・エンドポイントなし）。
+- REQ-LNOTIF-009 新しい種類 `reminders`：既定オフ（06 §3.5 の「新しい種類と同意」）。サーバーはこの種類のプッシュを送らない。
+- REQ-LNOTIF-010 許可：初回起動では聞かない。最初の調教の後に前置き（`maxAsks` 回まで、`retryDays` 日あける、最初からチェックなし）。OS で拒否なら OS のダイアログを二度と出さず、設定に OS の設定を開くボタン。仮の許可は予約する。
+- REQ-LNOTIF-011 付け替え：前回の予約との差だけを取り消し・予約。状態が変わる操作（調教の仕上げ・クリア・交換・受け取り・設定の変更・前面に戻る）の後に計画し直す。
+- REQ-LNOTIF-012 取り消し：ログアウト・アカウントの切り替え・引き継ぎ・削除の予約／実行・機能の停止で全部取り消す。覚えた予約はアカウントIDごと。
+- REQ-LNOTIF-013 KPI：`lnotif_scheduled`（kind、新しい id だけ）・`lnotif_opened`（kind）・`lnotif_permission`（granted／provisional／denied／later）。
+- REQ-LNOTIF-014 クライアント SDK：`LocalNotificationPlanner`・`ILocalNotificationPlatform`・`LocalRemindersDigest`・`PushPreferences.Reminders`・`AnalyticsEvent` の3つ。
+- REQ-LNOTIF-015 Unity のゲーム層 `LocalNotificationModel`（設定の行・前置き・次の予定・開いた画面・KPI）。OS の通知パッケージの接続と描画は `docs/handoff-codex-round20-local-notifications.md`。
+- REQ-LNOTIF-016 プロトタイプ：設定の「通知」・前置きのシート・次の予定の一覧（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
+- REQ-LNOTIF-017 法務：共通の賭けの言葉・煽りの言葉を文言に使わない（テスト）。作った期限・カウントダウンなし。
+- REQ-LNOTIF-018 プライバシー：予定はサーバーに送らない（KPI の種類だけ）。`showDetails` は端末の設定。
+- REQ-LNOTIF-019 設定 `progression.localNotifications`（`localNotificationsProblems`、起動時と各版で検証）。`enabled: false` は停止スイッチ。
+- REQ-LNOTIF-020 ヘルプ：ヘルプセンター（§48）に「端末のお知らせ（リマインダー）」の記事。

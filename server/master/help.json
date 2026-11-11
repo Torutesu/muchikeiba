@@ -308,7 +308,29 @@
       "links": [ { "type": "screen", "screen": "storage" }, { "type": "screen", "screen": "performance" } ],
       "related": ["accessibility_settings", "data_transfer"]
     },
-    {"id": "spectator_cheer", "category": "races", "title": {"ja": "観戦中の応援", "en": "Cheering while you watch"}, "body": {"ja": "レースを観戦している時に、馬番を選んで「いけ！」「差せ！」「粘れ！」の応援を送れます。\n\n・応援は無料で、何ももらえず、レースの結果にも影響しません\n・送れるのは{{cheer_interval_sec}}秒ごとに1つまでです。文字は自由に書けません\n・誰が応援したかは表示されず、届くのは数だけです\n・ブロックしている相手（ブロックされている相手）の応援は数えません\n・走っている人には、自分の馬への応援の数が画面の隅に小さく出ます。設定の「レース中の応援表示」でオフにできます\n・動きを減らす設定がオンなら、光や動きは出ません", "en": "While watching a race, pick a horse number and send a cheer: \"Go!\", \"Close in!\" or \"Hang on!\".\n\n• Cheers are free, give no rewards and never change the race result\n• You can send one every {{cheer_interval_sec}} seconds. There is no free text\n• Nobody sees who cheered; only the counts arrive\n• Cheers from players you blocked (or who blocked you) are not counted\n• Riders see the number of cheers for their own horse in a small corner. Turn it off with \"Show cheers during races\" in Settings\n• With Reduce motion on, there is no light or movement"}, "keywords": {"ja": ["応援", "観戦", "いけ", "差せ", "粘れ", "応援表示"], "en": ["cheer", "spectate", "watch", "cheers", "indicator"]}, "links": [{"type": "screen", "screen": "settings"}], "related": ["race_modes", "accessibility_settings"]}
+    {"id": "spectator_cheer", "category": "races", "title": {"ja": "観戦中の応援", "en": "Cheering while you watch"}, "body": {"ja": "レースを観戦している時に、馬番を選んで「いけ！」「差せ！」「粘れ！」の応援を送れます。\n\n・応援は無料で、何ももらえず、レースの結果にも影響しません\n・送れるのは{{cheer_interval_sec}}秒ごとに1つまでです。文字は自由に書けません\n・誰が応援したかは表示されず、届くのは数だけです\n・ブロックしている相手（ブロックされている相手）の応援は数えません\n・走っている人には、自分の馬への応援の数が画面の隅に小さく出ます。設定の「レース中の応援表示」でオフにできます\n・動きを減らす設定がオンなら、光や動きは出ません", "en": "While watching a race, pick a horse number and send a cheer: \"Go!\", \"Close in!\" or \"Hang on!\".\n\n• Cheers are free, give no rewards and never change the race result\n• You can send one every {{cheer_interval_sec}} seconds. There is no free text\n• Nobody sees who cheered; only the counts arrive\n• Cheers from players you blocked (or who blocked you) are not counted\n• Riders see the number of cheers for their own horse in a small corner. Turn it off with \"Show cheers during races\" in Settings\n• With Reduce motion on, there is no light or movement"}, "keywords": {"ja": ["応援", "観戦", "いけ", "差せ", "粘れ", "応援表示"], "en": ["cheer", "spectate", "watch", "cheers", "indicator"]}, "links": [{"type": "screen", "screen": "settings"}], "related": ["race_modes", "accessibility_settings"]},
+    {
+      "id": "ads_analytics_privacy", "category": "account",
+      "title": { "ja": "広告と分析の設定（トラッキング）", "en": "Ads and analytics settings (tracking)" },
+      "body": {
+        "ja": "設定の「プライバシー › 広告と分析」で、次の2つをいつでも選び直せます。\n\n・パーソナライズ広告：オンにすると、興味に合った動画広告が出やすくなります。オフでも動画広告は見られ、受け取れる無償コインや回数は変わりません\n・分析への協力：よく使う画面などの記録をゲームの改善に使います。オフにすると送りません。購入・返金・同意・削除などの記録は法律に基づき保存します\n\n・iPhone では、許可すると端末の確認（App Tracking Transparency）が出ます。あとから変える時は、端末の設定アプリで変更できます\n・ヨーロッパ（EEA）では、広告の同意の画面が出ます。「広告の同意を見直す」で変えられます\n・13歳未満の方（EEA では16歳未満）は、パーソナライズ広告はオフのままです。分析は保護者の同意がある時だけオンにできます\n・プライバシーポリシーが新しくなった時は、もう一度確認の画面が出ます。今の版は設定に表示しています\n・チュートリアル中に確認の画面は出ません",
+        "en": "Under Privacy › Ads and analytics in the settings, you can change these two choices at any time.\n\n• Personalised ads: when on, the video ads are more likely to match your interests. When off, you can still watch video ads, and the free coins and the number of views stay the same\n• Help with analytics: records such as which screens you use most help us improve the game. When off, they are not sent. Records of purchases, refunds, consent and deletion are kept as the law requires\n\n• On iPhone, allowing it shows your device's question (App Tracking Transparency). To change it later, use your device's Settings app\n• In Europe (EEA), an ad consent screen is shown. You can change it with Review ad consent\n• If you are under 13 (under 16 in the EEA), personalised ads stay off. Analytics can be turned on only with a guardian's consent\n• When the privacy policy changes, you are asked again. The current version is shown in the settings\n• You are never asked during the tutorial"
+      },
+      "keywords": { "ja": ["広告", "トラッキング", "パーソナライズ", "分析", "同意", "ATT", "プライバシー"], "en": ["ads", "tracking", "personalised", "analytics", "consent", "ATT", "privacy"] },
+      "links": [ { "type": "screen", "screen": "privacy_choices" }, { "type": "legal", "doc": "privacy" } ],
+      "related": ["data_export", "delete_account"]
+    },
+    {
+      "id": "local_reminders", "category": "account",
+      "title": { "ja": "端末のお知らせ（リマインダー）", "en": "Reminders on your device" },
+      "body": {
+        "ja": "この端末は、すでに分かっている時刻のお知らせを、サーバーを待たずに端末の中で予約できます。設定の「通知」で、プッシュ通知と同じ種類・同じ静かな時間帯でまとめて切り替えられます。\n\n・調教の仕上げ（始めた調教の期限の少し前）とログインボーナス（受け取れるようになった日）は「リマインダー」の種類です。最初はオフで、受け取ると選んだ時だけ届きます\n・週替わりチャレンジの入れ替わり・ライバルの週の締め・イベント交換所が閉まる日・プレゼントの受け取り期限は、本当の期限の前にお知らせします\n・端末のお知らせは一日に{{lnotif_daily_cap}}件まで。静かな時間帯には送りません\n・ロック画面には、最初は馬の名前や件数を出しません（設定の「ロック画面に詳しく表示」で変えられます）\n・ログアウト・アカウントの切り替え・引き継ぎ・アカウント削除の時は、予約したお知らせをすべて取り消します\n・購入やスカウトを勧めるお知らせはありません\n・端末の設定で通知をオフにした場合は、設定の「通知」から端末の設定を開けます",
+        "en": "This device can schedule reminders for times it already knows, without waiting for the server. Under Notifications in the settings, the same types and quiet hours as push notifications switch them too.\n\n• Finishing a training session (shortly before its deadline) and the login bonus (on the day it is ready) are the Reminders type. It starts off, and you only get them if you choose to\n• The weekly challenges changing, the end of the rival week, an event exchange closing and gift box items expiring are reminded before the real deadline\n• Up to {{lnotif_daily_cap}} device reminders a day, never in quiet hours\n• At first the lock screen shows no horse names or counts (change it with Show details on the lock screen)\n• Logging out, switching accounts, transferring or deleting your account cancels every scheduled reminder\n• No reminder ever asks you to buy or scout\n• If notifications are off in the device settings, Notifications in the settings can open them"
+      },
+      "keywords": { "ja": ["通知", "つうち", "リマインダー", "お知らせ", "ロック画面"], "en": ["notification", "notifications", "reminder", "reminders", "lock screen"] },
+      "links": [ { "type": "screen", "screen": "notifications" } ],
+      "related": ["training", "gift_box"]
+    }
   ],
   "contexts": {
     "gacha_odds": "pity",
@@ -325,6 +347,8 @@
     "accessibility": "accessibility_settings",
     "privacy": "data_export",
     "storage": "data_storage",
-    "practice": "practice_races"
+    "practice": "practice_races",
+    "privacy_choices": "ads_analytics_privacy",
+    "notifications": "local_reminders"
   }
 }

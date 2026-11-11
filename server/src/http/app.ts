@@ -6,7 +6,7 @@ import { bannerList, findVisibleBanner, oddsDisclosure } from '../domain/gacha.j
 import { shopProducts } from '../domain/shop.js';
 import { skillCatalog } from '../domain/skills.js';
 import { ticketDisclosure } from '../domain/itemShop.js';
-import type { Master } from '../domain/master.js';
+import { PUSH_CATEGORIES, type Master } from '../domain/master.js';
 import type { PlayerService, ShortfallQuery } from '../domain/service.js';
 import type { SubscriptionStatus, VerifiedReceipt } from '../domain/purchase.js';
 import type { PurchaseRecord } from '../domain/player.js';
@@ -18,6 +18,7 @@ import { ReportsService, reportBodySchema, type ReportBody } from '../domain/rep
 import { blocksView } from '../domain/blocks.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import { clientBatchSchema } from '../domain/kpi.js';
+import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../domain/clientErrors.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
 import type { WeeklyChallengeService } from '../race/weeklyChallenge.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
@@ -41,6 +42,7 @@ import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import { accessibilityBodySchema } from '../domain/accessibility.js';
+import { privacyChoicesBodySchema, privacyPlatformBodySchema, privacyPromptBodySchema } from '../domain/privacyChoices.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { ADVICE_CONTEXTS, type AdviceContext } from '../domain/raceAdviceService.js';
 import { DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
@@ -57,6 +59,7 @@ import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHe
 import type { TransferService } from '../domain/transferService.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
+import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -91,6 +94,7 @@ export type PlayerMethod =
   | 'assist' | 'setAssist' | 'assistPromptSeen'
   | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
   | 'accessibility' | 'setAccessibility'
+  | 'privacyChoices' | 'setPrivacyChoices' | 'setPrivacyPlatform' | 'notePrivacyPromptShown' | 'clientErrorsAttach'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
@@ -100,6 +104,7 @@ export type PlayerMethod =
   | 'nextActions' | 'dismissNextAction'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
+  | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
@@ -277,6 +282,39 @@ async function body<T>(req: Request, schema: z.ZodType<T>): Promise<T> {
   if (!r.success) throw new AppError('BAD_REQUEST', r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
   return r.data;
 }
+/** REQ-CERR-003..007: POST /v1/client-errors (§60.2). */
+async function clientErrorsIngest(r: Request, c: AppContext) {
+  const cfg = clientErrorsConfig(c.master);
+  const view = clientErrorsClientView(cfg);
+  const len = Number(r.headers.get('content-length') ?? '0');
+  if (len > cfg.maxBodyBytes) throw new AppError('BAD_REQUEST', `body over ${cfg.maxBodyBytes} bytes`, 413);
+  const text = await r.text();
+  if (new TextEncoder().encode(text).length > cfg.maxBodyBytes) throw new AppError('BAD_REQUEST', `body over ${cfg.maxBodyBytes} bytes`, 413);
+  let raw: unknown;
+  try { raw = JSON.parse(text); } catch { throw new AppError('BAD_REQUEST', 'invalid JSON'); }
+  const p = clientErrorBatchSchema.safeParse(raw);
+  if (!p.success) throw new AppError('BAD_REQUEST', p.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '));
+  const b = p.data;
+  if (b.items.length > cfg.maxItems) throw new AppError('BAD_REQUEST', `at most ${cfg.maxItems} items per batch`);
+  const store = c.ops?.clientErrors;
+  if (!cfg.enabled || !store) return { accepted: 0, dropped: b.items.length, duplicate: false, ...view, enabled: false };
+  let playerId: string | null = null;
+  if (r.headers.get('authorization') || r.headers.get('x-dev-user')) {
+    try { playerId = await c.authenticate(r); } catch { playerId = null; } // anonymous, never 401
+  }
+  // R20 integration (§58.10 × §60.6): the player's analytics choice governs the player id on the samples, enforced here and
+  // not only by the device's ErrorReporter.AllowsDiagnostics — an old app, or a batch made before the choice changed, cannot
+  // attach it. An account being deleted or already wiped, or an object that cannot answer, is anonymous: fail closed. The report
+  // itself is always kept (it carries no personal data, §60.3), and the rate limit stays per install.
+  if (playerId && b.attachPlayer) {
+    try {
+      if ((await c.player(playerId).invoke('clientErrorsAttach', playerId)) !== true) playerId = null;
+    } catch { playerId = null; }
+  }
+  const out = await store.ingest(b, { playerId, installId: b.installId }, (c.clock ?? Date.now)(), cfg);
+  return { ...out, ...view };
+}
+
 /** A JSON body that may be absent (empty request body → null). */
 async function optionalBody<T>(req: Request, schema: z.ZodType<T>): Promise<T | null> {
   const text = await req.text();
@@ -297,6 +335,12 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+/** REQ-REV-005 (§59.4): the device's half of the review-prompt summary. Minutes are capped at a year (null = none / unknown). */
+const reviewMinutes = z.number().int().min(0).max(525_600).nullable();
+const reviewCheckSchema = z.object({
+  moment: z.string().regex(/^[a-z_]{1,32}$/), platform: z.enum(REVIEW_PLATFORMS), sessionId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/),
+  client: z.object({ inFtue: z.boolean(), minutesSinceLoss: reviewMinutes, minutesSinceError: reviewMinutes, minutesSinceMaintenanceNotice: reviewMinutes }).strict(),
+}).strict();
 const ticketParam = (x: string) => { if (!/^q_[0-9]{1,9}$/.test(x)) throw new AppError('NOT_FOUND', 'NOT_FOUND'); return x; };
 /** REQ-HELP-005: the whip count of the ruleset in effect (the help article's {{max_whips}}). */
 async function maxWhipsOf(c: AppContext): Promise<number> {
@@ -453,7 +497,10 @@ const ok = (x: unknown) => x;
 export const routes: Route[] = [
   { method: 'GET', path: '/v1/health', auth: 'none', handler: async () => ({ ok: true }) },
   // REQ-OPS-007: clients cache master data per config version and refetch when it changes
-  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, assetCatalogVersion: (c.master.assetCatalog ?? EMPTY_ASSET_CATALOG).catalogVersion, dayRollover: dayRule(c.master) }) }, // REQ-DAY-006, REQ-DLV-*
+  { method: 'GET', path: '/v1/config', auth: 'none', handler: async (_r, _p, c) => ({ ...(c.configInfo ? await c.configInfo() : { versionId: 'base', hash: 'base', rulesetVersion: null, activatedAt: null }), visualsVersion: VISUALS.version, assetCatalogVersion: (c.master.assetCatalog ?? EMPTY_ASSET_CATALOG).catalogVersion, dayRollover: dayRule(c.master), clientErrors: clientErrorsClientView(clientErrorsConfig(c.master)) }) }, // REQ-DAY-006, REQ-DLV-*, REQ-CERR-003
+  // REQ-CERR-003..007 (§60.2): client error reports. Auth optional (an invalid token counts as anonymous, never 401: the
+  // reporter must not loop on sign-in failures); never gated (EXEMPT_ROUTES); idempotent per installId + batchId.
+  { method: 'POST', path: '/v1/client-errors', auth: 'none', handler: async (r, _p, c) => clientErrorsIngest(r, c) },
   // REQ-MNT-004/005 (§46): maintenance windows players can see now and where this app version stands. Public, never gated.
   { method: 'GET', path: '/v1/maintenance', auth: 'none', handler: async (r, _p, c) => maintenanceStatus(maintenanceOf(c.master), clientHeaders(r.headers), (c.clock ?? Date.now)()) },
   // REQ-DLV-001..004: asset delivery catalog per platform (contracts/protocol.md §16). Public; ETag = view hash, 304 on match.
@@ -537,6 +584,11 @@ export const routes: Route[] = [
   // REQ-A11Y-002/003 (contracts/protocol.md §41): アクセシビリティ設定 — idempotent full replace; also in GET /v1/player and bootstrap
   { method: 'GET', path: '/v1/settings/accessibility', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('accessibility', u) },
   { method: 'PUT', path: '/v1/settings/accessibility', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setAccessibility', u, await body(r, accessibilityBodySchema)) },
+  // REQ-CNS-002 (§58): ad / analytics consent (never gated, §46 EXEMPT_ROUTES)
+  { method: 'GET', path: '/v1/privacy/choices', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('privacyChoices', u) },
+  { method: 'PUT', path: '/v1/privacy/choices', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPrivacyChoices', u, await body(r, privacyChoicesBodySchema)) },
+  { method: 'PUT', path: '/v1/privacy/platform', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPrivacyPlatform', u, await body(r, privacyPlatformBodySchema)) },
+  { method: 'POST', path: '/v1/privacy/prompt-shown', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('notePrivacyPromptShown', u, (await body(r, privacyPromptBodySchema)).privacyVersion) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
@@ -628,6 +680,16 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/horses/:horseId/goals', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseGoals', u, p.horseId!) },
   { method: 'PUT', path: '/v1/horse-goals/pin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pinHorseGoal', u, (await body(r, z.object({ horseId: z.string().min(1).max(32).nullable() }).strict())).horseId) },
   { method: 'GET', path: '/v1/horse-goals/pinned', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pinnedHorseGoal', u) },
+  // レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59): no reward path anywhere (Apple 5.6.1 / Google Play)
+  { method: 'GET', path: '/v1/review-prompt', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('reviewPrompt', u) },
+  { method: 'POST', path: '/v1/review-prompt/check', auth: 'player', handler: async (r, _p, c, u) => {
+    const key = idem(r);
+    return c.player(u).invoke('reviewPromptCheck', u, await body(r, reviewCheckSchema), key);
+  } },
+  { method: 'POST', path: '/v1/review-prompt/:promptId/answer', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^rp_[0-9]{1,9}$/.test(p.promptId!)) throw new AppError('NOT_FOUND', 'unknown review prompt');
+    return c.player(u).invoke('reviewPromptAnswer', u, p.promptId!, (await body(r, z.object({ step: z.enum(REVIEW_STEPS) }).strict())).step);
+  } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
   { method: 'PUT', path: '/v1/hall/settings', auth: 'player', handler: async (r, _p, c, u) => {
@@ -982,7 +1044,9 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/push/preferences', auth: 'player', handler: async (r, _p, c, u) => {
     const hour = z.number().int().min(0).max(23);
     const b = await body(r, z.object({
-      categories: z.object({ season: z.boolean(), friends: z.boolean(), invites: z.boolean(), events: z.boolean(), comeback: z.boolean() }).partial().optional(),
+      // gifts (REQ-BOX-011) was missing here and silently dropped; reminders = REQ-LNOTIF-009 (§61, on-device reminders, opt-in).
+      // R20 integration: built from PUSH_CATEGORIES (a new category cannot be forgotten again) and strict (an unknown one is 400)
+      categories: z.object(Object.fromEntries(PUSH_CATEGORIES.map((k) => [k, z.boolean()])) as Record<(typeof PUSH_CATEGORIES)[number], z.ZodBoolean>).partial().strict().optional(),
       quietHours: z.object({ startHour: hour, endHour: hour }).nullable().optional(),
     }));
     return c.player(u).invoke('setPushPreferences', u, {

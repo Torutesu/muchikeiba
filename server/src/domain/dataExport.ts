@@ -394,8 +394,12 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   rival: x('play'), photos: x('photos'), gachaLog: x('gacha'), activity: x('activity'), weeklyChallenge: x('play'), hall: x('play'),
   myReplays: x('replays'), roster: x('settings'), nextAction: x('play'), seasonRecap: x('recaps'), cups: x('cups'),
   dataExport: no('export_meta'),
+  // Round 20 (§58): the ad / analytics choices, versions, ATT / CMP status and their history are consent records
+  privacyChoices: x('account'),
   // Round 18 integration: Round 17 / 18 keys (§49 suggestion settings and dismissals, §53 goals and the pin)
   friendSuggest: x('social'), horseGoals: x('horses'),
+  // §59 (Round 20): when the store review was asked, the moment, the pre-question answer (nothing is ever granted for it)
+  reviewPrompt: x('analytics'),
   // keys added by modules through `PlayerState & { … }`
   collection: x('play'), silksEditor: x('profile'), stable: x('social'), teamFeed: x('social'), teamGoal: x('play'),
   // Round 18 integration: §48 inquiries (text, replies, votes) and §47 the reporter's daily counter (its target ids are not exported)
@@ -435,7 +439,11 @@ export interface DexExternal {
   playerReportsMade?: PlayerReportMade[] | null;
   /** KPI rows tied to the player's pseudonymous analytics id. null = not configured / unreachable. */
   kpiEvents: { rows: Record<string, unknown>[]; windowDays: number } | null;
+  /** REQ-CERR-019 (§60.9): client error samples that carry this player's id. Absent = none; null = could not be read. */
+  clientErrors?: DexClientErrorRow[] | null;
 }
+/** One client error sample as its player sees it in the export (ops/clientErrors.ts madeBy). */
+export interface DexClientErrorRow { at: number; category: string | null; title: string | null; appVersion: string; platform: string; deviceModel: string; osVersion: string }
 
 const clone = <T>(v: T): T => (v === undefined ? v : JSON.parse(JSON.stringify(v)) as T);
 const omit = <T extends object, K extends keyof T>(o: T | undefined | null, ...keys: K[]) => {
@@ -483,6 +491,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     account: {
       playerId: s.id, createdAt: s.createdAt, lastSeenAt: s.profile.lastSeenAt,
       age: s.age ? clone(s.age) : null, consent: clone(s.consent) ?? null, flags: clone(s.flags),
+      // §58 (Round 20): personalised ads / analytics choices, the policy version they were made under, ATT / CMP, history
+      privacyChoices: clone(s.privacyChoices) ?? null,
       deletion: s.deletion && s.deletion.status !== 'confirming' ? { status: s.deletion.status, requestedAt: s.deletion.requestedAt ?? null, deleteAt: s.deletion.deleteAt ?? null } : null,
       // anti-cheat: the status and dates; the detection reason is an operator note (protocol §51.5)
       moderation: s.moderation ? { status: s.moderation.status, until: s.moderation.until, at: s.moderation.at } : null,
@@ -610,7 +620,11 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     devices: (push?.devices ?? []).map((d) => ({ platform: d.platform, addedAt: d.addedAt, lastSeenAt: d.lastSeenAt, locale: d.locale ?? null, pushTokenEnd: maskToken(d.token) })),
     analytics: {
       kpiState: clone(s.kpi) ?? null,
+      // §59: the store review prompts (time, moment, platform, style, the pre-question answer); the session id is internal
+      reviewPrompts: (s.reviewPrompt?.history ?? []).map((h) => ({ at: h.at, moment: h.moment, platform: h.platform, style: h.style, answer: h.answer, storeReviewAskedAt: h.nativeAt })),
       events: ext.kpiEvents === null ? { available: false, windowDays: null, rows: [] as Record<string, unknown>[] } : { available: true, windowDays: ext.kpiEvents.windowDays, rows: ext.kpiEvents.rows },
+      // §60.9 (REQ-CERR-019): the error reports this device sent with the player's id (scrubbed; no stack, no free text)
+      clientErrors: ext.clientErrors === null ? { available: false, rows: [] as DexClientErrorRow[] } : { available: true, rows: (ext.clientErrors ?? []).map((r) => ({ ...r })) },
     },
     // §48 (Round 18 integration): the player's inquiries — what they wrote, what they attached, the replies (without the
     // operator's id: an operator note) — and their article votes

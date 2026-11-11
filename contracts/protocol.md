@@ -2433,6 +2433,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
@@ -2923,6 +2924,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `export_meta`：`dataExport`（このエクスポート自身の記録）
 - `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
 - Round 19 統合：§55 の応援は誰が送ったかを保存しない（部屋の中で数えるだけ、`replays/<raceId>.cheers.json` も時間の区切りごとの数だけ）ので、エクスポートに入れるものは無い。§56 の画質・通信量の設定は端末だけに保存され、サーバーには無い。
+- Round 20 統合：§58 の `privacyChoices` は `account` に全部（選んだ値・版・時刻・端末の状態・履歴）。§59 の `reviewPrompt` は `analytics.reviewPrompts`（頼んだ時刻・瞬間・プラットフォーム・形・答え。セッション id は入れない）。§60 のエラー報告は状態のキーを足さず、自分の id が付いた見本を `analytics.clientErrors` に出す（読めない時は `available: false`）。§61 の端末のリマインダーは**端末の中だけ**（予約・前に予約した id・「ロック画面に詳しく表示」・前置きを出した回数はどれもサーバーに無い）ので出すものは無い（`reminders` の選択は既存の `push.prefs` と一緒に出る）。§58.11 の「1セッションに1つ」の記録も端末の中だけ。
 - 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 18 統合で分類したキー：`friendSuggest`→`social`、`horseGoals`→`horses`、拡張キー `help`→`helpInquiries`、`reports`（通報の1日の数）→`reportsMade`。§46 メンテナンス・§50 練習レースはプレイヤーの状態に何も置かない。§52 定型チャットの投稿は支部のフィード（TeamDO）にあり、プレイヤーの状態には無い：支部のフィードは支部員の共有の場で、決まった文と選んだ値だけ・保存は `retainDays` 日と件数まで（§52.6）なので、エクスポートには入れない（`docs/planning/03-legal-risk.md` の確認事項）。
 
 ### 51.6 人が読める概要（`.txt`）
@@ -3403,3 +3405,381 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - `Muchi.Client`：`TipsIndex`（`Parse`）・`TipsSeenResult`・`TipsBadge`（`PlayerView.Tips`）、`ApiClient.GetTipsAsync`・`MarkTipsSeenAsync`、`TipContexts`・`RaceLessons`、analytics `AnalyticsEvent.TutorialReplay`・`TipView`・`TipContextOpen`。
 - `Muchi.Game`：`TipsModel`（話題ごとの一覧・NEW・見た印をまとめて送る（オフラインは端末に貯めて後で送る）・「？」の `OpenContext`・ツアーのページ送り・開いていない機能のツアーは開けない）、`TutorialReplayModel`（レッスンのレースを `GameBackend` の既存の部品で作る（ムチ = `OfflinePresets.TutorialRace`、他 = 練習レース）・FTUE の段・回数・KPI に触れない・`tutorial_replay` を送る）。
 - 画面が守ること：docs/handoff-codex-round19-tutorial-replay.md。
+
+## 58. 広告・分析の同意管理（ad tracking & analytics consent、REQ-CNS-001〜020、`server/src/domain/privacyChoices.ts`・`server/src/domain/kpiConsent.ts`、C# `Consent.cs`（`ConsentState`・`IConsentPlatform`・`AdRequestConfig`）・`Muchi.Game.ConsentModel`、docs/handoff-codex-round20-consent.md）
+利用規約・プライバシーポリシーへの同意（REQ-UXS-001、`POST /v1/player/consent`）とは**別に**、プレイヤーが**パーソナライズ広告**と**分析（KPI）**を自分で選べるようにする。iOS は App Tracking Transparency（ATT）のシステムの確認の前に**理由を説明する事前の画面**を出し、Android／EEA は Google UMP 型の同意管理（CMP）を**インターフェースの後ろ**に置く（本物の SDK の呼び出しは Codex、docs/handoff-codex-round20-consent.md）。選んだ結果・版・日時はプレイヤーごとにサーバーに保存し、リワード広告（§21）の広告リクエストと KPI の受け付け（REQ-KPI-003）がそれに従う。コイン・アイテムは動かない（E 番号なし）。断っても報酬・機能は何も減らない（Apple 5.1.1(iv)・GDPR の「自由な同意」）。
+
+### 58.1 状態 `privacyChoices`（PlayerState のトップレベルのキー、§51 の分類は `account`）
+```ts
+{ personalizedAds: boolean | null, analytics: boolean | null,   // null = まだ選んでいない（58.3 の既定が効く）
+  decidedVersion: string | null, decidedAt: number | null,      // 最後に選んだ時のプライバシーポリシーの版と時刻
+  updatedAt: number, rev: number,                               // 値が変わるたびに +1
+  promptShownAt: number | null, promptShownVersion: string | null, // 事前の画面を出した時刻と版（同じ版では二度出さない）
+  platform: { os: 'ios'|'android'|'other', att: AttStatus | null, gdprApplies: boolean | null, cmp: CmpStatus | null, at: number } | null,
+  history: { at, key: 'personalized_ads'|'analytics'|'att'|'cmp'|'prompt', value: string, source: 'prompt'|'settings'|'platform', version: string }[] } // 新しい50件
+```
+`AttStatus` = `not_determined`・`restricted`・`denied`・`authorized`・`unavailable`（iOS 14 未満・ATT の無い OS）。`CmpStatus` = `not_required`・`required`・`obtained`・`unknown`（UMP の `ConsentStatus` と同じ）。
+
+### 58.2 子ども（REQ-CNS-006）
+既存の年齢（REQ-PUR-002 `age`、`ageBand` と同じ数え方）で **13歳未満**、または **EEA（`platform.gdprApplies = true`）で16歳未満** を「子ども」とする（GDPR 8条の上限、地域が分からない時は 13歳）。子どもは
+- パーソナライズ広告：**常にオフ**（変えられない、`locked: "minor"`）。広告は非パーソナライズで出る（§21 の `minAge` 未満はそもそも出ない）。
+- 分析：**既定でオフ（最小限）**。保護者の同意（`age.guardianConsent`）がある時だけオンにできる（無い時は `locked: "minor"`、PUT で `true` を送ると `403 NOT_ELIGIBLE`）。
+- 既存の REQ-AD-009 はそのまま：年齢が分からない・18歳未満はパーソナライズ広告を出さない（`locked: "age_unknown"`／`"under18"`）。
+
+### 58.3 既定と「効いている値」（REQ-CNS-003/004）
+| 項目 | まだ選んでいない時の既定 | 効いている値（`effective`） |
+|---|---|---|
+| パーソナライズ広告 | **オフ**（オプトイン） | 選んだ値 かつ 子どもでない かつ 18歳以上の年齢が登録済み（REQ-AD-009）かつ（iOS なら `att = authorized`）かつ（`gdprApplies` なら `cmp = obtained` か `not_required`） |
+| 分析 | オン。ただし子ども・`gdprApplies = true` はオフ | 選んだ値（子どもは保護者の同意がある時だけオン） |
+`locked`（スイッチを変えても効かない理由、画面に出す）：`minor`・`under18`・`age_unknown`・`att`・`cmp`・`null`。強い順に1つ。
+
+### 58.4 事前の画面と再確認（REQ-CNS-007/008）
+- `required` = 今のプライバシーポリシーの版（`progression.consent.privacyVersion`）で選んでいない（`decidedVersion ≠ 今の版`）。
+- `prompt`（端末が事前の画面を出す時）：
+  - **FTUE 中は出さない**：§21 の `minRankedRaces` 戦（既定 3）と `minGameDay` 日目（既定 2 = インストール当日は出さない、06 §2.3 の「2日目以降」）を満たすまで `null`。
+  - 一度も選んでいない → `"ad_offer"`：**最初のリワード広告のカードを出す直前**に1回（`GET /v1/ads` が `eligible` の時）。広告が出ない人（広告が無効・オフ・年齢など）は `"next_home"`。
+  - 前の版で選んだ人（ポリシーの版が上がった）→ `"next_home"`：規約の再同意（REQ-UXS-001）の後、次にホームを開いた時に1回。選んでいた値はそのまま効き続ける（勝手にオフ・オンにしない）。
+  - 同じ版で事前の画面を一度出したら（`promptShownVersion = 今の版`）`null`。設定からはいつでも変えられる。
+- iOS：事前の画面で「続ける」→ ATT のシステムの確認（`not_determined` の時だけ、OS が1回しか出さない）→ 結果を `PUT /v1/privacy/platform` で送る。「あとで」は ATT を出さない（次は設定から）。ATT を断った・制限中の時、設定の「パーソナライズ広告」は iOS の設定アプリを開く案内になる。
+- Android／EEA：`gdprApplies` の時は UMP の同意フォーム（CMP）を出し、結果（`cmp`）を送る。設定の「広告の同意を見直す」は UMP の privacy options フォームを開く（`privacyOptionsRequired` の時）。
+
+### 58.5 API（要認証、メンテナンス・強制アップデートで**閉じない**（規約の同意と同じ、§46 `EXEMPT_ROUTES`））
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/privacy/choices` | → `PrivacyChoicesView`（読むだけ、状態を作らない） |
+| PUT | `/v1/privacy/choices` | `{ privacyVersion, source: "prompt"\|"settings", personalizedAds?: bool, analytics?: bool }` → `PrivacyChoicesView` |
+| PUT | `/v1/privacy/platform` | `{ os: "ios"\|"android"\|"other", att?: AttStatus, gdprApplies?: bool\|null, cmp?: CmpStatus }` → `PrivacyChoicesView` |
+| POST | `/v1/privacy/prompt-shown` | `{ privacyVersion }` → `PrivacyChoicesView`（事前の画面を出した記録。同じ版は1回だけ書く） |
+- `privacyVersion` が今の版でなければ `409 CONSENT_VERSION_MISMATCH`（端末は取り直す）。送らなかった項目は今の効いている値のまま（既定を確定させる）。PUT は選んだ記録になる（`decidedVersion`・`decidedAt`）。
+- 同じ内容をもう一度送っても何も変わらない（`rev` も KPI も増えない）→ 冪等キー不要。
+- 余分な項目・不正な値は `400 BAD_REQUEST`。削除の手続き中（`deleting`）は `DELETION_PENDING`（予定中は変えられる：法的な権利）。
+- `privacyChoices` は `GET /v1/player`・ブートストラップの `extra` にも入る（`required`・`prompt`・`personalizedAds`・`analytics`・`adRequest`）。
+
+```json
+{ "policyVersion": "2026-11-01", "decidedVersion": "2026-11-01", "decidedAt": 1794790800000, "updatedAt": 1794790800000, "rev": 2,
+  "required": false, "prompt": null, "minor": false,
+  "personalizedAds": { "value": true, "effective": false, "locked": "age_unknown" },
+  "analytics": { "value": true, "effective": true, "locked": null },
+  "platform": { "os": "ios", "att": "authorized", "gdprApplies": false, "cmp": "not_required", "at": 1794790700000 },
+  "adRequest": { "npa": 1, "nonPersonalized": true, "underAgeOfConsent": false, "ageKnown": false, "tagForChildDirected": false, "extras": { "npa": "1" } },
+  "kpi": { "optional": true } }
+```
+
+### 58.6 リワード広告（§21）との関係（REQ-CNS-010/011）
+- `GET /v1/ads` と `POST /v1/ads/:placementId/start` の `adRequest` は **58.3 の効いている値**から作る：`nonPersonalized = REQ-AD-009 の判定 || パーソナライズ広告が効いていない`、`npa = nonPersonalized ? 1 : 0`、`extras.npa = "1"`（AdMob のネットワーク追加パラメータ）、子どもは `tagForChildDirected: true`。
+- セッションに開いた時の `npa` を記録する（`AdSession.npa`、`GET /v1/ads/sessions/:id` にも出す）。SSV のコールバック（§21.4）は `npa` で**報酬を変えない・弾かない**：非パーソナライズでも同じ無償コイン・同じ上限（断っても損をしない）。
+- 同意を後から変えても、すでに開いたセッションはそのまま（次のリクエストから効く）。
+
+### 58.7 KPI の分類（REQ-CNS-012〜014、`server/src/domain/kpiConsent.ts`）
+- すべての KPI イベント名を **`essential`（必須：法定の記録・不正対策・同意の証跡）** か **`optional`（任意：分析）** に分類する（`KPI_EVENT_CLASS`）。分類の無い名前は `optional` として扱う（迷ったら送らない）。テストがサーバーのコードから出すイベント名・クライアントのイベント名を全部集め、分類が無ければ失敗する。
+- `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
+- **Round 19・20 のイベント（R20 統合で決めたこと）**：
+  | イベント | 送り手 | 分類 | 理由 |
+  |---|---|---|---|
+  | `transfer_issue`・`transfer_redeem`（§54.9） | サーバー | `essential` | アカウントへの入口の監査（サインインと同じ扱い）。失敗の分類で総当たり・乗っ取りを見つける。ID・パスワード・IP は元から入れない |
+  | `review_prompt_eligible`・`review_prompt_shown`・`review_soft_answer`（§59） | サーバー | `optional` | 頼む時の調整のための分析。分析がオフでもレビュー依頼の規則（間隔・回数）は状態 `reviewPrompt` で守られ、KPI に頼らない |
+  | `cheer_send`・`cheer_seen`（§55）、`perf_setting_change`・`asset_predownload`（§56）、`tutorial_replay`・`tip_view`・`tip_context_open`（§57）、`lnotif_scheduled`・`lnotif_opened`・`lnotif_permission`（§61） | クライアント | `optional` | 遊び方・設定の分析だけ。端末の `ConsentState.AllowsClientEvent` が捨て、サーバーも捨てる |
+  - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
+- **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
+- `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
+
+### 58.8 個人データの開示（§51）・アカウント削除
+- `privacyChoices` は `account` セクションに全部入る（選んだ値・版・時刻・端末の状態・履歴）。
+- アカウント削除の最後の `wipe` で消える。他の場所に写しは無い（KPI の行は §51 の分析イベントと同じ扱い）。
+
+### 58.9 クライアント
+- `Muchi.Client`：`ConsentState`（ビューの読み取り・`AllowsClientEvent(name)`・`AdRequestConfig`）、`IConsentPlatform`（`AttStatus`・`RequestAttAsync`・`GatherCmpAsync`・`PrivacyOptionsRequired`・`ShowPrivacyOptionsAsync`・`OpenAppSettings`）、`ApiClient.GetPrivacyChoicesAsync`・`SetPrivacyChoicesAsync`・`ReportPrivacyPlatformAsync`・`NotePrivacyPromptShownAsync`、`AnalyticsClient.Gate`（同意の無い時に任意のイベントを端末で捨てる。サーバーも捨てる）。
+- `Muchi.Game.ConsentModel`：事前の画面を出すかどうか（FTUE・広告の直前・ホーム）、ATT・CMP の流れ、設定の行、`IAdConsent` の実装（§21 の `RewardedAdModel` に渡す）。
+
+### 58.10 クライアントのエラー報告（§60）との関係（R20 統合）
+- §60 のエラー報告の「診断データの同意」（`ErrorReporter.AllowsDiagnostics`）は **分析（`analytics`）の選択**で決める（パーソナライズ広告ではない）。分析が効いている（`analytics.effective`）時だけ、エラーの見本にプレイヤー ID を付ける。子ども（保護者の同意なし）・EEA の既定・オフにした人の報告は匿名で届く。報告そのもの（個人情報を落とした種類・版・機種）は分析をオフにしても送る（不具合の修正は運営の正当な目的で、ID の無い報告は個人データにならない。§60.3）。
+- 端末：`ErrorReporter.FollowConsent(() => ConsentState)`、Unity は `ClientErrorModel.FollowConsent(ConsentModel)`。`ConsentState.AllowsDiagnostics` = `analytics.effective && kpi.optional`。ビューがまだ無い時は true（その束は認証が無いか、サーバーが判定する）。
+- サーバー：`POST /v1/client-errors` は認証された束でもプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（§60.6）。
+- 設定の画面では「プライバシー」の中に「広告と分析」と「エラーの自動送信」を並べ、エラーの自動送信の画面は「プレイヤーIDを添えるかは『分析への協力』に従います」と案内する。
+
+### 58.11 事前の画面は1セッションに1つ（§59・§61 との関係、R20 統合）
+- **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**：§58 の事前の画面（続く ATT・CMP を含む）、§61.4 の通知の前置き（続く OS の通知の許可を含む）、§59 のレビュー依頼（前置きの質問・OS のシート）。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。
+- **同じ時に2つ以上が出せる時の順**：① 同意（§58。パーソナライズ広告・分析を使う前に決めてもらう）→ ② 通知の前置き（§61。調教の直後に役に立つ）→ ③ レビュー（§59。お願いだけ）。どれも FTUE の間は出さない（それぞれの規則）。だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューがそのどちらかのすぐ後に出ることも無い。
+- 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
+- 端末：Unity は `SessionPromptGate`（`ConsentModel.Prompts`・`LocalNotificationModel.Prompts`・`ReviewPromptModel.Prompts` に同じものを渡す）、プロトタイプは `sessionPrompt`。サーバーには状態を足さない（セッションは端末のもの）。
+- **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、この1つの規則を最初に戻す。
+- **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
+
+## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
+App Store / Google Play の評価を、**OS の標準のアプリ内レビュー API**（iOS `SKStoreReviewController` / `AppStore.requestReview`、Android Play In-App Review）でだけ頼む。頼むのは**うれしい瞬間**（初勝利・大会の初優勝・殿堂入り・馬の目標の列を全部達成）だけで、負けた直後・購入・エラー・返金・メンテナンスのお知らせの直後・チュートリアル（FTUE）の途中には頼まない。決めるのはデータの規則（`progression.reviewPrompt`、起動時と各リモート設定の版で検証）と**純粋な関数**（`decideReviewPrompt`、C# `ReviewPromptPolicy.Decide`、共有ベクター）。頼んだ記録はサーバーが持つ（新しい状態のキー `reviewPrompt`）ので、入れ直しても繰り返し頼まない。
+
+**レビューには何も配らない**（E 番号なし、balance-targets の節なし）。Apple（App Store Review Guidelines 5.6.1：レビューは標準の API で、報酬と引き換えにしない）と Google（Play のユーザー評価のポリシー：インセンティブを付けたレビューの禁止）の決まり。コイン・アイテム・XP・称号・ミッションの進み、どれもレビューに結び付かない。サーバーは端末が本当にレビューを書いたかを知らない（OS は結果を返さない）し、知る経路も作らない。規則に報酬の項目を書くと検証で落ちる（`reward`・`rewards`・`coins`・`items`・`freeCoins` は知らないキー、テストで確認）。
+
+### 59.1 うれしい瞬間（`moment`）
+| `moment` | いつ（端末が判断して送る） |
+|---|---|
+| `first_win` | 初めての1着（チュートリアルを除く確定したレース。結果画面を閉じた後） |
+| `first_tournament_win` | 大会（§20）の初めての優勝（表彰の後） |
+| `hall_induction` | 殿堂入り（§34 の引退の式の後） |
+| `horse_goal_chain` | 馬の目標の列を全部達成（§53 の印が付いた後） |
+- 瞬間は端末の言葉をそのまま使う（サーバーは数え直さない）。レビュー依頼は何も配らないので、偽っても得をする物が無い。規則の `moments` に無い瞬間は頼まない（運用で1つずつ止められる）。
+- 画面の途中（レース中・演出の途中・購入の途中）では出さない。端末は結果・表彰・式の画面を閉じてホームに戻った所で1回だけ聞く。
+
+### 59.2 規則 `progression.reviewPrompt`（`reviewPromptProblems`、起動時と各版）
+```json
+{ "enabled": true,
+  "moments": ["first_win", "first_tournament_win", "hall_induction", "horse_goal_chain"],
+  "minDaysSinceInstall": 3, "minRacesPlayed": 10,
+  "maxPerYear": 3, "coolDownDays": 120,
+  "quietMinutes": { "loss": 30, "purchase": 1440, "refund": 43200, "error": 30, "maintenanceNotice": 60 },
+  "softAsk": { "ios": false, "android": false } }
+```
+| キー | 検証 |
+|---|---|
+| `enabled` | bool。`false` なら誰にも頼まない（止めるスイッチ） |
+| `moments` | 59.1 の値だけ、重複なし（`enabled: true` なら1つ以上） |
+| `minDaysSinceInstall` | 整数 0〜365（インストール＝アカウントを作った時から） |
+| `minRacesPlayed` | 整数 0〜1000（戦績 `stats.races`） |
+| `maxPerYear` | 整数 1〜3（直近 365 日に頼んだ回数の上限。Apple は1年に3回までしか出さないので、それより多くは書けない） |
+| `coolDownDays` | 整数 30〜365（前に頼んでから空ける日数） |
+| `quietMinutes` | `loss`・`purchase`・`refund`・`error`・`maintenanceNotice` の5つ全部、整数 0〜525600（365日） |
+| `softAsk` | `{ ios: bool, android: bool }`。**`android: true` は検証で落ちる**（59.6）。既定は両方 `false` |
+知らないキーは落ちる（報酬の項目を足せない）。
+
+### 59.3 判断（`decideReviewPrompt(rules, summary)`、純粋、REQ-REV-003）
+入力の要約（`ReviewPromptSummary`）：
+```json
+{ "platform": "ios", "moment": "first_win", "now": 1796698800000,
+  "installedAt": 1795000000000, "racesPlayed": 14, "inFtue": false, "accountClosing": false,
+  "sessionPrompted": false, "maintenanceVisible": false, "coinDebt": false,
+  "minutesSince": { "loss": null, "purchase": 9000, "refund": null, "error": null, "maintenanceNotice": null },
+  "history": [1780000000000] }
+```
+`minutesSince.*` は「最後のその出来事から何分たったか」（`null` = 無い・知らない）。上から順に見て、最初に当たった理由で頼まない：
+| 順 | `reason` | 条件 |
+|---|---|---|
+| 1 | `disabled` | `enabled: false` |
+| 2 | `moment` | `moment` が `moments` に無い |
+| 3 | `account_closing` | アカウント削除の予約中 |
+| 4 | `ftue` | FTUE の途中（端末の `inFtue`、またはサーバーで無料10連がまだ） |
+| 5 | `session` | このセッションで既に頼んだ（端末の旗、またはサーバーの最後の `sessionId` と同じ） |
+| 6 | `maintenance` | メンテナンスのお知らせが今見えている（§46 の `visibleWindows`）、または `minutesSince.maintenanceNotice < quietMinutes.maintenanceNotice` |
+| 7 | `refund` | コインの借り（`coinDebt`）がある、または `minutesSince.refund < quietMinutes.refund` |
+| 8 | `purchase` | `minutesSince.purchase < quietMinutes.purchase` |
+| 9 | `error` | `minutesSince.error < quietMinutes.error` |
+| 10 | `loss` | `minutesSince.loss < quietMinutes.loss` |
+| 11 | `too_new` | `⌊(now − installedAt) / 1日⌋ < minDaysSinceInstall` |
+| 12 | `too_few_races` | `racesPlayed < minRacesPlayed` |
+| 13 | `year_cap` | `history` のうち `now − at < 365日` の数 ≥ `maxPerYear` |
+| 14 | `cool_down` | `history` の最新が `now − at < coolDownDays 日` |
+どれにも当たらなければ頼む：`style` = `softAsk[platform]` が true なら `soft`（59.6 の前置きの質問）、でなければ `native`（`editor` は `ios` の値）。出力 `{ show, reason, style }`（頼まない時 `style: null`、頼む時 `reason: null`）。サーバー（TS）とクライアント（C#）は `contracts/review-prompt.vectors.json` で同じ答えになることを確かめる。
+
+### 59.4 API（要認証、メンテナンスの区分 `core`）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/review-prompt` | → `{ v: 1, rules, history: { count365, lastAt }, serverSummary }`（端末の事前の判断用。状態を変えない） |
+| POST | `/v1/review-prompt/check` | `Idempotency-Key` 必須。`{ moment, platform, sessionId, client: { inFtue, minutesSinceLoss, minutesSinceError, minutesSinceMaintenanceNotice } }` → `ReviewPromptCheck` |
+| POST | `/v1/review-prompt/:promptId/answer` | `{ step: "soft_yes" \| "soft_no" \| "soft_dismiss" \| "native_requested" }` → `{ promptId, next: "store_review" \| "help_inquiry" \| "none", helpCategory: "other" \| null }` |
+```json
+{ "v": 1, "show": true, "style": "native", "reason": null, "promptId": "rp_3" }
+```
+- **check**：サーバーが自分の知っていること（インストール日・戦績・削除の予約・無料10連・最後の購入・返金とコインの借り・メンテナンスのお知らせ・頼んだ記録・最後の `sessionId`）と端末の言うこと（FTUE・負け・エラー・メンテナンスのお知らせを見てからの分）を合わせて 59.3 で決める。端末の FTUE とサーバーの FTUE は **どちらかが途中なら途中**（安全な側）。
+- 頼むと決めた時だけ記録する：`history` に `{ id, at, moment, platform, style, sessionId, answer: null, nativeAt: null }`（最新 10 件、400 日より古いものは消す）と KPI `review_prompt_eligible`。**頼んだ時点で回数に数える**（端末が落ちても、OS が実際には出さなくても、繰り返し頼まないため）。同じ冪等キーの再送は同じ答え（記録も KPI も1回）。頼まない時は状態を変えない（理由を返すだけ）。
+- **answer**：`soft_yes` → `next: store_review`（端末はそのまま標準の API を呼ぶ）、`soft_no` → `next: help_inquiry`・`helpCategory: other`（§48 のお問い合わせの画面を開く。ストアには送らない）、`soft_dismiss` → `none`。前置きの答えは1回だけ書く（同じ答えの再送はそのまま、違う答えは `409 CONFLICT`）。`native_requested` は `style: native` か、`soft_yes` の後だけ（それ以外 `409 NOT_ELIGIBLE`）。標準の API を呼んだ時刻 `nativeAt` を1回だけ書き、KPI `review_prompt_shown` を1回。知らない `promptId` は `404 NOT_FOUND`。
+- 削除の予約中は check がいつも `account_closing` を返す。オフラインの端末は頼まない（サーバーの記録が無いと回数を守れないため）。
+- 応答にもどこにも報酬の欄は無い（ウォレット・アイテム・ミッションを変えないことをテストで確かめる）。
+
+### 59.5 端末（`IStoreReview`）
+- `IStoreReview.RequestReviewAsync()` が OS の標準 API を呼ぶ（中身は Codex が SDK でつなぐ。iOS は `AppStore.requestReview(in:)`、Android は `ReviewManager.requestReviewFlow` → `launchReviewFlow`）。**結果は「呼んだ」だけ**：OS は出したかどうか・何点かを教えない（教えてもらおうとしない）。呼んだら `native_requested` を送る。
+- `IStoreReview.Available` が false（エディター・未対応の端末）なら check を呼ばない。
+- R20 統合（§58.11）：同じセッションで同意の事前の画面か通知の前置きが出ていたら頼まない（理由 `session_prompt`、check を呼ばない）。アカウントが変わったら（§54）セッションを新しくする（`ReviewPromptModel.ResetSession`）。
+- 標準の API の外で「★を付けてください」の独自の画面は作らない（Apple 5.6.1）。ストアのページへのリンク（設定の「アプリを評価する」）は、プレイヤーが自分で押す時だけ（自動では出さない）。
+- 端末の事前の判断（`ReviewPromptPolicy.Decide`）は GET の規則とサーバーの要約で同じ関数を回し、明らかに頼めない時はサーバーを呼ばない。最後に決めるのはサーバー。
+
+### 59.6 前置きの質問（ソフト質問）とストアの決まり（決めたこと）
+- 前置き：「ムチ一閃を楽しんでいますか？」［はい］［いまいち］（閉じる＝答えない）。はい → 標準の API。いまいち → 「ご意見をお聞かせください」でお問い合わせ（§48、`other`）を開く。
+- **既定は OFF**（`softAsk.ios: false`・`softAsk.android: false`）。理由：
+  - Google Play の In-App Review API のガイドラインは、評価のカードの前やその最中に「アプリを気に入っていますか？」のような意見を聞く質問をすることを禁じている → **`android: true` は検証で落ちる**（運用でも入れられない）。
+  - Apple は前置きの質問そのものは禁じていないが、満足した人だけをストアに送る「振り分け（ゲーティング）」を嫌う（5.6.1 は独自のレビューの画面を禁止）。いまいちの人をストアに送らない形はゲーティングに当たりうる → iOS は運用で入れられるが、入れるのは法務とストアの担当の確認の後（docs/planning/03「レビュー依頼」）。
+- 前置きを OFF にしても、いまいちの声の受け皿は今までどおりヘルプセンターのお問い合わせ（設定・ヘルプから）。
+
+### 59.7 KPI（REQ-REV-012、すべてサーバー）
+| イベント | いつ | 列 |
+|---|---|---|
+| `review_prompt_eligible` | check が頼むと決めた時（1回） | `s1` = moment、`s2` = platform、`s3` = style |
+| `review_prompt_shown` | `native_requested` を受けた時（1回） | `s1` = moment、`s2` = platform、`s3` = style（soft の後なら `soft`） |
+| `review_soft_answer` | 前置きの答え（1回） | `s1` = `yes` \| `not_really` \| `dismissed`、`s2` = moment、`s3` = platform |
+クエリは `docs/ops/kpi-queries.md`「レビュー依頼」。星の数・レビューの本文は取れない（OS が返さない）。
+
+### 59.8 状態・個人データ・削除
+- 状態の `reviewPrompt`：`{ v: 1, history: [...], lastSessionId }`。§51 の個人データの開示では `analytics` の欄に入れる（`DEX_CLASSIFICATION.reviewPrompt = analytics`、頼んだ時刻・瞬間・前置きの答え）。
+- アカウント削除の最後の `wipe` で消える。他に写しは無い。
+
+### 59.9 文言・アクセシビリティ
+- 前置きの文言は端末（`ui-en.json`・`proto-en.json`）に日本語と英語がある。サーバーは理由のコードだけを返す（文言は返さない）。
+- 煽り・期限・「★5で」などの点数の誘導は書かない（「倍」「今だけ」「残りわずか」「お得」無し、テスト）。報酬を約束する言葉（「もらえる」「プレゼント」「報酬」）を書かない。
+- 前置きのシートは文字の大きさ（§41 `TextScale`）に従う（最大でもはみ出さない、a11y-flow）。ボタンは2つとも同じ大きさ・同じ強さ（「はい」だけを目立たせない）。
+
+### 59.10 クライアント
+- `Muchi.Client`：`ReviewPromptRules`・`ReviewPromptSummary`・`ReviewPromptPolicy.Decide`（共有ベクター）、`IStoreReview`（`NullStoreReview` はエディター用）、`ApiClient.GetReviewPromptAsync`・`CheckReviewPromptAsync`・`AnswerReviewPromptAsync`、`ReviewPromptCheck`・`ReviewPromptStatus`。
+- Unity のゲーム層 `ReviewPromptModel`：セッションの旗（1セッション1回）、負け・エラー・メンテナンスのお知らせの時刻を覚える、瞬間を受けて check → 前置き or 標準の API → answer。描画は `docs/handoff-codex-round20-review-prompt.md`。
+- デプロイ：新しい GET 1つ・POST 2つと KPI 3種類、状態のキー1つ（マイグレーションなし、検証器は変わらない）。サーバーを先に出し、アプリは後（古いサーバーには 404 → 端末は頼まない）。
+
+## 60. クライアントのエラー報告（client error & crash reporting、REQ-CERR-001〜020、`server/src/domain/clientErrors.ts`・`server/src/ops/clientErrors.ts`・`server/src/do/clientErrors.ts`、C# `ClientErrors.cs`（`ErrorReporter`・`ErrorScrubber`・`ErrorFingerprint`・`StallDetector`）・`Muchi.Game.ClientErrorModel`、共有ベクター `contracts/client-errors.vectors.json`、docs/handoff-codex-round20-client-errors.md）
+外部の SDK を入れずに、端末で起きた問題を運営が見られるようにする小さな自前の経路。端末は**捕まえなかった例外・API の失敗（種類ごと）・ロックステップのズレ（チェックサムの不一致）・アセットのダウンロード失敗・長いフレーム／固まり（ANR に近いもの）**を小さな列にためて（オフラインでも保存）、種類ごとの抽出率で間引いて `POST /v1/client-errors` にまとめて送る。サーバーは**まとめた数（集計）**と少数の見本だけを、上限と保存期間のある表に持ち、運営の画面（ops console）に「多いエラー」を出す。コイン・アイテムは動かない（E番号なし）。KPI は増やさない（この経路そのものが計測）。Crashlytics などのネイティブのクラッシュ収集は後で Codex が足せる（§60.10）。
+
+### 60.1 種類（`category`）と送る中身（REQ-CERR-002）
+| category | いつ | 端末が送るキー（これ以外は 400） |
+|---|---|---|
+| `exception` | 捕まえなかった例外（Unity `Application.logMessageReceivedThreaded` の Exception／Assert、C# の未処理例外） | `type`（例外のクラス名）・`message`・`stack`・`handled`（bool）・`screen`（任意） |
+| `api` | API の失敗（通信できない・タイムアウト・5xx・400/401/403/413/422）。業務のエラー（409 `INSUFFICIENT_COINS` など、404、429）は送らない | `method`・`route`（id を `:id` にした形）・`status`（0 = 応答なし）・`code`（任意）・`reason`（`network`・`timeout`・`http`） |
+| `desync` | ロックステップのズレ（部屋からの `desync`、§4。エンジンが既に見つけている） | `raceId`・`tick`・`mode`・`engineLevel`（任意）。**入力（コマンド列）・チェックサム・状態は送らない**（キーがあれば 400） |
+| `asset` | アセットのダウンロード失敗（§16） | `assetKey`・`reason`（`http`・`hash`・`disk`・`timeout`・`network`・`other`）・`status`（任意） |
+| `stall` | 長いフレーム（既定 700 ms 以上）・固まり（5,000 ms 以上） | `kind`（`long_frame`・`anr`）・`durationMs`・`screen` |
+
+どの項目にも `at`（端末の時刻 ms）・`count`（端末で同じ指紋をまとめた数、1〜10,000）・`sampleRate`（その時の抽出率‰、1〜1000）。
+
+### 60.2 `POST /v1/client-errors`（REQ-CERR-003〜007）
+```json
+{ "batchId": "b_1f0c9a7e4d2b", "platform": "ios", "appVersion": "1.4.0", "osVersion": "iOS 18.1", "deviceModel": "iPhone15,2",
+  "installId": "6c1f0b9e2a7d4c3b", "attachPlayer": true,
+  "items": [ { "category": "exception", "at": 1793000000000, "count": 2, "sampleRate": 1000,
+               "type": "NullReferenceException", "message": "Object reference not set to an instance of an object",
+               "stack": "Muchi.Game.HudModel.Update () (at Assets/Muchi/Game/HudModel.cs:120)", "handled": false } ] }
+```
+- **認証は任意**：`Authorization` があり有効ならそのプレイヤーとして数える。無い・無効なら匿名（401 にはしない：報告がサインインの失敗で回り続けないため）。
+- **門（§46）**：メンテナンスの窓・アップデート必須でも**閉じない**（`EXEMPT_ROUTES`）。古い版のクラッシュこそ見たい。KPI の送信と同じ扱い。
+- **何度送っても同じ**：`installId` + `batchId` を 48 時間覚える。同じ組がもう一度来たら何も足さず `{ "accepted": 0, "duplicate": true, … }`（端末は送れたものとして列から消す）。端末は列の束ごとに `batchId` を1回作り、再送でも同じ id を使う。
+- **大きさの上限**：本文 `maxBodyBytes`（既定 32 KB、超えたら 413）、項目 `maxItems`（既定 20）、`message` 300 字、`stack` 4,000 字・40 行、そのほかの文字列は表のとおり短い。
+- **回数の制限**：プレイヤーごと（認証あり）に `perPlayerPerHour`（既定 20 束）、端末（`installId`）ごとに `perDevicePerHour`（既定 20 束）、匿名の束は全体で `anonymousPerMinute`（既定 120）。超えたら 429 `RATE_LIMITED`（端末は列を残して待つ）。
+- **設定で止める**：`enabled: false` なら何も保存せず `{ "accepted": 0, "enabled": false }`（200。端末はその起動の間は送らない）。保存先が無い環境（ローカルの最小構成）も同じ。
+- 応答：`{ "accepted": 3, "dropped": 0, "duplicate": false, "enabled": true, "sampling": { "exception": 1000, "api": 200, "desync": 1000, "asset": 500, "stall": 100 }, "flushIntervalSec": 60 }`。`sampling` は端末が次から使う抽出率。`GET /v1/config` にも同じ `clientErrors: { enabled, sampling, flushIntervalSec }` を載せる。
+
+### 60.3 個人情報を落とす（スクラブ、REQ-CERR-008）
+端末で落とし、**サーバーでも同じ規則でもう一度落とす**（端末を信じない）。TS と C# は共有ベクター `contracts/client-errors.vectors.json` で同じ結果。
+1. メールアドレス → `<email>`、`Bearer …`・JWT（`eyJ….….…`）→ `<token>`、URL → `<url>`。
+2. ファイルのパスはファイル名だけ（`/Users/alice/proj/Assets/Muchi/Game/HudModel.cs:120` → `HudModel.cs:120`、`C:\Users\…\x.cs` も同じ）。
+3. 引用符の中（`"…"`・`'…'`・`「…」`）は自由な文やプレイヤーが付けた名前なので `"…"` に置き換える。
+4. ASCII 以外の文字の並び（日本語の文・名前）は `…` に置き換える。
+5. 長い id・トークンらしい並び（数字を含む 20 字以上の英数字、12 字以上の16進）→ `<id>`、`p_…`・`h_…` のような id → `<id>`、5 桁以上の数字 → `<n>`。
+6. 空白をまとめ、上限の長さで切る。
+**送ってよいもの**：端末の機種（`deviceModel`）と OS の版（`osVersion`、英数字と ` ,._()-` の 40 字まで。ほかの文字は `other`）、アプリの版、プラットフォーム。**送らないもの**：メール・トークン・プレイヤー名・馬の名前・自由な文・入力の列・位置・広告 id。`installId` はアプリが最初の起動で作る乱数（端末の識別子・広告 id から作らない）で、回数の制限と重複の判定にだけ使い、見本には残さない。
+
+### 60.4 指紋（`fingerprint`、REQ-CERR-009）
+同じ原因のエラーを1行にまとめる鍵。**サーバーが**スクラブした中身から計算する（端末も同じ計算で列の中をまとめる）。FNV-1a 64 bit（UTF-8）の16進16字。元の文字列：
+- `exception|<type>|<message の型>|<上から5つのフレーム>`：message の型 = スクラブ後の数字を `#` に。フレーム = スタックの各行からアドレス（`[0x…]`・`<…>`）と行番号（`:120`）を消したもの。行番号は入れない（小さな修正で指紋が変わらないように）。
+- `api|<METHOD>|<route>|<status>|<code または ->`：`route` の id らしい部分（数字を含む 6 字以上・`x_…` の形）は `:id`。
+- `desync|<mode>`（ズレはモードごとに1行。どのレースかは見本で見る）。
+- `asset|<reason>|<assetKey の先頭2段>`、`stall|<kind>|<screen>`。
+
+### 60.5 保存（集計と見本、上限と保存期間、REQ-CERR-010〜012）
+保存先は専用の Durable Object `ClientErrorsDO`（シングルトン `global`、SQLite、**wrangler の移行 v7**）。プレイヤーの状態（PlayerState）には何も足さない（§51 の分類に新しいキーは無い）。
+- `groups`：指紋ごとに1行 — category・題（例外の型と message の型／route と status など）・合計の数・推定の数（`count × 1000 / sampleRate` の合計）・最初と最後の時刻・最初と最後のアプリの版・版ごとの数（多い順に 20 まで）・プラットフォームごとの数・通知の記録。上限 `maxGroups`（既定 2,000）。超えた新しい指紋は category ごとの `overflow:<category>` の行に足す。
+- `days`：指紋 × 日（UTC）× アプリの版 × プラットフォームの数。
+- `samples`：指紋ごとに新しい `samplesPerGroup`（既定 5）件だけ — 時刻・版・機種・OS・スクラブ済みの message／stack・種類ごとの中身（desync なら `raceId`・`tick`・`mode`）・**`playerId`（認証あり かつ `attachPlayer: true` の時だけ、そうでなければ null）**。
+- `retentionDays`（既定 30）を過ぎた日の行・見本と、最後に見てから過ぎた指紋の行は、受け付けるたびに少しずつ消す。重複の判定は 48 時間、回数の行は 1 時間で消える。
+
+### 60.6 同意のフック（REQ-CERR-013）
+端末の `ErrorReporter.AllowsDiagnostics`（`Func<bool>`、既定 `true`）が false の時は `attachPlayer: false` で送る（サーバーは playerId を残さない。報告そのものは匿名で届く）。`attachPlayer` は束ごとの値で、過去に送った見本は変えない。
+- **R20 統合で決めたこと（§58.10）**：このフックの同意は §58 の **分析（`analytics`）** の選択。端末は `ErrorReporter.FollowConsent(() => ConsentState)` で `ConsentState.AllowsDiagnostics`（= `analytics.effective`）を束ごとに読む。**サーバーも同じ規則を守る**：認証された束で `attachPlayer: true` でも、そのプレイヤーの `analytics.effective` が true でなければ playerId を残さない（`POST /v1/client-errors` が PlayerDO のビューを読む。読めない時も残さない＝閉じる側に倒す）。古いアプリ・選択を変える前に作った束でも id は付かない。報告と回数の制限（端末ごと）はそのまま。
+- **アカウントが変わった時（§54、R20 統合）**：`401 SESSION_REPLACED`・引き継ぎコードの入力・サインアウト（新しく始める）の時、端末は `ErrorReporter.AccountChanged()` を呼ぶ。まだ返事の無い束は同じ id のまま `attachPlayer: false` になり、それまでに溜めた項目は自分たちだけの束で `attachPlayer: false` で送る（再起動しても続く）。古いアカウントのエラーが新しいアカウントの id で残ることは無い。
+
+### 60.7 運営の画面（ops console、`/v1/admin/client-errors`、REQ-CERR-014〜016）
+- `GET /v1/admin/client-errors?category=&platform=&appVersion=&sort=count|last|new&limit=`（viewer）：`{ groups: [ { fingerprint, category, title, count, estimated, firstSeen, lastSeen, firstVersion, lastVersion, versions: [{ appVersion, count }], platforms: { ios, android, editor }, alert } ], alerts: [ … 直近の通知 ], totals: { groups, byCategory } }`。`sort=count`（既定）は数の多い順、`last` は最後に見た順、`new` は最初に見た順。
+- `GET /v1/admin/client-errors/:fingerprint`（viewer）：その行・直近 14 日の `days`・見本。`desync` の見本には `race: { raceId, tick, replay: "/v1/admin/replays/<raceId>", integrity: { status, events } | null }`（`integrity` は見本に playerId がある時だけ、§47.7 と同じ不正対策の記録＝検証の結果）。ズレは公平さに関わるので、画面は desync を一番上の絞り込みに出す。
+- 読むだけ（書き込みの操作は無い）。プレイヤーの API からはこの表を読めない。
+
+### 60.8 通知のフック（新しい指紋の急増、REQ-CERR-017）
+最初に見てから `spikeWindowHours`（既定 24）時間以内の指紋の推定の数が `spikeMinCount`（既定 50）に届いた時、その指紋に1回だけ `alert: { at, appVersion, estimated }` を記録し、構造化ログ `{"alert":"client_error_spike","fingerprint":…,"category":…,"appVersion":…,"estimated":…,"title":…}` を `console.warn` に出す（Workers Logs／Logpush の通知の規則でつかまえる。docs/ops/console.md「クライアントのエラー」）。リリース直後に新しく出たエラーが増えた時に気づくため。外への通知（Slack など）は Logpush の規則側で行い、サーバーは外へ送らない。
+
+### 60.9 アカウント削除・開示（REQ-CERR-018〜019）
+- 削除の手順に `client_errors` の段（`inquiries` の後、`data_export` の前）。見本の `playerId` が削除した人のものは **null に置き換える**（匿名化。エラーそのものは運営のデータとして残す）。回数の行（`p:<playerId>`）は消す。集計の行（groups・days）にはもともとプレイヤーが入らない。
+- §51 の開示では `analytics.clientErrors`（そのプレイヤーの id が付いた見本：時刻・category・題・版・プラットフォーム・機種・OS）を出す。読めない時は `available: false`。
+
+### 60.10 設定（`progression.clientErrors`、起動時とリモート設定で検査、REQ-CERR-001）
+`{ "enabled": true, "sampling": { "exception": 1000, "api": 200, "desync": 1000, "asset": 500, "stall": 100 }, "maxItems": 20, "maxBodyBytes": 32768, "perPlayerPerHour": 20, "perDevicePerHour": 20, "anonymousPerMinute": 120, "flushIntervalSec": 60, "maxGroups": 2000, "samplesPerGroup": 5, "retentionDays": 30, "spikeMinCount": 50, "spikeWindowHours": 24 }`。範囲：`sampling` の各値は 0〜1000 の整数（‰）で 5 種類すべて必要、**`desync` は 1000 のみ**（公平さのため間引かない）、`maxItems` 1〜50、`maxBodyBytes` 4096〜65536、`perPlayerPerHour`・`perDevicePerHour` 1〜600、`anonymousPerMinute` 1〜6000、`flushIntervalSec` 10〜3600、`maxGroups` 100〜20000、`samplesPerGroup` 1〜20、`retentionDays` 7〜90、`spikeMinCount` 1〜100000、`spikeWindowHours` 1〜168。知らないキーは問題。無ければこの既定値。
+
+### 60.11 クライアント（REQ-CERR-020）
+- `Muchi.Client`：`ClientErrorCategories`・`ClientErrorItem`（`Exception`・`Api`・`Desync`・`Asset`・`Stall`）・`ErrorScrubber`・`ErrorFingerprint`・`ClientErrorSampling`・`IClientErrorStore`・`ClientErrorOptions`・`ErrorReporter`（指紋で列の中をまとめる・抽出・オフラインで保存・束ごとの `batchId`・待ち時間を延ばす再送・429 で待つ・400 は捨てる・`enabled: false` で止まる・自分の送信の失敗は報告しない）・`StallDetector`・`ApiClient.SendClientErrorsAsync`・`ApiClient.RequestFailed`（API の失敗のイベント）・`LockstepClient.Desync`（ズレのイベント、`RaceId`）。
+- `Muchi.Game`：`ClientErrorModel`（Unity のログ・フレーム・API・ズレ・アセットをつなぐ。報告の中で起きた例外を報告しない）。Unity での取り付け（`Application.logMessageReceivedThreaded`・`OnApplicationPause`）は docs/handoff-codex-round20-client-errors.md。
+- ネイティブのクラッシュ（Crashlytics）：後で Codex が足すなら、同じ `AllowsDiagnostics` で止め、プレイヤー名・自由な文を送らない（§60.3）。この経路とは別に動く。
+
+## 61. 端末のローカル通知（on-device local notifications、REQ-LNOTIF-001〜020、`server/src/domain/localNotify.ts`、C# `LocalNotifications.cs`（`LocalNotificationPlanner`・`ILocalNotificationPlatform`）・`Muchi.Game.LocalNotificationModel`、共有ベクター `contracts/local-notifications.vectors.json`、docs/handoff-codex-round20-local-notifications.md）
+端末が**もう知っている時刻**（調教のセッションの期限・次のゲーム日・週替わりチャレンジ／ライバルの週／交換所の締め・プレゼントの受け取り期限）を、サーバーを待たずに**端末の中で予約する通知**。サーバーのプッシュ（REQ-PUSH-*、§3.5 の表・push.json）はそのまま。ローカル通知は**プッシュと同じ種類（カテゴリ）と静かな時間帯**に従い、設定画面の「通知」1か所で両方を切り替える。何を予約するかはスナップショットからの**純粋な関数**（`planLocalNotifications`、TS と C# は共有ベクターで同じ結果）。コイン・アイテムは動かない（経済の目標なし、E 番号・balance-targets の節なし）。購入・ショップ・ガチャへ誘う通知は作らない。
+
+### 61.1 種類と持ち主（REQ-LNOTIF-001/002）
+同じ出来事をプッシュとローカルの両方で知らせない。出来事ごとに**持ち主を1つ**に決める（コードの表 `LNOTIF_OWNERSHIP`。push.json のテンプレートは全部 `server`、テストで全テンプレートが表にあることを確かめる＝新しいテンプレートを足す時に持ち主を決めないと落ちる）。
+| ローカルの種類 `kind` | 出来事 | 種類（カテゴリ） | 予約する時刻 | 条件（スナップショットから） | 開く画面 |
+|---|---|---|---|---|---|
+| `training_session` | 始めた調教（§25）の仕上げの期限 | `reminders` | `expiresAt − trainingLeadMin` 分 | 開いたセッションがある。静かな時間帯なら**送らない**（遅れて届く意味がない） | `training` |
+| `daily_bonus` | 次のゲーム日（既定 4:00 JST 切り替え）のログインボーナス | `reminders` | 次のゲーム日の `dailyHourJst` 時（既定 12 時 JST） | ログインボーナスが解放済み。**1日1回まで**・予約は次の1日分だけ（何日も開かなくても1回しか届かない） | `home` |
+| `weekly_challenge_closing` | 週替わりチャレンジ（§31）の週の終わり | `events` | `endsAt − leadHours` | 解放済みで、今週の未クリアがある | `weekly_challenge` |
+| `rival_week_closing` | ライバル（§28）の週の終わり | `friends` | `weekEndsAt − leadHours` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` |
+| `exchange_closing` | イベント交換所（§30）が閉まる | `events` | `closesAt − leadHours`（イベントごとに1つ） | ポイントが残っている。文言は「残ったポイントは素材になります」（§30、失われない） | `event_exchange` |
+| `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
+
+- 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
+- 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
+- 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。
+
+### 61.2 スナップショットと計画（`planLocalNotifications`、REQ-LNOTIF-003〜007）
+入力（端末が持っているものだけ）：`now`・`locale`（端末の言語 `ja`|`en`）・`permission`（`unknown`|`granted`|`provisional`|`denied`）・`showDetails`（ロック画面に詳しく出す、端末の設定、既定オフ）・`signedIn`・`digest`（61.3、サーバーのブートストラップ）・`horseNames`（端末の馬の名前、`showDetails` の時だけ使う）。
+1. `signedIn: false`・`digest.enabled: false`・削除の予約中・オンボーディング中 → 何も予約しない（`status` = `signed_out`／`off`）。`permission` が `unknown`／`denied` でも計画は作る（設定画面に「次の予定」を見せる）が、予約は `granted`／`provisional` の時だけ（`status` = `no_permission`）。
+2. 61.1 の条件から候補を作る。種類の**カテゴリがオフ**なら外す（`category_off`）。設定 `kinds` に無い種類も外す。
+3. 時刻が `now` 以前なら外す（`past`。アプリを開いている間に期限の前の時刻が過ぎたら、もう知らせない）。`now + horizonDays` より後も外す（`horizon`）。
+4. **静かな時間帯**（プッシュと同じ JST の `quietHours`）：`training_session` は外す。`daily_bonus` は静かな時間帯の終わりへ遅らせる（次のゲーム日を越えるなら外す）。期限の種類は終わりへ遅らせ、それが期限の1時間前を過ぎるなら外す（`quiet_hours`）。
+5. **1日の上限** `dailyCap`（既定2、プッシュの上限とは別に数える）：予約する時刻のゲーム日ごとに、優先の高い順（`training_session` > `gift_expiring` > `exchange_closing` > `weekly_challenge_closing` > `rival_week_closing` > `daily_bonus`、同じなら早い時刻）に残す（`daily_cap`）。全体で `maxPending` 件まで（早い順、iOS の上限 64 より十分小さい）。
+6. 出力 `items[]`：`id`（`lnotif.{kind}.{ref}`、出来事ごとに変わらない。ref = セッションID／ゲーム日／`endsAt`／イベントID／一番早い期限）・`kind`・`category`・`fireAt`・`screen`・`refId`・`title`・`body`。並びは時刻の順。外したものは `dropped[]`（`kind`・`reason`）。
+- **文言**（日本語・英語、端末の言語で選ぶ。両方の言語を planner が持つ）：時刻は JST で「11月16日 4:00」／“11/16 at 4:00”。プレイヤーが付けた名前（馬・支部・相手）は**既定で文言に入れない**（ロック画面の覗き見）。`showDetails: true` の時だけ件数・ポイント・調教の馬の名前を入れる（名前は訳さない）。共通の賭けの言葉（`bettingWords.ts`）と煽りの言葉を使わない（テストで全部の文言を確かめる）。
+
+### 61.3 サーバーの digest（`localRemindersView`、REQ-LNOTIF-008）
+`/v1/player/bootstrap`・`GET /v1/player` の **`localReminders`**（読むだけ、状態に書かない。§45 の `nextActionSummary` と同じ読み方）。新しいエンドポイント・新しい状態のキーは無い。
+```json
+{ "v": 1, "enabled": true, "now": 1794880800000, "nextDayAt": 1794891600000, "nextDay": "2026-11-12",
+  "config": { "kinds": ["training_session","daily_bonus","weekly_challenge_closing","rival_week_closing","exchange_closing","gift_expiring"],
+              "dailyCap": 2, "dailyHourJst": 12, "horizonDays": 7, "maxPending": 8, "trainingLeadMin": 3,
+              "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },
+              "prePrompt": { "maxAsks": 2, "retryDays": 14 } },
+  "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false, "gifts": true, "reminders": false },
+  "quietHours": { "startHour": 22, "endHour": 8 },
+  "deleting": false, "onboarding": false,
+  "loginBonus": { "unlocked": true },
+  "training": { "sessionId": "t1", "horseId": "h1", "expiresAt": 1794881400000, "trainedEver": true },
+  "weeklyChallenge": { "unlocked": true, "endsAt": 1795136400000, "uncleared": 2 },
+  "rival": { "weekEndsAt": 1795136400000, "rankedRaces": 0 },
+  "exchanges": [ { "eventId": "ev_autumn", "points": 120, "closesAt": 1795050000000 } ],
+  "gifts": [ 1795000000000, 1795003600000 ] }
+```
+- `training` は開いたセッションが無ければ `{ sessionId: null, horseId: null, expiresAt: null, trainedEver }`（`trainedEver` = これまでに調教をしたか、61.4 の前置きのきっかけ）。`weeklyChallenge`・`rival` は無ければ `null`。`gifts` は期限のある未受け取りの品の `expiresAt`（早い順、20件まで）。
+- `enabled: false`（設定なし・無効）の時は `{ "v": 1, "enabled": false }` だけ。
+
+### 61.4 OS の許可と前置き（REQ-LNOTIF-009/010）
+- 初回起動では聞かない。**最初の調教を始めた後**（`POST /v1/training/start` が通った後、または `training.trainedEver`）に、`reminders` がオフで、前置きをまだ `maxAsks` 回出しておらず、前回から `retryDays` 日たっている時だけ、前置きのシートを1回出す：「調教の仕上げや、ログインボーナスを受け取れる日を、この端末からお知らせします。1日{n}件まで・静かな時間帯は送りません。あとから設定で変えられます」。最初からチェックの入った選択は無い。
+- `PUT /v1/push/preferences` の `categories` は `season`・`friends`・`invites`・`events`・`comeback`・`gifts`・`reminders` の7つ（`PUSH_CATEGORIES` から作る。R20 統合：知らない種類は今までの「黙って捨てる」ではなく `400 BAD_REQUEST`。古いアプリは知っている種類だけ送るので影響しない）。
+- 「お知らせを受け取る」→ `PUT /v1/push/preferences { categories: { reminders: true } }`、OS の許可が `unknown` なら OS のダイアログ（結果を KPI `lnotif_permission`）。「今はしない」→ 何も変えない（KPI `later`）。
+- OS で**拒否**（`denied`）なら OS のダイアログは二度と出さない。設定画面に「端末の設定で通知がオフになっています」と OS の設定を開くボタン。**仮の許可**（iOS provisional）は予約する（通知センターに静かに届く）。
+- 既存のプッシュの前置き（REQ-UXU-015、2戦目の3着以内）で OS が許可済みなら、前置きは `reminders` を選ぶだけ（OS のダイアログは出ない）。
+- R20 統合（§58.11）：同じセッションで §58 の事前の画面（ATT）か §59 のレビューが出ていたら、前置きは出さない（次のセッションの調教の後）。
+
+### 61.5 予約の付け替え（REQ-LNOTIF-011/012）
+- 端末は前回予約した `id → 指紋`（時刻・文言）を覚え、計画との差だけを取り消し・予約する（`LocalNotificationPlanner.Diff`）。起動・前面に戻った時・調教の開始／仕上げ・ログインボーナス・チャレンジのクリア・ランク戦の後・交換・プレゼントの受け取り・設定の変更で計画し直す（早く仕上げた調教の通知は消える）。
+- **ログアウト・アカウントの切り替え・引き継ぎ・アカウント削除（予約・実行）**：このアプリが予約したローカル通知を**全部取り消し**、覚えた予約を消す（別の人の予定が残らない）。覚えた予約にはアカウントIDを付け、違うアカウントのものは使わない。
+- 通知を開いたら `screen` の画面へ（ショップは無い）。開いた時に計画し直す。
+
+### 61.6 KPI（REQ-LNOTIF-013）
+- `lnotif_scheduled`（クライアント、`props: { kind }`。その `id` を新しく予約した時だけ。時刻の付け替えでは送らない）→ `s1` = kind。
+- `lnotif_opened`（クライアント、`props: { kind }`。通知から開いた時）→ `s1` = kind。
+- `lnotif_permission`（クライアント、`props: { result: granted | provisional | denied | later }`）→ `s1` = result。
+クエリは `docs/ops/kpi-queries.md`「端末のローカル通知」。
+
+### 61.7 設定 `progression.localNotifications`（リモート設定で変更可、`localNotificationsProblems` で検証）
+`{ enabled, kinds[], dailyCap (1..4), dailyHourJst (8..21), horizonDays (1..14), maxPending (1..32), trainingLeadMin (1..9、§25 の sessionTtlMs より短い), leadHours { 種類: 1..72 }, prePrompt { maxAsks (1..3), retryDays (1..90) } }`。`kinds` は 61.1 の6つのうち（重複不可）。`leadHours` は期限の4種類だけ。`enabled: false` で端末は全部取り消す（停止スイッチ）。
+
+### 61.8 クライアント（REQ-LNOTIF-014〜016）
+- `Muchi.Client`：`LocalRemindersDigest.Parse`（`PlayerView.LocalReminders`）、`LocalNotificationSnapshot`、`LocalNotificationPlanner.Plan(snapshot)`・`Diff(previous, planned)`・`KindCategory`、`ILocalNotificationPlatform`（`Permission`・`RequestPermissionAsync`・`Schedule`・`Cancel`・`CancelAll`）、`PushPreferences.Reminders`、`AnalyticsEvent.LocalNotificationScheduled/Opened/Permission`。
+- Unity のゲーム層 `LocalNotificationModel`：計画と付け替え、アカウントの切り替え・ログアウト・削除での全取り消し、前置きの判断と回数、設定画面の「端末のリマインダー」の行（種類ごとのオン／オフ＝カテゴリ、ロック画面に詳しく出す、OS の許可の状態）、次の予定の一覧、開いた時の画面、KPI。OS の通知パッケージ（Unity Mobile Notifications）への接続は Codex（`docs/handoff-codex-round20-local-notifications.md`）。
+- プロトタイプ：設定の「通知」（プッシュの種類・静かな時間帯・端末のリマインダー・ロック画面の表示）、前置きのシート、次の予定の一覧（デモ）。日本語・英語・文字の大きさ（§41）。
+- ヒント（§57、R20 統合）：調教が開くと読めるカード `training_reminder`（「仕上げを知らせる」）がヘルプの `local_reminders` へつなぐ。広告と分析・エラーの自動送信の記事（`ads_analytics_privacy`）は合うヒントの話題が無いので、設定 › プライバシーの「？」からだけ開く。
+
+### 61.9 法務・プライバシー（REQ-LNOTIF-017/018）
+- 煽りの言葉・作った期限・購入への誘いは無い（61.1）。賭けの言葉は共通の一覧でテスト。
+- ロック画面に出す文言にプレイヤーが付けた名前を既定で入れない（`showDetails` 既定オフ、端末ごとの設定でサーバーに送らない）。
+- ローカル通知は端末の中だけで作られ、サーバーに予定を送らない（KPI の種類だけ）。データの開示（§51）に新しい項目は無い（状態のキーを足さない。`reminders` は既存の `push.prefs` の中）。
+
+### 61.10 アカウント削除
+サーバーに新しい状態は無い（`push.prefs.categories.reminders` は既存の `push` と一緒に消える）。端末は削除の予約・実行を見たら全部取り消す（61.5）。

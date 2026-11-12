@@ -47,7 +47,7 @@ import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../.
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryPlayerRepo } from '../../../server/src/domain/service.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
-import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { DEFAULT_RULESET, TACTICS_RULESET } from '../../../server/src/domain/ruleset.js';
 import { BASE_RELEASE_NOTES } from '../../../server/src/domain/releaseNotes.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
@@ -99,6 +99,16 @@ class LocalRepo implements PlayerRepo {
 }
 
 const master = loadMaster();
+/**
+ * Quality pass (docs/quality/race-play.md): the prototype previews the ruleset 1.4 rollout in its ranked / friend / cup races as well (the
+ * shipped master turns only practice on until the verifier and the engine-level-2 app are out; docs/ops/deploy.md). `tactics(false)`
+ * puts the prototype's ranked races back on the shipped switch.
+ */
+const SHIPPED_TACTICS = master.progression.raceTactics;
+const previewTactics = (on: boolean) => {
+  master.progression.raceTactics = on && SHIPPED_TACTICS ? { ...SHIPPED_TACTICS, modes: { ...SHIPPED_TACTICS.modes, ranked: true, friend: true, cup: true, career: true } } : SHIPPED_TACTICS;
+};
+previewTactics(true);
 /** Round 20 (§58): the shipped policy versions (a demo may publish a newer privacy policy; reset puts it back). */
 const SHIPPED_CONSENT = master.progression.consent;
 // Demo clock (REQ-UXP-002 home states 初日 / 3日目 / 7日目): the real rules run on Date.now() + whole days, so
@@ -765,10 +775,13 @@ export const MuchiLogic = {
   cancelDeletion: () => wrap(() => svc.cancelDeletion(ID)),
   // REQ-UXS-050: unique skills, texts generated from the values the engine uses
   skills: () => skillCatalog(master),
+  /** Quality pass: the ruleset 1.4 preview in the prototype's ranked races (true = on, the default) / the shipped switch. Returns the rollout in force. */
+  tactics: (on?: boolean) => { if (on !== undefined) previewTactics(on); return master.progression.raceTactics ?? null; },
   horseSkill: (h: { skillId?: string; templateId?: string }) => { const d = horseSkill(master, h as never); return d ? skillView(master, d) : null; },
   /**
    * A beginner / ranked race built by the server's own buildRaceConfig (REQ-MM-005, REQ-UXS-003): the partner at the
-   * class stat cap, CPU horses from the master with their skills (ruleset 1.3.0, capped like ranked), the day's going.
+   * class stat cap, CPU horses from the master with their skills (capped like ranked), the day's going, and the ruleset of the
+   * mode's rollout switch (1.4.0 tactics in the prototype preview, else the active 1.3.0).
    * The WASM engine runs it offline (MuchiRace.StartConfig).
    */
   async raceConfig(horseId: string, trackId: string | null) {
@@ -1541,7 +1554,7 @@ export const MuchiLogic = {
     }),
     friendName: () => RP_FRIEND_NAME,
     /** Demo: retire the shipped ruleset version (REQ-MYRP-007) so saved replays show 「再生できません」; false restores. */
-    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion)] : []; },
+    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion), String(TACTICS_RULESET.rulesetVersion)] : []; }, // the shipped one and the 1.4 preview
     /** A word on the NG list (test hook for the title moderation). */
     ngSample: () => master.ng.exact[0] ?? '',
     marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),

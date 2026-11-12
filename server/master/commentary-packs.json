@@ -169,6 +169,9 @@
     "tier": 1
    },
    "fallback": [
+    "go",
+    "go_issen",
+    "slingshot",
     "ground_*",
     "going_call_*",
     "result_two",
@@ -608,6 +611,9 @@
     "currency": "any"
    },
    "fallback": [
+    "go",
+    "go_issen",
+    "slingshot",
     "ground_*",
     "going_call_*",
     "result_two",
@@ -1047,6 +1053,9 @@
     "currency": "any"
    },
    "fallback": [
+    "go",
+    "go_issen",
+    "slingshot",
     "ground_*",
     "going_call_*",
     "result_solo"

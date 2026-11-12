@@ -253,10 +253,13 @@ namespace Muchi.Client
         {
             if (sim == null || slot < 0 || slot >= sim.EntrantCount) { _wasHeld = held; return 0; }
             bool press = held && !_wasHeld;
+            bool release = !held && _wasHeld;
             _wasHeld = held;
-            if (!held) { _repeat = false; return 0; }
             int t = sim.Tick;
             var me = sim.GetHorse(slot);
+            // ruleset 1.4: before the go the press is the hold (溜め) and letting go is the release (START = WHIP_RELEASE)
+            if (release && sim.TacticsEnabled && me.Departed && !me.InSpurt) { _repeat = false; return Cmd.Start; }
+            if (!held) { _repeat = false; return 0; }
             if (press)
             {
                 _decidedTick = t;
@@ -267,6 +270,7 @@ namespace Muchi.Client
             }
             if (!_repeat || t == _decidedTick) return 0;
             _decidedTick = t;
+            if (sim.TacticsEnabled && (!me.InSpurt || me.Gathering)) return 0; // the hold before the go repeats nothing
             if (me.Finished || me.WhipsLeft <= 0 || Repeats >= MaxRepeats(sim.P) || t - _lastWhipTick < Spacing(sim.P)) return 0;
             _lastWhipTick = t;
             Repeats++;

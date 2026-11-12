@@ -16,7 +16,7 @@ import { cpuLevelFor } from './matchmaker.js';
 import { toRaceHorse, DEFAULT_NET } from './raceConfig.js';
 import { groundFor } from './ground.js';
 import { capSkill, rulesetSkillCaps, templateSkill, toRaceSkill } from './skills.js';
-import { DEFAULT_RULESET, type Ruleset } from './ruleset.js';
+import { DEFAULT_RULESET, TACTICS_ENGINE_LEVEL, rulesetForMode, type Ruleset } from './ruleset.js';
 import { goingsFor, type Going, type RaceHorse } from './schemas.js';
 import { PRACTICE_ID_RE } from './practiceKinds.js';
 
@@ -117,8 +117,11 @@ const skillCapped = (h: RaceHorse, ruleset: Ruleset): RaceHorse => {
  * REQ-PRAC-002: GET /v1/practice/catalog. Read-only; the same for every player except their own horses (the same
  * information the advice and the stable already show). `base` = the active (remote config) ruleset.
  */
-export function practiceCatalog(m: Master, s: PlayerState, now: number, base: Ruleset = DEFAULT_RULESET): PracticeCatalog {
+export function practiceCatalog(m: Master, s: PlayerState, now: number, active: Ruleset = DEFAULT_RULESET, engineLevel: number | null = TACTICS_ENGINE_LEVEL): PracticeCatalog {
   const pm = practiceOf(m);
+  // ruleset 1.4 rollout: practice is the first place the tactics go (progression.raceTactics.modes.practice), and only for an
+  // app whose engine knows 1.4 (x-engine-level ≥ 2; an app that sends none is older: it keeps the active ruleset)
+  const base = engineLevel !== null && engineLevel >= TACTICS_ENGINE_LEVEL ? rulesetForMode(active, 'practice', m.progression.raceTactics) : active;
   const courses: PracticeCourse[] = m.tracks.map((t) => {
     const lights = m.litTracks.has(t.id);
     const g = groundFor(m, t.id, 'friend', now); // REQ-RACE-037: the day's ground, as a friend room would have it

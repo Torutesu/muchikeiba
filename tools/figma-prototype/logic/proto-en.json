@@ -1653,6 +1653,14 @@
   "今日の目標 {a}/{b}": "Today's goals {a}/{b}",
   "▶ 動画で{r}": "▶ Watch a video for {r}",
   "動画の報酬：今日は受け取り済み": "Video reward: today's is received",
-  "今日の分は受け取りました（4:00 にリセット）": "Today's is received (resets at 4:00)"
+  "今日の分は受け取りました（4:00 にリセット）": "Today's is received (resets at 4:00)",
+  "_race14": "---- ruleset 1.4 race HUD and result (paintTactics, docs/quality/race-play.md)",
+  "仕掛けどころ": "Go zone",
+  "今：長押し": "Now: hold",
+  "会心 {n}": "Perfect {n}",
+  "離す": "Release",
+  "一閃": "Issen",
+  "競り合い　{name}": "Duel  {name}",
+  "振り返り：{s}": "Review: {s}"
  }
 }

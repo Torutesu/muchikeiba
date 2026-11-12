@@ -183,6 +183,8 @@ namespace Muchi.Client
         {
             var p = sim.P;
             if (me.WhipsLeft <= 0) return false;
+            // ruleset 1.4: the assist never holds or goes (the horse goes at the auto mark); its whips come after the go
+            if (sim.TacticsEnabled && !me.InSpurt) return false;
             int spacing = Math.Max(p.WhipEffectTicks, p.WhipDiminishWindowTicks) + WhipSpacingExtraTicks;
             if (t - _lastWhipTick < spacing) return false;
             long rem = RemainingM(sim, me);

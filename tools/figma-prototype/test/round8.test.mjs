@@ -72,7 +72,7 @@ assert.ok(!(await L.grantPartner('アカツキ')).ok, 'partner is granted once')
 // ---- 2) beginner race from buildRaceConfig with unique skills
 const v = await L.view();
 const { config } = await L.raceConfig(g.value.horse.id, 'aoba_turf_1600');
-assert.strictEqual(config.ruleset.rulesetVersion ?? JSON.parse(ruleset).rulesetVersion, '1.3.0');
+assert.strictEqual(config.ruleset.rulesetVersion ?? JSON.parse(ruleset).rulesetVersion, L.tactics()?.modes?.ranked ? '1.4.0' : '1.3.0'); // quality pass: the prototype previews 1.4 in ranked
 assert.ok(config.entrants.filter((e) => e.horse.skill).length >= 6, 'CPU horses race with their master skills');
 const info = JSON.parse(ex.StartConfig(JSON.stringify(config), 'local'));
 assert.strictEqual(info.distanceM, 1600);

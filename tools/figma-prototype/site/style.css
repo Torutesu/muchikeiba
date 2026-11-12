@@ -277,6 +277,35 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .whipdots b { display: none; }
 .whipdots i { width: 21px; height: 21px; border-radius: 50%; background: #435368; }
 .whipdots i.on { background: var(--gold); }
+/* ruleset 1.4 (docs/quality/race-play.md §5): the hold's charge ring and the rhythm ring around the whip button, the 仕掛けバー */
+.btn.whip .ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .15s; /* inside the button: never widens it (the overflow audit) */
+  -webkit-mask: radial-gradient(circle closest-side, transparent 82%, #000 83%, #000 99%, transparent 100%); mask: radial-gradient(circle closest-side, transparent 82%, #000 83%, #000 99%, transparent 100%); }
+.btn.whip .ring i { position: absolute; inset: 0; border-radius: 50%; }
+.btn.whip .ring .arc { background: conic-gradient(transparent 0 calc(var(--g0, .7) * 1turn), rgba(255, 211, 79, .95) calc(var(--g0, .7) * 1turn) calc(var(--g1, .9) * 1turn), transparent calc(var(--g1, .9) * 1turn)); opacity: 0; }
+.btn.whip .ring .prog { background: conic-gradient(var(--cyan) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .85) calc(var(--p, 0) * 1turn)); }
+.btn.whip.gather .ring, .btn.whip.beat .ring { opacity: 1; }
+.btn.whip.beat .ring .arc { opacity: 1; }
+.btn.whip.beat .ring .prog { background: conic-gradient(rgba(255, 255, 255, .9) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .6) calc(var(--p, 0) * 1turn)); }
+.btn.whip.gather .ring .prog { background: conic-gradient(var(--gold) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .85) calc(var(--p, 0) * 1turn)); }
+.btn.whip.gather span { color: var(--white); }
+.btn.whip.full .bg { box-shadow: inset 0 0 0 10px #fff4b0, 0 0 36px 10px rgba(255, 214, 60, .7); }
+.btn.whip.gonow .bg { animation: chance .45s ease-in-out infinite alternate; }
+.btn.whip.gold .bg { box-shadow: inset 0 0 0 10px #fff4b0, 0 0 30px 8px rgba(255, 214, 60, .65); }
+.btn.whip.gold span { color: var(--white); }
+.hud .gobar { pointer-events: none; background: rgba(var(--navy-rgb), .78); border-radius: var(--radius); }
+.gobar .trk, .gobar .done { position: absolute; left: 16px; top: 30px; height: 6px; border-radius: 3px; }
+.gobar .trk { right: 16px; background: #19364b; }
+.gobar .done { background: rgba(var(--cyan-rgb), .9); }
+.gobar[data-phase="go"] .done { background: var(--gold); }
+.gobar .ln { position: absolute; top: 20px; width: 5px; height: 26px; margin-left: -2px; background: var(--gold); border-radius: 2px; box-shadow: 0 0 10px rgba(255, 211, 79, .85); }
+.gobar .au { position: absolute; top: 24px; width: 2px; height: 18px; background: #96adbb; }
+.gobar .me { position: absolute; top: 25px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--a11y-position-self); box-shadow: 0 0 0 2px #fff; }
+.gobar .lb { position: absolute; top: 4px; font-size: 13px; font-weight: 700; letter-spacing: .2em; color: var(--cyan); white-space: nowrap; }
+.gobar .lb.l { left: 16px; } .gobar .lb.r { right: 16px; color: var(--soft, #b9c8d3); }
+.gobar[data-phase="gonow"] .lb.l, .gobar[data-phase="gather"] .lb.l, .gobar[data-phase="full"] .lb.l { color: var(--gold); }
+.hud .pop.gold { color: var(--gold) !important; }
+.marker.duel .wind { color: var(--gold); font-weight: 700; }
+html[data-reduce-motion="on"] .btn.whip.gonow .bg { animation: none; box-shadow: inset 0 0 0 10px #fff4b0, 0 0 40px 12px rgba(255, 214, 60, .8); }
 /* left-thumb lanes and the rein: quiet round controls */
 .btn.pad { border-radius: 50%; padding: 0; font-size: 20px; letter-spacing: .06em; font-weight: 700; }
 .btn.pad .bg { border-radius: 50%; background: rgba(7, 24, 43, .72); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .75); }

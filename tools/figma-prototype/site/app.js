@@ -727,9 +727,18 @@ function BuildRaceScreen() {
   hud.staminaText = hud.stamina.querySelector('.s'); hud.staminaFill = hud.stamina.querySelector('.fill');
   // the whip: the round 「仕掛ける」 button with the gold ring (right thumb), remaining whips as gold pips above it
   const W = tut ? 200 : 152, wx = tut ? 1338 : 1364, wy = tut ? 632 : 683;
-  hud.whip = Btn('ムチ', wx, wy, W, W, Whip, 'whip' + (tut ? ' big' : ''), undefined, tut ? 'まもなく' : 'スタート');
+  // the whip acts on the press (06 §6.3: on touch began), not on the click; ruleset 1.4 also needs the release (the hold → 仕掛け)
+  hud.whip = Btn('ムチ', wx, wy, W, W, () => {}, 'whip' + (tut ? ' big' : ''), undefined, tut ? 'まもなく' : 'スタート');
   hud.whipText = hud.whip.querySelector('span');
   hud.whips = el('whipdots', wx + W / 2 - 124, wy - 66, 248, 48);
+  // ruleset 1.4: the charge ring of the hold and the rhythm ring after the go (gold arc = 会心), drawn around the button
+  hud.ring = document.createElement('div'); hud.ring.className = 'ring'; hud.ring.innerHTML = '<i class="arc"></i><i class="prog"></i>'; hud.whip.appendChild(hud.ring);
+  if (!holdMode()) {
+    const down = (e) => { e.preventDefault(); if (hud.whip.classList.contains('disabled')) return; hud.whipDown = true; Whip(); };
+    const up = () => { if (!hud.whipDown) return; hud.whipDown = false; if (raceActive && engine) engine.SpurRelease(); };
+    hud.whip.addEventListener('pointerdown', down);
+    for (const k of ['pointerup', 'pointerleave', 'pointercancel']) hud.whip.addEventListener(k, up);
+  }
   // round 15 (REQ-A11Y-012): hold mode — the button reports press / release; the engine's WhipHold turns it into taps
   if (holdMode()) {
     const hw = (v) => (e) => { e.preventDefault(); WhipHoldPress(v); };
@@ -748,6 +757,9 @@ function BuildRaceScreen() {
   }
   // 09: the race banner (course / phase) at the top centre and the course mini-map under the place chip
   hud.banner = el('chip banner', 545, 46, 510, 65); hud.banner.textContent = raceCtx.trackName ?? '';
+  // ruleset 1.4: the 仕掛けバー under the banner — the stretch from the window to the finish, the gold go line, the horse
+  hud.gobar = el('gobar', 545, 116, 510, 50); hud.gobar.hidden = true;
+  hud.gobar.innerHTML = '<div class="lb l">仕掛けどころ</div><div class="lb r">ゴール</div><div class="trk"></div><div class="done"></div><div class="au"></div><div class="ln"></div><div class="me"></div>';
   hud.minimap = el('minimap', 1378, 140, 182, 104);
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 182 104'); svg.setAttribute('width', '182'); svg.setAttribute('height', '104');
@@ -806,7 +818,8 @@ function Lane(dir) { if (!raceActive || raceCtx.tutorial) return; engine.Lane(di
 function Whip() {
   if (!lastFrame || !raceActive) return;
   if (raceCtx.tutorial && !lastFrame.departed) return;
-  if (lastFrame.departed && lastFrame.whips <= 0) return;
+  const holdFirst = lastFrame.feel?.tactics && !lastFrame.feel.tactics.committed; // 1.4: before the go the press is the hold
+  if (lastFrame.departed && lastFrame.whips <= 0 && !holdFirst) return;
   // round 12: with かんたん操作 the whip (and with full auto the start too) is the assistant's; a tap does nothing
   if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
   if (holdMode()) return; // round 15: the hold sends the whip itself (pointerdown → engine.WhipHold)
@@ -815,6 +828,9 @@ function Whip() {
 }
 /** Presentation of a whip (06 §6.3): the pop, the button, the FOV kick and speed lines (not with reduce motion), haptics. */
 function whipFeedback(departed) {
+  // ruleset 1.4: before the go the press is the hold (溜め) — the ring fills instead; the go and 会心 pop from the engine's cues
+  const tac = lastFrame?.feel?.tactics;
+  if (departed && tac && !tac.committed) { hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit'); haptic(12); return; }
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
   flash(hud.feedback, departed ? '伸びる！' : 'スタート！');
   hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit');
@@ -939,6 +955,7 @@ function paintHud(f) {
   if (tut) return;
   if (raceCtx.challenge) paintChallengeHud(f);
   if (raceCtx.practice) paintPracticeHud(f); // round 18
+  paintTactics(f, feel.tactics);
   setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
@@ -968,7 +985,10 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'e' || e.key === 'E') { if (holdMode()) WhipHoldPress(true); else Whip(); }
   else if (e.code === 'Space') { keyRein = true; e.preventDefault(); }
 });
-document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; if ((e.key === 'e' || e.key === 'E') && holdMode() && raceActive) WhipHoldPress(false); });
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') keyRein = false;
+  if ((e.key === 'e' || e.key === 'E') && raceActive) { if (holdMode()) WhipHoldPress(false); else engine?.SpurRelease(); } // 1.4: the release
+});
 window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 
 // ---- quality pass: the race's peaks (docs/quality/presentation.md, the handoff's choreography). Presentation only — it
@@ -1051,6 +1071,55 @@ function paintFx(f) {
   }
 }
 
+/**
+ * Ruleset 1.4 HUD (docs/quality/race-play.md §5): the 仕掛けバー (window → finish, the gold go line from the horse's stamina,
+ * the auto mark), the whip button by phase (仕掛ける → 長押し → 離す/一閃 → ムチ on the rhythm ring), the moments' pops and
+ * haptics (一閃 strong, 会心 light ×2, 溜めきり medium). Presentation only; nothing here reaches the engine.
+ */
+function paintTactics(f, t) {
+  if (!hud.gobar) return;
+  const on = !!t && f.departed && !f.done && !(f.assist && f.assist !== 'off');
+  hud.whip.classList.toggle('tac', !!t);
+  if (!on) {
+    setProp(hud.gobar, 'hidden', true);
+    hud.whip.classList.remove('gonow', 'gather', 'full', 'gold', 'beat');
+    return;
+  }
+  const win = Math.max(1, t.windowM), frac = (m) => clamp(1 - m / win, 0, 1);
+  const show = f.remainingM <= win + 150;
+  setProp(hud.gobar, 'hidden', !show);
+  if (show) {
+    const px = (m) => (16 + 478 * frac(m)).toFixed(1) + 'px';
+    hud.gobar.querySelector('.me').style.left = px(f.remainingM);
+    hud.gobar.querySelector('.done').style.width = (478 * frac(f.remainingM)).toFixed(1) + 'px';
+    hud.gobar.querySelector('.au').style.left = px(t.autoGoM);
+    const ln = hud.gobar.querySelector('.ln'); ln.style.left = px(t.goLineM); ln.hidden = t.committed;
+    hud.gobar.dataset.phase = t.phase;
+    setText(hud.gobar.querySelector('.l'), t.committed ? (t.perfect ? `会心 ${t.perfect}` : '仕掛けた') : t.goNow ? '今：長押し' : '仕掛けどころ');
+  }
+  // the button by phase (before the go the hold needs no whip left)
+  const w = hud.whip;
+  if (!t.committed) w.classList.remove('disabled');
+  w.classList.toggle('gonow', t.goNow && !t.gathering);
+  w.classList.toggle('gather', t.gathering);
+  w.classList.toggle('full', t.gathering && t.charge >= 1000);
+  w.classList.toggle('beat', t.committed && f.whips > 0);
+  w.classList.toggle('gold', t.rhythm === 'gold');
+  w.style.setProperty('--p', t.gathering ? (t.charge / 1000).toFixed(3) : t.committed ? (t.beat / 1000).toFixed(3) : '0');
+  w.style.setProperty('--g0', (t.goldFrom / 1000).toFixed(3)); w.style.setProperty('--g1', (t.goldTo / 1000).toFixed(3));
+  setText(hud.whipText, t.gathering ? (t.charge >= 1000 ? '一閃' : '離す') : t.committed ? (f.whips > 0 ? 'ムチ' : '—') : t.goNow ? '長押し' : '仕掛ける');
+  for (const c of f.feel.cues ?? []) {
+    if (c.kind === 'Go') { flash(hud.feedback, t.lastGoCharge >= t.maxCharge / 2 ? '一閃！' : '仕掛けた！', 1200); haptic(t.lastGoCharge >= t.maxCharge / 2 ? [60] : [35]); if (!reduced() && perfNow?.fovKick !== false) view.kick(); }
+    if (c.kind === 'PerfectWhip') { flash(hud.feedback, '会心！', 900); haptic([15, 40, 15]); hud.feedback.classList.add('gold'); setTimeout(() => hud.feedback.classList.remove('gold'), 900); }
+    if (c.kind === 'GatherFull') haptic([25]);
+    if (c.kind === 'Slingshot') { flash(hud.feedback, '抜け出した！', 1000); haptic([20, 30, 20]); }
+    if (c.kind === 'GoNow') haptic([10, 60, 10]);
+    if (c.kind === 'Duel') haptic([15]);
+  }
+  hud.marker.classList.toggle('duel', t.duel >= 0);
+  if (t.duel >= 0) setText(hud.marker.querySelector('.wind'), `競り合い　${t.duelName}`);
+}
+
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4) — 10-race-result
 async function RaceResult(f) {
   if (raceCtx.lesson) return LessonResult(f); // round 19 (REQ-TUT-004): a lesson is practice — nothing applied, nothing granted
@@ -1103,8 +1172,11 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   Kicker(r.won ? '勝因' : '敗因', 44, 476, p, { rule: false, size: 15, color: r.won ? GOLD : CYAN });
   Txt(r.line || '—', 44, 500, 520, 23, WHITE, p, { weight: 700 }).dataset.debrief = r.code;
   Txt(r.tip ? 'ヒント：' + r.tip : (r.margin ? (r.place > 1 ? '勝ち馬から ' : '2着に ') + r.margin : ''), 44, 542, 520, 16, MUTED, p, { lh: 1.5 });
+  // ruleset 1.4: the 仕掛け lesson from re-simulated races (GoCounterfactual: the same ride with the go moved) and the 会心 count
+  const lesson = r.lesson && (r.lesson.line || r.lesson.perfect) ? [r.lesson.line, r.lesson.perfect].filter(Boolean).join('　·　') : '';
+  if (lesson) { const ls = Txt('振り返り：' + lesson, 44, 580, 520, 16, GOLD, p, { weight: 700, nowrap: true }); ls.classList.add('go-lesson'); ls.dataset.shift = String(r.lesson.shiftTicks); }
   // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
-  if (raceCtx.advice) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) Txt('アドバイス：' + wl, 44, 584, 520, 15, CYAN, p, { weight: 500, nowrap: true }).classList.add('adv-debrief'); }
+  if (raceCtx.advice) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) Txt('アドバイス：' + wl, 44, lesson ? 610 : 584, 520, 15, CYAN, p, { weight: 500, nowrap: true }).classList.add('adv-debrief'); }
   // primary: もう一度 (F13) — in the first session it continues the onboarding instead
   if (first) {
     Cta('つづける', 44, 640, 478, () => AfterFirstRace(r), p);

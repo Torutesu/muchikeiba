@@ -1,3 +1,4 @@
+using System;
 namespace Muchi.Engine
 {
     /// <summary>
@@ -17,6 +18,14 @@ namespace Muchi.Engine
         /// <summary>Rides like a casual player (ruleset 1.1 cpuSloppyMaxLevel); extra random draws happen only then.</summary>
         private readonly bool _sloppy;
         private readonly int _sloppyWhipFromM;
+        // ruleset 1.4 tactics: the go plan, drawn once when the window opens (extra draws only with the tactics keys)
+        private bool _goPlanned;
+        private int _goBiasPermille, _chargeTicks, _gatherFromTick = -1;
+        /// <summary>Go point relative to the go line by level (‰, index = level; negative = later) and its random spread.</summary>
+        private static readonly int[] GoCenterPermille = { 0, -450, -380, -300, -250, -180 };
+        private static readonly int[] GoSpreadPermille = { 0, 300, 280, 250, 170, 120 };
+        /// <summary>Front runners go earlier: from the front a horse must stretch the field before the closers go (keeps R2).</summary>
+        private const int NigeGoEarlyPermille = 500;
 
         public CpuBrain(RaceSim sim, int slot, int level, Pcg32 rng)
         {
@@ -68,9 +77,44 @@ namespace Muchi.Engine
             }
 
             Fx remaining = _sim.Track.Distance - me.Distance;
-            bool spurt = remaining <= _sim.SpurtDistance;
+            bool tactics = _sim.TacticsEnabled;
+            bool spurt = tactics ? me.InSpurt : remaining <= _sim.SpurtDistance;
 
-            if (_sloppy)
+            if (tactics && !me.InSpurt)
+            {
+                // 仕掛け (ruleset 1.4): riders at cpuTacticsMinLevel+ read the go line and gather before it; the rest wait
+                // for the auto go. Whips wait for the go (a press in the window would be the hold).
+                if (me.Gathering)
+                {
+                    if (_gatherFromTick >= 0 && t - _gatherFromTick >= _chargeTicks) c |= Cmd.Start; // release: go
+                    return c;
+                }
+                if (_level >= p.CpuTacticsMinLevel && remaining <= Fx.FromInt(_sim.GoWindowM))
+                {
+                    if (!_goPlanned)
+                    {
+                        // how well each level reads the go line: weaker riders go later on average, with a wider spread,
+                        // and gather less (level 1 taps). cpuLevel never changes the horse, only this timing.
+                        _goPlanned = true;
+                        int lv = Math.Max(1, Math.Min(5, _level));
+                        int center = GoCenterPermille[lv], spread = GoSpreadPermille[lv];
+                        _goBiasPermille = center + _rng.Range(-spread, spread + 1) + (_sim.Config.Entrants[_slot].Horse.Style == RunningStyle.Nige ? NigeGoEarlyPermille : 0);
+                        _chargeTicks = p.GatherMaxTicks * (lv - 1) / 4;
+                    }
+                    long goAt = Math.Min((long)_sim.GoLineM(_slot) * (1000 + _goBiasPermille) / 1000, _sim.GoWindowM);
+                    long chargeM = (long)(me.Speed.Raw >> 16) * _chargeTicks / _sim.Config.Net.TickHz;
+                    if (remaining.Raw >> 16 <= goAt + chargeM)
+                    {
+                        _gatherFromTick = t;
+                        c |= Cmd.Whip; // the press: gather (released after the charge; level 1 releases at once)
+                        if (_chargeTicks == 0) c |= Cmd.Start;
+                        return c;
+                    }
+                }
+            }
+
+            if (tactics && !me.InSpurt) { }
+            else if (_sloppy)
             {
                 // casual habits: whips from a random point with uneven spacing
                 if (remaining <= Fx.FromInt(_sloppyWhipFromM) && me.WhipsLeft > 0)

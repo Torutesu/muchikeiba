@@ -16,7 +16,8 @@ if (args.Length >= 2 && args[0] == "replay")
 }
 if (args.Length >= 3 && args[0] == "golden")
 {
-    foreach (var path in GoldenGenerator.WriteAll(args[1], File.ReadAllText(args[2])))
+    // golden <outDir> <ruleset> [<ruleset 1.4 tactics>] — the 1.4 file adds race-turf2000-tactics.json; the others never change
+    foreach (var path in GoldenGenerator.WriteAll(args[1], File.ReadAllText(args[2]), args.Length >= 4 ? File.ReadAllText(args[3]) : null))
         Console.WriteLine("wrote " + path);
     return 0;
 }
@@ -59,6 +60,45 @@ if (args.Length >= 3 && args[0] == "harness-tracks")
     var rs = Muchi.Net.ProtocolCodec.ParseRuleset(tNode);
     var rep = BalanceHarness.TrackRun(rs, BalanceHarness.LoadServerTracks(args[2]), tScale);
     Console.WriteLine(rep.Markdown());
+    return rep.AllPass ? 0 : 1;
+}
+if (args.Length >= 2 && args[0] == "harness-audit")
+{
+    // harness-audit <ruleset.json> [races] → what each riding decision is worth (docs/quality/race-play.md §2)
+    var aNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    int races = args.Length >= 3 ? int.Parse(args[2]) : 160;
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(aNode);
+    var rows = TacticsHarness.Audit(rs, races, 27182);
+    double baseMs = rows[0].ms;
+    foreach (var (what, ms, win) in rows)
+        Console.WriteLine("| " + what + " | " + TacticsHarness.F(ms - baseMs) + " ms | " + TacticsHarness.F(win * 100) + "% |");
+    return 0;
+}
+if (args.Length >= 2 && args[0] == "harness-tactics")
+{
+    // harness-tactics <ruleset 1.4+.json> [scale] [key=value...] → the 1.4 tactics targets K1..K8 (docs/spec/balance-targets.md §2.4)
+    var kNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));
+    int kScale = 1; bool curve = false, free = false; int margin = -100;
+    foreach (var kv in args.Skip(2))
+    {
+        if (kv == "curve") { curve = true; continue; }
+        if (kv == "free") { free = true; continue; }
+        if (kv.StartsWith("margin=")) { margin = int.Parse(kv.Substring(7)); continue; }
+        if (!kv.Contains('=')) { kScale = int.Parse(kv); continue; }
+        var parts = kv.Split('=');
+        kNode.Set(parts[0], long.Parse(parts[1]));
+    }
+    var rs = Muchi.Net.ProtocolCodec.ParseRuleset(kNode);
+    var sw = System.Diagnostics.Stopwatch.StartNew();
+    if (curve)
+    {
+        foreach (var (off, ms, win) in TacticsHarness.GoCurve(rs, 160 * kScale, 31415, new[] { -500, -350, -250, -150, -50, 0, 50, 150, 250, 350, 500, 800 }, !free, margin))
+            Console.WriteLine("go offset " + off + "‰: " + TacticsHarness.F(ms) + " ms, win " + TacticsHarness.F(win * 100) + "%");
+        return 0;
+    }
+    var rep = TacticsHarness.Run(rs, kScale);
+    Console.Write(rep.Markdown());
+    Console.WriteLine("elapsed " + sw.ElapsedMilliseconds + "ms, all pass: " + rep.AllPass);
     return rep.AllPass ? 0 : 1;
 }
 if (args.Length >= 2 && args[0] == "harness")

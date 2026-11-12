@@ -225,6 +225,8 @@ namespace Muchi.Client
 
         private readonly HashSet<int> _bondSlots = new HashSet<int>();
         private bool _bondSaid;
+        // ruleset 1.4: the focus horse's go (一閃) and slingshot, once each
+        private bool _goSaid, _slingSaid;
 
         /// <summary>
         /// REQ-BOND-004: slots whose rider has a strong bond with the horse (from start.visuals, see
@@ -437,6 +439,18 @@ namespace Muchi.Client
                         if (e.Slot == _focus) Add("skill", e.Tick, e.Slot);
                         else if (e.Value < 3 && _otherSkillLines < _t.MaxOtherSkillLines) { _otherSkillLines++; Add("skill", e.Tick, e.Slot); }
                     }
+                    break;
+                case RaceEventType.Go:
+                    // ruleset 1.4 (optional kinds): the player's own go — a held one is the 一閃; the auto go (−1) says nothing
+                    if (e.Slot == _focus && e.Value >= 0 && !_goSaid && !_anyFinished && _t.Phrases.ContainsKey("go"))
+                    {
+                        _goSaid = true;
+                        bool issen = e.Value >= sim.P.GatherMaxTicks / 2 && _t.Phrases.ContainsKey("go_issen");
+                        Add(issen ? "go_issen" : "go", e.Tick, e.Slot);
+                    }
+                    break;
+                case RaceEventType.Slingshot:
+                    if (e.Slot == _focus && !_slingSaid && !_anyFinished && _t.Phrases.ContainsKey("slingshot")) { _slingSaid = true; Add("slingshot", e.Tick, e.Slot); }
                     break;
                 case RaceEventType.CpuTakeover:
                     if (e.Slot == _focus) Add("cpu_takeover", e.Tick, e.Slot);

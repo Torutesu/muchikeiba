@@ -544,6 +544,21 @@ namespace Muchi.Engine.Tests
         }
 
         [Fact]
+        public void TacticsRulesetMeetsK1ToK8AndTheRaceTargets()
+        {
+            // ruleset 1.4 (docs/spec/balance-targets.md §2.4): every decision is worth something, a good rider wins clearly more
+            // on an equal horse, a big stat gap still wins — and R1..R8 still hold (R4b does not apply: in 1.4 an early press
+            // inside the window is the hold, and "too early" is K2)
+            var rs = Muchi.Net.ProtocolCodec.ParseRuleset(System.IO.File.ReadAllText(System.IO.Path.Combine(TestUtil.RepoRoot, "contracts", "ruleset-params.1.4.0.json")));
+            var k = TacticsHarness.Run(rs);
+            _out.WriteLine(k.Markdown());
+            Assert.True(k.AllPass, "tactics targets missed:\n" + string.Join("\n", k.Metrics.Where(m => !m.Pass)));
+            var r = BalanceHarness.Run(rs);
+            _out.WriteLine(r.Markdown());
+            Assert.True(r.Metrics.Where(m => m.Id != "R4b").All(m => m.Pass), "race targets missed on 1.4:\n" + string.Join("\n", r.Metrics.Where(m => !m.Pass && m.Id != "R4b")));
+        }
+
+        [Fact]
         public void EveryServerCourseMeetsPerCourseTargets()
         {
             // REQ-TRACK-002, docs/spec/balance-targets.md §2.1: every course in server/master/tracks.json (incl. the 3 overseas-style venues)

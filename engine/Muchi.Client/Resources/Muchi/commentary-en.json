@@ -381,6 +381,9 @@
         { "id": "ground_dirt_sloppy_night_1", "text": "Under the floodlights, the dirt is sloppy. The leaders will be hard to catch." },
         { "id": "ground_dirt_sloppy_night_2", "text": "Under the floodlights, water lying on a sloppy track. Front-runners may hang on." }
       ]
-    }
+    },
+    "go": {"priority": 75, "mustSay": true, "variants": [{"id": "go_1", "text": "{name} makes the move now!"}, {"id": "go_2", "text": "{name} goes!"}]},
+    "go_issen": {"priority": 78, "mustSay": true, "variants": [{"id": "go_issen_1", "text": "{name} has been holding and strikes, Issen!"}, {"id": "go_issen_2", "text": "{name} unleashes the run!"}]},
+    "slingshot": {"priority": 65, "variants": [{"id": "slingshot_1", "text": "{name} swings out and flies!"}, {"id": "slingshot_2", "text": "{name} breaks out of the slipstream!"}]}
   }
 }

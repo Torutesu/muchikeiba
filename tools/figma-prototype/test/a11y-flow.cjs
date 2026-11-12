@@ -177,6 +177,7 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   await choose('reduceMotion', true);
   assert.equal(await page.evaluate(() => document.documentElement.dataset.reduceMotion), 'on');
   await choose('haptics', false); await choose('oneHanded', 'right'); await choose('whipInput', 'hold');
+  await page.evaluate(() => globalThis.__muchi.logic.promotion.setEnabled(false)); // round 22: only its own block shows the series
   const saved = await page.evaluate(() => globalThis.__muchi.logic.accessibility());
   assert.deepEqual([saved.textSize, saved.colorMode, saved.reduceMotion, saved.haptics, saved.oneHanded, saved.whipInput, saved.rev], ['largest', 'cvd', true, false, 'right', 'hold', 6], 'saved on the server rules, one rev per change');
   const kpi = (await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog())).filter((k) => k.name === 'a11y_setting_change');
@@ -217,6 +218,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Recaps'); await waitScreen('recaps', 30000); await page.waitForSelector('.screen.in .rc-card', { timeout: 30000 }); await shot('recaps', english, 600);
     await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await page.waitForSelector('.screen.in .rc-big', { timeout: 30000 }); await shot('recap', english, 950);
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
+    // Round 22: 使いすぎ・遊びすぎの防止 — the screen with a waiting change, the refused purchase, the play-time sheet
+    await page.evaluate(async () => { await globalThis.__muchi.logic.selfLimits.seedDemo(); await globalThis.__muchi.logic.selfLimits.setSpending(null); });
+    await show('SelfLimits'); await waitScreen('self-limits'); await page.waitForSelector('.screen.in .sl-pending', { timeout: 20000 }); await shot('self-limits', english, 600);
+    await show('SelfLimitRefused'); await waitScreen('purchase'); await page.waitForSelector('.screen.in [data-state="self-limit"]', { timeout: 20000 }); await shot('self-limit-refused', english, 500);
+    await show('PlaytimeSheet'); await waitScreen('playtime-sheet'); await page.waitForSelector('.screen.in .pt-sheet', { timeout: 20000 }); await shot('playtime-sheet', english, 500);
+    await page.evaluate(async () => { const S = globalThis.__muchi.logic.selfLimits; await S.cancel(); await S.setPlaytime({ sessionMin: null }); localStorage.removeItem('muchi.playtime.clock'); });
     // Round 20: 通知 — push categories, the device reminders and the upcoming list; the pre-permission dialog
     await page.evaluate(async () => { localStorage.setItem('muchi.lnotif.os', 'granted'); await globalThis.__muchi.logic.localNotify.seedDemo(); await globalThis.__muchi.logic.localNotify.setCategory('reminders', true); });
     await show('NotifySettings'); await waitScreen('notify-settings'); await page.waitForSelector('.screen.in .ln-next', { timeout: 20000 }); await shot('notify-settings', english, 600);
@@ -226,6 +233,20 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('ReviewPrompt', 'soft'); await waitScreen('review-ask'); await page.waitForSelector('.screen.in .rev-soft', { timeout: 15000 }); await shot('review-soft', english, 500); // round 20 (REQ-REV-015)
     await page.locator('.screen.in .rev-yes').click(); await waitScreen('review-native'); await page.waitForSelector('.screen.in .rev-os', { timeout: 15000 }); await shot('review-native', english, 500);
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+    await show('PromotionResult', 'start'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-card', { timeout: 15000 }); await shot('promotion-start', english, 500); // round 22 (REQ-PROMO-020)
+    await show('PromotionResult', 'passed'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-sheet', { timeout: 15000 }); await shot('promotion-pass', english, 500);
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
+    await show('PromotionResult', 'failed'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-sheet', { timeout: 15000 }); await shot('promotion-fail', english, 500);
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
+    // Round 22: ゲーム内アンケート — the お知らせ row, each question type and the thanks state at the largest size (REQ-SURVEY-022)
+    await show('Survey', 'inbox'); await waitScreen('activity'); await page.waitForSelector('.screen.in .sv-row', { timeout: 15000 }); await shot('survey-row', english, 500);
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await page.waitForSelector('.screen.in .sv-sheet[data-kind="scale"]', { timeout: 15000 }); await shot('survey-scale', english, 400);
+    await page.locator('.screen.in [data-scale="5"]').click(); await page.locator('.screen.in .sv-next').click(); await page.waitForSelector('.screen.in .sv-sheet[data-kind="single"]', { timeout: 15000 }); await shot('survey-single', english, 400);
+    await page.locator('.screen.in [data-option="training"]').click(); await page.locator('.screen.in .sv-next').click(); await page.waitForSelector('.screen.in .sv-sheet[data-kind="multi"]', { timeout: 15000 }); await shot('survey-multi', english, 400);
+    await page.locator('.screen.in .sv-next').click(); await page.waitForSelector('.screen.in .sv-sheet[data-kind="text"]', { timeout: 15000 }); await shot('survey-text', english, 400);
+    await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await shot('survey-thanks', english, 400);
+    await page.evaluate(() => globalThis.__muchi.logic.surveys.clear());
     await show('HorseGoals', await page.evaluate(async () => (await globalThis.__muchi.logic.view()).flags.partnerHorseId)); await waitScreen('horse-goals'); await page.waitForSelector('.screen.in .hg-row', { timeout: 15000 }); await shot('horse-goals', english, 500);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);
@@ -268,6 +289,18 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Settings', 'looks'); await waitScreen('settings'); await shot('settings-looks', english, 400);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
+    // Round 22: 騎手の道 (the map, the race detail, the pre-race) at the largest size (REQ-CAREER-022)
+    await show('Career'); await waitScreen('career'); await page.waitForSelector('.screen.in .cr-band', { timeout: 15000 }); await shot('career-map', english, 600);
+    await show('CareerPreRace', 'c1_debut'); await waitScreen('career-prerace'); await page.waitForSelector('.screen.in .cr-prerace', { timeout: 15000 }); await shot('career-prerace', english, 500);
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000);
+    for (let i = 0, kicked = false; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await screen()) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await page.waitForSelector('.screen.in .cr-verdict', { timeout: 15000 }); await shot('career-result', english, 500);
     // Round 18: 練習レース (the setup screen at the largest size)
     await show('Practice'); await waitScreen('practice'); await page.waitForSelector('.screen.in .pr-setup', { timeout: 15000 }); await shot('practice', english, 600);
     // Round 18 integration: a practice race at the largest size (the shortest course, two runners; the whip band and the

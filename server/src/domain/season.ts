@@ -6,6 +6,7 @@ import { grantReward } from './items.js';
 import type { PlayerState } from './player.js';
 import { jstMonthKey } from './time.js';
 import { closePassSeason } from './pass.js';
+import { closePromotionSeason, shieldApplies, type PromoCloseOutcome } from './promotion.js';
 
 export const seasonIdFor = (now: number) => jstMonthKey(now);
 
@@ -32,19 +33,30 @@ export function seasonPointsFor(m: Master, place: number): number {
 }
 
 /** Ensures the player's season record is for the current season; closes the old one (promotion/demotion). */
-export function rollSeason(m: Master, s: PlayerState, now: number): { closed: boolean; from?: string; to?: string } {
+export function rollSeason(m: Master, s: PlayerState, now: number): { closed: boolean; from?: string; to?: string; seasonId?: string; promo?: PromoCloseOutcome } {
   const id = seasonIdFor(now);
   if (s.season.id === id) return { closed: false };
   const classes = m.progression.classes;
   const idx = classes.findIndex((c) => c.id === s.season.classId);
   const c = classes[idx]!;
   let next = idx;
+  let shielded = false;
   if (c.promotePoints !== null && s.season.points >= c.promotePoints && idx < classes.length - 1) next = idx + 1;
-  else if (c.demoteBelowPoints !== null && s.season.points < c.demoteBelowPoints && idx > 0) next = idx - 1;
+  else if (c.demoteBelowPoints !== null && s.season.points < c.demoteBelowPoints && idx > 0) {
+    // REQ-PROMO-011: the demotion shield of a grace window keeps the class once
+    if (shieldApplies(m, s, s.season.id, c.id)) shielded = true;
+    else next = idx - 1;
+  }
   const from = c.id;
+  const closedId = s.season.id;
+  // REQ-PROMO-008..011: a running series resolves by these points (no carry-over); a promotion opens a grace window
+  const promo = closePromotionSeason(m, s, closedId, from, classes[next]!.id, shielded, now);
   // REQ-SEASON-002: keep the closed season so the rollover job can grant its reward later (rank is final only then)
   if (!s.seasonHistory.some((h) => h.seasonId === s.season.id)) {
-    s.seasonHistory.push({ seasonId: s.season.id, classId: from, points: s.season.points, races: s.season.races, nextClassId: classes[next]!.id, rank: null, rewarded: false });
+    s.seasonHistory.push({
+      seasonId: s.season.id, classId: from, points: s.season.points, races: s.season.races, nextClassId: classes[next]!.id, rank: null, rewarded: false,
+      ...(promo.promo ? { promo: promo.promo } : {}), ...(promo.shielded ? { shielded: true } : {}),
+    });
     if (s.seasonHistory.length > SEASON_HISTORY_KEEP) s.seasonHistory.splice(0, s.seasonHistory.length - SEASON_HISTORY_KEEP);
   }
   s.season = { id, classId: classes[next]!.id, points: 0, races: 0 };
@@ -52,7 +64,7 @@ export function rollSeason(m: Master, s: PlayerState, now: number): { closed: bo
   closePassSeason(m, s, now);
   const forfeitedAt = s.seasonPass.forfeitedAt; // REQ-UXS-040: stays given up until the wipe
   s.seasonPass = { expiresAt: s.seasonPass.expiresAt, xp: 0, claimed: { free: [], premium: [] }, seasonId: id, ...(forfeitedAt !== undefined ? { forfeitedAt } : {}) };
-  return { closed: true, from, to: classes[next]!.id };
+  return { closed: true, from, to: classes[next]!.id, seasonId: closedId, promo };
 }
 
 export const SEASON_HISTORY_KEEP = 24;

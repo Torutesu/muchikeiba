@@ -8,6 +8,7 @@
  *    name an operator) never reach `title` / `detail`. Rows are pointed at with a support reference `ref`;
  *  - Japanese is the source text; English is applied at the response boundary (i18n/en.ts CODE_EN).
  */
+import { effectiveLimitYen, pendingAt, SELF_LIMIT_TEXT, selfLimitYenAt } from './selfLimits.js';
 import { AppError } from './errors.js';
 import type { Master, Rarity } from './master.js';
 import type { Currency, LedgerEntry, PlayerState, PurchaseRecord } from './player.js';
@@ -234,10 +235,17 @@ export function historySummary(m: Master, s: PlayerState, now: number) {
   const month = jstMonthKey(now);
   const spent = s.monthlySpendYen[month] ?? 0;
   const limit = ageBand(m, s, now)?.band.monthlyLimitYen ?? null;
+  // REQ-LIMIT-008 (§67.3): the player's own limit next to the age cap
+  const own = selfLimitYenAt(s, now);
+  const pend = pendingAt(s, now);
+  const eff = effectiveLimitYen({ limitYen: limit, band: null }, own);
   return {
     wallet: { paid: s.wallet.paid, free: s.wallet.free, total: s.wallet.paid + s.wallet.free, debt: s.wallet.debt },
     month, monthSpentYen: spent, monthlyLimitYen: limit, remainingYen: limit === null ? null : Math.max(0, limit - spent), ageLimited: limit !== null,
     limitText: limit === null ? null : `今月の購入 ¥${fmtInt(spent)} ／ 上限 ¥${fmtInt(limit)}（年齢に応じた月額上限）`,
+    selfLimitYen: own, effectiveLimitYen: eff, selfRemainingYen: own === null ? null : Math.max(0, own - spent),
+    selfLimitPending: pend ? { limitYen: pend.limitYen, effectiveAt: pend.effectiveAt } : null,
+    selfLimitText: own === null ? null : SELF_LIMIT_TEXT.status(own, Math.max(0, own - spent)),
     notice: HISTORY_NOTICE,
     windows: windows(m),
   };

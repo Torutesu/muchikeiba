@@ -8,6 +8,7 @@
  * - no reference prices / discounts (二重価格), no fake timers: the only end times are real season ends;
  * - nothing here moves value between players.
  */
+import { selfLimitYenAt } from './selfLimits.js';
 import { AppError } from './errors.js';
 import type { Master, Product, Reward, ShopOffersConfig } from './master.js';
 import type { PlayerState, PurchaseRecord } from './player.js';
@@ -304,6 +305,8 @@ export interface OfferView {
   showPopup: boolean;
   /** Real end of the period it is sold for (season end), never a made-up timer. */
   endsAt: number | null; remainingDays: number | null;
+  /** REQ-LIMIT-006 (§67.2): buying it would go over the player's own monthly limit — never popped up (still in the shop). */
+  selfLimitBlocked: boolean;
 }
 
 /**
@@ -315,10 +318,12 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
   const sh = ensureShop(s);
   const offers: OfferView[] = [];
   const add = (id: string, p: Product, touchpoint: OfferView['touchpoint'], popup: boolean, r: OfferRecord | null, endsAt: number | null = null) => {
+    const own = selfLimitYenAt(s, now);
+    const selfLimitBlocked = own !== null && (s.monthlySpendYen[jstMonthKey(now)] ?? 0) + p.priceYen > own;
     offers.push({
       id, productId: p.id, touchpoint, placement: popup ? 'popup' : 'recommended', reason: r?.reason ?? null, triggeredAt: r?.triggeredAt ?? null,
-      viewedAt: r?.viewedAt ?? null, showPopup: popup && r?.triggeredAt !== undefined && r.viewedAt === undefined,
-      endsAt, remainingDays: endsAt === null ? null : gameDaysUntil(endsAt, now, dayRule(m)),
+      viewedAt: r?.viewedAt ?? null, showPopup: popup && !selfLimitBlocked && r?.triggeredAt !== undefined && r.viewedAt === undefined,
+      endsAt, remainingDays: endsAt === null ? null : gameDaysUntil(endsAt, now, dayRule(m)), selfLimitBlocked,
     });
   };
   // T2 starter pack: popup once after the trigger, then in the recommended tab until bought

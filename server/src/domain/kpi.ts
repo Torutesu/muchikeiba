@@ -120,7 +120,7 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready', 'class_promoted'] as const;
 export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
 /** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
 export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
@@ -162,6 +162,9 @@ export const CALENDAR_VIEWS = ['month', 'week'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
+/** §67.8: `session`, `daily`, `quiet_after` in sheet order, comma-joined (selfLimits.ts PLAYTIME_REASONS). */
+const PLAYTIME_REASONS_RE = /^(quiet_after|daily|session)(,(daily|session)){0,2}$/;
+const playMin = z.number().int().min(0).max(1440).refine((n) => n % 5 === 0, 'rounded to 5 minutes');
 export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('session_start'), at: z.number().int(), props: z.object({}).strict().optional() }),
   z.object({ name: z.literal('session_end'), at: z.number().int(), props: z.object({ durationMs: z.number().int().min(0).max(86_400_000) }) }),
@@ -253,6 +256,11 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-LINK-021 (§63.9): a link reached the app — how it arrived and its type once resolved (`none` when it did not open).
   // Never the token, the target or any id (strict).
   z.object({ name: z.literal('deep_link_open'), at: z.number().int(), props: z.object({ entry: z.enum(DEEP_LINK_ENTRIES), type: z.enum(DEEP_LINK_KPI_TYPES) }).strict() }),
+  // REQ-LIMIT-016 (§67.8): the play-time reminder sheet was shown — why (sheet order, comma-joined), the minutes rounded to 5
+  // (never the exact play time) and how the player answered. Optional; nothing is granted or taken either way.
+  z.object({ name: z.literal('playtime_reminder_shown'), at: z.number().int(), props: z.object({
+    reasons: z.string().regex(PLAYTIME_REASONS_RE), sessionMin: playMin, dayMin: playMin, choice: z.enum(['continue', 'stop', 'settings']),
+  }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -319,6 +327,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'showcase_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, s3: e.props.neutral ? 'neutral' : 'card' };
     case 'showcase_share': return { name: e.name, count: e.props.pins, value: e.props.records, s1: e.props.horse ? 'horse' : 'none' };
     case 'deep_link_open': return { name: e.name, s1: e.props.entry, s2: e.props.type };
+    case 'playtime_reminder_shown': return { name: e.name, s1: e.props.reasons, s2: e.props.choice, value: e.props.sessionMin, count: e.props.dayMin };
   }
 }
 

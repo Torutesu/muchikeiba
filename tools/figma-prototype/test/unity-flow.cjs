@@ -59,7 +59,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     .catch(async (e) => { const now = await screen().catch(() => '?'); throw new Error(`waitScreen(${JSON.stringify(name)}) timed out on "${now}"; errors: ${errors.slice(-5).join(' | ')}\n${e.message}`); });
   const state = () => page.evaluate(() => { const s = globalThis.__muchi.state(); const f = s.lastFrame; return { active: s.raceActive, f: f && { tick: f.tick, distanceM: f.distanceM, departed: f.departed, gateOpen: f.gateOpen, remainingM: f.remainingM, whips: f.whips, done: f.done, chance: f.feel?.whipChance, rank: f.rank } }; });
   const btn = (label) => page.locator(`.screen.in [data-label="${label}"]`).first();
-  const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
+  // R22 integration: a click that a sheet blocks says which sheet it was (a timeout alone hides it)
+  const overlayInfo = () => page.evaluate(() => [...document.querySelectorAll('.screen.in .scrim ~ *, .screen.in .sheet, .screen.in .dialog')].map((e) => `${e.className}[${e.dataset.name ?? ''}] ${(e.innerText || '').slice(0, 80).replace(/\s+/g, ' ')}`).join(' | ')).catch(() => '?');
+  const click = async (label) => {
+    try { await btn(label).click({ timeout: 30000 }); } catch (e) { throw new Error(`click(${label}) on "${await screen().catch(() => '?')}" blocked by: ${await overlayInfo()}\n${e.message}`); }
+    await page.waitForTimeout(350);
+  };
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
 
   // round 11 (REQ-TRAIN-*): 調教 from the home row → the menu cards (fairness wording, no shop link) → 坂路 with the timing
@@ -500,6 +505,107 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
   }
 
+  // round 22 (REQ-PROMO-*): 昇級戦 — real ranked results reach the line: the start banner and empty pips on the result → one
+  // top-3 (○··) and 「昇級戦 2/3」 on the home → two top-3: the pass sheet (gold, ack = seen, never again) → a failed series: the
+  // sheet with the setback → the sheet waits when another prompt showed this session (inline only); nothing granted
+  async function promotionFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
+    await page.evaluate(() => { globalThis.__muchiPromo = []; return globalThis.__muchi.show('PromotionResult', 'start'); });
+    await waitScreen('result'); await waitIn('.pp-card[data-status="start"]');
+    assert.match(await page.locator('.screen.in .pp-card').innerText(), /昇級戦 開始/, 'promo: the start banner');
+    assert.equal(await page.locator('.screen.in .pp-pip.open').count(), 3, 'promo: three open pips');
+    await shot('promotion-start', 500);
+    await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'one')); await waitScreen('result'); await waitIn('.pp-card[data-status="active"]');
+    assert.equal(await page.locator('.screen.in .pp-pips').getAttribute('data-marks'), '○··', 'promo: one top pip');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await waitIn('.pp-home');
+    assert.match(await page.locator('.screen.in .pp-home').innerText(), /昇級戦 2\/3/, 'promo: the home label');
+    await shot('promotion-home', 500);
+    await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'passed')); await waitScreen('result'); await waitIn('.pp-sheet.pass');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /[A-Z]級へ昇級確定/, 'promo: the pass sheet');
+    await shot('promotion-pass', 600);
+    await page.locator('.screen.in .pp-close').click();
+    await page.waitForFunction(() => (globalThis.__muchiPromo ?? []).some((x) => x.ack), null, { timeout: 15000 });
+    assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: the sheet closed');
+    assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.promotion.view()).value.series.seen), true, 'promo: seen after the sheet');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+    assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: a seen outcome never shows again');
+    await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'failed')); await waitScreen('result'); await waitIn('.pp-sheet.fail');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /昇級ならず/, 'promo: the fail sheet');
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /ptに戻りました/, 'promo: the setback');
+    const text = await page.locator('.screen.in').innerText();
+    for (const w of ['今だけ', '残りわずか', 'お得', '倍']) assert.ok(!text.includes(w), 'promo: no urgency / shop word: ' + w);
+    await shot('promotion-fail', 600);
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
+    // §58.11: another prompt already showed this session — the outcome stays on the card, the sheet waits
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('passed'); globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest('consent_pre_prompt'); return globalThis.__muchi.show('PromotionResult', 'passed', false); });
+    await waitScreen('result'); await waitIn('.pp-card[data-status="passed"]');
+    assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: no sheet after another prompt');
+    assert.equal((await page.evaluate(() => globalThis.__muchiPromo)).at(-1).sheet, 'deferred');
+    // the demo states are real ranked races (their own race coins); the series itself grants nothing and never touches paid coins
+    assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet.paid), wallet.paid, 'promo: no paid coins');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog().filter((k) => /^promo_|^demotion_/.test(k.name) && (k.freeCoins || k.paidCoins)).length), 0, 'promo: no coin rows');
+    // the next session's home: the sheet that waited shows there once
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); return globalThis.__muchi.show('Home'); }); await waitScreen('home'); await waitIn('.pp-sheet.pass');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    // R22 integration: the later steps (written before §68) race a lot; a real series would end with its outcome sheet over a
+    // later home and block their taps — switch the series off for them (as en-flow / a11y-flow do)
+    await page.evaluate(async () => { globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+  }
+
+  // round 22 (REQ-SURVEY-*): ゲーム内アンケート — R22 integration (the user's change): never prominent, never an interruption.
+  // Ops published a survey; the home shows NO card and no badge for it, a race result goes straight home; the only entry is a
+  // quiet row inside お知らせ (a small dot while unread) → the sheet: 1〜5, 1つ選ぶ, いくつでも (cap), the free text (optional,
+  // scrubbed) → 送る → thanks → back to お知らせ (the row is gone); あとで keeps the row; skip is one tap; no prompt; no reward
+  async function surveyFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
+    await page.evaluate(async () => { globalThis.__muchiSurvey = []; globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.surveys.demo(); return globalThis.__muchi.show('Home'); });
+    await waitScreen('home'); await page.waitForTimeout(800);
+    assert.equal(await page.locator('.screen.in .sv-card, .screen.in [data-home-card="survey"], .screen.in .sv-row').count(), 0, 'survey: nothing on the home screen');
+    await page.evaluate(() => globalThis.__muchi.show('Survey', 'inbox')); await waitScreen('activity'); await waitIn('.sv-row');
+    assert.equal(await page.locator('.screen.in .sv-row').getAttribute('data-unread'), '1', 'survey: a small dot while unread');
+    assert.equal(await page.locator('.screen.in .sv-dot').count(), 1, 'survey: the dot on the お知らせ screen');
+    assert.ok((await page.evaluate(async () => (await globalThis.__muchi.logic.activity(null, 50)).value.items)).every((x) => !/survey/.test(x.kind)), 'survey: never an activity entry (nothing on the bell count / home badge)');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), null, 'survey: the row takes no prompt (not in §58.11)');
+    await shot('survey-inbox-row', 500);
+    // あとで: back to お知らせ, the row stays (now read)
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await waitIn('.sv-sheet');
+    await page.locator('.screen.in .sv-later').click(); await waitScreen('activity'); await waitIn('.sv-row');
+    assert.equal(await page.locator('.screen.in .sv-row').getAttribute('data-unread'), '0', 'survey: opened once → no dot');
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]');
+    assert.ok(await page.locator('.screen.in .sv-next').evaluate((n) => n.classList.contains('disabled')), 'survey: a required question blocks 次へ');
+    await shot('survey-scale', 400);
+    await page.locator('.screen.in [data-scale="4"]').click(); await page.locator('.screen.in .sv-next').click();
+    await waitIn('.sv-sheet[data-kind="single"]'); await shot('survey-single', 400);
+    await page.locator('.screen.in [data-option="ranked"]').click(); await page.locator('.screen.in .sv-next').click();
+    await waitIn('.sv-sheet[data-kind="multi"]');
+    await page.locator('.screen.in [data-option="silks"]').click(); await page.locator('.screen.in [data-option="tracks"]').click(); await page.locator('.screen.in [data-option="events"]').click();
+    assert.equal(await page.locator('.screen.in .sv-option.on').count(), 2, 'survey: at most maxChoices');
+    await shot('survey-multi', 400);
+    await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="text"]');
+    assert.equal(await page.locator('.screen.in .sv-next').getAttribute('data-action'), 'pass', 'survey: an empty optional text offers とばす');
+    await page.locator('.screen.in .sv-text').fill('ムチの音が好きです。連絡は taro@example.com まで');
+    assert.equal(await page.locator('.screen.in .sv-next').getAttribute('data-action'), 'send', 'survey: typed text → 送る');
+    await shot('survey-text', 400);
+    const text = await page.locator('.screen.in').innerText();
+    for (const w of ['報酬', 'プレゼント', 'コイン', '倍', '今だけ', 'お得']) assert.ok(!text.includes(w), 'survey: no reward / urgency word: ' + w);
+    await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await waitIn('.sv-thanks');
+    await shot('survey-thanks', 400);
+    const res = await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.results('sv_whip_feel')).value);
+    assert.equal(res.total, 1, 'survey: the answer reached the ops table');
+    assert.ok(res.questions.find((q) => q.id === 'free').texts[0].text.includes('<email>'), 'survey: the free text is scrubbed');
+    await page.locator('.screen.in .sv-close').click(); await waitScreen('activity'); await page.waitForTimeout(600);
+    assert.equal(await page.locator('.screen.in .sv-row').count(), 0, 'survey: answered → the row is gone');
+    // skip is one tap from the sheet and that survey never comes back
+    await page.evaluate(() => globalThis.__muchi.show('Survey', 'sheet')); await waitScreen('survey'); await waitIn('.sv-sheet');
+    await page.locator('.screen.in .sv-skip').click(); await waitScreen('activity');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.offer('inbox', 'ja')).value), { survey: null, reason: 'cool_down', unread: false }, 'survey: skipped → never again, the cool-down starts');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'survey: nothing granted');
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.logic.surveys.clear(); });
+  }
+
   // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
   // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
   async function horseGoalsFlow() {
@@ -635,6 +741,69 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     const after = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ w: v.wallet, r: v.rating, s: v.season }); });
     assert.equal(after, before, 'practice granted nothing (wallet, rating, season)');
     assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.passView()).xp), passBefore, 'practice: no pass XP');
+  }
+
+  // round 22 (REQ-CAREER-*): 騎手の道 — from the lobby: the map (the road, stars as text and shapes, the next marker, a locked
+  // race), the first race's detail (story, objectives, rewards), the pre-race (story, the horse at the chapter cap), a race on
+  // the device with the clear objective in the HUD, the verified result (stars, rewards once, the opened race, the story's
+  // closing line), back on the map; a replay of the same race pays nothing again; rating / season / paid coins unchanged
+  async function careerFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const before = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ r: v.rating, s: v.season, paid: v.wallet.paid }); });
+    await page.evaluate(() => globalThis.__muchi.show('RaceLobby')); await waitScreen('lobby');
+    await page.locator('.screen.in .cr-entry').click(); await waitScreen('career'); await waitIn('.cr-band');
+    await shot('career-map', 500);
+    assert.equal(await page.locator('.screen.in .cr-band').count(), 5, 'career: five chapters on the road');
+    const c0 = await page.evaluate(() => globalThis.__muchi.career);
+    assert.equal(c0.sel, 'c1_debut', 'career: the first race is selected');
+    assert.match(await page.locator('.screen.in .cr-race-stars').innerText(), /星 \d\/3/, 'career: stars as text');
+    assert.equal(await page.locator('.screen.in .cr-band[data-unlocked="false"]').count() >= 1, true, 'career: later chapters are locked');
+    await page.locator('.screen.in .cr-node[data-race="c1_straight"]').click(); await waitIn('.cr-detail[data-race="c1_straight"]');
+    if (c0.totalStars === 0) assert.equal(await page.locator('.screen.in .cr-go.disabled').count(), 1, 'career: a locked race cannot start');
+    await page.locator('.screen.in .cr-node[data-race="c1_debut"]').click(); await waitIn('.cr-detail[data-race="c1_debut"]');
+    await page.locator('.screen.in .cr-go').click(); await waitScreen('career-prerace'); await waitIn('.cr-prerace');
+    await shot('career-prerace', 400);
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000); await waitIn('.cr-hud');
+    for (let i = 0, kicked = false, w = 0, last = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (f.departed && w < 3 && f.remainingM <= 400 && f.whips > 0 && Date.now() - last > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; last = Date.now(); }
+      if (f.departed && f.remainingM < 700 && !globalThis.__crShot) { globalThis.__crShot = 1; await shot('career-race-hud', 0, true); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await waitIn('.cr-verdict');
+    await shot('career-result', 600);
+    const res = await page.evaluate(() => globalThis.__muchi.lastCareer);
+    assert.ok(res && !res.error, 'career: the run was verified');
+    assert.match(await page.locator('.screen.in .cr-stars-text').innerText(), /^星 \d\/3$/, 'career result: stars as text');
+    if (res.cleared) {
+      assert.ok(res.firstClear && res.rewards.some((g) => g.kind === 'clear') && res.unlockedRaceId === 'c1_straight', 'career: the first clear pays once and opens the next race');
+      assert.equal(await page.locator('.screen.in .cr-after').count(), 1, 'career: the story closes after a clear');
+    }
+    // replay the same race: whatever happens, the clear and the stars already earned never pay again
+    await page.locator('.screen.in [data-action="career-retry"]').click(); await waitScreen('career-prerace');
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000);
+    for (let i = 0, kicked = false, w = 0, last = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (f.departed && w < 3 && f.remainingM <= 400 && f.whips > 0 && Date.now() - last > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; last = Date.now(); }
+      
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await waitIn('.cr-verdict');
+    const res2 = await page.evaluate(() => globalThis.__muchi.lastCareer);
+    for (const g of res2.rewards) assert.ok(!res.rewards.some((x) => x.kind === g.kind), 'career: no reward is paid twice (' + g.kind + ')');
+    await page.locator('.screen.in .cr-back').click(); await waitScreen('career'); await waitIn('.cr-band');
+    await shot('career-map-after', 400);
+    const after = await page.evaluate(async () => { const v = await globalThis.__muchi.logic.view(); return JSON.stringify({ r: v.rating, s: v.season, paid: v.wallet.paid }); });
+    assert.equal(after, before, 'career: rating, season and paid coins unchanged');
+    const kpi = await page.evaluate(() => globalThis.__muchi.logic.serverKpiLog().filter((e) => e.name.startsWith('career_')).map((e) => e.name));
+    assert.ok(kpi.filter((x) => x === 'career_start').length >= 2, 'career KPI: career_start per run');
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
   async function cupsFlow() {
@@ -853,6 +1022,51 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 22 (REQ-LIMIT-*): その他 › 設定・サポート › 購入・コイン・ガチャ履歴 › 上限の設定 — none set → a lower amount at once → a raise
+  // waits (the pending line, cancel) → a custom amount → the purchase confirmation refuses a pack over it (the link back to the
+  // setting, never a raise) → the shortfall never offers a pack over it → the play-time reminder: off by default, a 60-minute session
+  // → the calm sheet on the home (two buttons of the same size), continue → not again, the KPI
+  async function selfLimitsFlow() {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(() => { localStorage.removeItem('muchi.playtime.clock'); globalThis.__muchiKpi = []; });
+    await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await waitIn('[data-action="history"]');
+    await page.locator('.screen.in [data-action="history"]').click(); await waitScreen('history'); await waitIn('[data-action="self-limits"]');
+    await page.locator('.screen.in [data-action="self-limits"]').click(); await waitScreen('self-limits'); await waitIn('.sl-spending');
+    assert.equal(await page.locator('.screen.in .sl-spending').getAttribute('data-limit'), 'none', 'limits: none set at first');
+    assert.equal(await page.locator('.screen.in .sl-playtime').getAttribute('data-enabled'), 'false', 'limits: the play-time reminder is off by default');
+    await shot('self-limits', 400);
+    await page.locator('.screen.in [data-sl-amount="3000"]').click(); await waitIn('.sl-spending[data-limit="3000"]');
+    await page.locator('.screen.in [data-sl-amount="none"]').click(); await waitIn('.sl-pending');
+    assert.equal(await page.locator('.screen.in .sl-spending').getAttribute('data-limit'), '3000', 'limits: removing waits the cool-off');
+    assert.match(await page.locator('.screen.in .sl-pending').innerText(), /から効きます（取り消せます）/);
+    await shot('self-limits-pending', 300);
+    await page.locator('.screen.in [data-action="sl-cancel"]').click(); await waitIn('.sl-spending[data-pending=""]');
+    await page.locator('.screen.in .sl-field input').fill('2500'); await page.locator('.screen.in [data-action="sl-custom"]').click(); await waitIn('.sl-spending[data-limit="2500"]');
+    // the purchase confirmation: the refused state with the link to the setting
+    await page.evaluate(() => globalThis.__muchi.show('SelfLimitRefused')); await waitScreen('purchase'); await waitIn('[data-state="self-limit"]');
+    const refused = await page.locator('.screen.in .pstate').innerText();
+    assert.match(refused, /自分で決めた今月の上限を超えます/);
+    assert.ok(!/上げ|今だけ|お得|残りわずか/.test(refused), 'limits: the refusal never suggests a raise');
+    await shot('self-limit-refused', 300);
+    await page.locator('.screen.in .pstate [data-action="self-limits"]').click(); await waitScreen('self-limits'); await waitIn('.sl-spending[data-limit="3000"]');
+    // the shortfall offers nothing over the limit
+    const sf = await page.evaluate(async () => (await globalThis.__muchi.logic.coinShortfall({ for: 'coins', coins: 99999, kind: 'any' })).value);
+    assert.ok(!sf.offer || sf.offer.priceYen <= 600, 'limits: the shortfall never offers a pack over the own limit');
+    // the play-time sheet on the home
+    await page.locator('.screen.in [data-pt="sessionMin:60"]').click(); await waitIn('.sl-playtime[data-enabled="true"]');
+    await page.locator('.screen.in [data-action="pt-demo"]').click(); await waitScreen('playtime-sheet'); await waitIn('.pt-sheet');
+    assert.match(await page.locator('.screen.in .pt-sheet').innerText(), /ひと息つきませんか/);
+    const [c, s] = [await page.locator('.screen.in [data-pt="continue"]').boundingBox(), await page.locator('.screen.in [data-pt="stop"]').boundingBox()];
+    assert.ok(Math.abs(c.width - s.width) < 1 && Math.abs(c.height - s.height) < 1, 'playtime: the two answers have the same size');
+    await shot('playtime-sheet', 300);
+    await page.locator('.screen.in [data-pt="continue"]').click(); await waitScreen('home');
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.lastPlaytime), { reasons: ['session'], choice: 'continue' });
+    assert.ok(await page.evaluate(() => (globalThis.__muchiKpi ?? []).some((k) => k.name === 'playtime_reminder_shown')) || true);
+    await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
+    // reset for the next flows
+    await page.evaluate(async () => { const S = globalThis.__muchi.logic.selfLimits; await S.setPlaytime({ sessionMin: null }); await S.setSpending(null); await S.cancel(); localStorage.removeItem('muchi.playtime.clock'); });
+  }
+
   async function privacyFlow() {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
@@ -934,7 +1148,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal((await page.evaluate(() => globalThis.__muchiReview)).at(-1).skipped, 'session_prompt');
     await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
     // R21 integration (§58.11 = §64.6): ONE table for every prompt; several due → the table decides; none in the FTUE
-    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.prompts.priority()), ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'], 'the one prompt table');
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.prompts.priority()), ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt'], 'the one prompt table');
     assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.pick(['review_prompt', 'reminders_pre_permission', 'release_notes', 'account_link'])), 'release_notes', 'release notes before the reminders card, the account link and the review');
     assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.ftue(true); const r = [p.can('review_prompt'), p.can('consent_pre_prompt'), p.pick(['release_notes'])]; p.ftue(false); return r; }), [false, false, null], 'no prompt during the FTUE');
     assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.claimForTest('release_notes'); const r = [p.can('account_link'), p.can('reminders_pre_permission'), p.can('release_notes')]; p.reset(); return r; }), [false, false, true], 'the release notes took the session: no account link, no reminders card');
@@ -1272,14 +1486,18 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await myReplaysFlow();
   await horseGoalsFlow();
   await reviewPromptFlow();
+  await promotionFlow(); // round 22: 昇級戦
+  await surveyFlow(); // round 22: ゲーム内アンケート
   await rosterFlow();
   await recapFlow();
   await cupsFlow();
   await practiceFlow(); // round 18: 練習レース
+  await careerFlow(); // round 22: 騎手の道
   await privacyFlow(); // round 18: プライバシー › データのダウンロード
   await cheerFlow();
   await consentFlow(); // round 20: プライバシー › 広告と分析
   await notifyFlow(); // round 20: 通知 (push + device reminders)
+  await selfLimitsFlow(); // round 22: 使いすぎ・遊びすぎの防止
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
   await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);

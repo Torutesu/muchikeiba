@@ -22,6 +22,10 @@ namespace Muchi.Client
         /// <summary>"今月の購入 ¥3,000 ／ 上限 ¥5,000（年齢に応じた月額上限）", or null when there is no limit.</summary>
         public string LimitText, Notice;
         public int PurchasesDays, CoinsDays, GachaDays;
+        /// <summary>REQ-LIMIT-008 (§67.3): the player's own limit next to the age cap (null = none set); SelfLimitText is shown under LimitText.</summary>
+        public int? SelfLimitYen, EffectiveLimitYen, SelfRemainingYen;
+        public SelfLimitPending SelfLimitPending;
+        public string SelfLimitText;
         internal static HistorySummary Parse(JsonNode o)
         {
             var w = J.Opt(o, "wallet");
@@ -32,6 +36,8 @@ namespace Muchi.Client
                 Month = J.Str(o, "month"), MonthSpentYen = J.Int(o, "monthSpentYen"), MonthlyLimitYen = J.IntN(o, "monthlyLimitYen"), RemainingYen = J.IntN(o, "remainingYen"),
                 AgeLimited = J.Bool(o, "ageLimited"), LimitText = J.Str(o, "limitText"), Notice = J.Str(o, "notice"),
                 PurchasesDays = J.Int(win, "purchasesDays"), CoinsDays = J.Int(win, "coinsDays"), GachaDays = J.Int(win, "gachaDays"),
+                SelfLimitYen = J.IntN(o, "selfLimitYen"), EffectiveLimitYen = J.IntN(o, "effectiveLimitYen"), SelfRemainingYen = J.IntN(o, "selfRemainingYen"),
+                SelfLimitPending = SelfLimitPending.Parse(J.Opt(o, "selfLimitPending")), SelfLimitText = J.Str(o, "selfLimitText"),
             };
         }
     }

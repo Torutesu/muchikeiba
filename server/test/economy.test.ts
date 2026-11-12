@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { m } from './helpers.js';
 import { simulateAll, type EconomyResult } from '../src/sim/economy.js';
 import { oddsDisclosure } from '../src/domain/gacha.js';
+import { CAREER_HARD_LIMITS, careerOf, careerTotals } from '../src/domain/career.js';
 
 // docs/spec/balance-targets.md E-*: the economy, simulated with the real PlayerService and master data.
 describe('economy targets (90 days, 3 seeds)', () => {
@@ -265,6 +266,30 @@ describe('economy targets (90 days, 3 seeds)', () => {
     // offset like E14: the daily 「3戦する」 mission went 16 → 15 coins in the Round 13 rebalance (18 → 16 was the rival's, E16) and the
     // tiers are 5 / 8 / 12 (balance-targets 4.18); a daily player's 90-day team goal coins stay below the 18 → 15 cut (3 × days)
     expect(all.f2p!.teamGoalCoins).toBeLessThanOrEqual(3 * all.f2p!.activeDays);
+  }, 3_600_000);
+
+  it('E20 騎手の道 (REQ-CAREER-011): the whole career with every star is a fixed lifetime grant, the same for everyone, and E1/E2 hold', async () => {
+    const all = await run();
+    const t = careerTotals(careerOf(m));
+    // the upper bound: every persona with a horse clears every race with every star (once ever)
+    for (const [id, r] of Object.entries(all)) {
+      expect(r.careerClears, id).toBe(t.races);
+      expect(r.careerStars, id).toBe(t.stars);
+      // exactly the master's lifetime totals, never more (rewards are once ever, whatever the number of runs)
+      expect(r.careerCoins, id).toBe(t.freeCoins);
+      expect(r.careerMaterial, id).toBe(t.material);
+    }
+    // E20 code ceilings; free coins ≤ 1% of what a free daily player earns by playing in 90 days
+    expect(t.freeCoins).toBeLessThanOrEqual(CAREER_HARD_LIMITS.lifetimeFreeCoins);
+    expect(all.f2p!.careerCoins).toBeLessThanOrEqual(0.01 * all.f2p!.freeCoinsEarned);
+    // E1 / E2 for the free personas with the career included (the targets of E18 / E19)
+    for (const id of ['f2p', 'f2p_invited']) {
+      expect(all[id]!.pullsPerMonth, id).toBeGreaterThanOrEqual(40);
+      expect(all[id]!.pullsPerMonth, id).toBeLessThanOrEqual(65);
+      expect(all[id]!.ssrPerMonth, id).toBeLessThanOrEqual(2.8);
+    }
+    expect(all.f2p_inviter!.ssrPerMonth).toBeLessThanOrEqual(2.8);
+    expect(all.f2p_casual!.pullsPerMonth).toBeLessThanOrEqual(40);
   }, 3_600_000);
 
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {

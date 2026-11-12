@@ -6,7 +6,8 @@ import { addItems } from '../domain/items.js';
 import { deliverGift, giftBoxSupportView, type DeliverResult, type OpsTitleKey } from '../domain/giftBox.js';
 import type { KpiEvent } from '../domain/kpi.js';
 import { grantFree, paidBalanceYen, writeOffDebt } from '../domain/wallet.js';
-import { registerAge, ageBand } from '../domain/purchase.js';
+import { registerAge, ageBand, ageCapOf } from '../domain/purchase.js';
+import { selfLimitsView } from '../domain/selfLimits.js';
 import { getHorse } from '../domain/horses.js';
 import { resetStableName } from '../domain/stable.js';
 import type { AdminRole } from './admin.js';
@@ -146,6 +147,8 @@ export function supportView(m: Master, s: PlayerState, now: number) {
     monthlySpendYen: s.monthlySpendYen,
     age: s.age, ageBand: s.age ? ageBand(m, s, now)?.band.id ?? null : null,
     supportFlags: s.supportFlags ?? [],
+    // REQ-LIMIT-017 (§67.10): the player's own limits, read only (no admin route can raise, remove or hurry them)
+    selfLimits: selfLimitsView(m, s, ageCapOf(m, s, now), now),
     storeSubscriptions: s.storeSubscriptions ?? {},
     moderation: { status: moderationOf(s, now), detail: s.moderation ?? null },
     friends: { count: s.friends.ids.length },

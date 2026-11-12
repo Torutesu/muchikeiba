@@ -27,6 +27,7 @@ import collectionJson from '../../master/collection.json';
 import photoJson from '../../master/photo.json';
 import helpJson from '../../master/help.json';
 import practiceJson from '../../master/practice.json';
+import careerJson from '../../master/career.json';
 import tipsJson from '../../master/tips.json';
 import showcaseJson from '../../master/showcase.json';
 import releaseNotesJson from '../../master/release-notes.json';
@@ -231,8 +232,14 @@ export interface Progression {
   horseGoals?: import('./horseGoals.js').HorseGoalsConfig;
   /** REQ-REV-*: レビュー依頼のタイミング (reviewPrompt.ts, validated by reviewPromptProblems). Absent = never asks. */
   reviewPrompt?: import('./reviewPrompt.js').ReviewPromptRules;
+  /** REQ-PROMO-*: 昇級戦と降級の猶予 (promotion.ts, validated by promotionProblems). Absent = off (the old promotion at the close). */
+  promotion?: import('./promotion.js').PromotionRules;
   /** REQ-LNOTIF-*: 端末のローカル通知 (localNotify.ts, validated by localNotificationsProblems). Absent / disabled = the device schedules nothing. */
   localNotifications?: import('./localNotify.js').LocalNotifyConfig;
+  /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 (selfLimits.ts, validated by selfLimitsProblems). Absent = the defaults (no kill switch). */
+  selfLimits?: import('./selfLimits.js').SelfLimitsConfig;
+  /** REQ-SURVEY-004 (§69): ゲーム内アンケート (surveys.ts, validated by surveysProblems). Absent = SURVEYS_DEFAULTS. */
+  surveys?: Partial<import('./surveys.js').SurveysConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */
@@ -443,6 +450,8 @@ export interface Master {
   showcase?: import('./showcase.js').ShowcaseMaster;
   /** REQ-NEW-*: アップデートのお知らせ per app version (master/release-notes.json; releaseNotes.ts releaseNotesOf falls back to it when absent; remote config `releaseNotes` replaces it). */
   releaseNotes?: import('./releaseNotes.js').ReleaseNotesMaster;
+  /** REQ-CAREER-*: 騎手の道 — chapters of CPU races with story, objectives and once-ever rewards (master/career.json; career.ts careerOf falls back to it when absent). Texts carry their own English. */
+  career?: import('./career.js').CareerMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -601,6 +610,7 @@ export function loadMaster(): Master {
     tips: tipsJson as unknown as import('./tips.js').TipsMaster,
     showcase: showcaseJson as unknown as import('./showcase.js').ShowcaseMaster,
     releaseNotes: releaseNotesJson as unknown as import('./releaseNotes.js').ReleaseNotesMaster,
+    career: careerJson as unknown as import('./career.js').CareerMaster,
   };
   cached = m;
   return m;

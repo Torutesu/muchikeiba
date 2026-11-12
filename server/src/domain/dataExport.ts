@@ -13,6 +13,7 @@
  * This module is pure state logic plus the document builder (no I/O). What every top-level PlayerState key becomes in
  * the export is decided in DEX_CLASSIFICATION — a test fails when a new key is added without a decision.
  */
+import { surveysExport } from './surveys.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { HorseInstance, LedgerEntry, PlayerState } from './player.js';
@@ -400,6 +401,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   friendSuggest: x('social'), horseGoals: x('horses'),
   // §59 (Round 20): when the store review was asked, the moment, the pre-question answer (nothing is ever granted for it)
   reviewPrompt: x('analytics'),
+  // §68 (Round 22): the promotion series (own places in ranked races), passed keys, setback, grace window and shields
+  promotion: x('play'),
   // keys added by modules through `PlayerState & { … }`
   collection: x('play'), silksEditor: x('profile'), stable: x('social'), teamFeed: x('social'), teamGoal: x('play'),
   // Round 18 integration: §48 inquiries (text, replies, votes) and §47 the reporter's daily counter (its target ids are not exported)
@@ -412,6 +415,12 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   releaseNotes: x('play'),
   // Round 21 (§65, REQ-CAL-016): calendar rows marked for a reminder (ids, kinds, until)
   calendar: x('play'),
+  // Round 22 (§67): the player's own spending limit, a pending raise, the play-time reminder settings and their history
+  selfLimits: x('settings'),
+  // Round 22 (§66): 騎手の道 progress (stars, first clears, rewards paid) and recent runs — the player's own play record
+  career: x('play'),
+  // R22 §69 (REQ-SURVEY-014): surveys shown / skipped / answered and the player's own (scrubbed) answers
+  surveys: x('analytics'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -531,6 +540,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       ads: s.ads ? { pref: s.ads.pref, day: s.ads.day, counts: clone(s.ads.counts), total: s.ads.total,
         sessions: s.ads.sessions.map((a) => ({ placementId: a.placementId, createdAt: a.createdAt, status: a.status, at: a.at ?? null, reward: clone(a.reward) ?? null })) } : null,
       hallVisibility: s.hall?.visibility ?? null, rivalOptOut: rival?.optOut ?? null,
+      // §67 (Round 22): own monthly spending limit, a pending raise / removal, play-time reminder settings, history
+      selfLimits: clone(s.selfLimits) ?? null,
     },
     horses: {
       items: s.horses.map(horseOut), bond: clone(s.bond) ?? null, training: clone(s.training) ?? null,
@@ -621,6 +632,9 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),
       timeAttack: s.timeAttack ? { seasonBest: clone(s.timeAttack.seasonBest), allTimeBest: clone(s.timeAttack.allTimeBest), milestones: [...s.timeAttack.milestones], daily: clone(s.timeAttack.daily),
         runs: s.timeAttack.sessions.map((x) => ({ trackId: x.trackId, horseId: x.horseId, seasonId: x.seasonId, issuedAt: x.issuedAt, status: x.status, result: clone(x.result) })) } : null,
+      // §66 (Round 22): 騎手の道 — per-race progress and the recent runs (results only; the issued configs are not personal data)
+      career: s.career ? { races: clone(s.career.races), daily: clone(s.career.daily),
+        runs: s.career.sessions.map((x) => ({ raceId: x.raceId, chapterId: x.chapterId, horseId: x.horseId, issuedAt: x.issuedAt, status: x.status, result: clone(x.result) })) } : null,
       weeklyChallenge: s.weeklyChallenge ? { weeks: clone(s.weeklyChallenge.weeks), badges: clone(s.weeklyChallenge.badges), daily: clone(s.weeklyChallenge.daily),
         runs: s.weeklyChallenge.sessions.map((x) => ({ weekId: x.weekId, challengeId: x.challengeId, horseId: x.horseId, issuedAt: x.issuedAt, status: x.status, result: clone(x.result) })) } : null,
       events: clone(s.events) ?? {}, tournaments: clone(s.tournaments) ?? {},
@@ -636,6 +650,7 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       } : null,
       hall: clone(s.hall) ?? null, collection: omit(st.collection as { cheerRefs?: unknown } | undefined, 'cheerRefs'), teamGoal: omit(st.teamGoal as { pending?: unknown } | undefined, 'pending'),
       comeback: clone(s.comeback) ?? null, nextAction: clone(s.nextAction) ?? null, nudges: clone(s.nudges) ?? null,
+      promotion: clone(s.promotion) ?? null, // §68: own results only (no other player)
     },
     devices: (push?.devices ?? []).map((d) => ({ platform: d.platform, addedAt: d.addedAt, lastSeenAt: d.lastSeenAt, locale: d.locale ?? null, pushTokenEnd: maskToken(d.token) })),
     analytics: {
@@ -644,6 +659,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       reviewPrompts: (s.reviewPrompt?.history ?? []).map((h) => ({ at: h.at, moment: h.moment, platform: h.platform, style: h.style, answer: h.answer, storeReviewAskedAt: h.nativeAt })),
       events: ext.kpiEvents === null ? { available: false, windowDays: null, rows: [] as Record<string, unknown>[] } : { available: true, windowDays: ext.kpiEvents.windowDays, rows: ext.kpiEvents.rows },
       // §60.9 (REQ-CERR-019): the error reports this device sent with the player's id (scrubbed; no stack, no free text)
+      // §69 (REQ-SURVEY-014): the in-app surveys the player answered or skipped, with their own answers
+      surveys: surveysExport(s),
       clientErrors: ext.clientErrors === null ? { available: false, rows: [] as DexClientErrorRow[] } : { available: true, rows: (ext.clientErrors ?? []).map((r) => ({ ...r })) },
     },
     // §48 (Round 18 integration): the player's inquiries — what they wrote, what they attached, the replies (without the

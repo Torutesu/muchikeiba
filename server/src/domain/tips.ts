@@ -29,7 +29,7 @@ import type { Locale } from '../i18n/locale.js';
 export const TIP_TOPIC_IDS = ['race', 'horses', 'scout', 'shop', 'social'] as const;
 export type TipTopicId = typeof TIP_TOPIC_IDS[number];
 /** The card illustrations Codex draws (docs/handoff-codex-round19-tutorial-replay.md). */
-export const TIP_ARTS = ['whip', 'slipstream', 'lanes', 'stamina', 'reins', 'breeding', 'stud', 'training', 'roster', 'scout', 'pity', 'coins', 'branch', 'cups'] as const;
+export const TIP_ARTS = ['whip', 'slipstream', 'lanes', 'stamina', 'reins', 'breeding', 'stud', 'training', 'roster', 'scout', 'pity', 'coins', 'branch', 'cups', 'career'] as const;
 /** REQ-TUT-008: screens with a "?" button that opens a card. */
 export const TIP_CONTEXTS = ['gacha_odds', 'breeding', 'training', 'roster_bulk_retire'] as const;
 export type TipContext = typeof TIP_CONTEXTS[number];

@@ -54,6 +54,11 @@ export interface BuildRaceInput {
    * player on the partner horse finishes top 3 about 70% of the time (balance target R10). Absent/1000 = unchanged.
    */
   cpuStatPermille?: number;
+  /**
+   * REQ-CAREER-004 (§66): the CPU field is drawn only from templates of these running styles (a 騎手の道 race such as
+   * 「前が速い」). Absent = every eligible template (the draw and every existing config are unchanged).
+   */
+  cpuStyles?: readonly string[];
 }
 
 /**
@@ -83,7 +88,8 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
   const raw: Omit<Entrant, 'slot'>[] = input.humans.map((h) => ({ kind: 'human' as const, playerId: h.playerId, cpuLevel: h.cpuLevel ?? 3, horse: h.horse }));
   const used = new Set(input.humans.map((h) => h.horse.name));
   // limited horses (REQ-BREED-020) and gift-only horses (REQ-UXS-002) never appear as CPU
-  const candidates = m.templates.filter((t) => !t.seasonal && !t.giftOnly && !used.has(t.name));
+  const candidates = m.templates.filter((t) => !t.seasonal && !t.giftOnly && !used.has(t.name) && (!input.cpuStyles || input.cpuStyles.includes(t.style)));
+  if (candidates.length < input.cpuCount) throw new Error(`only ${candidates.length} CPU horses for ${input.cpuCount} places`);
   for (let i = 0; i < input.cpuCount; i++) {
     const t = candidates.splice(randInt(input.rng, candidates.length), 1)[0]!;
     // CPU horses race with their template's skill: deterministic, no draw (REQ-UXS-050)

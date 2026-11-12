@@ -83,7 +83,11 @@ export interface RecapAcc {
 }
 
 export type MomentKind = 'promotion' | 'hall' | 'first_win' | 'big_win' | 'streak' | 'ta_best';
-export interface RecapMoment { kind: MomentKind; horseName: string | null; trackId: string | null; n: number | null; from: string | null; to: string | null; at: number }
+export interface RecapMoment {
+  kind: MomentKind; horseName: string | null; trackId: string | null; n: number | null; from: string | null; to: string | null; at: number;
+  /** REQ-PROMO-018: the promotion followed a passed promotion series (§68). Absent in older snapshots. */
+  series?: boolean;
+}
 
 export interface RecapSnapshot {
   id: string; kind: RecapKind; periodId: string;
@@ -95,7 +99,7 @@ export interface RecapSnapshot {
   short: boolean;
   races: number; wins: number; top3: number;
   bestFinish: { place: number; fieldSize: number } | null;
-  rank: { classId: string; nextClassId: string; finalRank: number | null; promoted: boolean; seasonId: string } | null;
+  rank: { classId: string; nextClassId: string; finalRank: number | null; promoted: boolean; seasonId: string; viaSeries?: boolean } | null;
   horse: { horseId: string; horseName: string; races: number; wins: number } | null;
   timeAttack: { trackId: string; timeMs: number; horseName: string; courseBest: boolean } | null;
   style: { style: Style; races: number } | null;
@@ -223,7 +227,7 @@ function rankFor(m: Master, s: PlayerState, kind: RecapKind, periodId: string): 
   for (const h of recs) {
     const top = Math.max(classIndex(m, h.classId), classIndex(m, h.nextClassId));
     const promoted = classIndex(m, h.nextClassId) > classIndex(m, h.classId);
-    const cand = { classId: h.classId, nextClassId: h.nextClassId, finalRank: h.rank, promoted, seasonId: h.seasonId };
+    const cand = { classId: h.classId, nextClassId: h.nextClassId, finalRank: h.rank, promoted, seasonId: h.seasonId, ...(promoted && h.promo === 'series' ? { viaSeries: true } : {}) };
     // highest class reached (incl. a promotion) → best final rank in the class held → the later season
     const better = top > bestKey || (top === bestKey && best !== null && (cand.finalRank ?? Infinity) < (best.finalRank ?? Infinity));
     if (best === null || better) { best = cand; bestKey = top; }
@@ -254,7 +258,7 @@ function timeAttackFor(m: Master, s: PlayerState, kind: RecapKind, periodId: str
 function momentsFor(snap: Omit<RecapSnapshot, 'moments'>, a: RecapAcc, hallFirst: { horseName: string; at: number } | null, max: number): RecapMoment[] {
   const out: RecapMoment[] = [];
   const base = { horseName: null, trackId: null, n: null, from: null, to: null };
-  if (snap.rank?.promoted) out.push({ ...base, kind: 'promotion', from: snap.rank.classId, to: snap.rank.nextClassId, at: snap.to - 1 });
+  if (snap.rank?.promoted) out.push({ ...base, kind: 'promotion', from: snap.rank.classId, to: snap.rank.nextClassId, at: snap.to - 1, ...(snap.rank.viaSeries ? { series: true } : {}) });
   if (hallFirst) out.push({ ...base, kind: 'hall', horseName: hallFirst.horseName, at: hallFirst.at });
   if (a.firstWin) out.push({ ...base, kind: 'first_win', horseName: a.firstWin.horseName, trackId: a.firstWin.trackId, at: a.firstWin.at });
   if (a.bigWin && a.bigWin.fieldSize >= BIG_WIN_MIN_FIELD && a.bigWin.raceId !== a.firstWin?.raceId) {
@@ -375,7 +379,7 @@ function courseName(m: Master, trackId: string | null): string | null {
 export function momentText(m: Master, kind: RecapKind, x: RecapMoment): string {
   const course = courseName(m, x.trackId);
   switch (x.kind) {
-    case 'promotion': return `${x.from}級から${x.to}級へ昇格`;
+    case 'promotion': return x.series ? `昇級戦を突破して${x.to}級へ昇格` : `${x.from}級から${x.to}級へ昇格`; // REQ-PROMO-018
     case 'hall': return '殿堂入り';
     case 'first_win':
       if (kind === 'season') return course ? `シーズン初勝利（${course}）` : 'シーズン初勝利';
@@ -411,6 +415,7 @@ function stepsOf(m: Master, r: RecapSnapshot): RecapStep[] {
     const notes: string[] = [];
     if (r.rank.finalRank !== null) notes.push(`最終順位 ${r.rank.finalRank}位`);
     if (r.rank.promoted) notes.push(`${r.rank.classId}級から${r.rank.nextClassId}級へ昇格`);
+    if (r.rank.promoted && r.rank.viaSeries) notes.push('昇級戦を突破'); // REQ-PROMO-018
     add({ key: 'rank', label: '到達したクラス', value: `${r.rank.promoted ? r.rank.nextClassId : r.rank.classId}級`, notes });
   }
   horseStep?.();

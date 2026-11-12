@@ -1167,7 +1167,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 「足りる」は**そのパックの有償コインだけ**で数える（初回購入ボーナスの無償コインは数えない。`paid` のときは無償コインは使えないため、`any` のときも案内を控えめにするため）。
 - 足りるもののうち価格の安い順（同じ価格ならコインのパック `kind: "coins"` を先、次に有償コインの少ない順）で**1つ**。`status: "covered"`。
 - 足りるものが無ければ、買えるもののうち有償コインが一番多いもの（同じなら安い方）を返し `covers: false`・`status: "largest_only"`（「いちばん大きい〜でも、あと◯枚足りません」）。
-- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。
+- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `SELF_LIMIT_EXCEEDED`（§67、Round 22：自分で決めた上限。クライアントは設定へのリンクだけを出す） / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。自分で決めた上限（§67）を超えるパックは候補から除く。
 - 初回購入ボーナスは**ショップと同じ表示**（§13 `firstPurchaseBonus.label`「はじめての購入時のみ：無償コイン◯枚をプレゼント」）を、そのパックでまだ受け取っていない時だけ付ける。「倍」「お得」「今だけ」「残りわずか」・残り時間は使わない（テストで確認）。
 
 ### 29.3 形（`CoinShortfall`）
@@ -1477,6 +1477,7 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
   "notice": "有償コインに有効期限はありません。使うときは有償コインから先に使われます。無償コインはゲーム内で受け取ったコインです。",
   "windows": { "purchasesDays": 2557, "coinsDays": 365, "gachaDays": 90 } }
 ```
+- Round 22（§67.3）：自分で決めた上限を後方互換で足す（`selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`）。画面は `limitText` の下に `selfLimitText` と「上限の設定」のリンク（§67 の画面の入口）。
 - `monthlyLimitYen` は年齢区分（`ageLimits`）の月額上限。上限なし（20歳以上）・年齢未登録は `null`、`ageLimited` は上限がある区分（16歳未満・16〜17歳・18〜19歳）のとき true、`limitText` は上限があるときだけ（無ければ `null`）。
 
 ### 33.2 一覧（要認証、カーソル式）
@@ -2439,19 +2440,19 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`（フレンド部屋の再戦 `/v1/friend-rooms/rematch/:raceId` §63 を含む：レースを始める口。R21 統合）・`/v1/race/*`・`/v1/races/*` |
 | `teams` | `/v1/teams/*`（定型チャット §52 の候補・投稿を含む：投稿先の支部フィードと同じグループ。Round 18 統合）・`/v1/league/*`・`/v1/stamps` |
 | `events` / `tournaments` / `training` | `/v1/events/*` / `/v1/tournaments/*` / `/v1/training/*` |
-| `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
+| `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*`・`/v1/career*`（騎手の道 §66、Round 22：検証するひとりのレース） |
 | `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
+| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）・ゲーム内アンケート `/v1/surveys*` §69（R22）・昇級戦の表示と見た印 §68 `/v1/promotion*`…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
-- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。昇級戦（§68、Round 22）`GET /v1/promotion`・`POST /v1/promotion/ack` も `core`（読むだけと見た印。昇級戦のレース自体は `ranked` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
-- **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
+- **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/career/submit`（§66）・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
 - **リンクを開く口**（§63、R21 統合）：`POST /v1/links/resolve` は止めない。窓の間・古いアプリからは、行き先の状態（`maintenance`／`update_required`）を答えの `state` で返し、リンクは捨てない（その画面がいつ開けるかを言う）。`/v1` の外にある Web の代わりのページ `GET /l/:token` と、ユニバーサルリンク・App Links の検証ファイル `GET /.well-known/apple-app-site-association`・`/.well-known/assetlinks.json` は入口の検査の外（窓の間も OS の検証が切れない）。
@@ -3500,6 +3501,8 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | `review_prompt_eligible`・`review_prompt_shown`・`review_soft_answer`（§59） | サーバー | `optional` | 頼む時の調整のための分析。分析がオフでもレビュー依頼の規則（間隔・回数）は状態 `reviewPrompt` で守られ、KPI に頼らない |
   | `cheer_send`・`cheer_seen`（§55）、`perf_setting_change`・`asset_predownload`（§56）、`tutorial_replay`・`tip_view`・`tip_context_open`（§57）、`lnotif_scheduled`・`lnotif_opened`・`lnotif_permission`（§61） | クライアント | `optional` | 遊び方・設定の分析だけ。端末の `ConsentState.AllowsClientEvent` が捨て、サーバーも捨てる |
   | `showcase_save`（サーバー）・`showcase_view`・`showcase_share`（§62）、`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）・`deep_link_open`（§63）、`release_notes_view`・`release_notes_target`・`release_notes_history`（§64）、`calendar_view`・`calendar_entry_open`・`calendar_mark`（サーバー、§65）（R21 統合） | サーバー／クライアント | `optional` | カード・リンク・お知らせ・予定表の使われ方の分析だけ。支払い・法定・アカウントの入口の記録は無い。リンクの行はトークン・行き先・相手の id を元から入れない（§63.9）。分析がオフなら書かない（リンク・再戦・カードの見た目はそのまま動く） |
+  | **Round 22（R22 統合で確かめた）**：`self_limit_set`（§67、サーバー） | サーバー | `essential` | 本人が決めた支払いの上限の変更の記録（問い合わせ・返金の確認に使う）。分析をオフにしても書く。金額と変更の種類だけ |
+  | `self_limit_block`・`playtime_setting_change`（サーバー）・`playtime_reminder_shown`（クライアント）（§67）、`career_start`・`career_clear`・`career_star`（§66）、`promo_series_start`・`promo_series_end`・`demotion_shield_used`（§68）、`survey_shown`・`survey_skip`・`survey_answer`（§69） | サーバー（`playtime_reminder_shown` だけクライアント） | `optional` | 遊び方・調整の分析だけ。遊んだ時間は5分に丸め、アンケートの答えの中身は入れない。分析がオフでも上限・昇級戦・騎手の道・アンケートの規則は状態で守られ、KPI に頼らない |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
@@ -3518,7 +3521,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - サーバー：`POST /v1/client-errors` は認証された束でもプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（§60.6）。
 - 設定の画面では「プライバシー」の中に「広告と分析」と「エラーの自動送信」を並べ、エラーの自動送信の画面は「プレイヤーIDを添えるかは『分析への協力』に従います」と案内する。
 
-### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64 との関係、R20 統合・R21 統合で1つの表に）
+### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64・§67・§68・§69 との関係、R20 統合・R21 統合で1つの表に、R22 統合で1行と表の外の1行を足した）
 - **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。**FTUE の間はどれも出さない**。§46 のメンテナンス・強制アップデートの画面（`ApiClient.Outage` が `None` 以外）の上にも出さない（それは案内ではなく画面で、その間は判定もしない）。
 - **同じ時に2つ以上が出せる時の順（この表が唯一の決まり。§64.6 もこの表を指す。R21 統合）**：
 
@@ -3528,14 +3531,19 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | 2 | `consent_pre_prompt` | 広告・分析の同意の事前の画面（§58、続く ATT・CMP を含む） | 法令・ストアの決まり。パーソナライズ広告・分析を使う前に決めてもらう |
   | 3 | `comeback_welcome` | 復帰キャンペーンの歓迎画面（§20、ホームの代わり） | 期間のあるキャンペーンの入口 |
   | 4 | `release_notes` | アップデートのお知らせ（§64） | 新しい版の最初のホーム |
-  | 5 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
-  | 6 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
-  | 7 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
+  | 5 | `promotion_outcome` | 昇級戦の結果のシート（突破／届かず、§68.6。R22 統合） | 自分で勝ち取った結果の知らせ（お願いではない）。取れなければ結果画面の中の一言だけで、シートは次のホームで |
+  | 6 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
+  | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
+  | 8 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
+  | — | `playtime_reminder` | 遊ぶ時間のお知らせ（§67.4）。**表の外**（R22 統合で決めた） | 本人が頼んだお知らせでお願いの画面ではない。枠を使わず・取られない。同じ区切りではこれを先に出し、表のものは次の区切り |
+
+  §69 のゲーム内アンケートは**この表に入らない**（R22 統合での変更：割り込まず、お知らせの中の行から本人が開くだけ。枠を使わない・取らない）。
 
   だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューが他のどれかのすぐ後に出ることも無い。
 - 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
-- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts` に渡す。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を確かめる。
-- **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5。§65 の予定表の印から作った通知も含む）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、端末で待っているディープリンク（§63）を捨て（前のアカウントに届いたもの）、アップデートのお知らせの「このセッションで出した」（§64。見た印はサーバーのアカウントごと）を戻し、この1つの規則を最初に戻す（R21 統合）。
+- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts`・`PromotionModel.Prompts`（R22）に渡す。`SelfLimitsModel` には渡さない（表の外）。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を、`server/test/r22-integration.test.ts` が R22 の行と表の外の行を確かめる。
+- **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5。§65 の予定表の印から作った通知も含む）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、端末で待っているディープリンク（§63）を捨て（前のアカウントに届いたもの）、アップデートのお知らせの「このセッションで出した」（§64。見た印はサーバーのアカウントごと）を戻し、この1つの規則を最初に戻す（R21 統合）。R22 統合：遊ぶ時間の時計（§67、端末で数えた分）を最初からにし前のアカウントの上限の表示を捨て、前のアカウントの昇級戦の結果のシートと端末の写し（§68）、騎手の道の地図・走っている途中・送り直し待ちの開始の鍵（§66）、アンケートの行とシート（§69）も捨てる（`AccountChangeReset.SelfLimits`／`Promotion`／`Career`／`Surveys`、プロトタイプ `deviceAccountChanged`）。
+- **Round 22（§67.4）遊ぶ時間のお知らせはこの規則の外**（上の表の `—` の行）：本人が頼んだお知らせでお願いの画面ではないので、`SessionPrompts`／プロトタイプの `sessionPrompt` を通らず、枠を使わない・取られない。同じ区切りではこのシートを先に出し、お願いの画面は次の区切りに回す（Unity は `SelfLimitsModel.SheetVisible`）。
 - **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
@@ -3747,6 +3755,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
 | `calendar_mark`（R21 統合） | 予定表（§65）で印を付けた行の**始まり** | `reminders`（自分で付けた印なので呼び戻しと同じ種類、既定オフ） | `startAt − leadHours.calendar_mark`（既定 2 時間） | 印があり、まだ始まっていない（始まった行・印を外した行・`until` を過ぎた行は予約しない）。名前は文言に入れない（「印を付けた予定が{date}に始まります」） | `calendar` |
 
+- Round 22（§67）：遊ぶ時間のお知らせは**アプリの中のシート**（通知ではない）。OS の通知・プッシュのどちらにも持ち主を作らない（`LNOTIF_OWNERSHIP` に足さない）。
 - 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
 - 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。
@@ -4218,4 +4227,382 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 ### Q1.3 クライアント
 - C# `HorseProfile.Parse`、`ApiClient.GetHorseProfileAsync(horseId)`、`TrainingMenuOutlook`（`TrainingHorse.MenuOutlook`）、`BreedingPreview.Rarity`。`FoalReveal.Build(preview, foal)`：生まれた仔を順にめくる手順（性別と脚質 → 5能力が見込みの幅のどこに着地したか → レア度 → 固有スキル・隔世遺伝）。着地の位置は見込みの幅（`stats[].min/max`）に対する割合だけで、新しい判定は無い。
 - `Muchi.Game.HorseProfileModel`（馬カード）、`TrainingModel.Outlook(menuId)`・`TrainingModel.StageUp`（結果で段階が上がったか）、`BreedingModel.Reveal`／`RevealStep`／`ParentGifts`（親ごとに渡せるもの）。
+
+
+## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
+マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。
+
+### 66.1 マスター `server/master/career.json`（起動時に `careerProblems` で検査、REQ-CAREER-002/010/011）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "sessionTtlMs": 900000, "maxInputs": 400, "startsPerDay": 200, "keepSessions": 30 },
+  "chapters": [ { "id": "c1", "art": "dawn", "statCap": 2800, "title": { "ja": "はじめての一閃", "en": "The First Strike" }, "subtitle": { "ja": "…", "en": "…" },
+    "races": [ { "id": "c1_debut", "trackId": "aoba_turf_1600", "going": "good"?, "night": false?, "cpuCount": 5, "cpuLevel": 1, "cpuStatPermille": 800?, "cpuStyles": ["nige","senko"]?,
+                 "title": { "ja", "en" }, "story": { "before": { "ja", "en" }, "after": { "ja", "en" } },
+                 "clear": { "maxPlace": 3 },
+                 "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+                 "stars": [ { "objective": { "maxPlace": 1 }, "reward": { … }? }, { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { … }? } ] } ] } ] }
+```
+- 目標の形は §31 の条件と同じ（`maxPlace`・`maxWhips`・`maxTimeMs`、全部とゴールが必要）。**クリア（星1）は必ず着順**（`maxPlace`）。`stars` は 0〜2 個（星2・星3）。星2・星3は**同じレースでクリアもしたとき**だけ付く。
+- 検査（どれか1つでも違えば起動しない）：形（zod strict）、章 1〜10・1章 3〜5 戦、id の重複なし、コースがある・馬場がその面の値・ナイターは照明のあるコースだけ、**相棒（`progression.partner` の馬）がそのコースに合う**（面・距離。全員が全レースを走れる馬を持っている）、**章の `statCap` ≤ 相棒の能力合計**（無料の相棒が必ず上限に届く）、`cpuStyles` に合う CPU の馬が `cpuCount + 1` 頭以上、`maxPlace` < 頭数、文言の長さ（題 日本語16字・英語32字、物語 80字・200字）、英語に日本語が無い、ショップの言葉（倍・お得・今だけ・残りわずか・通常価格）と共通の賭けの言葉（§36 `bettingWords.ts`）が無い、報酬（66.6）。
+- 物語と題は**マスターの中に英語を並べて持つ**（ヘルプ §48・ヒント §57 と同じ。`locale-en.json` には入れない）。応答は要求の言語（§23.1）で片方を返す。目標の1行（「3着以内でゴール」「ムチ3回以内」）は §31 と同じ `conditionLabels` の文で、応答の出口で英語になる。
+- 目標の種類は検証サーバーの出力（`order`・`finishTicks`・`finishFracs`）と送られた入力だけで決まるものに限る。「3コーナーで先頭」「スタミナを残してゴール」は検証サーバーの出力に無い値が要る（検証サーバーを先に出す §8 の変更になる）ので**入れない**（決めたこと。必要になったら `RaceSummary` を §8 に足してから）。
+
+### 66.2 進み方（REQ-CAREER-005）
+- 全レースを章の順・章の中の順に並べ、**1つ前のレースをクリアすると次が開く**（章の最初のレースは前の章の最後のレースのクリアで開く）。一度クリアしたレースはマスターが変わっても開いたまま。開いていないレースの開始は `409 CAREER_LOCKED`。
+- 星はレースごとに貯まる（走るたびに足すだけで減らない）。章の星・全体の星は合計。
+- **やり直しはいつでも無料・無制限**：スタミナ・行動力・待ち時間・有料のコンティニュー・有料のスキップは無い。`startsPerDay`（既定200、ゲーム日 §15 の 4:00 で戻る）は画面に出さない乱用よけの上限で、遊びの量では届かない（1戦は1分以上かかる）。
+
+### 66.3 `GET /v1/career`（要認証、読み取りだけ、REQ-CAREER-003）
+```json
+{ "enabled": true, "version": 1, "totalStars": 4, "maxStars": 51, "clearedRaces": 2, "totalRaces": 17, "nextRaceId": "c1_firstwin", "startsLeftToday": 197,
+  "chapters": [ { "id": "c1", "art": "dawn", "title": "はじめての一閃", "subtitle": "…", "statCap": 2800, "unlocked": true, "cleared": false, "stars": 4, "maxStars": 9, "clearedRaces": 2,
+    "races": [ { "id": "c1_debut", "chapterId": "c1", "title": "デビュー戦", "story": { "before": "…", "after": "…" },
+                 "trackId": "aoba_turf_1600", "surface": "turf", "distanceM": 1600, "going": "good", "night": false,
+                 "fieldSize": 6, "cpuCount": 5, "cpuLevel": 1, "cpuStatPermille": 800, "cpuStyles": null, "statCap": 2800,
+                 "objectives": [ { "star": 1, "objective": { "maxPlace": 3 }, "labels": [ { "kind": "place", "text": "3着以内でゴール" } ], "reward": { … } },
+                                 { "star": 2, "objective": { "maxPlace": 1 }, "labels": [ … ], "reward": { … } | null }, … ],
+                 "progress": { "unlocked": true, "cleared": true, "clearedAt": 1795…, "stars": [1,3], "attempts": 2, "bestPlace": 2, "bestTimeMs": 97300,
+                               "rewarded": { "clear": true, "star2": false, "star3": true } } } ] } ],
+  "rules": { "skills": false, "normalized": true, "ranked": false, "leaderboards": false, "missions": false, "energy": false, "paidContinue": false, "paidSkip": false, "rewardOnce": true } }
+```
+`enabled: false`（`config.enabled` が false）の時は `{ "enabled": false }` だけ。開始・送信は `404`。
+
+### 66.4 `POST /v1/career/races/:raceId/start`（要認証・`Idempotency-Key` 必須、REQ-CAREER-004/006）
+本文 `{ "horseId": "h_1" }`（strict）。応答：`{ sessionId, token, raceId, chapterId, playerSlot, config, expiresAt, startsLeftToday, race: { 66.3 のレースの札 }, conditions: { クリアの目標 } }`。
+- 設定（§2）：`mode` = `challenge`（エンジンに新しいモードを足さない。§31 と同じく固有スキルなし・その日の調子なし `rulesetVersion` `+ta`）、`raceId` = `car_<sessionId>`、コース・馬場・ナイター・頭数（`cpuCount` + 1）・CPU の段（`cpuLevel`、乗り方の正確さだけ）・CPU の能力（`cpuStatPermille`）は固定、CPU の馬は `cpuStyles` の脚質の中から（`buildRaceConfig` の `cpuStyles`。無ければ今までと同じ全頭から。今までの設定・ゴールデンは変わらない）。
+- **能力**：自分の馬（現役）を含む全出走馬を章の `statCap` にそろえる（ランク戦と同じ `normalizeStats`：上限を超える馬だけ下げる）。上限は相棒の能力合計以下（66.1）なので、無料の相棒も買った馬も同じ上限で走る。調教・覚醒・課金で上げた能力は上限の上では効かない。
+- 鍵：同じ `Idempotency-Key` の再送は同じセッションを返す（日の回数も1回だけ）。発行のたびに `attempts` +1・KPI `career_start`。
+- 断る：未知のレース `404`、開いていない `409 CAREER_LOCKED`、現役でない馬 `HORSE_NOT_ACTIVE`、日の上限 `429 CAREER_LIMIT_REACHED`、削除の実行中 `DELETION_PENDING`、削除済み（墓標）`404`。
+- 端末：`token` は §8.1 と同じ短命の署名（`raceId` = `car_<sessionId>`、プレイヤー・`playerSlot` に結び付く）。`config` はそのまま `ChallengeRun`（C#）で走らせ、送信で返す。
+
+### 66.5 `POST /v1/career/submit`（要認証、REQ-CAREER-007/008/009）
+本文 `{ sessionId, token, inputs: [[tick, slot, cmd], …], resultHash, config? }`（strict、§31.5 と同じ入力の規則：自分の枠だけ・端末のビットだけ・tick は増えるだけ・`maxInputs` 以下・`maxTicks` 未満）。
+1. `token` を確かめる（期限切れ・偽物は `CAREER_SESSION_EXPIRED`、別のプレイヤーは `401`）。
+2. 準備（DO）：同じセッション・同じ `resultHash` で確定済みなら**保存した結果をそのまま返す**（二重送信・再送で2回払わない）。`issued` 以外は `CAREER_SESSION_USED`、期限切れは `CAREER_SESSION_EXPIRED`、返された `config` が発行したものと違えば `TA_CONFIG_MISMATCH`。発行した設定と入力からリプレイログ（§7、`endTick` -1）を作る。
+3. 検証（§8）：届かなければセッションを `issued` に戻して `503 VERIFIER_UNAVAILABLE`（同じ走りを期限まで送り直せる）。
+4. 記録（DO）：検証のハッシュが端末と違えば `rejected` にして `422 CAREER_RESULT_MISMATCH`（何も記録しない）。同じなら目標を判定する（§31.7 の `evaluateChallenge`：着順は `order`、タイムは §8.1 の式、ムチは自分の枠の WHIP ビットの入力の数）。目標と報酬は**開始の時の写し**（`snapshot`）で判定する（途中でマスターが変わってもこの走りは変わらない）。
+```json
+{ "sessionId": "k…", "raceId": "c1_debut", "chapterId": "c1", "resultHash": "…",
+  "evaluation": { §31.7 のクリアの目標の判定 }, "cleared": true, "firstClear": true,
+  "objectives": [ { "star": 1, "ok": true, "newly": true, "evaluation": { … } }, { "star": 2, "ok": false, … }, { "star": 3, "ok": true, "newly": true, … } ],
+  "stars": [1,3], "newStars": [1,3], "rewards": [ { "kind": "clear", "reward": { … } }, { "kind": "star3", "reward": { … } } ],
+  "unlockedRaceId": "c1_straight", "chapterCleared": false, "totalStars": 2 }
+```
+- 送信は**メンテナンスの窓でも止めない**（§46.2、走り終えた走りは確定させる。`EXEMPT_ROUTES`）。
+
+### 66.6 報酬（REQ-CAREER-011、経済 E20、docs/spec/balance-targets.md 4.20）
+- **初クリアの報酬（`reward`）と星ごとの報酬（`stars[].reward`）だけ、アカウントで一度ずつ**。払ったものは `progress.granted`（`clear`・`star2`・`star3`）に残し、セッションではなくこの印で二度払いを防ぐ（同じ走りの再送・別のセッションでの再クリア・並んだ送信）。星1はクリアの報酬と同じ（別の報酬は無い）。
+- 中身は**無償コイン・配合素材だけ**（りんごのおやつは調教の伸びに効くのでデイリーミッションだけ、03「調教」。`training_apple` は検査で拒否）。有償コインは配らない（資金決済法）、スカウト券・ランダムなものは配らない、「全部そろえたら」の報酬は無い（コンプガチャにならない）。1回の付与は無償コイン100枚以下・最も高いパックの単価で ¥200 以下（景表法、`CAREER_HARD_LIMITS`）、アイテム 1種類 2個まで。
+- 一生分の上限（E20、コードの上限・起動時に検査）：無償コイン 300・配合素材 60。出荷の表は**無償コイン 0**・配合素材 53（E1 の余裕が小さいため。4.20）。
+- 報酬はその場で受け取る（プレゼントボックス §26 を通らない。§26.1 の「その場の受け取り」の行）。
+
+### 66.7 何に数えないか（REQ-CAREER-012）
+騎手の道のレースは `applyRace` を通らない：レーティング・クラスの点・シーズンpt・ランキング・タイムアタックの記録・戦績（`stats`）・殿堂（§34）・振り返り（§43）・ライバル（§28）・支部の共同目標（§32）・交換所のポイント（§30）・デイリーミッション・パスの XP・図鑑の「見た」・馬ごとの目標（§53）・絆・実績、どれも動かない（構造的に。`server/test/career.test.ts`）。マイリプレイ（§37）にも保存できない（練習 §50.7 と同じ：サーバーに確定したレースの部屋が無い）。写真（§38）は撮れる（`source.mode` は `challenge`、表示は「騎手の道」）。
+
+### 66.8 KPI（サーバーのイベント、REQ-CAREER-013、§58 の分類は全部 `optional`）
+| イベント | いつ | 列 |
+|---|---|---|
+| `career_start` | セッションの発行 | s1 = raceId、s2 = chapterId、count = そのレースの挑戦回数 |
+| `career_clear` | クリアした走り（初クリアでなくても） | s1 = raceId、s2 = chapterId、place、durationMs = タイム、isFirst = 初クリア、count = そのレースの星の数、value = 1（この初クリアで章が終わった）／0、freeCoins = 払った無償コイン |
+| `career_star` | 新しく付いた星ごと | s1 = raceId、s2 = chapterId、value = 星の番号（1〜3）、count = 全体の星の数 |
+入力・tick・seed は送らない。クエリは `docs/ops/kpi-queries.md`「騎手の道」。
+
+### 66.9 そのほかの決まり（REQ-CAREER-014〜016）
+- **メンテナンス**（§46.2）：`/v1/career*` はグループ `time_attack`（検証するひとりのレース。エンジンのレベルの検査 `RACE_GROUPS` の対象）。`POST /v1/career/submit` は `EXEMPT_ROUTES`。
+- **個人データの開示**（§51）：状態のキー `career` は `play` に分類（レースごとの進み・星・払った印・日の回数・最近の走りの結果。発行した設定は個人のデータではないので出さない）。アカウントの削除で状態ごと消える（墓標の後の送信・開始は `404`、状態を作り直さない）。
+- **アクティビティ**（§40）：入れない（決めたこと）。§40 は「いない間に起きたこと」の一覧で、騎手の道のクリアはプレイヤーがその場で結果画面を見ている。
+- **ヘルプ・ヒント**：ヘルプセンター（§48）に記事 `career_mode`（画面リンク `career`・文脈 `career`）、ヒント集（§57）にカード `career_stars`（`art: career`）。
+- **一度に1つの割り込み**（§58.11）：騎手の道は割り込むシート・カードを出さない（物語は自分で開いたレースの画面の中、結果の星はその結果画面の中）。ホームの案内（§45）にもしない。
+- **入口**：レースの画面（ロビー）の「騎手の道」（練習レースの隣、FTUE の後）。その他の一覧には足さない。
+
+### 66.10 クライアント（REQ-CAREER-017〜019）
+- `Muchi.Client`：`ApiClient.GetCareerAsync`・`StartCareerRaceAsync(raceId, horseId, idempotencyKey)`・`SubmitCareerRaceAsync(session, run)`、`CareerView`（`Chapter`・`Race`・`NextRace`）・`CareerChapter`・`CareerRace`・`CareerObjective`・`CareerProgress`・`CareerSession`・`CareerResult`・`CareerGrant`、`CareerRun`（`ChallengeRun` に目標を足したもの：星ごとの端末の判定 `StarsNow`）、`CareerRun.IsCareer(config)`（写真・共有の種類の表示「騎手の道」）。エラーコード `CAREER_LOCKED`・`CAREER_LIMIT_REACHED`・`CAREER_SESSION_EXPIRED`・`CAREER_SESSION_USED`・`CAREER_RESULT_MISMATCH`。
+- Unity ゲーム層 `CareerModel`：地図（章・レース・星・次のレース）、レースの詳細（物語・目標・報酬・条件）、開始（鍵を覚えて再送）、HUD の目標の行、送信（一時的な失敗は同じ走りを送り直す）、結果（星・新しい星・報酬・開いたレース・物語の後半）。描画は `docs/handoff-codex-round22-career.md`。
+- デプロイ：サーバーだけ（新しい3つのルート・マスター・KPI。検証サーバーは変わらない、**マイグレーションなし**：状態はプレイヤーの JSON の新しいキー）。
+
+## 67. 使いすぎ・遊びすぎの防止（自分で決める上限、self-set spending limit & play-time reminder、REQ-LIMIT-001〜022、`server/src/domain/selfLimits.ts`、C# `SelfLimits.cs`（`SelfLimitsView`・`PlaytimeReminderPolicy`・`PlaytimeClock`）・`Muchi.Game.SelfLimitsModel`、共有ベクター `contracts/self-limits.vectors.json`、docs/handoff-codex-round22-self-limits.md）
+有料のゲームとして信頼してもらうための、**プレイヤー自身が決める**安全の機能。2つある：
+1. **自分で決める月の購入上限**（年齢帯の月額上限 REQ-PUR-002 と同じか、それより低い額だけ）。
+2. **遊ぶ時間のお知らせ**（既定オフ。1回に遊ぶ時間・1日の合計・「◯時を過ぎたら」の目安を本人が選び、端末がレースの結果の後などの区切りで静かに知らせる）。
+
+どちらもコイン・アイテムを動かさない（経済の E は無し）。報酬・罰・機能の解放の条件にはしない（上限を下げても何ももらえない、上げても何も失わない）。文言は落ち着いた中立のもので、「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉（`bettingWords.ts`）・急かす言い回し（「もう少しだけ」「あと1回」など）を使わない（テスト）。
+
+### 67.1 月の購入上限（REQ-LIMIT-001〜004）
+- 選び方：設定 `progression.selfLimits.spendingChoicesYen`（既定 `[1000, 3000, 5000, 10000, 30000]`）から1つ、または**自分で入力**（`customStepYen` 円刻み、`customMinYen`〜`customMaxYen`）、または「上限なし」（`limitYen: null`）。
+- **年齢帯の上限より高くできない**：年齢帯の上限（`ageLimits`、20歳以上は無し）を超える額は `400 BAD_REQUEST`。選択肢も年齢帯の上限以下だけを返す（`choicesYen`）。年齢が未登録でも決められる（年齢を登録した時点で低い方が効く）。年齢帯が上がって（誕生日）年齢帯の上限が上がっても、自分の上限はそのまま。
+- **効いている上限 = min(年齢帯の上限, 自分の上限)**（`effectiveLimitYen`、どちらも無ければ `null`）。
+- **下げるのはすぐ**：今より低い額（上限なし→額を決める、を含む）は保存した瞬間から効く。待っている引き上げがあれば取り消す。
+- **上げる・外すのは冷却期間の後**：今より高い額・「上限なし」は `pending` になり、`coolOffHours`（既定 72 時間、24〜168）たってから効く。期間中は今の上限のまま。本人はいつでも取り消せる（`DELETE /v1/self-limits/spending/pending`）。待っている間に別の引き上げを頼むと、**時計は最初から**（同じ額をもう一度頼んだ時は何も変えない＝冪等）。今と同じ額を保存すると待っている引き上げを取り消す。
+- 期間が過ぎた引き上げは、読む時・買う時に「効いている」とみなす（`pending.effectiveAt <= now`）。状態への反映は次の書き込み（自分の上限の変更）で行い、履歴に `raise_applied`（時刻は `effectiveAt`）を残す。
+- **月の境目**：年齢帯の上限と同じ **JST の暦月**（`jstMonthKey`、ゲーム日の 4:00 切り替えではない）と同じ `monthlySpendYen`（ストアの購入時刻 `purchasedAt` の月）で数える。上限を月の途中で下げると、その月にもう払った額と比べる（払った額が新しい上限以上なら、その月は買えない）。
+
+### 67.2 購入の確認と全部の経路（REQ-LIMIT-005〜007）
+- `POST /v1/shop/purchase-intent`（`checkPurchaseIntent`）と、同じ判定を使うすべての経路（`productBlock`：コイン不足の案内 §29 の候補、ショップの1回限りの案内 §13.3）が、**今月の支払い＋価格 > 自分の上限** の時に断る。
+- 新しいエラー `409 SELF_LIMIT_EXCEEDED`（年齢帯の `AGE_LIMIT_EXCEEDED` とは別）。`error.details`：`{ "selfLimitYen": 3000, "monthSpentYen": 2400, "priceYen": 800, "month": "2026-11", "settings": "self_limits" }`。**どちらの上限で断るか**：自分の上限が年齢帯の上限より**低い**時だけ `SELF_LIMIT_EXCEEDED`（同じ額なら年齢帯の `AGE_LIMIT_EXCEEDED`。自分の上限を変えても買えないので）。判定の順は REQ-PUR-001 のまま（年齢未登録→未精算→保護者同意→商品ごと：1回限り・クラス・パス・手当・今月の上限超過の記録→年齢帯の上限→**自分の上限**）。
+- クライアントの文：「自分で決めた今月の上限（¥3,000）を超えるため、購入できません」＋リンク「上限の設定」（`settings: "self_limits"` が開く画面）。急かさず、引き上げを勧めない（リンクは設定の画面を開くだけ）。
+- 購入の確認（§13.2）の応答に `selfLimitYen`・`effectiveLimitYen`・`selfLimitPending`（待っている引き上げ、`{ limitYen, effectiveAt }` か `null`）を足す（後方互換）。確認のシートには「上限を設定」のリンクを置く。
+- **コイン不足の案内（§29）**：候補から自分の上限を超えるパックを除く（`productBlock` の同じ判定）。1つも買えない理由が自分の上限なら `status: "none_buyable"`・`blockedCode: "SELF_LIMIT_EXCEEDED"`・`line`「自分で決めた今月の上限に達しているため、いま購入できるパックはありません」。**自分の上限を超えるパックを勧めることは無い**（テスト）。
+- **1回限りの案内（§13.3 `GET /v1/shop/offers`）**：自分の上限を超える商品の案内は `showPopup: false`（ショップの中には残る）、`selfLimitBlocked: true`。上限の範囲に戻れば（翌月・自分で上げた）いつものとおり。
+- **ストアから届いた購入は必ず付与する**（REQ-LIMIT-007、返金の規則と同じ考え）：確認の後に上限を下げた・アプリが確認を飛ばした・ストアの保留が後で通った、などで上限を超える購入が届いても、ストアで支払いは済んでいるので**付与して今月の支払いに数える**（資金決済法：有償コインの購入を失わない）。記録に `selfLimitBreach: true` を付ける（運用コンソールに見える）。その月の以降の購入は確認で断られる（払った額がもう上限を超えているので）。返金はストアの通常の手続き（REQ-PUR-006）。
+
+### 67.3 履歴（§33）の表示（REQ-LIMIT-008）
+`GET /v1/history/summary` に後方互換で足す：`selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`（自分の上限がある時だけ、例「自分で決めた上限 ¥3,000（今月の残り ¥600）」、無ければ `null`）。`limitText`（年齢帯）はそのまま、画面は2行を並べる。
+
+### 67.4 遊ぶ時間のお知らせ（REQ-LIMIT-009〜012）
+- **既定オフ**。本人が選ぶ：1回に遊ぶ時間 `sessionMin`（`playtime.sessionChoicesMin`、既定 `[30, 60, 90, 120]`）、1日の合計 `dailyMin`（`dailyChoicesMin`、既定 `[60, 120, 180, 240]`）、「◯時を過ぎたら」`quietAfterHour`（端末の時刻の時、`quietAfterChoicesHour`、既定 `[21, 22, 23, 0]`）。それぞれ `null`＝使わない。設定はサーバーに保存して端末どうしで同じになる（`PUT /v1/self-limits/playtime`）。
+- **時間を測るのは端末**（`PlaytimeClock`）：アプリが前面にある時間だけ数える。1回（セッション）は §58.11 と同じ「起動から終了まで」に加え、背面に 30 分以上いたら新しいセッション。1日は**端末の時刻で 4:00 に切り替え**（ゲーム日と同じ時刻。夜ふかしが前の日に数えられるように）。数えた時間はサーバーに送らない（KPI の丸めた分だけ）。
+- **出す時（区切り）**：レースの結果の画面を閉じた後（`race_result`）とホームに戻った時（`home`）だけ。**レース中・マッチング中・購入の途中・チュートリアルの途中には出さない**（その時に来た分は次の区切りまで持ち越す）。
+- 判断は純粋な関数 `decidePlaytimeReminder(snapshot)`（TS）＝ C# `PlaytimeReminderPolicy.Decide`（共有ベクター `contracts/self-limits.vectors.json`）：
+  - `session`：今回のセッションの分 ≥ 前回知らせた区切り＋`sessionMin`（30 分なら 30・60・90…で1回ずつ）。
+  - `daily`：今日の分 ≥ `dailyMin` で、今日まだ知らせていない（1日1回）。
+  - `quiet_after`：端末の時刻が `quietAfterHour` 時〜4:00 の間で、今日まだ知らせていない（1日1回）。
+  - 2つ以上が同じ区切りで来たら**1枚のシート**にまとめる（行の順：`quiet_after` → `daily` → `session`）。どれも知らせ済みにする。
+- シート：見出し「ひと息つきませんか」、行「遊びはじめて60分たちました」「今日は合計120分遊びました」「22時を過ぎました」、添え書き「ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に」。ボタンは**同じ大きさの2つ**「続ける」「今日はここまで」（どちらも何も失わない・何ももらえない。「今日はここまで」はホームに戻るだけ）。設定へのリンク「お知らせの設定」。音・振動なし、カウントダウンなし。
+- **§58.11 の「1セッションに1つ」の規則は通らない**（決めたこと）：これは本人が頼んだお知らせで、お願いの画面ではないので、他のお願いの画面の枠を使わず、他の画面に枠を取られて出せなくなることも無い。同じ区切りで別のお願いの画面と重ねない（このシートを先に出し、お願いの画面は次の区切り）。§61 のローカル通知・プッシュではない（アプリの中だけ、OS の通知は使わない）。§61.1 の持ち主の表には「アプリ内のシート（通知ではない）」として載せる。
+
+### 67.5 API（要認証。メンテナンス・強制アップデートで**閉じない**＝§46 `EXEMPT_ROUTES`）
+| メソッド | パス | 本文 | 内容 |
+|---|---|---|---|
+| GET | `/v1/self-limits` | | 状態（67.6）。読むだけ（状態を作らない） |
+| PUT | `/v1/self-limits/spending` | `{ "limitYen": 3000 \| null }` | 月の上限。応答 `{ applied: "now" \| "pending" \| "unchanged" \| "cancelled", view }` |
+| DELETE | `/v1/self-limits/spending/pending` | | 待っている引き上げを取り消す（無ければ何もしない） |
+| PUT | `/v1/self-limits/playtime` | `{ "sessionMin": 60 \| null, "dailyMin": 120 \| null, "quietAfterHour": 22 \| null }` | 遊ぶ時間のお知らせ（無いキーは今のまま） |
+- 本文は厳密（知らないキーは 400）。選択肢に無い値（`playtime`）、刻み・範囲の外、年齢帯の上限を超える額（`spending`）は 400。内容で冪等（同じ本文を何度送っても同じ結果）、冪等キーは要らない。
+- アカウント削除の予約中も変えられる（下げる・取り消すは本人を守る操作なので）。BAN 中も読める・変えられる。
+- **§46 のグループ（決めたこと）**：4つとも `EXEMPT_ROUTES`。理由：上限を**下げる**ことは購入ができる間いつでもできないといけない（ストアからの購入 `POST /v1/shop/purchase` はメンテナンス中も通る）。上げる・外すは冷却期間の後なので窓の間に開いていても困らない。コイン・アイテムを動かさない。パスは `/v1/shop` の下に置かない（`shop` の窓で閉じないように）。
+- ブートストラップ・`GET /v1/player` に `selfLimits`（端末が時間を測るための写し、読むだけ）：`{ "playtime": { "sessionMin": null, "dailyMin": null, "quietAfterHour": null, "enabled": false }, "spending": { "limitYen": null, "effectiveLimitYen": 5000, "pending": null } }`。
+
+### 67.6 `GET /v1/self-limits` の形
+```json
+{ "rev": 3,
+  "spending": {
+    "limitYen": 3000, "ageLimitYen": 5000, "ageBand": "under16", "effectiveLimitYen": 3000, "binding": "self",
+    "month": "2026-11", "monthSpentYen": 2400, "remainingYen": 600,
+    "pending": { "limitYen": null, "requestedAt": 1794000000000, "effectiveAt": 1794259200000 },
+    "choicesYen": [1000, 3000, 5000], "custom": { "minYen": 100, "maxYen": 5000, "stepYen": 100 }, "coolOffHours": 72,
+    "statusText": "自分で決めた上限 ¥3,000（今月の残り ¥600）",
+    "pendingText": "上限なしへの変更は 11/14 12:00 から効きます（取り消せます）",
+    "rulesText": ["下げた上限はすぐに効きます", "上げる・外す変更は72時間たってから効きます（その間は取り消せます）", "年齢に応じた上限より高くはできません", "ストアで支払いが済んだ購入は、上限を超えていても受け取れます（今月の支払いに数えます）"] },
+  "playtime": { "sessionMin": 60, "dailyMin": null, "quietAfterHour": 22, "enabled": true,
+    "choices": { "sessionMin": [30, 60, 90, 120], "dailyMin": [60, 120, 180, 240], "quietAfterHour": [21, 22, 23, 0] },
+    "rulesText": ["レースの途中には出しません。結果の後かホームで知らせます", "時間は端末で数えます（サーバーには送りません）"] },
+  "history": [{ "at": 1794000000000, "kind": "remove_requested", "fromYen": 3000, "toYen": null }] }
+```
+- `binding`：効いている上限がどちらか（`self`／`age`／`none`。同じ額なら `age`）。`history` は直近 `historyKeep`（既定 30）件、新しい順。`kind`：`set`（すぐ効いた変更）・`raise_requested`・`remove_requested`・`raise_applied`・`raise_cancelled`・`playtime`。
+- 文は日本語で作り、英語は応答の境界で訳す（`i18n/en.ts`）。時刻は JST の `MM/DD HH:mm`。
+
+### 67.7 状態・個人データ・削除（REQ-LIMIT-015）
+- PlayerState のトップレベルのキー **`selfLimits`**（`SelfLimitsState`：`spending { limitYen, setAt, pending }`・`playtime { sessionMin, dailyMin, quietAfterHour, updatedAt }`・`rev`・`history`）。最初に変えた時に作る（読むだけでは作らない）。購入の記録（`purchases[]`）に `selfLimitBreach?: true`。
+- §51 の分類は **`settings`**（本人の設定）。開示のファイルの `settings.selfLimits` に全部入る（上限・待っている変更・遊ぶ時間の設定・履歴）。
+- アカウント削除の最後の `wipe` で消える。他の場所に写しは無い（KPI の行は §51 の分析イベントと同じ扱い）。引き継ぎ（§54）では同じアカウントなのでそのまま。
+
+### 67.8 KPI（REQ-LIMIT-016、`kpiConsent.ts`）
+| 名前 | どこ | 分類 | 中身 |
+|---|---|---|---|
+| `self_limit_set` | サーバー | **essential**（本人が決めた支払いの上限の記録：「上限を決めたのに買えた／買えない」の問い合わせと返金の確認に要る。§58 の選択の記録と同じ考え） | `s1` 変更（`set`／`raise_requested`／`remove_requested`／`raise_cancelled`）、`amountYen` 新しい額（無しは 0）、`value` 前の額（無しは 0） |
+| `self_limit_block` | サーバー | optional | 購入の確認が自分の上限で断られた。`s1` 商品、`amountYen` 価格 |
+| `playtime_setting_change` | サーバー | optional | `s1` 変えた項目（`session`／`daily`／`quiet_after`、複数は `,`）、`s2` `on`／`off`（変更後にどれか有効か） |
+| `playtime_reminder_shown` | クライアント | optional | `props: { reasons: "session,daily", sessionMin, dayMin, choice }`（分は5分に丸める。`choice`：`continue`／`stop`／`settings`） |
+
+### 67.9 設定 `progression.selfLimits`（`selfLimitsProblems`、起動時とリモート設定の各版）
+`spendingChoicesYen`（1〜8個、昇順・重複なし・`customStepYen` の倍数）・`customMinYen`・`customMaxYen`（≤ 10,000,000）・`customStepYen`（1〜10,000）・`coolOffHours`（24〜168）・`historyKeep`（5〜100）・`playtime.sessionChoicesMin`（15〜600 分）・`dailyChoicesMin`（30〜1440 分）・`quietAfterChoicesHour`（0〜23）。**停止スイッチは無い**（本人を守る機能を運用で消せないように。区画が無ければ既定値）。
+
+### 67.10 運用（REQ-LIMIT-017）
+- 運用コンソールのプレイヤー画面（`GET /v1/admin/players/:playerId`、`viewer`）に「自分で決めた上限」：今の額・効いている上限・待っている変更と効く時刻・遊ぶ時間の設定・履歴。購入の行に `selfLimitBreach` の印（「自分の上限を超えて届いた」）。
+- **サポートは見るだけ**：上限を上げる・外す・待っている引き上げを早める管理 API は**作らない**（テストで、`/v1/admin` に自分の上限を書く口が無いことを確かめる）。本人から「上限を外したい」と問い合わせがあっても、アプリの設定（冷却期間あり）を案内する。
+
+### 67.11 入口（REQ-LIMIT-018）
+- その他の2つのページはどちらも8行で満杯なので**行を足さない**。入口は：その他 › 設定・サポート の左の面の「購入・コイン・ガチャ履歴」の画面（§33）の上限の行の横「上限の設定」、購入の確認のシート（§13.2）の「上限を設定」、購入が断られた時のリンク、コイン不足の案内（`blockedCode: "SELF_LIMIT_EXCEEDED"`）のリンク、遊ぶ時間のシートの「お知らせの設定」。画面の名前は「使いすぎ・遊びすぎの防止」。
+- ヘルプセンター（§48）に記事 `self_limits`（「使いすぎ・遊びすぎを防ぐ設定」、冷却期間の時間はトークン `{{self_limit_cooloff_hours}}`、年齢帯の額は `{{monthly_limit:under16}}`）。ヒント集（§57）に1枚 `self_limits`。
+
+### 67.12 クライアント（REQ-LIMIT-019〜022）
+- C# `Muchi.Client.SelfLimits`：`SelfLimitsView`（67.6）・`SelfLimitsDigest`（ブートストラップ）・`PlaytimeSnapshot`／`PlaytimeReminderPolicy.Decide`（共有ベクター）・`PlaytimeClock`（前面の時間・セッション・1日の切り替え、端末に保存）・`ApiClient.GetSelfLimitsAsync`／`SetSpendingLimitAsync`／`CancelSpendingRaiseAsync`／`SetPlaytimeAsync`・`ApiErrorCode.SelfLimitExceeded`・`AnalyticsEvent.PlaytimeReminderShown`。
+- Unity のゲーム層 `Muchi.Game.SelfLimitsModel`：設定画面の行・断られた時の文とリンク・区切りでのシートの判断・KPI。描画は `docs/handoff-codex-round22-self-limits.md`。
+- プロトタイプ：設定の画面（上限・待っている変更・取り消し・自分で入力・遊ぶ時間）、購入が断られた状態、遊ぶ時間のシート（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
+
+## 68. 昇級戦と降級の猶予（ranked promotion series & demotion protection、REQ-PROMO-001〜020、`server/src/domain/promotion.ts`・`progression.promotion`、C# `Promotion.cs`（`PromotionView`・`PromotionPips`）・`Muchi.Game.PromotionModel`、docs/handoff-codex-round22-promotion.md）
+ランク戦（§9・REQ-RATE-001〜004）のシーズンポイントが**昇級ライン**（そのクラスの `promotePoints`）に届いたら、すぐに昇級を確定させずに**昇級戦**（数レースの短い勝負）に入る。突破すれば昇級が確定し、届かなければポイントが少しだけライン手前に戻り、もう一度挑める。昇級した後は**降級の猶予**（最初の数レースの間は1回だけ降級を止める「盾」）がある。
+
+**クラスが変わるのは今まで通りシーズンの締めだけ**（REQ-RATE-002 が上位）。昇級戦は「ラインに届いた」ことを本物か確かめる関門で、突破した時点でその月の昇級が**確定**する（締めでクラスが上がる）。月の途中でクラス・能力上限 `classStatCap`・クラスの順位表を動かさない（順位表・シーズン報酬・支部のポイントの仕組みはそのまま）。
+
+**何も配らない**（E 番号なし、balance-targets の節なし）。課金・アイテム・パスで昇級戦の判定・盾・猶予は変わらない（買える物はどこにも出てこない、REQ-RATE-003 の公平性）。Glicko-2 のレートの更新（REQ-RATE-001/004）とマッチング（REQ-MM-*、初心者のマッチング REQ-MM-003 を含む）は**変えない**（昇級戦の人を近いレートと組ませる優先は入れない：待ち時間と公平性に効くので、効果を測ってから別の節で決める）。
+
+### 68.1 規則 `progression.promotion`（`promotionProblems`、起動時と各リモート設定の版で検証）
+```json
+{ "enabled": true, "races": 3, "needTop": 2, "topPlace": 3, "setbackPoints": 40, "graceRaces": 10 }
+```
+| キー | 検証 |
+|---|---|
+| `enabled` | bool。**`false` は止めるスイッチ**：昇級戦を始めず、進めず（進行中のものは止まったまま締めで 68.4 のとおり解決）、盾も使わない＝**前の動き**（ラインに届けば締めで昇級）に戻る。区分ごと無い場合も同じ |
+| `races` | 整数 1〜5（昇級戦のレース数 N） |
+| `needTop` | 整数 1〜`races`（突破に要る「上位」の回数 K） |
+| `topPlace` | 整数 1〜`seasonPointsByPlace` の長さ（この着順以内が「上位」） |
+| `setbackPoints` | 整数 1〜。昇級ラインのある全クラスで `promotePoints − setbackPoints ≥ max(0, demoteBelowPoints)`（届かなかった時に降級の線より下に落とさない） |
+| `graceRaces` | 整数 0〜100（降級の猶予のレース数 M。0 = 盾なし） |
+知らないキーは落ちる（`reward`・`coins` など報酬の項目は「昇級戦は何も配らない」として落ちる）。始まった昇級戦は**始まった時の `races`・`needTop`・`topPlace` を持ち続ける**（途中で設定が変わっても同じ昇級戦の判定は変わらない）。
+
+### 68.2 数えるレース（`promoCounted`、REQ-PROMO-003）
+昇級戦の開始・進行と猶予のレース数に数えるのは、プレイヤーの Durable Object が `applyRace` で反映した結果のうち、次を**全部**満たすものだけ：
+- `mode: "ranked"`、`void: false`（検証できずに無効になったレース・検証で合わなかったレースは数えない）。
+- `suspect` でない（その人の報告した結果ハッシュが確定の結果と違った＝不正・ずれの疑い。`settleRace` が `final.suspects` から付ける）。
+- プレイヤーの `moderation` が `ok`（隔離・停止中は数えない）。削除の実行中（`deletion.status: deleting`）と削除済み（墓標）のアカウントには結果自体が届かない（§既存の `applyRace` の扱い）。
+- `enabled: true`。同じレース ID は1回だけ（`appliedRaces` に加え、昇級戦の結果にもレース ID を持つ）。
+シーズンポイント・レート・ミッションなど他の反映は今まで通り（昇級戦は追加で見るだけ）。
+
+### 68.3 昇級戦の流れ（`notePromotionRace`、決定的、REQ-PROMO-004〜007）
+数えるレースを1つ反映した**後**（ポイントは加算済み）に、上から1つだけ行う：
+1. **進行**：進行中の昇級戦（`status: active`、同じシーズン・同じクラス）があり、そのレースの開始時刻 `startAtMs` が昇級戦を始めたレースの開始時刻より後（どちらかが不明なら数える）なら、結果を1つ足す。`top` = 着順 ≤ `topPlace` **かつ** CPU が代わりに走っていない（`details.cpuAssisted: false`）。**切断（REQ-NET-006 の CPU 引き継ぎ）は着順にかかわらず `miss`**（ポイントは既存の切断の決まりどおり着順で入る）。昇級戦が始まった後に、それより前に始まったレースの結果が遅れて届いても昇級戦には入らない（ポイントは今まで通り入る）。
+   - `top` の数 ≥ `needTop` → **突破**（`passed`）。
+   - `miss` の数 > `races − needTop` → **届かず**（`failed`）：シーズンポイント ← `min(今のポイント, promotePoints − setbackPoints)`。差は `setback.points` に積む（68.6）。
+   - どちらでもなければ続く。決まった時点で終わる（残りのレースは走らない）。
+2. **開始**：進行中の昇級戦が無く、クラスに次のクラスがあり（`promotePoints` が null でない）、ポイント ≥ `promotePoints`、このシーズン・このクラスで突破済みでない → 始める。**始めたレースは昇級戦に入らない**。ID は `シーズン:クラス:回数`（例 `2026-11:C:1`、届かなかった後の再挑戦は `:2`）。
+突破の後はそのシーズンのそのクラスで二度と始まらず、ポイントも戻らない（ポイントは減らない）。結果が2回届いても数は変わらない（レース ID で1回）。昇級戦に入るかどうかはレースの開始時刻で決める（決まった後に遅れて届いた古いレースで判定が変わらない）。
+
+### 68.4 シーズンの締め（`rollSeason`、REQ-PROMO-008/009）
+昇級・降級の判定は今までと同じ式（締めの時のポイントと `promotePoints` / `demoteBelowPoints`）。
+- **締めの時に進行中の昇級戦は、その時のポイントだけで解決し、持ち越さない**（`status: season_end`）。届かずはもうポイントを戻しているので、進行中＝ポイントがライン以上 → 昇級する。途中でやめた人も、ラインに届いた月は今まで通り昇級する（昇級戦は「届かなかった」時にだけポイントを戻す関門で、締めの式は変えない）。
+- 閉じたシーズンの記録（`seasonHistory`）に `promo: "series"`（突破して昇級）または `"series_open"`（進行中のまま締めで昇級）、盾を使った時は `shielded: true` を足す（どちらも省略可。古い記録には無い）。
+- 新しいシーズンでは昇級戦も `setback` も空から始まる。
+
+### 68.5 降級の猶予と盾（REQ-PROMO-010/011）
+- `enabled: true` の締めで昇級したら、新しいクラスの**猶予** `grace = { classId, races: 0, since }` を付ける（`graceRaces > 0` の時）。そのクラスで数えるレース（68.2）を走るたびに `races + 1`、`graceRaces` に達したら猶予は終わる。別のクラスに移ったら消える。
+- その後の締めで**降級になるはずの時**、猶予がそのクラスで続いていて、そのシーズン・そのクラスの盾をまだ使っていなければ、**クラスに残る**（盾を使った＝`shields` に `{ seasonId, classId }`、猶予は終わる、KPI `demotion_shield_used`）。盾は**1シーズン・1クラスに1回**、1回の昇級に1回。
+- 盾は降級だけを止める。シーズン報酬（REQ-SEASON-002）は締めたクラスと順位のまま（盾で増えも減りもしない）。
+
+### 68.6 ポイントを戻した分（REQ-PROMO-012）
+シーズンのミッション（REQ-UXS-016）の `points`・`promotion_line` は「このシーズンに稼いだポイント」＝`season.points + setback.points`（同じシーズンの分だけ）で数える。届かずでポイントが戻っても、もう達成したミッションを失わない（新しく何かを配ることも無い）。順位表・支部のポイント・締めの判定は今のポイント（戻した後）。
+
+### 68.7 API（REQ-PROMO-013/014）
+| メソッド | パス | 内容 |
+|---|---|---|
+| GET | `/v1/promotion` | 見る（下）。ホームの「昇級戦 2/3」と結果画面の印の元 |
+| POST | `/v1/promotion/ack` | `{ "seriesId": "2026-11:C:1" }`。終わった昇級戦の結果シートを見た印。冪等（同じ ID を何度送っても同じ）。知らない ID・進行中は 404 `NOT_FOUND` |
+```json
+{ "enabled": true, "seasonId": "2026-11", "classId": "C", "toClassId": "B", "line": 300, "points": 315, "earned": 315,
+  "rules": { "races": 3, "needTop": 2, "topPlace": 3, "setbackPoints": 40, "graceRaces": 10 },
+  "series": { "id": "2026-11:C:1", "status": "active", "races": 3, "needTop": 2, "topPlace": 3,
+              "results": [{ "raceId": "r-1", "place": 2, "top": true, "cpu": false }],
+              "pips": ["top", "open", "open"], "next": 2, "tops": 1, "misses": 0,
+              "startedAt": 1794416400000, "endedAt": null, "setbackTo": null, "seen": false },
+  "passedThisSeason": false,
+  "grace": null, "shieldUsedThisSeason": false }
+```
+- `series` は進行中、または最後に終わった昇級戦（このシーズン・このクラスのもの。無ければ null）。`pips` は `top`／`miss`／`open`（まだ）／`skip`（決まって走らなかった分）で長さ `races`。`next` は次に走るのが何戦目か（1〜`races`、終わっていれば null）＝ホームの「昇級戦 {next}/{races}」。
+- `grace`：`{ classId, racesLeft }`（猶予の残りレース数）か null。`enabled: false` の時は `series`・`grace` も null（止めた間は何も出さない）。
+- メンテナンスの区分は `core`（§46.2。読むだけと見た印で、レースは `ranked` の区分が止める）。
+
+### 68.8 KPI（REQ-PROMO-015、§58 の分類はすべて `optional`）
+| 名前 | s1 | s2 | s3 | 数 |
+|---|---|---|---|---|
+| `promo_series_start` | クラス | 次のクラス | 昇級戦 ID | `value` ポイント・`count` 何回目 |
+| `promo_series_end` | `pass`／`fail`／`season_end` | クラス | 次のクラス | `count` 上位の数・`value` 走った数 |
+| `demotion_shield_used` | クラス | シーズン | — | `value` ポイント・`count` 猶予で走った数 |
+
+### 68.9 状態 `promotion`（REQ-PROMO-016）
+新しい PlayerState のキー `promotion`：`series`（進行中か最後のもの）・`history`（終わった昇級戦、新しい順に10件）・`passed`（突破した `シーズン:クラス`、24件）・`attempts`（今のシーズンの回数）・`setback`（`{ seasonId, points }`）・`grace`・`shields`（24件）。§51 の分類は `play`（開示の `play.promotion` にそのまま出る。他のプレイヤーの情報は持たない）。アカウント削除の `wipe` で消える。
+
+### 68.10 端末（REQ-PROMO-017/018）
+- **ホーム**：昇級戦の間はランク戦のボタンに「昇級戦 {next}/{races}」と印（○ 上位・● 外れ・· まだ・– 走らずに決まった分）。猶予中はクラスの横に「降級の猶予 残り{n}戦」。
+- **結果画面**：ランク戦の結果の後に `GET /v1/promotion` を読み、昇級戦の始まり（帯「昇級戦 開始」）・その戦の印・決まった時の結果（突破／届かず）を出す。突破・届かずのシートは**1セッションに1つの案内**（§58.11 の表の5番目 `promotion_outcome`：`SessionPrompts.PromotionOutcome`／プロトタイプ `sessionPrompt`。R22 統合）を通す。取れなかった時は結果画面の中の印と一言だけ（シートは次のホームで出す）。見たら `ack`。
+- 文言は煽らない（「今だけ」・作った残り時間・課金への誘導なし。§58.11）。押し付けのプッシュ・ローカル通知は足さない（§61 の表に足さない）。
+- 振り返り（§43）：昇級した月の名場面に「昇級戦を突破して B級へ」。アクティビティ（§40）に `class_promoted`（締めで昇級した時、`season` 区分、リンクはその月の振り返り）。
+- ヘルプ（§48）に記事 `promotion_series`（数字は `{{promo_races}}` などのトークン）、ヒント集（§57）に `promotion_series_tip`。
+
+## 69. ゲーム内アンケート（ops-run in-app surveys、REQ-SURVEY-001〜024、`server/src/domain/surveys.ts`・`server/src/ops/surveys.ts`（OpsDO の表）、C# `Surveys.cs`（`SurveyRules`・`SurveyAnswerBuilder`）・`Muchi.Game.SurveyModel`、docs/handoff-codex-round22-surveys.md）
+運営（ライブオプス）がプレイヤーに短い質問をして、製品の方向を決める材料にする。体験を邪魔しないことが最優先：**答えても何も配らない**（偏りを生む報酬・景表法の懸賞の扱いを避ける。E 番号なし）、**スキップは1タップでその後は二度と聞かない**、FTUE の間は出さない、**目立つ場所に出さず割り込まない**（R22 統合での変更：ホームのカード・レース結果の後のシートは無し。入口は「お知らせ」の中の静かな1行だけで、本人が開いた時だけ聞く。**§58.11 の表に入らない**＝「1セッションに1つ」の枠を使わない・取らない。印はその画面の小さな未読の点まで、ホームにはバッジを出さない）。
+
+### 69.1 アンケートの定義（運営が作る、REQ-SURVEY-001/002）
+```json
+{ "id": "sv_whip_feel_2026_11", "title": { "ja": "ムチの手ごたえ", "en": "How the whip feels" },
+  "intro": { "ja": "1分で終わる質問です。", "en": "Takes about a minute." },
+  "targeting": { "minRankedRaces": 10, "minDaysSinceInstall": 3, "platforms": ["ios", "android"], "appVersion": { "min": "1.4.0" }, "classes": ["C", "B"], "samplePercent": 50 },
+  "questions": [
+    { "id": "feel", "kind": "scale", "required": true, "text": { "ja": "ムチを入れた時の手ごたえは？", "en": "How does the whip feel?" },
+      "labels": { "low": { "ja": "弱い", "en": "Weak" }, "high": { "ja": "強い", "en": "Strong" } } },
+    { "id": "mode", "kind": "single", "required": true, "text": { "ja": "いちばん遊ぶのは？", "en": "What do you play most?" },
+      "options": [ { "id": "ranked", "text": { "ja": "ランク戦", "en": "Ranked" } }, { "id": "events", "text": { "ja": "イベント", "en": "Events" } } ] },
+    { "id": "wish", "kind": "multi", "required": false, "maxChoices": 2, "text": { "ja": "増えてほしいものは？", "en": "What would you like more of?" }, "options": [ … ] },
+    { "id": "free", "kind": "text", "required": false, "maxLength": 200, "text": { "ja": "ひとことあれば", "en": "Anything else?" } } ] }
+```
+- `id`：`sv_` + 英小文字・数字・`_` 2〜40 字。1〜5 問。問いの `id` は英小文字で始まる 1〜24 字（重複なし）。
+- 種類（`kind`）：`single`（1つ選ぶ、選択肢 2〜6）・`multi`（いくつでも、`maxChoices` 1〜選択肢の数、既定は全部）・`scale`（1〜5、両端の言葉 `labels.low`／`labels.high`）・`text`（自由な短い文、`maxLength` 1〜`textMax`（既定・上限 200 字）、**必ず任意**＝`required: false`）。
+- 文言はどれも**日本語と英語の両方**が必要：題 40 字・前置き 120 字・問い 120 字・選択肢 40 字・両端の言葉 20 字まで。
+- **言葉の検査**（`surveyDefProblems`）：共通の賭けの言葉（`bettingWords.ts`）、煽りの言葉（「倍」「お得」「今だけ」「残りわずか」「通常価格」）、実在の名前の NG リスト（`ng-names.json`、名前と同じ正規化）に当たる文言は問題。**報酬を思わせるキー**（`reward`・`coins`・`items`・`grant`・`gift`・`bonus`・`incentive`）はどこにあっても「答えには何も配らない」問題。知らないキーも問題（strict）。
+- 出す場所を選ぶキーは無い（R22 統合：`placements` は廃止。書くと知らないキーとして問題）。場所はいつも `inbox`（お知らせの中の行）。
+- `targeting`（すべて任意、書いたものは全部満たす＝AND）：`minRankedRaces`（ランク戦の数 `rating.rankedRaces` 以上、0〜100000）・`minDaysSinceInstall`／`maxDaysSinceInstall`（`createdAt` からの日数、0〜3650、min ≤ max）・`platforms`（`ios`・`android`・`editor` の部分集合、要求の `x-client-platform`）・`appVersion { min?, max? }`（`x.y.z`、両端を含む、要求の `x-client-version`。無い・読めない版は当たらない）・`classes`（今のクラス `season.classId`、マスターのクラス id）・`samplePercent`（1〜100：`fnv1a64("<surveyId>:<playerId>")` を 100 で割った余り < 値。同じ人はいつも同じ側＝安定した抽出）。
+
+### 69.2 状態と公開の窓（REQ-SURVEY-003）
+保存先は既存の **OpsDO**（シングルトン `global`）の新しい表 `surveys`・`survey_answers`（`CREATE TABLE IF NOT EXISTS`、**wrangler の移行は無い**：新しい Durable Object を足さない）。
+- 状態：`draft`（作成・編集できる。`rev` が編集ごとに 1 増える）→ 公開（`publish { startAt, endAt }`：`startAt < endAt`、`endAt` は未来、長さ 90 日まで）で `scheduled`（`startAt` 前）／`live`（窓の中）／`ended`（`endAt` を過ぎた・`close` した）。公開後は定義を変えない（質問の意味が途中で変わると集計が壊れる）。`close` は早く閉じるだけ。
+- 同時に `live`（と `scheduled`）にできるのは `maxLive` 本（既定 5）まで。
+- プレイヤーの経路は `live` の定義を Worker ごとに 30 秒キャッシュして読む（§22 のリモート設定と同じ）。運営の書き込みがあった Worker はすぐに捨てる。
+
+### 69.3 設定 `progression.surveys`（起動時とリモート設定の各版で検査、REQ-SURVEY-004）
+`{ "enabled": true, "coolDownHours": 72, "maxShowsPerSurvey": 2, "maxLive": 5, "textMax": 200 }`。範囲：`coolDownHours` 0〜2160（アンケートとアンケートの間、答えた・スキップした時から）、`maxShowsPerSurvey` 1〜5（出したのに答えも スキップもしなかった回数の上限。超えたらもう出さない）、`maxLive` 1〜20、`textMax` 20〜200。知らないキー・報酬を思わせるキーは問題。`enabled: false` で全員に出さない（答えの受け付けも閉じる）。無ければこの既定値。
+
+### 69.4 出すかどうか（`GET /v1/surveys/current?placement=inbox`、REQ-SURVEY-005/006）
+`{ "survey": { "id", "rev", "title", "intro", "questions": [ … 要求の言語の文言だけ … ], "placement": "inbox" } | null, "reason": null | "disabled" | "account_closing" | "ftue" | "cool_down" | "none", "unread": boolean }`。`placement` は `inbox` だけ（`home`・`result` は 400。R22 統合）。`unread` はまだ一度も開いていない（`shows` が 0）時 true：お知らせの行に小さな点を付けてよい（ホームのベルの数・バッジには数えない）。
+判断の順（最初に当たった理由）：`disabled`（設定）→ `account_closing`（削除の予約中）→ `ftue`（無料10連が未使用＝FTUE の途中、§59 と同じ）→ 続きの1本（出したが答えていない `current`）があれば、それが `live` で対象のままならそれを返す（間隔に関係なく、**同時に1本**）→ `cool_down`（最後に答えた・スキップした時から `coolDownHours`）→ `live` の定義を `endAt` の早い順・id 順に見て、答えた・スキップした・`maxShowsPerSurvey`（開いたが答えもスキップもしなかった回数）に達した・対象外のものを除いた最初の1本。無ければ `none`。読むだけ（状態を変えない）。
+**端末の決まり**（R22 統合で変更）：お知らせ（ホームのベル）の画面の中に「アンケートにご協力ください ›」の1行を出すだけ（出せる1本がある時。まだ開いていなければ行の横に小さな点）。**自分から割り込まない**：ホームのカード・レース結果の後のシート・ポップアップ・プッシュ・ローカル通知は無く、ホームのベルの未読の数にも足さない。**§58.11 の表に入らない**（本人が開く行なので「1セッションに1つ」の枠を使わず、取られもしない）。行を押すとアンケートの画面（問いごと）が開き、そこで `shown` を送る。端末も FTUE なら出さない。
+
+### 69.5 出した・スキップ・答え（REQ-SURVEY-007〜011）
+- `POST /v1/surveys/:surveyId/shown { "placement" }`：出した回数を数え、`current` にする。KPI `survey_shown`。`live` でない → 409 `SURVEY_CLOSED`。
+- `POST /v1/surveys/:surveyId/skip { "placement" }`：**1タップ**。そのアンケートは二度と出さない（`done[id] = skipped`）、間隔が始まる。KPI `survey_skip`。何度送っても同じ。答えた後は 409 `CONFLICT`。
+- `POST /v1/surveys/:surveyId/answers`（**冪等キー必須**）：
+```json
+{ "placement": "inbox", "answers": { "feel": 4, "mode": "ranked", "wish": ["events", "stables"], "free": "ムチの音がもっと欲しい" } }
+```
+  - 検査は厳しく（400 `BAD_REQUEST`）：知らない問いの id、型の違い（`single` は選択肢 id の文字列、`multi` は重複なしの配列 1〜`maxChoices`、`scale` は 1〜5 の整数、`text` は文字列）、知らない選択肢、必須の問いが無い、`text` が `maxLength` を超える。空白だけの文は「答えなし」。
+  - 自由な文は**サーバーで**§60.3 のスクラブの規則（メール・トークン・URL・長い id・長い数字。§60 と同じ `SCRUB_RULES` のうち、日本語の文と引用符はそのまま残す）を通し、`maxLength` で切る。
+  - 定義が無い・`draft`・`scheduled` → 404 `NOT_FOUND`。`ended` → 409 `SURVEY_CLOSED`（「このアンケートは終了しました」だけ。端末は静かに閉じる）。設定の `enabled: false` も `SURVEY_CLOSED`。
+  - プレイヤー：削除済み（tombstone）→ 404、削除の予約中 → 409 `NOT_ELIGIBLE`、対象外（69.1 の `targeting`）→ 409 `NOT_ELIGIBLE`、もう答えた（違う冪等キー）→ 409 `CONFLICT`、スキップした → 409 `CONFLICT`。同じ冪等キーの再送は同じ応答。**1人1回**。
+  - 応答：`{ "surveyId", "outcome": "answered", "at" }`。KPI `survey_answer`。**ウォレット・アイテム・ミッション・称号・XP は何も変わらない**（テスト）。
+- 書く順：PlayerDO が先に記録（1人1回の判定と冪等はここ）→ OpsDO の `survey_answers` に `(surveyId, playerId)` の主キーで1回だけ（何度来ても同じ）→ PlayerDO に「送った」の印。OpsDO に届かなかった答えは、次の `GET /v1/surveys/current` の時に Worker がもう一度送る（削除の予約中・削除後は送らない）。
+
+### 69.6 プライバシー（REQ-SURVEY-012〜014）
+- 答えはサーバーに**プレイヤー id ごと**に持つ（重複を防ぐため）。運営の画面の自由な文の一覧には**プレイヤー id を出さない**（既定）。
+- **§58 の分析の選択がオフでも答えられる**（本人がはっきり選んで送るもの）。ただし**分析の区分（segment：プラットフォーム・クラス・ランク戦の数の帯・インストールからの日数の帯）を付けない**（`segment: null`）。オンの時だけ付く。KPI（`survey_*`）は optional なので、オフなら §58 の規則どおり書かれない。決めたこと：アンケートの答えは「プレイヤーが運営に直接送る意見」で、分析の計測ではない。区分は分析の目的の結び付けなので、分析の同意に従う。
+- 開示（§51）：状態のキー `surveys`（分類 `analytics`）。`analytics.surveys` に本人が答えた・スキップしたアンケート（id・題・時刻・答え（スクラブ後））。
+- アカウント削除：手順に `surveys` の段（`client_errors` の後、`data_export` の前）。OpsDO の答えの行は**匿名化**（プレイヤー id を消し `anon:<n>` に、区分を消し、**自由な文は消す**）。選択と 1〜5 の数は集計に残る（誰のものか分からない）。プレイヤーの状態は `wipe` で消える。
+
+### 69.7 運営の画面（ops console、`/v1/admin/surveys`、REQ-SURVEY-015〜018）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/surveys` | viewer | 一覧（状態・窓・答えの数） |
+| `GET /v1/admin/surveys/:id` | viewer | 定義・状態・`rev` |
+| `POST /v1/admin/surveys/validate` | viewer | 定義の検査（問題の一覧）と日本語・英語のプレビュー（保存しない） |
+| `POST /v1/admin/surveys` | operator | 下書きを作る（同じ id があれば 409） |
+| `PUT /v1/admin/surveys/:id` | operator | 下書きを直す（`draft` の間だけ、`rev` を送り、違えば 409） |
+| `POST /v1/admin/surveys/:id/publish` | admin | `{ startAt, endAt }` で公開 |
+| `POST /v1/admin/surveys/:id/close` | admin | 早く閉じる |
+| `GET /v1/admin/surveys/:id/results` | viewer | 合計・区分のある答えの数・プラットフォーム別・問いごとの数と割合・1〜5 の平均・自由な文の一覧（`ref`・文・時刻・隠したか。**id なし**） |
+| `GET /v1/admin/surveys/:id/results.csv` | viewer | `{ filename, csv }`：1行1回答（id なし、隠した文は `(hidden)`、式の注入を防ぐ `'` 付け） |
+| `POST /v1/admin/surveys/:id/texts/:ref/hide` | operator | `{ hidden }`：自由な文を隠す・戻す（モデレーション） |
+すべて監査ログに残る。検査で問題があれば 400 `BAD_REQUEST`（`details.problems`）。
+
+### 69.8 KPI（REQ-SURVEY-019、`kpiConsent.ts` で **optional**）
+`survey_shown`（s1 = survey id、s2 = placement、n1 = 出した回数）・`survey_skip`（s1、s2）・`survey_answer`（s1、s2、n1 = 答えた問いの数）。答えの中身は KPI に入れない。
+
+### 69.9 メンテナンスの区分（§46.2、REQ-SURVEY-020）
+`/v1/surveys*` は `core`（`all` の窓で止まる）。管理API `/v1/admin/surveys*` は止まらない。
+
+### 69.10 クライアント（REQ-SURVEY-021/022）
+- `Muchi.Client`：`SurveyView`・`SurveyQuestion`・`SurveyOffer`・`SurveyAnswerBuilder`（種類ごとの検査をサーバーと同じ規則で、送る前に）・`SurveyRules`（`MaxTextLength`・FTUE）・`ApiClient.GetSurveyAsync`／`SurveyShownAsync`／`SkipSurveyAsync`／`AnswerSurveyAsync`（冪等キーは答えの組ごとに1回作り再送でも同じ）。
+- `Muchi.Game`：`SurveyModel`（お知らせの中の行と未読の点・問いごとの画面・ありがとう、スキップ1タップ、お知らせの中の行から開く（§58.11 の表に入らない）、FTUE・オフラインでは出さない、`SURVEY_CLOSED` は静かに閉じる）。描画は docs/handoff-codex-round22-surveys.md。
+- プロトタイプ：お知らせの中の行（未読の小さな点）・アンケートの画面（4 種類）・ありがとう（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。運営の画面に一覧・作成・プレビュー・公開・結果・CSV。
+
+### 69.11 ヘルプ（REQ-SURVEY-023）・法務（REQ-SURVEY-024）
+- ヘルプセンター（§48）に記事 `surveys`「アンケートについて」：任意であること、答えても何も配られないこと、スキップしたら二度と聞かないこと、自由な文に個人情報を書かないこと、分析の選択との関係、開示と削除。
+- 景表法：答えに景品・抽選を付けない（コード上の経路が無い。定義に報酬のキーは書けない）。将来「抽選でプレゼント」をするなら一般懸賞の上限と告知が要るので、別の機能として法務のレビューを通す。
+
+### 69.12 Round 22 の統合で決めたこと（§66〜§69 の間と、それ以前の節との関係。`server/test/r22-integration.test.ts`）
+- **1つの案内の表（§58.11）**：§68 の結果のシートは表の5番目 `promotion_outcome`（アップデートのお知らせの後、通知の前置きの前：自分で勝ち取った結果の知らせ）。§67 の遊ぶ時間のお知らせは表の外の行 `playtime_reminder`（本人が頼んだもの。枠を使わず取られない）。§69 のアンケートは**表に入らない**（ユーザーの変更：目立つ場所に出さず割り込まない。入口はお知らせの中の行だけ、未読はその画面の小さな点だけ、ホームのバッジ無し、`placement=inbox`）。Round 20 の古い門を使っていた枝のコードは `Muchi.Client.SessionPrompts` に移した。
+- **§67 × §66／§68／§69**：自分の上限が断るのは購入だけ（`SELF_LIMIT_EXCEEDED` を作るのは `productBlock` だけ）。騎手の道・昇級戦・アンケートは何も売らないので上限に関係しない（上限に達した人も騎手の道を遊べ、報酬も受け取れる）。§64 のアップデートのお知らせはショップに行かない（既存の決まり）。
+- **§66 × §68**：騎手の道のレース（`challenge`、`car_…`）はランク戦ではないので、シーズンポイントにも昇級戦の1戦にも数えない（ラインの手前でも、昇級戦の途中でも）。
+- **§66 × §65・§63**：騎手の道には期間が無いので予定表の行を足さない。ディープリンクの行き先 `career` は足さない（サーバーのトークン・C# の解析・プロトタイプが要り、手軽ではない。次の回の候補）。
+- **§68 × §43・§40・§62**：昇級戦で上がった月は振り返りに「昇級戦を突破して◯級へ」、アクティビティに `class_promoted`（英語あり）。トレーナーカードは昇級戦を読まない（ピン・記録は変わらない。クラスは締めで変わってから出る）。
+- **§69 × §58・§60・§51・削除**：分析がオフでも答えられる（区分と KPI は書かない）。自由な文は §60 の規則でスクラブし、R22 統合で §63 の共有リンクのトークンも消すようにした（§60 の共有ベクターと同じ置き換え）。答えは §51 の `analytics`、削除の段 `surveys` で匿名にして自由な文を消す。
+- **アカウントが変わった時（§54）**：`AccountChangeReset` が遊ぶ時間の時計と上限の表示（§67）、待っている結果のシートと写し（§68）、騎手の道の地図と開始の鍵（§66）、アンケートの行（§69）を捨てる。
+- **KPI（§58.7）**：`self_limit_set` だけ essential、ほかの Round 22 のイベントは optional。
 

@@ -73,6 +73,7 @@ node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコー�
 node "$HERE/test/round20-consent.test.mjs"   # round 20: 広告・分析の同意 — no pre-prompt in the FTUE, ad_offer moment, ATT answer, npa, analytics off withholds optional events, policy update, English
 node "$HERE/test/round20-client-errors.test.mjs" # round 20: クライアントのエラー報告 — window.onerror → WASM ErrorReporter (collapse, scrub, saved queue, same batch id on retry, consent) → the server ingest, device fingerprint = server
 node "$HERE/test/round20-review-prompt.test.mjs" # round 20: レビュー依頼 — FTUE / session / cool-down / loss, native once, soft → store or inquiry (never the store after いまいち), no reward, English
+node "$HERE/test/round22-self-limits.test.mjs" # round 22: 使いすぎ・遊びすぎの防止 — own limit (lower now, raise waits, cancel), refused confirmation, no pack over it in the shortfall, the play-time rule
 node "$HERE/test/round20-local-notifications.test.mjs" # round 20: 端末のローカル通知 — the digest, the shared planner, push categories / quiet hours switch the local kinds, cap, details off, English, the diff
 node "$HERE/test/round21-showcase.test.mjs" # round 21: トレーナーカード — demo cards (friend, under 13, blocked → neutral), the editor (earned only, strict save), my card, the share image in WASM without a player id, KPI
 node "$HERE/test/round21-deep-links.test.mjs" # round 21: ディープリンク・再戦 — share (one link per target, no id in the URL), open → the screen behind a confirmation, one neutral answer, revoke, KPI without tokens, rematch (window, someone left, everyone in → a new room on the same conditions)
@@ -80,4 +81,6 @@ node "$HERE/test/round21-release-notes.test.mjs" # round 21: アップデート�
 node "$HERE/test/quality-race.test.mjs" # quality pass (docs/quality/race-play.md): ruleset 1.4 in WASM — the hold / release go, 会心 on the gold ring, the tactics HUD, the re-simulated lesson; 1.3 untouched
 node "$HERE/test/quality-raising.test.mjs"       # quality pass: raising & breeding — 馬カード (layers, stage, leaning, career, read-only), the training outlook = the start preview, exact foal rarity odds, the foal's generation
 node "$HERE/test/quality-integration.test.mjs"   # quality integration: home says each thing once (the next line vs the goal ladder, one link), the ladder cap = the horse card cap
+node "$HERE/test/round22-promotion.test.mjs" # round 22: 昇級戦 — start on the line (not counted), pips, pass early, fail → setback, ack once, grace, kill switch, English
+node "$HERE/test/round22-surveys.test.mjs" # round 22: ゲーム内アンケート — none in the FTUE / without a live survey, the demo survey at home and after a result, strict check, once per player, scrub, skip → cool-down, results without ids, nothing granted, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

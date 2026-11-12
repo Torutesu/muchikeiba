@@ -40,7 +40,7 @@ namespace Muchi.Client
         public string CoinKind, Status, Headline, Line;
         /// <summary>The price, the coins that may pay for it, and how many are missing.</summary>
         public int Need, Have, Amount;
-        /// <summary>none_buyable: AGE_LIMIT_EXCEEDED | UNSETTLED_DEBT | DELETION_PENDING | BANNED | null.</summary>
+        /// <summary>none_buyable: AGE_LIMIT_EXCEEDED | SELF_LIMIT_EXCEEDED (§67: link to the self-limits setting) | UNSETTLED_DEBT | DELETION_PENDING | BANNED | null.</summary>
         public string BlockedCode;
         /// <summary>Age not registered: the purchase confirmation asks for the birth month first (limits are judged there).</summary>
         public bool AgeCheck;

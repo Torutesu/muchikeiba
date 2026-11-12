@@ -96,7 +96,7 @@ namespace Muchi.Engine.Tests
             Assert.True(p.TryClaim(SessionPrompts.ReviewPrompt));
             Assert.Throws<ArgumentException>(() => p.TryClaim("banner"));
             // the order the spec states (protocol §58.11 = §64.6, R21 integration: the one table for every prompt)
-            Assert.Equal(new[] { "recommended_update", "consent_pre_prompt", "comeback_welcome", "release_notes", "reminders_pre_permission", "account_link", "review_prompt" }, SessionPrompts.Priority);
+            Assert.Equal(new[] { "recommended_update", "consent_pre_prompt", "comeback_welcome", "release_notes", "promotion_outcome", "reminders_pre_permission", "account_link", "review_prompt" }, SessionPrompts.Priority);
         }
 
         [Fact]

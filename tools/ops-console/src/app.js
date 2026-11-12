@@ -12,8 +12,9 @@ import { inquiriesView } from './views/inquiries.js';
 import { clientErrorsView } from './views/clientErrors.js';
 import { releaseNotesView } from './views/releaseNotes.js';
 import { calendarView } from './views/calendar.js';
+import { surveysView } from './views/surveys.js';
 
-const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, 'client-errors': clientErrorsView, audit: auditView, kpi: kpiView, maintenance: maintenanceView, calendar: calendarView, 'release-notes': releaseNotesView };
+const views = { config: configView, gacha: gachaView, events: eventsView, players: playersView, compensations: compensationsView, inquiries: inquiriesView, 'client-errors': clientErrorsView, surveys: surveysView, audit: auditView, kpi: kpiView, maintenance: maintenanceView, calendar: calendarView, 'release-notes': releaseNotesView };
 const main = document.getElementById('main');
 const nav = document.getElementById('nav');
 const who = document.getElementById('who');

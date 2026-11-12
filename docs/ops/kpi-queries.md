@@ -1533,3 +1533,26 @@ GROUP BY kind ORDER BY opens DESC
 ```
 
 - `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。
+
+## 血統図と系統：見た・系統の一覧（REQ-PED-016、contracts/protocol.md §71.6、Round 23）
+
+**血統図がどこから開かれ、近親の強調がどれくらい出ているか、系統の一覧が見られているか**。`pedigree_view`（クライアント、`blob8` = 入口：`horse`・`breeding`・`stable`・`showcase`・`bloodlines`、`blob9` = `self` / `friend` / `other`、`double5` = 強調した共通の祖先の数 0〜14）、`bloodline_view`（クライアント、`blob8` = 入口：`breeding`・`pedigree`・`help`、`double9` = 系統の数）。どちらもプレイヤー・馬の ID を持たない。§58 では `optional`。
+
+```sql
+-- 入口と関係ごとの血統図の回数、共通の祖先が出ていた割合
+SELECT blob8 AS source, blob9 AS relation, sum(_sample_interval) AS views,
+  sum(if(double5 > 0, _sample_interval, 0)) / sum(_sample_interval) AS with_shared
+FROM muchi_kpi
+WHERE blob1 = 'pedigree_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source, relation ORDER BY views DESC
+```
+
+```sql
+-- 系統の一覧の入口
+SELECT blob8 AS source, sum(_sample_interval) AS views
+FROM muchi_kpi
+WHERE blob1 = 'bloodline_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source ORDER BY views DESC
+```
+
+- 配合（`breeding`）から開いた図で `with_shared` が高いのに配合の数が変わらないなら、近親の罰の説明（ヘルプ `pedigree`）が届いているかを見る。系統の数は目標にしない（報酬・達成の表示は無い）。

@@ -4145,3 +4145,92 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 73. お問い合わせの状況確認（support tickets & replies、REQ-TKT-001〜020、`server/src/domain/supportTickets.ts`・§48 の `help.ts` を拡張・`server/src/ops/inquiries.ts`（索引・担当・内部メモ）、C# `Help.cs`（`InquiryStatuses`・`InquiryThread`・`SendInquiryMessageAsync`）・`Muchi.Game.HelpCenterModel`（スレッド・返信）、docs/handoff-codex-round23-support-tickets.md）
+§48 の問い合わせを**やりとりのできるチケット**にする。新しい保存場所・新しい Durable Object・マイグレーションは無い（チケットは今までどおりプレイヤーの状態 `help.tickets`、運営だけが見る担当と内部メモは OpsDO の SQLite に `CREATE TABLE IF NOT EXISTS` で足す）。**コイン・アイテムを動かさない**（E番号なし、経済は変わらない）。お詫びの品は**既存の補填（§22 `POST /v1/admin/compensations`、プレゼントボックス §26 に理由つきで入る）だけ**で配り、その id をチケットに結ぶ。新しい配り方は作らない（有償コインは配れない＝`grantSchema` に無い）。
+
+### 73.1 状態（REQ-TKT-001）
+| `status` | 日本語 | 英語 | 誰が・いつ | 返信できるか（プレイヤー） |
+|---|---|---|---|---|
+| `received` | 受付済み | Received | 送った時・プレイヤーが返信した時（再開を含む） | できる |
+| `in_progress` | 確認中 | Checking | 運営（`status`）。プレイヤーが返信しても確認中のまま | できる |
+| `answered` | 返信あり | Replied | 運営の返信（§48.7 の `reply`） | できる |
+| `resolved` | 解決 | Resolved | 運営（`status`） | できる（返信で `received` に戻る＝再開） |
+| `closed` | クローズ | Closed | 運営（`status`／`reply` の `close`）・**自動クローズ** | 閉じてから `reopenDays` 日のうちはできる（再開）。過ぎたら「新しく問い合わせる」だけ |
+- §48 の `statusText`「回答済み」「完了」は「返信あり」「クローズ」に変わる（値 `answered`・`closed` は同じ。古いアプリは知らない値 `in_progress`・`resolved` を `received`・`closed` として見せてよい）。
+- **自動クローズ**：`answered`・`resolved` のまま**プレイヤーの返信が `autoCloseDays` 日無い** → `closed`（時刻 `autoCloseAt` = その状態になった時 + `autoCloseDays` 日）。読む・書く時に遅れて確定する（`settleTickets`。チケットを読む `GET`、送信・返信・既読・運営の操作のトランザクションで、期限を過ぎたものだけ書く）。運営の一覧は索引の `autoCloseAt` から同じ状態を計算して見せる。
+- **保存期間**：`closed` になってから `retentionDays` 日（既定 365、30〜1095）たったチケットはプレイヤーの状態から**消す**（索引の行・担当・内部メモも OpsDO の一覧を読む時に消す）。法的な整理は docs/planning/03「お問い合わせの保存期間」。
+- 返信待ちの数（§48.6 の `openMax`）は `received`＋`in_progress`。保存数 `keepMax` を超えたら古い `closed`→`resolved`→`answered` から消す（返信待ちは消さない）。
+
+### 73.2 マスター（`help.json` の `config.tickets` と `replyTemplates`、REQ-TKT-002）
+```json
+"tickets": { "playerReplyMax": 1000, "repliesPerDay": 10, "replyIntervalSec": 30, "messagesMax": 40, "autoCloseDays": 7, "reopenDays": 14,
+             "retentionDays": 365, "slaHours": 48, "noteMax": 1000, "notesMax": 50, "compensationMax": 5, "pushOnReply": true },
+"replyTemplates": [ { "id": "received_ack", "title": { "ja": "受付のお礼", "en": "Thanks for contacting us" },
+                      "body": { "ja": "…{{ticket_id}}…", "en": "…" } } ]
+```
+- 範囲（起動時・リモート設定で検査）：`playerReplyMax` 100〜4000・`repliesPerDay` 1〜50・`replyIntervalSec` 0〜3600・`messagesMax` 10〜200・`autoCloseDays` 1〜60・`reopenDays` 0〜90・`retentionDays` 30〜1095・`slaHours` 1〜336・`noteMax` 100〜4000・`notesMax` 1〜200・`compensationMax` 1〜20。無い版は既定（この表）で動く。
+- 返信のひな形：`id` は `^[a-z0-9_]{2,40}$` で重ならない、20件まで、日本語・英語の両方、本文は §48 の `replyMax` 文字まで。トークンは §48.1 のトークン（数字はデータから）と `{{ticket_id}}`・`{{category}}`（チケットの種類の名前）だけ。日本語と英語でトークンの組が同じ。言葉は §48 と同じ検査（「倍」「お得」「今だけ」「残りわずか」「通常価格」・賭けの言葉・英語の禁止語）。
+
+### 73.3 送信の追加（`POST /v1/help/inquiries`、REQ-TKT-003）
+- `diagnostics` は**任意**になる。`shareDiagnostics: false`（フォームの「診断情報を添える」を外した）か `diagnostics` が無い → アプリの版・端末・直近のレース ID を保存しない（`diagnostics: { appVersion: null, platform: null, playerId, lastRaceIds: [] }`、`shareDiagnostics: false`）。トークン・パスワード・広告 ID・端末の機種名は**どちらでも**送らない（キーが増えたら 400）。
+- 本文・返信・内部メモは保存の前に §48 の個人情報の置き換えに加えて**秘密らしいもの**を消す（`scrubTicketText`：§60.3 の `bearer`・`jwt`・リンクのトークンの規則、`パスワード`／`password`／`pw`／`暗証番号` の後の値、URL の `?` 以降）。§60 のほかの規則（日本語・引用・数字を消す）は使わない（サポートが読めるように）。置き換えた数は `redacted` に足す。
+- **削除済み（トゥームストーン）のアカウントは送れない**（403 `FORBIDDEN`、`account deleted`。新しい状態を作らない）。削除の手続き中も今までどおり 403。削除についての問い合わせは公式サポートサイト（`supportSite`、ログイン不要）で受ける（ヘルプの記事 `support_tickets`・`deletion` に書く）。
+
+### 73.4 プレイヤーの返信（`POST /v1/help/inquiries/:ticketId/messages`、要認証、REQ-TKT-004）
+`Idempotency-Key` 必須（同じキーの再送は最初の応答）。`{ "content": "まだ届いていません。" }` → 73.5 の詳細。
+- 返信できる状態（73.1）だけ。できない → 409 `CONFLICT`（`details.reason`：`closed`（再開の期限を過ぎた））。他人の・無い id は 404。
+- `content`：前後の空白を除いて1〜`playerReplyMax` 文字・制御文字なし・置き換えて保存（73.3）。
+- 回数：同じチケットへの前の返信から `replyIntervalSec` 秒（429 `RATE_LIMITED`、`details: { reason: "interval", retryAt }`）、1ゲーム日に全部のチケットで `repliesPerDay` 件（`reason: "day"`）、1件のチケットのやりとりは `messagesMax` 件まで（409 `CONFLICT`、`reason: "full"`）。削除の手続き中・削除済みは 403。
+- 効果：プレイヤーの発言を足す。`answered`・`resolved`・`closed`（期限内）→ `received`（`resolved`・`closed` からは**再開**、KPI `ticket_reopen`）。`received`・`in_progress` はそのまま。`updatedAt` が進み、運営の索引に書き直す（`indexed: false`）。
+
+### 73.5 詳細・一覧の追加（REQ-TKT-005）
+- 詳細：`canReply`・`replyUntil`（`closed` の再開の期限、他は null）・`autoCloseAt`（`answered`／`resolved` の時だけ）・`shareDiagnostics`・`compensation: [ { "ref": "comp_12", "at": 1794900000000, "screen": "gift_box" } ]`（結ばれたお詫びの品。中身はプレゼントボックスで見る）・`statusText`（73.1）。`messages[]` にプレイヤーの返信も入る（`from: "player"`）。**内部メモと担当は入らない**。
+- 一覧の行：`canReply` を足す。`limits` に `repliesPerDay`・`repliesToday` を足す。
+- 既読（`POST …/read`）の時、未読の運営の返信があったら KPI `ticket_reply_view`（s1 = 種類）。
+
+### 73.6 運営（管理 API・ops コンソール「問い合わせ」、REQ-TKT-006〜010）
+役割は今までどおり：見る＝viewer、書く＝operator（どれも `reason` 必須・監査ログに残る）。
+- `GET /v1/admin/inquiries?status=&category=&lang=&assignee=&minAgeHours=&limit=`（viewer）：`status` は73.1の5つか `open`（`received`＋`in_progress`）。`assignee` は担当の id・`me`・`none`。`minAgeHours` は**待ち時間**（返信待ちになってからの時間）がそれ以上のもの。行：§48.7 の項目＋`assignee`・`waitingSince`・`waitingMs`・`slaBreached`（待ち時間 ≥ `slaHours`）・`firstReplyAt`・`autoCloseAt`・`closedAt`。状態は自動クローズを計算した値。返信待ちは待ちの長い順、ほかは新しい順。**本文は載せない**。
+- `GET /v1/admin/inquiries/export?…`（viewer、同じ絞り込み、監査 `inquiry.export`）：`{ csv, rows }`。列は `ticket_id,player_id,category,status,lang,attachments,created_at,updated_at,first_reply_at,closed_at,assignee,waiting_hours,sla_breached` だけ（**本文・返信・メモ・添えた行の中身は出さない**）。最大 2,000 行。
+- `GET /v1/admin/players/:playerId/inquiries/:ticketId`（viewer、監査）：§48.7 の詳細＋`assignee`・`internalNotes: [ { by, at, text } ]`・`waitingMs`・`slaHours`・`compensation`・`player: { createdAt, deletion, moderation, purchases }`（プレイヤーの文脈。購入は §33 の件数だけ）。
+- `GET /v1/admin/inquiry-templates?playerId=&ticketId=`（viewer）：ひな形をチケットの言語（`lang`）でトークンを埋めて返す（`{ lang, items: [ { id, title, body } ] }`）。コンソールは本文の欄に入れるだけ（送る前に人が直す）。
+- `POST …/inquiries/:ticketId/reply`（operator）：§48.7 のまま。73.1 の自動クローズの時計が始まる。`pushOnReply` なら**プッシュ** `inquiry_reply` を送る（73.7）。
+- `POST …/inquiries/:ticketId/status`（operator）`{ opKey, status: "in_progress" | "resolved" | "closed" }`：状態を変える（`opKey` ごとに1回）。`closed` からは変えられない（409）。`resolved`・`closed` は KPI `ticket_resolved`。
+- `POST …/inquiries/:ticketId/assign`（operator）`{ assignee: "<admin id>" | "me" | null }`：担当（OpsDO の `inquiry_desk`）。
+- `POST …/inquiries/:ticketId/notes`（operator）`{ opKey, text }`：**内部メモ**（OpsDO の `inquiry_notes`、`noteMax` 文字・1件に `notesMax` 件、73.3 の置き換え）。**プレイヤーには見せない・§51 のダウンロードにも入らない**。
+- `POST …/inquiries/:ticketId/compensation`（operator）`{ compensationId }`：既存の補填（§22 の `POST /v1/admin/compensations` で作った、同じプレイヤーの、`rejected`・`expired` でない依頼）をチケットに結ぶ（何度でも同じ、`compensationMax` 件まで）。お詫びの品を**配るのは補填の手続きだけ**（二人の確認・上限・プレゼントボックス・理由はそのまま）。ここでは何も配らない。
+- 削除済みのアカウントは 404（§48.7 のまま、索引・担当・メモの行を消す）。
+
+### 73.7 お知らせ（アクティビティ §40・プッシュ、REQ-TKT-011）
+- 運営の返信ごとに §48.8 の `inquiry_answered`（送り元 `inquiry:{ticketId}:{n}`）を書く（変わらない）。
+- プッシュ：テンプレート `inquiry_reply`（「お問い合わせに返信がありました」「運営からの返信をアプリで確認できます」）、カテゴリ **`gifts`**（既存の「運営からのお届け」。既定オン）。返信の本文・種類・番号は文言に入れない（ロック画面）。`data` は `ticketId` だけ、開く画面は `help_inquiry`。1日の上限・静かな時間帯は §3.5 のまま。**持ち主は `server`**（§61.1 の `LNOTIF_OWNERSHIP.server.inquiry_reply`。サーバーから届く出来事なので端末のローカル通知では作らない）。
+- 状態の変更（確認中・解決・クローズ・自動クローズ）は知らせない。
+
+### 73.8 KPI（§58.7 の分類、REQ-TKT-012）
+| 名前 | どこ | 中身 | 分類 |
+|---|---|---|---|
+| `inquiry_submit`（チケットを作る、§48） | サーバー | s1 = 種類、count = 添えた行、value = 置き換えた数 | essential（サポートの記録） |
+| `inquiry_answered`（最初の返信、§48） | サーバー | s1 = 種類、durationMs | essential（サポートの記録） |
+| `ticket_player_reply` | サーバー | s1 = 種類、s2 = 返信の前の状態、value = 置き換えた数 | essential：プレイヤーがいつ運営に連絡したかは返金・苦情の対応の記録（SLA の証明）。本文は入らない |
+| `ticket_reopen` | サーバー | s1 = 種類、s2 = `resolved`／`closed` | essential：同上（解決したと扱った件が戻った記録） |
+| `ticket_resolved` | サーバー | s1 = 種類、s2 = `resolved`／`closed`／`auto_closed`、durationMs = 受付から | essential：サポートの対応の記録（いつ閉じたか） |
+| `ticket_reply_view` | サーバー（既読の時） | s1 = 種類 | optional（読んだかどうかは分析だけ） |
+クエリは `docs/ops/kpi-queries.md`「お問い合わせの状況」。
+
+### 73.9 ゲートのグループ（§46.2、REQ-TKT-013）
+`POST /v1/help/inquiries/:ticketId/messages` は**止めない**（`EXEMPT_ROUTES`。§48 の問い合わせと同じ「サポートへの道」：メンテナンス中も古いアプリからも運営とやりとりできる）。ほかの新しい口は管理 API（`/v1/admin/*`、止まらない）。
+
+### 73.10 データのダウンロード（§51）・アカウント削除（REQ-TKT-014）
+- 新しいトップレベルのキーは無い（チケットは `help`、§51 の分類 `helpInquiries` のまま）。ダウンロードの `helpInquiries.items[]` は本人の本文・**本人の返信と運営の返信**（運営の id なし）・状態・`closedAt`・結ばれた補填の id・`shareDiagnostics` を出す。**内部メモ・担当は出さない**（OpsDO にあり、プレイヤーのデータではなく運営の作業メモ。docs/planning/03 に整理）。
+- アカウント削除：チケットは状態と一緒に消える。`inquiries` の段（§48.7）で索引の行・担当・内部メモも消す。保存期間を過ぎたチケットは 73.1 のとおり消す。
+
+### 73.11 クライアント（REQ-TKT-015〜017）
+- `Muchi.Client`：`InquiryStatuses`（5つ・`TextOf`）・`Inquiry` に `CanReply`・`ReplyUntil`・`AutoCloseAt`・`ShareDiagnostics`・`Compensation`、`InquiryDraft.ShareDiagnostics`、`ApiClient.SendInquiryMessageAsync(ticketId, content, key)`（キーは返信ごとに1つ、再送で同じキー）。
+- `Muchi.Game.HelpCenterModel`：スレッド（運営とプレイヤーの発言を時刻の順）・状態のチップ（`StatusChip`：文字と色の種類 `warn`／`info`／`ok`／`muted`）・返信の欄（`ReplyDraft`、オフラインは送らずに残す、同じキーで再送）・再開の期限の表示・お詫びの品からプレゼントボックスへ。
+- 入口：その他 › 設定・サポート › ヘルプ・お問い合わせ（§48 の画面）› **お問い合わせ履歴**。その他の行は足さない（9行目は作らない）。未読の運営の返信の数は今までどおり「ヘルプ・お問い合わせ」の行のバッジ（`help.unreadReplies`）。通報（§47）はチケットではない（通報の受付の画面から問い合わせへは案内しない）。
+
+### 73.12 コンソール・プロトタイプ・引き継ぎ（REQ-TKT-018〜020）
+- ops コンソール「問い合わせ」：絞り込み（種類・状態・待ち時間・言語・担当）・待ち時間（SLA を超えたら赤）・CSV（本文なし）・詳細（プレイヤーの文脈・やりとり・内部メモ（「プレイヤーには見えません」）・担当・状態・ひな形からの返信・補填を結ぶ）。e2e の手順に入れる。
+- プロトタイプ：お問い合わせ履歴（状態のチップ）・スレッド・返信。ムチ一閃の調子。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+- 画面が守ること：docs/handoff-codex-round23-support-tickets.md。

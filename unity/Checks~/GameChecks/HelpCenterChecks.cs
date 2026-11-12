@@ -7,8 +7,11 @@ using Muchi.Game;
 
 static class HelpCenterChecks
 {
-    sealed class FakeApi : IHelpApi
+    sealed class FakeApi : IHelpApi, IInquiryThreadApi
     {
+        public int FailReplies;
+        public string ReplyRefusal; // "closed" → 409, "rate" → 429
+        public readonly List<string> ReplyKeys = new List<string>();
         public readonly List<string> Calls = new List<string>();
         public readonly List<string> Keys = new List<string>();
         public int FailSubmits;
@@ -52,13 +55,14 @@ static class HelpCenterChecks
         {
             Calls.Add("list");
             var l = new InquiryList { Unread = Answered ? 1 : 0, Limits = new InquiryLimits { OpenMax = 3, Open = Answered ? 0 : 1, PerDay = 5, Today = 1 } };
-            l.Items.Add(new Inquiry { TicketId = "q_1", Category = InquiryCategories.PurchaseMissing, Status = Answered ? InquiryStatuses.Answered : InquiryStatuses.Received, StatusText = Answered ? "回答済み" : "受付済み", Unread = Answered });
+            l.Items.Add(new Inquiry { TicketId = "q_1", Category = InquiryCategories.PurchaseMissing, Status = Answered ? InquiryStatuses.Answered : InquiryStatuses.Received, StatusText = Answered ? "返信あり" : "受付済み", Unread = Answered });
             return Task.FromResult(l);
         }
         public Task<Inquiry> GetInquiryAsync(string ticketId, CancellationToken ct = default)
         {
             Calls.Add("detail:" + ticketId);
-            var t = new Inquiry { TicketId = ticketId, Status = InquiryStatuses.Answered, Unread = Answered, InquiryText = "コインが届きません" };
+            var t = new Inquiry { TicketId = ticketId, Status = InquiryStatuses.Answered, StatusText = "返信あり", Unread = Answered, InquiryText = "コインが届きません", CanReply = true, AutoCloseAt = 1795000000000 };
+            t.Compensation.Add(new InquiryCompensation { Ref = "comp_1", At = 1, Screen = "gift_box" });
             t.Messages.Add(new InquiryMessage { From = "support", MessageText = "確認しました。", At = 1 });
             return Task.FromResult(t);
         }
@@ -68,6 +72,18 @@ static class HelpCenterChecks
             Keys.Add(idempotencyKey);
             if (FailSubmits-- > 0) throw new NetworkException("POST /v1/help/inquiries: timeout", null);
             return Task.FromResult(new Inquiry { TicketId = "q_1", Category = draft.Category, Status = InquiryStatuses.Received, StatusText = "受付済み" });
+        }
+        public Task<Inquiry> SendInquiryMessageAsync(string ticketId, string content, string idempotencyKey = null, CancellationToken ct = default)
+        {
+            Calls.Add("reply:" + ticketId + ":" + content);
+            ReplyKeys.Add(idempotencyKey);
+            if (FailReplies-- > 0) throw new NetworkException("POST /v1/help/inquiries/q_1/messages: timeout", null);
+            if (ReplyRefusal == "closed") throw new ConflictException(ApiErrorCode.Conflict, "CONFLICT", "the inquiry is closed; send a new one", 409);
+            if (ReplyRefusal == "rate") throw new RateLimitedException("RATE_LIMITED", "wait", 429);
+            var t = new Inquiry { TicketId = ticketId, Status = InquiryStatuses.Received, StatusText = "受付済み", CanReply = true, InquiryText = "コインが届きません" };
+            t.Messages.Add(new InquiryMessage { From = "support", MessageText = "確認しました。", At = 1 });
+            t.Messages.Add(new InquiryMessage { From = "player", MessageText = content, At = 2 });
+            return Task.FromResult(t);
         }
         public Task<InquiryReadResult> MarkInquiryReadAsync(string ticketId, CancellationToken ct = default)
         {
@@ -150,6 +166,32 @@ static class HelpCenterChecks
         check(m.UnreadReplies == 1 && m.BadgeText == "1", "list: the unread replies feed the badge");
         var q = await m.OpenInquiryAsync("q_1");
         check(q.Messages[0].From == "support" && api.Calls.Contains("read:q_1") && m.UnreadReplies == 0 && !m.Inquiries.Items[0].Unread, "detail: the reply is shown and marked read");
+
+        // §73 (REQ-TKT-016): the thread — chip, rows in order, auto-close note, compensation, the reply with one key kept
+        check(HelpCenterModel.StatusChip(q) == ("返信あり", "ok") && HelpCenterModel.StatusChip(new Inquiry { Status = InquiryStatuses.InProgress }) == ("確認中", "info")
+            && HelpCenterModel.StatusChip(new Inquiry { Status = InquiryStatuses.Closed }) == ("クローズ", "muted") && HelpCenterModel.StatusChip(new Inquiry { Status = InquiryStatuses.Received }).Tone == "warn", "thread: status chips (words and tones)");
+        var th = m.Thread();
+        check(th.Count == 2 && th[0].Who == HelpCenterModel.YouLabel && th[1].Who == HelpCenterModel.SupportLabel && th[1].Support, "thread: the inquiry then the replies, in time order");
+        check(m.CanReply && m.AutoCloseNote != null && m.AutoCloseNote.Contains("自動でクローズ") && m.ReopenNote == null && m.HasCompensation, "thread: reply box, auto-close note, the compensation line");
+        m.SetReply("まだ届いていません。");
+        online = false;
+        check(await m.SendReplyAsync() == null && m.Message == HelpCenterModel.ReplyOfflineText && m.ReplyDraft == "まだ届いていません。", "reply offline: nothing sent, the text stays");
+        online = true;
+        api.FailReplies = 1;
+        check(await m.SendReplyAsync() == null && m.ReplyDraft != "", "reply timeout: the text stays");
+        var rr = await m.SendReplyAsync();
+        check(rr != null && api.ReplyKeys.Count == 2 && api.ReplyKeys[0] == api.ReplyKeys[1] && m.ReplyDraft == "" && m.Message == HelpCenterModel.ReplySentText && rr.Status == InquiryStatuses.Received, "reply retry: the same key; sent clears the box");
+        m.SetReply("もう一つ質問です。");
+        await m.SendReplyAsync();
+        check(api.ReplyKeys.Last() != api.ReplyKeys[0], "a new reply gets a new key");
+        api.ReplyRefusal = "closed";
+        m.SetReply("まだですか。");
+        check(await m.SendReplyAsync() == null && m.Message == HelpCenterModel.ReplyClosedText && !m.CanReply, "reply to a ticket closed past its window: the box closes, new inquiry instead");
+        // consent: diagnostics off
+        m.StartInquiry(InquiryCategories.Bug);
+        m.SetShareDiagnostics(false);
+        check(!m.Draft.ShareDiagnostics && m.DiagnosticsRows().Count(r => r.Value == "送りません") == 3, "form: diagnostics off — the rows say nothing is sent");
+        m.DiscardInquiry();
 
         // offline screen
         online = false;

@@ -59,7 +59,8 @@ import { applyRosterQuery, aptitudeFor, DEFAULT_QUERY, type RosterQuery, type Ro
 import { HostedCupsService, MemoryCupBackend } from '../../../server/src/domain/hostedCupService.js';
 import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCups.js';
 import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
-import { createRace } from '../../../server/src/race/orchestrate.js';
+import { createRace, rankedMatchRules } from '../../../server/src/race/orchestrate.js';
+import { rankedCourse } from '../../../server/src/domain/rankedField.js';
 import type { RaceEntry } from '../../../server/src/http/app.js';
 import { ReportsService, type ReportBody } from '../../../server/src/domain/reportsService.js';
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/ops/playerReports.js';
@@ -76,7 +77,7 @@ import { sessionRevoked } from '../../../server/src/domain/sessionRevocation.js'
 import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
 import { formatToken, linksConfig, parseLink, LINK_SCREENS, replayLinkExtra, replayLinkRow, replayStartTick, type LinkType } from '../../../server/src/domain/deepLinks.js';
 import { Rematches } from '../../../server/src/domain/rematch.js';
-import { FriendRooms } from '../../../server/src/domain/matchmaker.js';
+import { FriendRooms, cpuLevelFor } from '../../../server/src/domain/matchmaker.js';
 import { maintenanceOf } from '../../../server/src/domain/maintenance.js';
 import type { RoomConditions } from '../../../server/src/domain/presets.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
@@ -931,13 +932,21 @@ export const MuchiLogic = {
     const h = s.horses.find((x) => x.id === horseId);
     if (!h) throw new Error('horse ' + horseId);
     const beginner = s.rating.rankedRaces < master.progression.beginnerRaces;
-    const bm = master.progression.beginnerMatch;
-    const tId = trackId ?? master.tracks[Math.floor(Math.random() * master.tracks.length)]!.id;
+    const horse = toRaceHorse(master, h);
+    const cls = classDef(master, s.season.classId);
+    // quality pass 2 (REQ-MM-009..012): the server's ranked card — a course that fits the horse, the class's CPU level band and
+    // strength, the ramp after the beginner matches (rankedMatchRules on a lone player's match, like the matchmaker's CPU fill)
+    const tId = trackId ?? (master.progression.rankedField?.courseFitsHorses ? rankedCourse(master, [horse], cryptoRng) : master.tracks[Math.floor(Math.random() * master.tracks.length)]!.id);
+    const rules = rankedMatchRules(master, {
+      players: [{ playerId: ID, rating: s.rating.r, beginner, enqueuedAt: 0, payload: { playerId: ID, horse, classId: cls.id, statCap: cls.statCap, rankedRaces: s.rating.rankedRaces, firstRace: null } as never }],
+      cpuCount: 11, cpuLevel: beginner ? 1 : cpuLevelFor(s.rating.r, false), beginner, quarantined: false,
+    });
     const config = buildRaceConfig(master, {
-      raceId: 'proto_' + Date.now().toString(36), mode: 'ranked', trackId: tId, statCap: classDef(master, s.season.classId).statCap,
-      humans: [{ playerId: ID, horse: toRaceHorse(master, h), cpuLevel: 3 }], cpuCount: 11, cpuLevel: beginner && bm ? bm.cpuLevel : 3,
+      raceId: 'proto_' + Date.now().toString(36), mode: 'ranked', trackId: tId, statCap: cls.statCap,
+      humans: [{ playerId: ID, horse, cpuLevel: 3 }], cpuCount: 11, cpuLevel: rules.cpuLevel,
       rng: cryptoRng, ground: groundFor(master, tId, 'ranked', now()),
-      ...(beginner && bm ? { cpuStatPermille: bm.cpuStatPermille } : {}),
+      ...(rules.cpuStatPermille ? { cpuStatPermille: rules.cpuStatPermille } : {}),
+      ...(rules.cpuStatTotal ? { cpuStatTotal: rules.cpuStatTotal } : {}),
     });
     return { config, beginner, trackName: trackNames.get(tId) ?? tId };
   },

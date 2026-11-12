@@ -1539,6 +1539,8 @@
   "仕掛けがあと{v}秒遅ければ{n}着": "Going {v}s later would have finished {n:ord}",
   "仕掛けがあと{v}秒早ければ、{p}秒速くゴールできた": "Going {v}s earlier would have finished {p}s faster",
   "仕掛けがあと{v}秒遅ければ、{p}秒速くゴールできた": "Going {v}s later would have finished {p}s faster",
+  "能力の差：相棒 {a} ／ この場のCPU {b}。調教で伸ばすと勝ちやすい": "Stats gap: your horse {a} / the CPU field {b}. Training closes it",
+  "能力は互角以上（相棒 {a} ／ この場 {b}）：差は乗り方": "Stats even or better (yours {a} / field {b}): the riding made the difference",
   "自分で{v}秒早く仕掛けていれば{n}着": "Going yourself {v}s earlier would have finished {n:ord}",
   "仕掛けのタイミングは最善だった": "Your go was the best timing",
   "仕掛けを前後に動かしても、着順は変わらなかった": "Going earlier or later would not have changed your place",

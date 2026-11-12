@@ -1435,6 +1435,8 @@ export class PlayerService {
       ...({ roomPreset: s.presets?.room ?? null } as { roomPreset?: RoomConditions | null }),
       rating: { r: s.rating.r, rd: s.rating.rd, vol: s.rating.vol },
       classId: cls.id, statCap: cls.statCap, beginner: s.rating.rankedRaces < this.d.master.progression.beginnerRaces,
+      // REQ-MM-011: how far into ranked the player is (the CPU strength ramp after the beginner matches)
+      ...({ rankedRaces: s.rating.rankedRaces } as { rankedRaces?: number }),
       // REQ-UXS-003: the player's first ranked race (shorter CPU fill, optional fixed course); null afterwards
       ...({ firstRace: firstRaceOf(this.d.master, s) } as { firstRace?: { cpuFillAfterMs: number; trackId: string | null } | null }),
     };

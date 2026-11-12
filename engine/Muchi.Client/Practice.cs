@@ -142,7 +142,7 @@ namespace Muchi.Client
         /// <summary>The strengths every catalog has (protocol §50.1; the server resolves the same numbers from its definitions).</summary>
         public static List<PracticeStrength> DefaultStrengths() => new List<PracticeStrength>
         {
-            new PracticeStrength { Id = "easy", Name = "やさしい", Note = "初心者マッチと同じ相手", CpuLevel = 1, CpuStatPermille = 780 },
+            new PracticeStrength { Id = "easy", Name = "やさしい", Note = "初心者マッチと同じ相手", CpuLevel = 1, CpuStatPermille = 860 },
             new PracticeStrength { Id = "normal", Name = "ふつう", Note = "ランク戦（レート1400〜1600）の相手", CpuLevel = 3, CpuStatPermille = 1000 },
             new PracticeStrength { Id = "strong", Name = "つよい", Note = "ランク戦（レート1600〜1800）の相手", CpuLevel = 4, CpuStatPermille = 1000 },
             new PracticeStrength { Id = "top", Name = "いちばん強い", Note = "ランク戦（レート1800以上）の相手", CpuLevel = 5, CpuStatPermille = 1000 },

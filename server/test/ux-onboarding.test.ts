@@ -110,7 +110,7 @@ describe('REQ-UXS-003 first ranked race and beginner CPUs', () => {
     const bm = m.progression.beginnerMatch!;
     const entry = (first: string | null) => ({ firstRace: first === undefined ? null : { cpuFillAfterMs: 5000, trackId: first } }) as never;
     const rules = rankedMatchRules(m, { players: [{ playerId: 'a', rating: 1500, beginner: true, enqueuedAt: 0, payload: entry('aoba_turf_1600') }], cpuCount: 11, cpuLevel: 1, beginner: true, quarantined: false });
-    expect(rules).toEqual({ cpuCount: 11, cpuLevel: bm.cpuLevel, cpuStatPermille: 780, trackId: 'aoba_turf_1600' });
+    expect(rules).toEqual({ cpuCount: 11, cpuLevel: bm.cpuLevel, cpuStatPermille: bm.cpuStatPermille, trackId: 'aoba_turf_1600' });
     const normal = rankedMatchRules(m, { players: [{ playerId: 'a', rating: 1500, beginner: false, enqueuedAt: 0, payload: entry(null) }], cpuCount: 11, cpuLevel: 4, beginner: false, quarantined: false });
     expect(normal).toEqual({ cpuCount: 11, cpuLevel: 4 });
     const p = newPlayer('x', 0, '2026-11');

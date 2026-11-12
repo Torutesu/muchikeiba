@@ -47,7 +47,7 @@ const cat = await L.practiceCatalog();
 assert.ok(cat.ok, 'catalog');
 const c = cat.value;
 assert.strictEqual(c.courses.length, L.master.tracks.length, 'every course');
-assert.deepStrictEqual(c.strengths.map((s) => [s.id, s.cpuLevel, s.cpuStatPermille]), [['easy', 1, 780], ['normal', 3, 1000], ['strong', 4, 1000], ['top', 5, 1000]], 'strengths from the existing CPU definitions');
+assert.deepStrictEqual(c.strengths.map((s) => [s.id, s.cpuLevel, s.cpuStatPermille]), [['easy', 1, 860], ['normal', 3, 1000], ['strong', 4, 1000], ['top', 5, 1000]], 'strengths from the existing CPU definitions');
 assert.ok(c.horses.length >= 1 && c.horses.some((h) => h.partner), 'own horses with the partner');
 const cj = JSON.stringify(c);
 const partner = c.horses.find((h) => h.partner);

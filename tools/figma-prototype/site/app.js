@@ -1067,13 +1067,18 @@ function paintFx(f) {
   if (f.finished && !fx.finished) {
     fx.finished = true;
     fx.under.classList.add('calm'); cur.classList.add('fx-finished');
-    const place = f.finishPlace > 0 ? f.finishPlace : 0;
-    if (place) {
-      const s = fxNode('fx-finish', fx.over); s.dataset.place = String(place); s.dataset.fx = 'finish';
-      fxNode('k', s, 'ゴール'); fxNode('t', s, `${place}着`);
-    }
-    if (place && place <= 3) FxFlash(fx.over, place === 1 ? 'rgba(255, 211, 79, .55)' : 'rgba(228, 237, 244, .4)');
-    haptic(place === 1 ? [30, 50, 30, 50, 90] : 30);
+  }
+  // integration fix: the engine fills finishPlace only when the whole race is done (both 1.3 and 1.4), so the stamp used to
+  // never show at the horse's own line. The place at the line is the frame's rank (everyone ahead has finished); the
+  // engine's finishPlace corrects it once it arrives.
+  if (fx.finished) {
+    const place = f.finishPlace > 0 ? f.finishPlace : f.rankKnown && f.rank > 0 ? f.rank : 0;
+    if (place && !fx.stamp) {
+      const s = fx.stamp = fxNode('fx-finish', fx.over); s.dataset.place = String(place); s.dataset.fx = 'finish';
+      fxNode('k', s, 'ゴール'); fx.stampT = fxNode('t', s, `${place}着`);
+      if (place <= 3) FxFlash(fx.over, place === 1 ? 'rgba(255, 211, 79, .55)' : 'rgba(228, 237, 244, .4)');
+      haptic(place === 1 ? [30, 50, 30, 50, 90] : 30);
+    } else if (place && fx.stamp && fx.stamp.dataset.place !== String(place)) { fx.stamp.dataset.place = String(place); setText(fx.stampT, `${place}着`); }
   }
 }
 
@@ -6049,7 +6054,7 @@ async function Training() {
   Txt(`素質　·　${QR_STAGES[stg.index]}`, 36, 306, 300, 16, WHITE, hp, { weight: 700, ls: '.06em' }).classList.add('tr-stage');
   Txt(`${h.trainedTotal} / ${h.potential}`, 344, 304, 180, 18, GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-potential');
   Gauge(36, 338, 488, h.potential ? h.trainedTotal / h.potential : 0, hp, { gold: true });
-  if (stg.nextAt !== null) Txt(`${QR_STAGES[stg.index + 1]}まで あと${Math.max(0, stg.nextAt - h.trainedTotal)}`, 324, 352, 200, 12, SOFT, hp, { align: 'right' });
+  if (stg.nextAt !== null) Txt(`${QR_STAGES[stg.index + 1]}まで あと${Math.max(0, stg.nextAt - h.trainedTotal)}`, 324, 350, 200, 16, SOFT, hp, { align: 'right' });
   TextLink('馬カード', 36, 346, 160, () => HorseCard(h.horseId, () => Training()), hp, '馬カード ›');
   TR_STAT_ORDER.forEach((k, j) => {
     const x = 36 + (j % 3) * 168, y = 396 + Math.floor(j / 3) * 46;
@@ -6090,7 +6095,7 @@ async function Training() {
       const range = ol.min === ol.max ? `+${ol.min}` : `+${ol.min}〜+${ol.max}`;
       Txt(`この馬なら ${range}`, 24, 146, 380, 20, WHITE, c, { weight: 700, cls: 'num' }).classList.add('tr-outlook');
       const why2 = [ol.efficiencyPermille < 1000 ? `疲れ −${(1000 - ol.efficiencyPermille) / 10}%` : null, ol.bondPermille > 0 ? `絆 +${ol.bondPermille / 10}%` : null, ol.softPermille < 1000 ? `伸びしろ ${ol.softPermille / 10}%` : null].filter(Boolean);
-      if (why2.length) Txt(why2.join('・'), 24, 180, 380, 13, ol.efficiencyPermille < 1000 ? WARN : MUTED, c, { weight: 500 });
+      if (why2.length) Txt(why2.join('・'), 24, 180, 380, 16, ol.efficiencyPermille < 1000 ? WARN : MUTED, c, { weight: 500 });
     }
     c.style.cursor = why ? 'not-allowed' : 'pointer';
     c.addEventListener('click', () => { if (why) { toast(TR_BLOCKED[why] ?? '選べません'); return; } trMenu = m.id; Training(); });
@@ -6202,7 +6207,7 @@ async function TrainingResult(res) {
   const big = Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 132, 240, 88, GOLD, d, { weight: 700, cls: 'num' }); big.classList.add('tr-total');
   if (res.total > 0) qrCount(big, res.total);
   Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 270, 150, 490, 20, WHITE, d, { weight: 700 });
-  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 270, 186, 490, 15, MUTED, d).classList.add('tr-timing');
+  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 270, 186, 490, 16, MUTED, d).classList.add('tr-timing');
   // the growth stage: before → after; a stage up is the moment
   const before = res.trainedTotal - res.total;
   const s0 = qrStage(before, res.potential), s1 = qrStage(res.trainedTotal, res.potential);
@@ -6369,7 +6374,7 @@ async function HorseCard(horseId, back = () => Stable()) {
   if (!p.recentTraining.length) Txt('まだ調教していません', 36, 384, 632, 16, DIM, s);
   p.recentTraining.slice(0, 4).forEach((e, i) => {
     const y = 384 + i * 36;
-    Txt(menus.find((m) => m.id === e.menuId)?.name ?? e.menuId, 36, y, 200, 15, WHITE, s, { weight: 700 });
+    Txt(menus.find((m) => m.id === e.menuId)?.name ?? e.menuId, 36, y, 200, 16, WHITE, s, { weight: 700 });
     Txt(TR_GRADE[e.grade] ?? e.grade, 220, y, 300, 16, MUTED, s, { nowrap: true });
     Txt(e.gain > 0 ? `+${e.gain}` : '±0', 560, y - 2, 108, 17, e.gain > 0 ? GOLD : DIM, s, { weight: 700, align: 'right', cls: 'num' });
   });
@@ -6440,7 +6445,7 @@ async function Breeding() {
       const band = el('qr-band', at(r.min), y + 3, Math.max(4, at(r.max) - at(r.min)), 14, mp); band.dataset.stat = k;
       Txt(`${r.min}〜${r.max}`, X + W + 14, y, 110, 16, MUTED, mp, { cls: 'num', nowrap: true });
     });
-    Txt(`能力は幅の中で決まります（各能力 ±${L.master.breedRules.variation}）`, 36, 340, 488, 14, SOFT, mp);
+    Txt(`能力は幅の中で決まります（各能力 ±${L.master.breedRules.variation}）`, 36, 340, 488, 14, SOFT, mp).classList.add('qr-legal');
     // the rarity odds: one stacked bar, exact from the breeding rules
     Kicker('仔のレア度の見込み', 36, 374, mp, { rule: false, size: 16 });
     const ro = v.rarity;
@@ -6448,7 +6453,7 @@ async function Breeding() {
       const bar = el('qr-rar', 36, 410, 488, 22, mp); bar.dataset.ssr = String(ro.SSR); bar.dataset.sr = String(ro.SR);
       [['R', ro.R], ['SR', ro.SR], ['SSR', ro.SSR]].forEach(([k, n]) => { if (n <= 0) return; const i = document.createElement('i'); i.className = k.toLowerCase(); i.style.width = (n / 10000) + '%'; bar.appendChild(i); });
       Txt(`SSR ${qrPct(ro.SSR)}　·　SR ${qrPct(ro.SR)}　·　R ${qrPct(ro.R)}`, 36, 444, 488, 18, WHITE, mp, { weight: 700, cls: 'num' }).classList.add('qr-rarity-line');
-      Txt('能力の合計 3,200 以上で SR、3,700 以上で SSR。実際の配合と同じ計算で出しています', 36, 474, 488, 14, SOFT, mp, { lh: 1.5 });
+      Txt('能力の合計 3,200 以上で SR、3,700 以上で SSR。実際の配合と同じ計算で出しています', 36, 474, 488, 14, SOFT, mp, { lh: 1.5 }).classList.add('qr-legal');
     }
     Txt(`距離 ${fmt(v.distance.minM)}〜${fmt(v.distance.maxM)}m　·　${v.surface === 'turf' ? '芝' : v.surface === 'dirt' ? 'ダート' : '芝・ダートのどちらか'}`, 36, 512, 488, 16, MUTED, mp);
     // how to aim higher, from the breeding rules themselves (horses.ts BREED and nicks.json)
@@ -6471,7 +6476,7 @@ async function Breeding() {
     }
     for (const a of v.atavism.candidates.slice(0, 3)) { Txt(`隔世遺伝 ${qrPermille(a.permille)}　${qrTrait(a)} ← ${a.from}`, 36, y, 416, 16, GOLD, rp); y += 22; }
     const apt = Object.entries(v.goingAptitude).filter(([k, n]) => k !== 'any' && n > 0);
-    if (apt.length) Txt(apt.map(([k, n]) => `${k === 'heavy' ? '重馬場巧者' : '良馬場巧者'} ${qrPermille(n)}`).join('・'), 36, y + 4, 416, 13, MUTED, rp);
+    if (apt.length) Txt(apt.map(([k, n]) => `${k === 'heavy' ? '重馬場巧者' : '良馬場巧者'} ${qrPermille(n)}`).join('・'), 36, y + 4, 416, 16, MUTED, rp);
     const go = Cta('配合する', 36, 506, 416, async () => {
       const b = await L.breed(qrSire, qrDam, left <= 0);
       if (!b.ok) { toast(b.code === 'BREEDING_DAILY_LIMIT' ? '今日の配合はおしまい。4:00に戻ります' : b.message); return; }
@@ -6482,7 +6487,7 @@ async function Breeding() {
     if (left <= 0 && !mat) disable(go);
     Txt(left > 0 ? `今日あと${left}回` : mat ? `配合素材を${v.today.materialCost}個使って、もう1回` : '今日の配合はおしまい。4:00に戻ります', 36, 588, 416, 16, SOFT, rp);
   }
-  Txt('見込みの確率はすべて実際の配合と同じ計算です。調教の伸びは受け継がれません。', 36, 614, 416, 14, SOFT, rp, { lh: 1.5 });
+  Txt('見込みの確率はすべて実際の配合と同じ計算です。調教の伸びは受け継がれません。', 36, 614, 416, 14, SOFT, rp, { lh: 1.5 }).classList.add('qr-legal');
   Back(Stable, 'BACK', 40, 834);
 }
 

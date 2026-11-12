@@ -922,7 +922,7 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
    stays, gold line and all) and the marker's gap / slipstream words step back with the rest; the whip button, its rings,
    the one coaching line (which also calls a duel) and the place stay. The hint never repeats the pop (app.js paint). */
 .hud .gobar, .marker .gap, .marker .wind { transition: opacity var(--dur-slow) ease; }
-.fx-straight .gobar[data-phase="go"], .fx-straight .marker .gap, .fx-straight .marker .wind { opacity: 0; }
+.fx-straight .gobar:not([data-phase="window"]):not([data-phase="gonow"]):not([data-phase="gather"]):not([data-phase="full"]), .fx-finished .gobar, .fx-straight .marker .gap, .fx-straight .marker .wind { opacity: 0; }
 .fx-pre .chip.banner { opacity: 0; }
 /* the place chip answers a gained place */
 .hud .chip.pos.gain { animation: fxgain .6s var(--ease-out); }

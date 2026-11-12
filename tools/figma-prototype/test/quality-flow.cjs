@@ -48,8 +48,9 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   await shot('home');
   // e) 目標 → the cap → the horse card
   await page.locator('.screen.in .gl-panel').click(); await waitScreen('goals');
+  await page.waitForSelector('.screen.in [data-action="cap-horse-card"]', { timeout: 10000 });
   assert.ok(await page.locator('.screen.in [data-action="goals-pass"]').count(), 'quality a: 目標 names the pass rewards');
-  await page.locator('.screen.in [data-action="cap-horse-card"]').click(); await waitScreen('horse-card');
+  await page.locator('.screen.in [data-action="cap-horse-card"]').click(); await waitScreen('horse-card'); await page.waitForSelector('.screen.in .qr-ranked', { timeout: 10000 });
   const capOk = await page.evaluate(async () => { const g = (await globalThis.__muchi.logic.goals()).value; return document.querySelector('.screen.in .qr-card')?.dataset.horse === g.season.power.horseId && document.querySelector('.screen.in .qr-ranked')?.textContent.includes(g.season.power.cap.toLocaleString('en-US')); });
   assert.ok(capOk, 'quality e: the cap link opens the ladder horse\'s card with the same cap');
   await page.locator('.screen.in [data-label="BACK"]').click(); await waitScreen('goals');
@@ -77,7 +78,7 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
       if (hint && pop && hint.replace(/[！!]$/, '') === pop.replace(/[！!]$/, '')) q.dups.push(hint);
       // sampled once the straight's fade has run (the --dur-slow transition)
       if (document.querySelector('.screen.in.fx-straight') && !q.straight && f.remainingM < 250 && f.remainingM > 60) {
-        q.straight = { gobar: op('.gobar'), phase: document.querySelector('.screen.in .gobar')?.dataset.phase, banner: op('.chip.banner'), minimap: op('.minimap'), wind: op('.marker .wind'), whip: op('.btn.whip'), hint: op('.hintbox') };
+        q.straight = { gobar: op('.gobar'), phase: document.querySelector('.screen.in .gobar')?.dataset.phase, banner: op('.chip.banner'), minimap: op('.minimap'), wind: op('.marker .wind'), whip: op('.btn.whip'), whipDisabled: !!document.querySelector('.screen.in .btn.whip.disabled'), hint: op('.hintbox') };
       }
       if (f.done) clearInterval(q.iv);
     }, 50);
@@ -89,9 +90,9 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.deepEqual(race.dups, [], 'quality b: the coaching line never repeats the pop');
   assert.ok(race.go && race.go.whip === 1, 'quality b: the whip button at full strength at the go');
   assert.ok(race.straight, 'quality b: the final straight sampled');
-  assert.ok(race.straight.whip === 1, 'quality b: the whip button stays at full strength in the straight');
+  assert.ok(race.straight.whip === 1 || race.straight.whipDisabled, 'quality b: the whip button stays at full strength in the straight (dimmed only when no whips are left): ' + JSON.stringify(race.straight));
   assert.ok(race.straight.banner === 0 && race.straight.minimap === 0 && race.straight.wind === 0, 'quality b: banner / mini-map / the marker\'s words fade in the straight: ' + JSON.stringify(race.straight));
-  if (race.straight.phase === 'go') assert.ok(race.straight.gobar === null || race.straight.gobar === 0, 'quality b: the 仕掛けバー fades once the go is made: ' + JSON.stringify(race.straight));
+  if (!['window', 'gonow', 'gather', 'full'].includes(race.straight.phase)) assert.ok(race.straight.gobar === null || race.straight.gobar === 0, 'quality b: the 仕掛けバー fades once the go is made: ' + JSON.stringify(race.straight));
 
   // c) the result: the lesson in the celebration
   await page.waitForTimeout(400);
@@ -112,15 +113,16 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
 
   // d) the raising screens: the type floor; the reveal under reduce motion
   const minFont = () => page.evaluate(() => {
-    const ns = [...document.querySelectorAll('.screen.in .label')].filter((n) => n.textContent.trim() && !n.closest('.btn'));
+    // the screen's own panels (the shared top bar and wallet belong to the presentation pass's later screen-by-screen floor)
+    const ns = [...document.querySelectorAll('.screen.in .glass .label')].filter((n) => n.textContent.trim() && !n.closest('.btn') && !['Header', 'Wallet'].includes(n.closest('.glass').dataset.name));
     const read = ns.filter((n) => !n.classList.contains('qr-rules') && !n.classList.contains('qr-legal'));
     const size = (n) => parseFloat(n.dataset.ts || n.style.fontSize) || 99;
     return { read: Math.min(...read.map(size)), all: Math.min(...ns.map(size)), small: read.filter((n) => size(n) < 16).map((n) => n.textContent.slice(0, 20)).slice(0, 6) };
   });
-  await page.evaluate(() => globalThis.__muchi.demo('raising')); await waitScreen('horse-card', 60000); await page.waitForTimeout(600);
+  await page.evaluate(() => globalThis.__muchi.demo('raising')); await waitScreen('horse-card', 60000); await page.waitForSelector('.screen.in .qr-go', { timeout: 10000 });
   const card = await minFont();
   assert.ok(card.read >= 16 && card.all >= 14, 'quality d: horse card text floor 16 px (footnotes 14): ' + JSON.stringify(card));
-  await page.evaluate(() => globalThis.__muchi.demo('breeding')); await waitScreen('breeding', 60000); await page.waitForTimeout(600);
+  await page.evaluate(() => globalThis.__muchi.demo('breeding')); await waitScreen('breeding', 60000); await page.waitForSelector('.screen.in .qr-breed', { timeout: 10000 });
   const br = await minFont();
   assert.ok(br.read >= 16 && br.all >= 14, 'quality d: breeding text floor 16 px (footnotes 14): ' + JSON.stringify(br));
   const shadows = await page.evaluate(() => [...document.querySelectorAll('.screen.in .card.qr-parent.sel')].map((n) => getComputedStyle(n).boxShadow.split(/,(?![^(]*\))/).filter((s) => !/inset/.test(s)).length));

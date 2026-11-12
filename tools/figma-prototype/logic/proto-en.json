@@ -1605,6 +1605,11 @@
   "印を付けました": "Marked",
   "印を外しました": "Mark removed",
   "冬のミニ大会": "Winter mini tournament",
-  "ナイター記念大会": "Night race memorial tournament"
+  "ナイター記念大会": "Night race memorial tournament",
+  "出走 {n}頭": "{n} runners",
+  "初心者マッチ": "Beginner match",
+  "フレンドルーム": "Friend room",
+  "昇級ラインに到達": "Promotion line reached",
+  "シーズンの終わりに昇級します": "You move up at the end of the season"
  }
 }

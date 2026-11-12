@@ -202,7 +202,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind, .fx-title .k, .fx-title .m, .fx-cut .k, .fx-finish .k, .fx-moment .k, .fx-moment .s';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -403,7 +403,7 @@ function Wallet(x = 1182, y = 33, w = 346, h = 77) {
   const p = Glass('Wallet', x, y, w, h, undefined, .77);
   const wl = player?.wallet ?? { paid: 0, free: 0 };
   const col = (k, v, sym, cx) => {
-    Txt(k, cx, h / 2 - 27, 140, 13, MUTED, p, { weight: 500, ls: '.18em' });
+    Txt(k, cx, h / 2 - 28, 140, 15, MUTED, p, { weight: 500, ls: '.16em' }); // quality pass: 13 → 15 px (readable on a phone)
     Txt(sym + ' ' + fmt(v), cx, h / 2 - 9, 160, 24, GOLD, p, { weight: 700, nowrap: true, cls: 'num' });
   };
   col('無償', wl.free, '◎', 28); col('有償', wl.paid, '◈', 28 + Math.round((w - 40) / 2));
@@ -415,7 +415,7 @@ function TopBar(title, sub, o = {}) {
   const h = Glass('Header', 36, 31, o.wallet === false ? 1404 : 1062, 88, undefined, .86);
   el('rule', 22, 18, 84, 3, h);
   Txt(title, 22, 30, 1000, 24, WHITE, h, { weight: 700, ls: '.05em', nowrap: true });
-  if (sub) Txt(sub, 22, 60, 1000, 14, MUTED, h, { weight: 400, nowrap: true });
+  if (sub) Txt(sub, 22, 60, 1000, 15, MUTED, h, { weight: 400, nowrap: true }); // quality pass: 14 → 15 px
   if (o.wallet !== false) Wallet(1114, 31, 336, 88);
   EnToggle(1466, 31, 98, 88);
   return h;
@@ -471,6 +471,82 @@ function toast(text, ms = 2600) {
   setTimeout(() => t.classList.add('gone'), ms); setTimeout(() => t.remove(), ms + 400);
 }
 function show(fn, ...args) { currentScreen = () => fn(...args); return fn(...args); }
+
+// ================================================================= quality pass: presentation (docs/quality/presentation.md)
+// Shared pieces for the peaks — every one is presentation only, skippable (a tap on the screen completes it: .fx-skip,
+// never swallowing the tap) and, with reduce motion (§41), shows its end state at once. Durations follow the --dur-*
+// tokens of style.css; docs/handoff-codex-quality-presentation.md carries the same numbers for Unity.
+const MOTION = { tap: 90, fast: 160, base: 280, slow: 480, peak: 900 };
+function fxNode(cls, parent, text) { const d = document.createElement('div'); d.className = cls; if (text != null) d.textContent = text; (parent ?? cur).appendChild(d); return d; }
+/** A tap anywhere on the screen completes its moments (animations jump to their end); the tap still reaches its button. */
+function Skippable(host = cur) {
+  if (host.dataset.skippable) return;
+  host.dataset.skippable = '1';
+  host.addEventListener('pointerdown', () => host.classList.add('fx-skip'), { capture: true, once: true });
+}
+/** Counts a number up in place (「+1,234」); the final text at once with reduce motion, after a skip or off screen. */
+function CountUp(node, to, o = {}) {
+  const pre = o.prefix ?? '', from = o.from ?? 0, ms = o.ms ?? 700, delay = o.delay ?? 0;
+  const end = () => setText(node, pre + fmt(to));
+  node.dataset.value = String(to);
+  if (reduced() || to === from) return end();
+  setText(node, pre + fmt(from));
+  const host = cur, t0 = performance.now() + delay;
+  const tick = (now) => {
+    if (cur !== host || host.classList.contains('fx-skip')) return end();
+    const k = clamp((now - t0) / ms, 0, 1), e = 1 - Math.pow(1 - k, 3);
+    setText(node, pre + fmt(Math.round(from + (to - from) * e)));
+    if (k < 1) requestAnimationFrame(tick); else end();
+  };
+  requestAnimationFrame(tick);
+}
+/** A light over the stage (REQ-A11Y-008: within the flash limit; none with reduce motion). */
+function FxFlash(parent, tint) {
+  if (reduced() || !flashOk()) return;
+  const f = fxNode('fx-flash' + (tint ? ' tint' : ''), parent ?? cur);
+  if (tint) f.style.setProperty('--fx-tint', tint);
+  setTimeout(() => f.remove(), 600);
+}
+/** Slowly turning light rays behind something (a win, a rare card); static with reduce motion. */
+function FxRays(x, y, size, tone = '', parent) {
+  const r = fxNode('fx-rays fx-anim' + (tone ? ' ' + tone : ''), parent ?? cur);
+  Object.assign(r.style, { left: x - size / 2 + 'px', top: y - size / 2 + 'px', width: size + 'px', height: size + 'px' });
+  // behind the panels: right over the key art and its shades
+  const anchor = parent ? null : ([...cur.querySelectorAll(':scope > .shade')].pop() ?? cur.querySelector(':scope > .art'));
+  if (anchor) anchor.after(r);
+  return r;
+}
+/** A few pieces of gold falling once (a win). None with reduce motion or the battery saver. */
+function FxConfetti(n = 26) {
+  if (reduced() || document.documentElement.dataset.perfAmbient === 'off') return;
+  const c = fxNode('fx-confetti fx-anim');
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    p.style.left = (620 + ((i * 397) % 960)) + 'px';
+    p.style.animationDelay = ((i * 113) % 900) / 1000 + .2 + 's';
+    p.style.animationDuration = (2.2 + ((i * 7) % 10) / 10) + 's';
+    c.appendChild(p);
+  }
+  setTimeout(() => c.remove(), 4200);
+}
+/**
+ * A moment (rank up, a line reached, a level gained): a gold-edged band in the middle of the screen, over everything,
+ * that never blocks a tap; it leaves by itself (2.4 s) or on the next tap. For other workstreams' peaks too (the
+ * promotion series, achievements, the bond level).
+ */
+function Moment(title, o = {}) {
+  const host = cur;
+  const m = fxNode('fx-moment fx-anim', host);
+  if (o.kicker) fxNode('k', m, o.kicker);
+  fxNode('t', m, title);
+  if (o.sub) fxNode('s', m, o.sub);
+  if (o.kind) m.dataset.moment = o.kind;
+  const close = () => { if (!m.isConnected || m.classList.contains('gone')) return; m.classList.add('gone'); setTimeout(() => m.remove(), MOTION.base + 40); };
+  setTimeout(() => host.addEventListener('pointerdown', close, { capture: true, once: true }), 250);
+  setTimeout(close, o.ms ?? 2400);
+  haptic(o.haptic ?? [20, 40, 30]);
+  return m;
+}
 
 // ---------------------------------------------------------------- local player (real PlayerService)
 let player = null, lastPulls = null;
@@ -625,6 +701,7 @@ function BuildRaceScreen() {
   applyPerf(); // round 19 (REQ-PERF-004): the race profile — the frame cap of the setting, never the battery saver's menu rate
   lastFrame = null; reinHeld = false; keyRein = false;
   hud = { msgUntil: 0, cutins: [], shownLane: false, lastWhips: null, lastPos: '' };
+  RaceFx(); // quality pass: the start sequence, the final straight and the finish (presentation layers around the HUD)
   // ② remaining distance chip (top left) and ① the place chip (top right, 「—」 until the gate opens, F7)
   hud.distance = el('chip dist num', 33, 31, 250, 78); hud.distance.textContent = '残り — m';
   hud.position = el('chip pos num', 1297, 31, 263, 82); hud.position.textContent = '—';
@@ -782,6 +859,7 @@ function raceLoop() {
   lastFrame = f;
   view.draw(f);
   paintHud(f);
+  paintFx(f);
   if (f.done) {
     raceActive = false;
     // round 19 (REQ-CHEER-013): one cheer_seen row for the race (only what was on screen; none with the indicator off)
@@ -893,6 +971,86 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; if ((e.key === 'e' || e.key === 'E') && holdMode() && raceActive) WhipHoldPress(false); });
 window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
 
+// ---- quality pass: the race's peaks (docs/quality/presentation.md, the handoff's choreography). Presentation only — it
+// reads the engine frame and never feeds back; the HUD and its inputs (race play) are untouched.
+//   gate: letterbox + the course title card, 3 · 2 · 1 → スタート; the bars open when the horse leaves the gate
+//   final straight (400 m, the tutorial's 300 m): one cut-in, thin bars, a vignette and speed lines that build with the
+//     distance and the spurt, one beat per whip, the HUD steps back to what the player acts on
+//   finish: the place stamp (gold / silver / bronze + the number) and, for a top 3, one light
+const FX_STRAIGHT_M = 400;
+const FX_MODE = { friend: 'フレンドルーム', cup: 'カップ', event: 'イベントレース', tournament: '大会' };
+function RaceFx() {
+  const tut = raceCtx.tutorial;
+  const under = document.createElement('div'); under.className = 'fx-under lb';
+  under.innerHTML = '<div class="fx-vig"></div><div class="fx-lines"></div><div class="fx-bar top"></div><div class="fx-bar bot"></div>';
+  cur.insertBefore(under, cur.firstChild);
+  hud.fx = { under, over: fxNode('fx-over'), count: null, countEl: null, departed: false, straight: false, finished: false, rank: null, whips: null, k: -1, title: null };
+  if (tut) return; // the first race keeps its own one-line intro (「最後の直線。前に7頭。」)
+  cur.classList.add('fx-pre');
+  const mode = raceCtx.config?.mode;
+  const kicker = raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.lesson ? 'レッスン'
+    : FX_MODE[mode] ?? (raceCtx.beginner ? '初心者マッチ' : 'ランク戦');
+  const t = fxNode('fx-title', hud.fx.over); t.dataset.fx = 'title';
+  fxNode('k', t, kicker);
+  fxNode('t', t, raceCtx.trackName ?? (raceCtx.trackId ? L.trackName(raceCtx.trackId) : ''));
+  if (raceInfo.names.length > 1) fxNode('m', t, `出走 ${raceInfo.names.length}頭`);
+  hud.fx.title = t;
+}
+function fxCount(fx, text, go) {
+  fx.countEl?.remove();
+  const c = fxNode('fx-count pop' + (go ? ' go' : ''), fx.over, text); c.dataset.fx = 'count';
+  fx.countEl = c; setTimeout(() => c.remove(), 950);
+}
+function paintFx(f) {
+  const fx = hud?.fx; if (!fx) return;
+  const tut = raceCtx.tutorial;
+  // 1. the gate (20 Hz ticks → whole seconds; the tutorial's 1 s gate has no count)
+  if (!fx.departed && !tut) {
+    const n = f.gateOpen ? 0 : Math.ceil(f.gateTicks / 20);
+    if (n !== fx.count && n <= 3) { fx.count = n; fxCount(fx, n ? String(n) : 'スタート', !n); haptic(n ? 8 : 20); }
+  }
+  if (f.departed && !fx.departed) {
+    fx.departed = true;
+    fx.under.classList.remove('lb'); cur.classList.remove('fx-pre');
+    if (fx.title) { const t = fx.title; t.classList.add('gone'); setTimeout(() => t.remove(), MOTION.base + 40); fx.title = null; }
+  }
+  // 2. the final straight
+  const at = tut ? 300 : FX_STRAIGHT_M;
+  if (fx.departed && !fx.straight && !f.finished && f.remainingM <= at && f.distanceM > at) {
+    fx.straight = true;
+    cur.classList.add('fx-straight'); fx.under.classList.add('lb-thin');
+    if (!tut) {
+      const c = fxNode('fx-cut', fx.over); c.dataset.fx = 'straight';
+      fxNode('k', c, `残り ${at} m`); fxNode('t', c, '最後の直線');
+      setTimeout(() => c.remove(), 1800);
+    }
+    haptic(25);
+  }
+  if (fx.straight && !fx.finished) {
+    const k = clamp((at - f.remainingM) / at, 0, 1);
+    const v = Math.round((.35 + .4 * k + (f.spurt ? .25 : 0)) * 20) / 20;
+    if (v !== fx.k) { fx.k = v; fx.under.style.setProperty('--fx-k', String(v)); }
+    if (fx.whips != null && f.whips < fx.whips && !reduced()) { fx.under.classList.remove('beat'); void fx.under.offsetWidth; fx.under.classList.add('beat'); }
+  }
+  fx.whips = f.whips;
+  if (f.rankKnown && f.departed && !f.finished) {
+    if (fx.rank != null && f.rank < fx.rank && !reduced()) { hud.position.classList.remove('gain'); void hud.position.offsetWidth; hud.position.classList.add('gain'); }
+    fx.rank = f.rank;
+  }
+  // 3. the finish (the horse's own line; the result follows when the race is done)
+  if (f.finished && !fx.finished) {
+    fx.finished = true;
+    fx.under.classList.add('calm');
+    const place = f.finishPlace > 0 ? f.finishPlace : 0;
+    if (place) {
+      const s = fxNode('fx-finish', fx.over); s.dataset.place = String(place); s.dataset.fx = 'finish';
+      fxNode('k', s, 'ゴール'); fxNode('t', s, `${place}着`);
+    }
+    if (place && place <= 3) FxFlash(fx.over, place === 1 ? 'rgba(255, 211, 79, .55)' : 'rgba(228, 237, 244, .4)');
+    haptic(place === 1 ? [30, 50, 30, 50, 90] : 30);
+  }
+}
+
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4) — 10-race-result
 async function RaceResult(f) {
   if (raceCtx.lesson) return LessonResult(f); // round 19 (REQ-TUT-004): a lesson is practice — nothing applied, nothing granted
@@ -923,17 +1081,24 @@ function ResultPanel(kicker) {
 function ResultScreen(f, rewards, passXp, pass, missions) {
   const r = f.result, first = raceCtx.ftue;
   Clear('result'); SetArt(r.place >= 1 && r.place <= 3 ? 'Art/race-result' : 'Art/first-ride'); // the celebration art only for a top 3
+  ResultCelebrate(r.place); // quality pass: rays + gold for a win, the place colour for 2nd / 3rd, calm otherwise
   const p = ResultPanel(`レース結果　/　${raceCtx.trackName}`);
   // ① place (big)
-  Txt(r.place > 0 ? `${r.place}着` : '—', 40, 118, 540, 100, r.place === 1 ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2, cls: 'num' });
+  Txt(r.place > 0 ? `${r.place}着` : '—', 40, 118, 540, 100, r.place === 1 ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2, cls: 'num' + (r.place > 0 ? ` place-num p${r.place}` : '') });
   Txt(r.won ? '勝利' : `${r.runners}頭中`, 44, 248, 300, 32, WHITE, p, { ls: '.08em' });
   Txt(`${partner()?.name ?? horseName}　/　${raceCtx.beginner ? '初心者マッチ' : 'ランク戦'}`, 44, 300, 520, 19, WHITE, p, { weight: 500, ls: '.06em', nowrap: true });
   Hair(44, 352, 478, p);
   // stats: time, coins, season points (Codex: TIME / RANK POINTS)
-  const stat = (k, v, x, gold) => { Kicker(k, x, 378, p, { rule: false, size: 15 }); Txt(v, x, 402, 200, 30, gold ? GOLD : WHITE, p, { cls: 'num', nowrap: true }); };
-  stat('タイム', r.time, 44);
-  stat('無償コイン', '+' + fmt(rewards.coins + (rewards.firstWinBonus ?? 0)), 222, true);
-  stat('シーズンpt', '+' + fmt(rewards.seasonPoints), 398, true);
+  // quality pass: the numbers arrive one after another and count up (the final value at once with reduce motion / a tap)
+  const stat = (k, v, x, gold, i) => {
+    const kk = Kicker(k, x, 378, p, { rule: false, size: 16 }), n = Txt(v, x, 402, 200, 30, gold ? GOLD : WHITE, p, { cls: 'num fx-stat fx-anim', nowrap: true });
+    kk.classList.add('fx-stat', 'fx-anim'); kk.style.animationDelay = n.style.animationDelay = (.45 + i * .12) + 's';
+    return n;
+  };
+  stat('タイム', r.time, 44, false, 0);
+  const coins = rewards.coins + (rewards.firstWinBonus ?? 0);
+  CountUp(stat('無償コイン', '+' + fmt(coins), 222, true, 1), coins, { prefix: '+', delay: 600 });
+  CountUp(stat('シーズンpt', '+' + fmt(rewards.seasonPoints), 398, true, 2), rewards.seasonPoints, { prefix: '+', delay: 720 });
   // ② the reason in one line + one tip (RaceDebrief)
   Kicker(r.won ? '勝因' : '敗因', 44, 476, p, { rule: false, size: 15, color: r.won ? GOLD : CYAN });
   Txt(r.line || '—', 44, 500, 520, 23, WHITE, p, { weight: 700 }).dataset.debrief = r.code;
@@ -952,14 +1117,28 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
   // replay share (REQ-UXS-070): the last 200 m re-simulated on the device
-  if (!first) Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen)).classList.add('share');
+  // quality pass: the three keepsakes (photo, keep, share) are one quiet row along the bottom — the CTA stays the one loud thing
+  if (!first) Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen), undefined, 'quiet').classList.add('share');
   // round 14: keep this race in マイリプレイ (REQ-MYRP-003)
   if (!first && raceCtx.config?.raceId) Ghost('マイリプレイに残す', 996, 800, 274, 60, async () => {
     const k = await L.replays.save(raceCtx.config.raceId);
     toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
-  }).classList.add('rp-keep-result');
-  if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
+  }, undefined, 'quiet').classList.add('rp-keep-result');
+  if (!first) Ghost('写真を撮る', 706, 800, 274, 60, () => PhotoOpen('result', currentScreen), undefined, 'quiet').dataset.action = 'photo-result'; // round 15
   EnToggle();
+  // quality pass: the class's promotion line crossed in this race — the rank-up moment (presentation of the server's numbers)
+  const cls = L.master.classes.find((c) => c.id === player.season.classId), after = player.season.points, before = after - (rewards.seasonPoints ?? 0);
+  if (cls?.promotePoints && before < cls.promotePoints && after >= cls.promotePoints && unlock('season').unlocked) {
+    const host = cur;
+    setTimeout(() => { if (cur === host) Moment('昇級ラインに到達', { kicker: `クラス ${player.season.classId}`, sub: 'シーズンの終わりに昇級します', kind: 'promotion_line' }); }, reduced() ? 300 : 1500);
+  }
+}
+/** The result's celebration by place: a win gets rays and a little gold, 2nd / 3rd a quiet light in their colour, the rest nothing. */
+function ResultCelebrate(place) {
+  cur.dataset.place = String(place); cur.dataset.tier = place === 1 ? 'win' : place >= 2 && place <= 3 ? 'podium' : 'rest';
+  Skippable();
+  if (place === 1) { FxRays(1110, 430, 1300); FxConfetti(); FxFlash(undefined, 'rgba(255, 211, 79, .45)'); haptic([30, 50, 60]); }
+  else if (place === 2 || place === 3) FxRays(1110, 430, 1100, 'silver');
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
   Sheet('着順と報酬', 'レース結果　/　詳細', (s, close, y) => {
@@ -1006,8 +1185,9 @@ function TutorialResult(f) {
 }
 function Victory(r) {
   Clear('victory'); SetArt('Art/race-result');
+  ResultCelebrate(1); // quality pass: the first win is the game's first peak
   const p = ResultPanel('はじめてのレース　/　チュートリアル');
-  Txt(r.headline || '差し切った！', 40, 120, 560, 86, GOLD, p, { weight: 700, lh: 1.2, cls: 'flash' });
+  Txt(r.headline || '差し切った！', 40, 120, 560, 86, GOLD, p, { weight: 700, lh: 1.2, cls: 'place-num p1' });
   Txt(r.line, 44, 248, 520, 26, WHITE, p, { weight: 700 });
   Txt('この馬が、あなたの相棒になります。', 44, 300, 520, 19, WHITE, p, { weight: 500 });
   Hair(44, 352, 478, p);
@@ -1151,12 +1331,28 @@ function Reveal(draw, first, bannerId, pity) {
     Kicker(first ? '入厩祝い　/　スカウト' : 'スカウト', 0, 40, undefined, { rule: false, w: 1600 }).style.textAlign = 'center';
     Txt(`${i + 1}　/　${plan.order.length}`, 0, 68, 1600, 26, WHITE, undefined, { align: 'center', weight: 700, cls: 'num tshadow' });
     const c = plan.order[i];
+    // quality pass: an SR or SSR card charges before it turns (light rays in its colour, the back brightening, an SSR
+    // shakes), then bursts; a tap on the card turns it at once. The order and the results are the plan's either way.
+    const rare = c.rarity === 'SSR' ? 2 : c.rarity === 'SR' ? 1 : 0;
+    if (rare) FxRays(800, 390, rare === 2 ? 1250 : 1000, rare === 2 ? '' : 'cyan');
     const holder = el('cardholder', 590, 120, 420, 540);
     // the back glows first (rarity light), then the face flips in
     const back = cardBack(c); holder.appendChild(back);
+    const wait = reduced() ? 0 : rare === 2 ? 1500 : rare === 1 ? 1000 : 380; // REQ-A11Y-007: no wait with reduce motion
+    if (rare && wait) { holder.classList.add('charge', 'r-' + c.rarity); holder.style.setProperty('--charge', wait / 1000 + 's'); haptic(rare === 2 ? [10, 80, 10, 80, 10] : [10, 80, 10]); }
     const me = cur;
-    const face = () => { if (cur !== me || !holder.contains(back)) return; holder.innerHTML = ''; const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f); };
-    setTimeout(face, reduced() ? 0 : 380); // REQ-A11Y-007: the order and the results come from the same plan either way
+    const face = () => {
+      if (cur !== me || !holder.contains(back)) return;
+      holder.innerHTML = ''; holder.classList.remove('charge');
+      const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f);
+      if (rare) {
+        const b = fxNode('fx-burst', me); b.style.setProperty('--rc', rare === 2 ? 'var(--gold)' : 'var(--cyan)');
+        Object.assign(b.style, { left: '600px', top: '200px', width: '400px', height: '400px' }); setTimeout(() => b.remove(), 800);
+        FxFlash(me, rare === 2 ? 'rgba(255, 211, 79, .6)' : 'rgba(0, 210, 237, .45)');
+        haptic(rare === 2 ? [40, 40, 80] : 40);
+      }
+    };
+    setTimeout(face, wait);
     back.addEventListener('click', face);
     const t = L.master.templates.find((x) => x.id === c.templateId);
     Txt(templateLine(t, L.horseSkill({ templateId: c.templateId })), 0, 678, 1600, 19, WHITE, undefined, { align: 'center', weight: 500, cls: 'tshadow' });
@@ -1178,6 +1374,7 @@ function Reveal(draw, first, bannerId, pity) {
       Txt(t ? `${surfaceJa(t.surface)}　/　${fmt(t.distMinM)}〜${fmt(t.distMaxM)}m` : '', 42, y + size * 1.3 + 38, 480, 17, MUTED, p, { weight: 500 });
     };
     if (best) hero(best, 118, 46);
+    if (best && rarityRank(best.rarity) >= 2) FxRays(1094, 520, 1000, best.rarity === 'SSR' ? '' : 'cyan'); // quality pass: the pull's best still glows
     Hair(42, 300, 470, p);
     if (second) hero(second, 326, 34);
     const sub = Txt(plan.summaryLine + (plan.spentLine ? '\n' + plan.spentLine : ''), 42, 494, 480, 18, WHITE, p, { weight: 500, lh: 1.6 });
@@ -8988,6 +9185,16 @@ async function boot() {
       // R21 integration (§58.11 = §64.6): the one table and the pick among prompts due at one moment
       priority: () => [...PROMPT_PRIORITY], pick: (due) => sessionPrompt.pick(due), can: (k) => sessionPrompt.can(k), ftue: (on) => { ftue = !!on; } },
     offer: () => OfferThen(Home),
+    // quality pass (docs/quality/presentation.md): the result's celebration for a given place and a moment, on demo data
+    // (nothing applied), so every peak can be looked at without riding a race to that place
+    fx: {
+      result: (place = 1) => {
+        raceCtx = { tutorial: false, ftue: false, trackName: '青葉競馬場 芝1600m', beginner: false };
+        return show(ResultScreen, { result: { place, runners: 12, won: place === 1, time: '1:35.2', line: place === 1 ? '残り200mのムチで差し切った' : '直線で前が詰まった', tip: '', margin: '', rows: [], code: 'demo' } },
+          { coins: place === 1 ? 120 : 40, seasonPoints: place === 1 ? 30 : 10, firstWinBonus: 0 }, 40, { level: 3, xpToNextLevel: 20 }, []);
+      },
+      moment: () => Moment('昇級ラインに到達', { kicker: `クラス ${player.season.classId}`, sub: 'シーズンの終わりに昇級します', kind: 'promotion_line' }),
+    },
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
     // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen

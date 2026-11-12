@@ -4146,7 +4146,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
 
-## 71. 血統図と系統（pedigree viewer & bloodlines、REQ-PED-001〜020、`server/src/domain/pedigree.ts`・`server/master/bloodlines.json`、C# `Pedigree.cs`（`PedigreeView`・`PedigreeRecord`・`PedigreeTree`・`BreedingPedigree`・`BloodlineList`）・`Muchi.Game.PedigreeModel`／`BloodlinesModel`、docs/handoff-codex-round23-pedigree.md）
+## 71. 血統図と系統（pedigree viewer & bloodlines、REQ-PED-001〜020、`server/src/domain/pedigree.ts`・`server/master/bloodlines.json`、C# `Pedigree.cs`（`PedigreeView`・`PedigreeRecord`・`PedigreeTree`・`BreedingPedigree`・`BloodlineList`）・`Muchi.Game.PedigreeModel`、docs/handoff-codex-round23-pedigree.md）
 配合（§8.5 の種牡馬の貸し借り・隔世遺伝・見た目の継承）の長い遊びを深める**読むだけ**の画面。馬の 3 代の血統図、系統（父系）ごとのまとまり、配合の組み合わせで受け継ぎやすいもの、近親の共通の祖先を見せる。**何も配らない・何も売らない**（E 番号なし、balance-targets の節なし）。**新しい乱数も新しい仕組みも足さない**：見せる確率・数は既存の配合の規則（`previewFor`・`goingAptitudeOdds`・`skillInheritOdds`・`atavismOdds`・`inbreedingCount`・`BREED`・`nicks.json`）がそのまま返すものだけ。レースの結果・ゴールデンは変わらない。系統を集めても報酬は無い（コンプガチャにならない：系統の数・揃い具合に何も結び付けない）。
 
 ### 71.1 血統の記録（REQ-PED-001/002）
@@ -4198,4 +4198,4 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 71.9 クライアント（REQ-PED-020）
 - `Muchi.Client`：`ApiClient.GetPedigreeViewAsync(horseId, playerId)`（既存の `GetPedigreeAsync` はそのまま）・`GetBreedingPedigreeAsync(sireId, damId)`・`GetBloodlinesAsync()`、`PedigreeView`・`PedigreeRecord`・`PedigreeTree`（3 代の 14 枠への並べ方・共通の祖先）・`BreedingPedigree`・`BloodlineList`、`AnalyticsEvent.PedigreeView`・`BloodlineView`。
-- `Muchi.Game`：`PedigreeModel`（開く・枠・強調・記録なし・他のトレーナーの馬・祖先の図へ移る・KPI）、`BloodlinesModel`（一覧・ニックスの相手・報酬なしの注記）。描画は docs/handoff-codex-round23-pedigree.md。
+- `Muchi.Game`：`PedigreeModel`（開く・15 の枠・強調・記録なし・他のトレーナーの馬・自分の祖先の図へ移る・`rev` のキャッシュと 304・組み合わせ・系統の一覧とニックスの相手・`AccountChangeReset` で捨てる・KPI）。描画は docs/handoff-codex-round23-pedigree.md。

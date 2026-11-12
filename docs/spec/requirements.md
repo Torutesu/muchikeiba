@@ -1424,7 +1424,7 @@
 - REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。
 
-## 71. 血統図と系統（TS＋C#、`src/domain/pedigree.ts`・`server/master/bloodlines.json`・`Muchi.Client/Pedigree.cs`・`Muchi.Game.PedigreeModel`／`BloodlinesModel`、`contracts/protocol.md` §71）
+## 71. 血統図と系統（TS＋C#、`src/domain/pedigree.ts`・`server/master/bloodlines.json`・`Muchi.Client/Pedigree.cs`・`Muchi.Game.PedigreeModel`、`contracts/protocol.md` §71）
 拘束条件：読むだけ。既存の配合の規則が返す数・確率だけを見せる（新しい乱数・新しい仕組みなし）。何も配らない・何も売らない（E番号なし）。系統の収集に報酬を付けない（コンプガチャにしない）。レースの結果・ゴールデンは変わらない。
 - REQ-PED-001 写し：配合で生まれた仔に、生まれた時の父母の写し `lineage`（名前・見た目・脚質・適性・系統・固有スキル・能力）を 1 回だけ書く。乱数を使わず、その後は変えない。他のプレイヤーの ID を入れない。
 - REQ-PED-002 読む順：今の馬 → 写し → 名前だけ → 無し。名前だけの祖先は「記録なし」。移行なし（写しの無い前の借りた種牡馬は名前と持ち主だけ）。
@@ -1445,4 +1445,4 @@
 - REQ-PED-017 画面：馬の詳細の「血統」、配合の「血統を見る」と共通の祖先の強調、「系統 ›」、厩舎の訪問・トレーナーカードから相手の馬。その他の行には置かない。新しい割り込みのシートなし。ディープリンクなし。
 - REQ-PED-018 プロトタイプ：血統図（写真の馬の絵・半透明の紺のパネル・シアンの線）、系統の一覧、配合の組み合わせの強調。ムチ一閃の調子。日本語と英語、文字「特大」で木が流し直る。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-PED-019 ヘルプ：記事 `pedigree`（トークン `inbreeding_penalty`・`nick_bonus`）、文脈 `pedigree`、画面 `bloodlines`、ヒントのカード `pedigree_tip`。
-- REQ-PED-020 クライアント：C# `GetPedigreeViewAsync`・`GetBreedingPedigreeAsync`・`GetBloodlinesAsync`・`PedigreeTree`、Unity `PedigreeModel`・`BloodlinesModel`、Codex への引き継ぎ docs/handoff-codex-round23-pedigree.md。
+- REQ-PED-020 クライアント：C# `GetPedigreeViewAsync`・`GetBreedingPedigreeAsync`・`GetBloodlinesAsync`・`PedigreeTree`、Unity `PedigreeModel`（系統の一覧も）、Codex への引き継ぎ docs/handoff-codex-round23-pedigree.md。

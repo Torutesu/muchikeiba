@@ -44,6 +44,8 @@ namespace Muchi.Game
         public DeepLinkModel Links { get; set; }
         /// <summary>R21 integration (§64): the release notes sheet's per-session state.</summary>
         public ReleaseNotesModel ReleaseNotes { get; set; }
+        /// <summary>Round 23 (§71): the pedigree trees cached for this session.</summary>
+        public PedigreeModel Pedigree { get; set; }
         /// <summary>How many times the device state was reset (for checks).</summary>
         public int Resets { get; private set; }
 
@@ -55,6 +57,7 @@ namespace Muchi.Game
             Guard(() => Review?.ResetSession());
             Guard(() => Links?.ForgetPending());
             Guard(() => ReleaseNotes?.NewSession());
+            Guard(() => Pedigree?.ForgetCache());
             Prompts?.NewSession();
         }
 

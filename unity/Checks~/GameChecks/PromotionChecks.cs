@@ -79,8 +79,8 @@ static class PromotionChecks
         check(m.TryShowSheet() && m.OutcomeSheetVisible && gate.Claimed == SessionPrompts.PromotionOutcome, "promo: the sheet on the next home, through the gate");
         check(m.OutcomeTitle == "B級へ昇級確定" && m.OutcomeBody == "シーズンの締めでB級に上がります", "promo: pass sheet words");
         // R22 integration (§58.11): the sheet took this session's one prompt; the table puts it after the release notes and
-        // before the reminders card / account link / review / survey
-        check(!gate.CanShow(SessionPrompts.RemindersPrePermission) && !gate.CanShow(SessionPrompts.Survey)
+        // before the reminders card / account link / review
+        check(!gate.CanShow(SessionPrompts.RemindersPrePermission)
             && !new SessionPrompts().TryClaim(SessionPrompts.PromotionOutcome, new[] { SessionPrompts.ReleaseNotes })
             && new SessionPrompts().Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.RemindersPrePermission, SessionPrompts.PromotionOutcome }) == SessionPrompts.PromotionOutcome,
             "promo: promotion_outcome in the one table (after release notes, before reminders)");

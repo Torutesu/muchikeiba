@@ -34,9 +34,9 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // first one shown claims the session; the others stay due for a later session. When several are due at one moment the
 // table decides (highest first). Round 20's consent → reminders → review gate and Round 21's release-notes list were two
 // gates for one rule; this is the one table both sections point at. R22 integration: §68's outcome sheet (earned feedback,
-// right after the release notes) and §69's survey (an opinion only, the lowest) joined it; §67's play-time sheet is the
-// documented exception (the player asked for it: it neither takes nor waits for the session's prompt).
-const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt', 'survey'];
+// right after the release notes) joined it; §67's play-time sheet is the documented exception (the player asked for it: it
+// neither takes nor waits for the session's prompt); §69 surveys are not prompts at all (a quiet row inside お知らせ).
+const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt'];
 const sessionPrompt = {
   shown: null,
   can(kind) {
@@ -954,7 +954,7 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     // round 12: the one-time かんたん操作 suggestion (REQ-ASSIST-010) on the way out, only when no offer was shown
     Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace(), () => AssistThen(() => StartRace())), p);
     // round 22 (§69): on the way home a due survey shows as a sheet (after the offer / assist suggestion, through the gate)
-    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(() => SurveyThen(Home))), p);
+    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(Home)), p);
   }
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
@@ -3948,7 +3948,6 @@ async function HomeCard(cb) {
   const wn = await L.whatsNew();
   if (wn.ok && wn.value.showCard && !globalThis.__cbWhatsNewClosed) return WhatsNewCard(wn.value, cb);
   if (cb?.active) return ComebackCard(cb);
-  { const sv = await SurveyHomeCard(); if (sv) return sv; } // round 22 (§69): a live survey, through the one-prompt gate (last)
   if (typeof AdOfferSlot === 'function') return AdOfferSlot('home', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, Home);
   return null;
 }
@@ -4442,54 +4441,26 @@ async function ReviewDemo(style = 'native') {
 
 // ================================================================= round 22: ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69)
 // Ops ask a few short questions; the real surveys.ts rules decide (never in the FTUE, a cool-down between surveys, one at a
-// time) and the real ops store keeps the answers. Two places only: the home card and the sheet after a race result is closed
-// (ホーム). Through the one-prompt-per-session gate with the lowest priority (§58.11: the one table, `survey` last).
-// Skip is one tap and that survey never comes back. Nothing is granted for answering. Mirrors unity SurveyModel.cs.
+// time) and the real ops store keeps the answers. R22 integration (the user's change): never in a prominent place, never an
+// interruption — the ONLY entry is a quiet row inside お知らせ (「アンケートにご協力ください ›」, a small dot while unread; no home
+// card, no sheet after a race result, nothing on the home bell's number, not in the §58.11 prompt table). Skip is one tap and
+// that survey never comes back. Nothing is granted for answering. Mirrors unity SurveyModel.cs.
 const SV_LANG = () => (isJa() ? 'ja' : 'en');
 const SV_KEY = 'muchi.survey.key.';
 let svSession = null; // { id, placement, answers, index, key, after }
 function svLog(x) { (globalThis.__muchiSurvey ??= []).push(x); }
-/** The survey to show at `placement`, through the gate (null = none; the reason is logged). */
-async function svOffer(placement) {
-  if (ftue) { svLog({ placement, skipped: 'ftue' }); return null; }
-  if (!sessionPrompt.can('survey')) { svLog({ placement, skipped: 'session_prompt' }); return null; }
-  const r = await L.surveys.offer(placement, SV_LANG());
-  if (!r.ok || !r.value.survey) { svLog({ placement, skipped: r.ok ? r.value.reason : r.code }); return null; }
-  return r.value.survey;
+/** The お知らせ row: { survey, unread } or null (the reason is logged). A read: nothing is counted. */
+async function svRow() {
+  if (ftue) { svLog({ placement: 'inbox', skipped: 'ftue' }); return null; }
+  const r = await L.surveys.offer('inbox', SV_LANG());
+  if (!r.ok || !r.value.survey) { svLog({ placement: 'inbox', skipped: r.ok ? r.value.reason : r.code }); return null; }
+  return { survey: r.value.survey, unread: r.value.unread };
 }
-function svStart(s, placement, after) {
-  sessionPrompt.claim('survey');
+/** The player tapped the row: the sheet opens (and the show is counted). */
+function SurveyOpen(s, after) {
   let key = null; try { key = localStorage.getItem(SV_KEY + s.id); } catch { /* */ }
-  svSession = { id: s.id, placement, answers: {}, index: 0, key, after };
-  L.surveys.shown(s.id, placement).then((r) => svLog({ shown: s.id, placement, ok: r.ok }));
-}
-/** Home: the card in the home-card slot (one card at a time). */
-async function SurveyHomeCard() {
-  if (cur?.dataset.screen !== 'home') return null;
-  if (svSession?.placement === 'home' && svSession.cardOpen) return svCard(L.surveys.view(svSession.id, SV_LANG(), 'home'));
-  if (sessionPrompt.shown === 'survey') return null; // this session's survey was already shown (answered, skipped or closed)
-  const s = await svOffer('home');
-  if (!s || cur?.dataset.screen !== 'home') return null;
-  svStart(s, 'home', Home);
-  svSession.cardOpen = true;
-  return svCard(s);
-}
-function svCard(s) {
-  if (!s) return null;
-  const card = Glass('Survey', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, undefined, .86);
-  card.dataset.homeCard = 'survey'; card.dataset.survey = s.id; card.classList.add('rise', 'sv-card');
-  Kicker('アンケート', 28, 24, card, { size: 16 });
-  Txt(s.title, 28, 86, 394, 20, WHITE, card, { weight: 700, nowrap: true }).classList.add('sv-title');
-  Txt('答えても何ももらえません。ゲームの内容も変わりません。', 28, 118, 394, 13, MUTED, card, { lh: 1.5 });
-  Cta('答える', 28, 146, 200, () => { svSession.cardOpen = false; SurveySheet(); }, card, 'small sv-answer');
-  Ghost('スキップ', 250, 146, 172, 60, () => svSkip(), card, 'small sv-skip');
-  return card;
-}
-/** After a race result (ホーム): the sheet directly when a survey is due, else straight on. */
-async function SurveyThen(next) {
-  const s = await svOffer('result');
-  if (!s) return next();
-  svStart(s, 'result', next);
+  svSession = { id: s.id, placement: 'inbox', answers: {}, index: 0, key, after };
+  L.surveys.shown(s.id, 'inbox').then((r) => svLog({ shown: s.id, placement: 'inbox', ok: r.ok }));
   return SurveySheet();
 }
 async function svSkip() {
@@ -4498,17 +4469,17 @@ async function svSkip() {
   const r = await L.surveys.skip(v.id, v.placement);
   svLog({ skip: v.id, ok: r.ok });
   try { localStorage.removeItem(SV_KEY + v.id); } catch { /* */ }
-  (v.after ?? Home)();
+  (v.after ?? Activity)();
 }
 const SV_SCALE = [1, 2, 3, 4, 5];
 /** The sheet: one question per page (1つ選ぶ / いくつでも / 1〜5 / 自由な文), skip on every page, とばす for optional ones. */
 function SurveySheet() {
   const v = svSession;
-  if (!v) return Home();
+  if (!v) return Activity();
   const s = L.surveys.view(v.id, SV_LANG(), v.placement);
-  if (!s) { svSession = null; return (v.after ?? Home)(); }
+  if (!s) { svSession = null; return (v.after ?? Activity)(); }
   currentScreen = SurveySheet;
-  Clear('survey'); SetArt(v.placement === 'result' ? 'Art/race-result' : 'Art/home-paddock', false); Shade('dim');
+  Clear('survey'); SetArt('Art/home-paddock', false); Shade('dim');
   const q = s.questions[v.index];
   const d = Dialog('Survey', 1040, 700, { y: 100 });
   d.classList.add('sv-sheet'); d.dataset.survey = s.id; d.dataset.q = q.id; d.dataset.kind = q.kind;
@@ -4566,8 +4537,9 @@ function SurveySheet() {
     Txt('名前やメールアドレスなどは書かないでください', 0, 204, 600, 13, SOFT, area, { nowrap: true }).classList.add('sv-hint');
     queueMicrotask(count);
   }
-  // the footer: skip (one tap) — back — next / pass / send
-  TextLink('スキップ', 48, 620, 160, () => svSkip(), d).classList.add('sv-skip');
+  // the footer: later (back to お知らせ, the row stays) — skip (one tap) — back — next / pass / send
+  TextLink('あとで', 48, 600, 160, () => { const a2 = v.after ?? Activity; svSession = null; a2(); }, d).classList.add('sv-later');
+  TextLink('スキップ', 48, 640, 160, () => svSkip(), d).classList.add('sv-skip');
   if (v.index > 0) Ghost('戻る', 456, 604, 180, 64, () => { v.index--; redraw(); }, d, 'small sv-back');
   const last = v.index === s.questions.length - 1;
   const has = a[q.id] !== undefined;
@@ -4588,16 +4560,16 @@ async function svSend(s) {
   svLog({ answer: s.id, ok: r.ok, code: r.ok ? null : r.code });
   if (r.ok || ['SURVEY_CLOSED', 'NOT_FOUND', 'NOT_ELIGIBLE', 'CONFLICT'].includes(r.code)) { try { localStorage.removeItem(SV_KEY + s.id); } catch { /* */ } }
   if (!r.ok) {
-    if (['SURVEY_CLOSED', 'NOT_FOUND', 'NOT_ELIGIBLE', 'CONFLICT'].includes(r.code)) { svSession = null; toast('このアンケートは終了しました'); return (v.after ?? Home)(); }
+    if (['SURVEY_CLOSED', 'NOT_FOUND', 'NOT_ELIGIBLE', 'CONFLICT'].includes(r.code)) { svSession = null; toast('このアンケートは終了しました'); return (v.after ?? Activity)(); }
     toast(r.message); return; // keep the sheet and the key: the player may send again
   }
   svSession = null;
-  return SurveyThanks(v.after ?? Home, v.placement);
+  return SurveyThanks(v.after ?? Activity);
 }
 /** The thanks state: one line, nothing granted, no effect. */
-function SurveyThanks(after = Home, placement = 'home') {
-  currentScreen = () => SurveyThanks(after, placement);
-  Clear('survey-thanks'); SetArt(placement === 'result' ? 'Art/race-result' : 'Art/home-paddock', false); Shade('dim');
+function SurveyThanks(after = Activity) {
+  currentScreen = () => SurveyThanks(after);
+  Clear('survey-thanks'); SetArt('Art/home-paddock', false); Shade('dim');
   const d = Dialog('Survey thanks', 720, 360);
   d.classList.add('sv-thanks');
   Kicker('アンケート', 48, 36, d, { w: 400, size: 16 });
@@ -4606,15 +4578,15 @@ function SurveyThanks(after = Home, placement = 'home') {
   Ghost('閉じる', 48, 256, 220, 60, () => after(), d, 'small sv-close');
   EnToggle();
 }
-/** Demo entry (show('Survey', 'home' | 'result' | 'thanks')): ops published a survey; a settled player opening the app. */
-async function SurveyDemo(where = 'home') {
+/** Demo entry (show('Survey', 'inbox' | 'sheet' | 'thanks')): ops published a survey; a settled player opens お知らせ. */
+async function SurveyDemo(where = 'inbox') {
   await L.surveys.demo();
   ftue = false; svSession = null;
-  sessionPrompt.reset(); // the demo state is a settled player opening the app (a new session)
   await refresh();
-  if (where === 'thanks') return SurveyThanks(Home, 'home');
-  if (where === 'result') return SurveyThen(Home);
-  return Home();
+  if (where === 'thanks') return SurveyThanks(Activity);
+  if (where === 'sheet') { const r = await svRow(); return r ? SurveyOpen(r.survey, Activity) : Activity(); }
+  actState.cursor = null; actState.stack = [];
+  return Activity();
 }
 
 // ================================================================= round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
@@ -7158,8 +7130,16 @@ async function Activity() {
   Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
   // R21 integration (§65): お知らせ › 予定表 (the home's bell is one tap from home)
-  TextLink('予定表', 36, 520, 376, () => Calendar(Activity), d, '予定表 ›').dataset.action = 'calendar';
-  Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  TextLink('予定表', 36, 500, 376, () => Calendar(Activity), d, '予定表 ›').dataset.action = 'calendar';
+  // R22 integration (§69, the user's change): the ONLY survey entry — a quiet row here, a small dot while unread (never a
+  // badge or a count on the home screen, never a card / sheet / prompt elsewhere)
+  const sv = await svRow();
+  if (sv && cur?.dataset.screen === 'activity') {
+    const row = TextLink('アンケートにご協力ください', 36, 540, 376, () => SurveyOpen(sv.survey, Activity), d, 'アンケートにご協力ください ›');
+    row.dataset.action = 'survey'; row.classList.add('sv-row'); row.dataset.unread = sv.unread ? '1' : '0';
+    if (sv.unread) el('act-dot sv-dot', 18, 553, 10, 10, d);
+  }
+  Cta('ホームへ', 36, 596, 376, () => Home(), d, 'small');
   Back(Home, 'ホームへ', 40, 834);
 }
 
@@ -7662,7 +7642,7 @@ function TransferDone(v) {
 function deviceAccountChanged() {
   lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
   try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
-  revPrompted = false; svSession = null; // R22 (§69): the old account's survey card / sheet goes too
+  revPrompted = false; svSession = null; // R22 (§69): the old account's survey sheet goes too
   // R21 integration (§54 × §63 / §64): the link waiting on this device came for the old account; the release notes'
   // "shown this session" goes with the session ("seen" is per account on the server)
   lkInput = '';
@@ -9624,7 +9604,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'home'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

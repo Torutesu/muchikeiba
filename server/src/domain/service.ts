@@ -128,7 +128,7 @@ import {
 } from './dataExport.js';
 import { REDEEM_REPLAY_MS, ensureTransfer, assertMayIssue, formatCodeId, issueTransfer, progressOf, redeemTransfer, revokeTransfer, transferStateView, type TransferMode } from './transferCode.js';
 import {
-  answerSurvey, decideSurveyOffer, markSurveySynced, noteSurveyShown, pendingSurveyAnswers, skipSurvey, surveysConfig,
+  answerSurvey, decideSurveyOffer, markSurveySynced, noteSurveyShown, pendingSurveyAnswers, skipSurvey, surveysConfig, SURVEY_PLACEMENTS,
   type LiveSurvey, type SurveyAnswers, type SurveyFacts, type SurveyLang, type SurveyPlacement,
 } from './surveys.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
@@ -671,28 +671,30 @@ export class PlayerService {
   promotionAck(id: string, seriesId: string) { return this.tx(id, null, (s) => ackPromotion(s, seriesId)); }
 
   // ---- ゲーム内アンケート (REQ-SURVEY-*, surveys.ts, protocol §69) — nothing here ever grants anything ----
-  private async notWiped(id: string) {
+  private async notWiped(id: string, placement?: string) {
+    // R22 integration (§69): one quiet place only (`inbox`, the お知らせ row); home / result are gone
+    if (placement !== undefined && !(SURVEY_PLACEMENTS as readonly string[]).includes(placement)) throw new AppError('BAD_REQUEST', `placement must be ${SURVEY_PLACEMENTS.join(' | ')}`);
     if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
   }
   /** REQ-SURVEY-005/011: the one survey to show here (a read) and the answers the ops table has not confirmed yet. */
   async surveyOffer(id: string, live: LiveSurvey[], facts: SurveyFacts, placement: SurveyPlacement, lang: SurveyLang) {
-    await this.notWiped(id);
+    await this.notWiped(id, placement);
     const s = await this.load(id);
     return { ...decideSurveyOffer(surveysConfig(this.d.master), live, s, facts, placement, lang, this.d.clock()), pending: pendingSurveyAnswers(s) };
   }
   /** REQ-SURVEY-007: the survey was put on screen. */
   async surveyShown(id: string, live: LiveSurvey | null, placement: SurveyPlacement) {
-    await this.notWiped(id);
+    await this.notWiped(id, placement);
     return this.tx(id, null, (s, now, emit) => noteSurveyShown(surveysConfig(this.d.master), s, live, placement, now, emit));
   }
   /** REQ-SURVEY-008: one tap; never asked again. */
   async surveySkip(id: string, live: LiveSurvey | null, placement: SurveyPlacement) {
-    await this.notWiped(id);
+    await this.notWiped(id, placement);
     return this.tx(id, null, (s, now, emit) => skipSurvey(s, live, placement, now, emit));
   }
   /** REQ-SURVEY-009/013: one answer per player (keyed); the segment only while analytics is effective (§58). */
   async surveyAnswer(id: string, live: LiveSurvey | null, input: { placement: SurveyPlacement; answers: SurveyAnswers; facts: SurveyFacts }, idemKey: string | null) {
-    await this.notWiped(id);
+    await this.notWiped(id, input.placement);
     return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
       const r = answerSurvey(surveysConfig(this.d.master), s, live, { ...input, analytics: analyticsAllowed(this.d.master, s, now) }, now, emit);
       return { ...r, pending: pendingSurveyAnswers(s).filter((x) => x.surveyId === r.surveyId) };

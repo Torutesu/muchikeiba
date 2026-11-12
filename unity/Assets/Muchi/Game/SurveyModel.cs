@@ -7,15 +7,18 @@ using Muchi.Client;
 namespace Muchi.Game
 {
     // REQ-SURVEY-001..024 (contracts/protocol.md §69, docs/handoff-codex-round22-surveys.md): ゲーム内アンケート, the game layer.
-    // Pure C#: Codex calls CheckAsync("home") when the home screen settles and CheckAsync("result") after a race result is
-    // closed, then draws the home card (CardVisible) or the sheet (SheetVisible: one question per page, Index / Current) and the
-    // thanks state (ThanksVisible). Skip is one tap from the card or any page of the sheet and that survey never comes back.
-    // Nothing is granted for answering: this model has no reward, coins or shop link. Never offline, never during the FTUE, and
-    // only through the §58.11 one-prompt-per-session gate (SessionPrompts.Survey, the lowest priority).
+    // R22 integration (the user's change): a survey never interrupts and never sits in a prominent place. The only entry is a
+    // quiet row inside お知らせ (the home bell's screen): Codex calls CheckAsync() when that screen opens and draws the row
+    // (RowVisible, with a small dot when Unread — never a badge or count on the home screen). The player taps it → OpenAsync()
+    // → the sheet (SheetVisible: one question per page, Index / Current) → the thanks state (ThanksVisible). Skip is one tap from
+    // any page and that survey never comes back. Not in the §58.11 prompt table (it neither takes nor waits for the session's
+    // one prompt). Nothing is granted for answering: no reward, coins or shop link. Never offline, never during the FTUE.
 
     public sealed class SurveyModel : ScreenModel
     {
         public const string Kicker = "アンケート";
+        /// <summary>R22 integration: the quiet row on the お知らせ screen (the only entry).</summary>
+        public const string RowLabel = "アンケートにご協力ください";
         public const string AnswerLabel = "答える";
         public const string SkipLabel = "スキップ";
         public const string NextLabel = "次へ";
@@ -43,21 +46,20 @@ namespace Muchi.Game
             _inFtue = inFtue ?? (() => false);
         }
 
-        /// <summary>R22 integration (§58.11): the session's ONE prompt mechanism (the same instance every model gets); a survey is `survey`, the lowest.</summary>
-        public SessionPrompts Prompts { get; set; }
         public SurveyView Survey { get; private set; }
-        /// <summary>home | result.</summary>
-        public string Placement { get; private set; }
-        public bool CardVisible { get; private set; }
+        /// <summary>Always <see cref="SurveyPlacements.Inbox"/> (the お知らせ row).</summary>
+        public string Placement => SurveyPlacements.Inbox;
+        /// <summary>The お知らせ screen shows the row 「アンケートにご協力ください ›」.</summary>
+        public bool RowVisible { get; private set; }
+        /// <summary>Never opened yet: a small dot next to the row on the お知らせ screen only (no home badge, not in the bell's count).</summary>
+        public bool Unread { get; private set; }
         public bool SheetVisible { get; private set; }
         public bool ThanksVisible { get; private set; }
         /// <summary>The page of the sheet (0-based question index).</summary>
         public int Index { get; private set; }
         public SurveyAnswerBuilder Answers { get; private set; }
-        /// <summary>Why no survey showed: a §69.4 reason, or offline / ftue / session_prompt / busy / shown.</summary>
+        /// <summary>Why no row shows: a §69.4 reason, or offline / ftue / busy / error.</summary>
         public string LastReason { get; private set; }
-        /// <summary>A survey was shown this session (no second one).</summary>
-        public bool ShownThisSession { get; private set; }
 
         public SurveyQuestion Current => Survey != null && Index >= 0 && Index < Survey.Questions.Count ? Survey.Questions[Index] : null;
         public bool IsLast => Survey != null && Index == Survey.Questions.Count - 1;
@@ -68,40 +70,35 @@ namespace Muchi.Game
         public string NextButton => Current != null && !Answers.Has(Current.Id) && !Current.Required ? PassLabel : IsLast ? SendLabel : NextLabel;
         private bool TextFits => Current == null || Current.Kind != SurveyKinds.Text || Answers.Remaining(Current.Id) >= 0;
 
-        private bool Skip(string reason) { LastReason = reason; return false; }
+        private bool Skip(string reason) { LastReason = reason; RowVisible = false; Unread = false; return false; }
 
-        /// <summary>REQ-SURVEY-005/006: ask the server whether a survey shows at <paramref name="placement"/>; true = drawn now.</summary>
-        public async Task<bool> CheckAsync(string placement, CancellationToken ct = default)
+        /// <summary>REQ-SURVEY-005/006: the お知らせ screen opened — is there a survey for its quiet row? true = draw the row (a read; nothing is counted).</summary>
+        public async Task<bool> CheckAsync(CancellationToken ct = default)
         {
             LastReason = null;
-            if (placement != SurveyPlacements.Home && placement != SurveyPlacements.Result) throw new ArgumentException("placement " + placement);
-            if (_busy || CardVisible || SheetVisible || ThanksVisible) return Skip("busy");
-            if (ShownThisSession) return Skip("shown");
+            if (_busy || SheetVisible || ThanksVisible) { LastReason = "busy"; return RowVisible; }
             if (!ServerAvailable) return Skip("offline");
             if (_inFtue()) return Skip("ftue");
-            if (Prompts != null && !Prompts.CanShow(SessionPrompts.Survey)) return Skip("session_prompt");
             _busy = true;
             try
             {
-                var o = await B.Api.GetSurveyAsync(placement, ct);
-                if (o.Survey == null) return Skip(o.Reason ?? "none");
-                // another prompt may have claimed the session while we waited
-                if (Prompts != null && !Prompts.TryClaim(SessionPrompts.Survey)) return Skip("session_prompt");
-                Survey = o.Survey; Placement = placement; Index = 0; Answers = new SurveyAnswerBuilder(o.Survey);
-                ShownThisSession = true;
-                if (placement == SurveyPlacements.Home) CardVisible = true; else SheetVisible = true;
-                try { await B.Api.SurveyShownAsync(Survey.Id, placement, ct); } catch (ApiException e) { Message = e.Message; } // the count is best effort
+                var o = await B.Api.GetSurveyAsync(SurveyPlacements.Inbox, ct);
+                if (o.Survey == null) { Survey = null; return Skip(o.Reason ?? "none"); }
+                Survey = o.Survey; Index = 0; Answers = new SurveyAnswerBuilder(o.Survey);
+                RowVisible = true; Unread = o.Unread;
                 return true;
             }
             catch (ApiException e) { Message = e.Message; return Skip("error"); }
             finally { _busy = false; }
         }
 
-        /// <summary>The home card's 答える: open the sheet on the first question.</summary>
-        public void Open()
+        /// <summary>The player tapped the row: open the sheet on the first question and count the show (best effort).</summary>
+        public async Task<bool> OpenAsync(CancellationToken ct = default)
         {
-            if (!CardVisible) return;
-            CardVisible = false; SheetVisible = true; Index = 0;
+            if (!RowVisible || Survey == null || SheetVisible) return false;
+            SheetVisible = true; Index = 0; Unread = false;
+            try { await B.Api.SurveyShownAsync(Survey.Id, SurveyPlacements.Inbox, ct); } catch (ApiException e) { Message = e.Message; } // the count is best effort
+            return true;
         }
 
         /// <summary>次へ / とばす on a page; on the last page use <see cref="SubmitAsync"/>.</summary>
@@ -119,18 +116,18 @@ namespace Muchi.Game
         }
 
         /// <summary>
-        /// The sheet / card closed without skipping (back button): it may come back later (the server stops after
-        /// maxShowsPerSurvey shows). Nothing is sent.
+        /// The sheet closed without skipping (back button): the row stays in お知らせ (the server stops offering after
+        /// maxShowsPerSurvey opens). Nothing is sent.
         /// </summary>
-        public void Later() { CardVisible = false; SheetVisible = false; }
+        public void Later() { SheetVisible = false; }
 
         /// <summary>REQ-SURVEY-008: one tap; that survey never comes back. The card / sheet closes at once (offline too).</summary>
         public async Task<ActionResult> SkipAsync(CancellationToken ct = default)
         {
-            if (Survey == null || !(CardVisible || SheetVisible)) return ActionResult.Error("no survey");
+            if (Survey == null || !SheetVisible) return ActionResult.Error("no survey");
             var id = Survey.Id;
             var placement = Placement;
-            CardVisible = false; SheetVisible = false;
+            SheetVisible = false; RowVisible = false;
             if (!ServerAvailable) return Offline("skip"); // shown-but-unanswered: the server stops offering after its show cap
             try { await B.Api.SkipSurveyAsync(id, placement, ct); return ActionResult.Success(); }
             catch (ApiException e) { return Fail(e); }
@@ -154,14 +151,14 @@ namespace Muchi.Game
             {
                 await B.Api.AnswerSurveyAsync(Survey.Id, Placement, Answers, key, ct);
                 Kv.Set(k, null);
-                SheetVisible = false; ThanksVisible = true;
+                SheetVisible = false; RowVisible = false; ThanksVisible = true;
                 return ActionResult.Success();
             }
             catch (ApiException e) when (e.Code == ApiErrorCode.SurveyClosed || e.Code == ApiErrorCode.NotFound || e.Code == ApiErrorCode.NotEligible || e.Code == ApiErrorCode.Conflict)
             {
                 // neutral: the survey ended / is not for this player any more / was already answered on another device
                 Kv.Set(k, null);
-                SheetVisible = false;
+                SheetVisible = false; RowVisible = false;
                 Message = ClosedText;
                 return ActionResult.Error(ClosedText);
             }
@@ -174,8 +171,8 @@ namespace Muchi.Game
         /// <summary>A new session (launch, or another account on this device: §54).</summary>
         public void ResetSession()
         {
-            CardVisible = SheetVisible = ThanksVisible = false;
-            Survey = null; Answers = null; Index = 0; Placement = null; LastReason = null; ShownThisSession = false; Message = null;
+            RowVisible = Unread = SheetVisible = ThanksVisible = false;
+            Survey = null; Answers = null; Index = 0; LastReason = null; Message = null;
         }
     }
 }

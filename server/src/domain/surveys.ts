@@ -25,7 +25,12 @@ import { FREE_TEXT_SCRUB_RULES, fnv1a64 } from './clientErrors.js';
 
 export const SURVEY_KINDS = ['single', 'multi', 'scale', 'text'] as const;
 export type SurveyKind = (typeof SURVEY_KINDS)[number];
-export const SURVEY_PLACEMENTS = ['home', 'result'] as const;
+/**
+ * R22 integration (the user's change): surveys never appear in a prominent place and never interrupt. The one place is a
+ * quiet row inside お知らせ (`inbox`) the player opens on purpose — no home card, no sheet after a race result, not in the
+ * §58.11 prompt table, at most a small unread dot on that screen and never a badge on the home screen.
+ */
+export const SURVEY_PLACEMENTS = ['inbox'] as const;
 export type SurveyPlacement = (typeof SURVEY_PLACEMENTS)[number];
 export const SURVEY_PLATFORMS = ['ios', 'android', 'editor'] as const;
 export type SurveyPlatform = (typeof SURVEY_PLATFORMS)[number];
@@ -50,7 +55,7 @@ export interface SurveyTargeting {
   appVersion?: { min?: string; max?: string }; classes?: string[]; samplePercent?: number;
 }
 export interface SurveyDef {
-  id: string; title: LocalText; intro?: LocalText; placements: SurveyPlacement[]; targeting: SurveyTargeting; questions: SurveyQuestion[];
+  id: string; title: LocalText; intro?: LocalText; targeting: SurveyTargeting; questions: SurveyQuestion[];
 }
 /** A definition as the player routes see it: live, with its window and edit revision. */
 export interface LiveSurvey { def: SurveyDef; rev: number; startAt: number; endAt: number }
@@ -128,16 +133,11 @@ const T_KEYS = ['minRankedRaces', 'minDaysSinceInstall', 'maxDaysSinceInstall', 
 /** REQ-SURVEY-001/002: every problem of a definition (empty = valid). `classIds` = the master's class ids. */
 export function surveyDefProblems(m: Pick<Master, 'ng' | 'progression'>, raw: unknown, cfg: SurveysConfig = surveysConfig(m)): string[] {
   if (!isObj(raw)) return ['the survey must be an object'];
-  const p = unknownKeys(raw, ['id', 'title', 'intro', 'placements', 'targeting', 'questions'], 'survey');
+  // R22 integration: no `placements` key any more (one quiet place, お知らせ); an old definition naming one is refused
+  const p = unknownKeys(raw, ['id', 'title', 'intro', 'targeting', 'questions'], 'survey');
   if (typeof raw.id !== 'string' || !SURVEY_ID_RE.test(raw.id)) p.push('survey.id must be sv_ + 2..40 of a-z, 0-9, _');
   p.push(...textProblems(m, raw.title, SURVEY_LIMITS.title, 'survey.title'));
   if (raw.intro !== undefined) p.push(...textProblems(m, raw.intro, SURVEY_LIMITS.intro, 'survey.intro'));
-  const pl = raw.placements;
-  if (!Array.isArray(pl) || pl.length === 0) p.push('survey.placements must list home and/or result');
-  else {
-    for (const x of pl) if (!(SURVEY_PLACEMENTS as readonly unknown[]).includes(x)) p.push(`survey.placements: unknown placement ${String(x)}`);
-    if (new Set(pl).size !== pl.length) p.push('survey.placements: duplicates');
-  }
   const t = raw.targeting ?? {};
   if (!isObj(t)) p.push('survey.targeting must be an object');
   else {
@@ -325,25 +325,27 @@ export function surveyView(l: LiveSurvey, lang: SurveyLang, placement: SurveyPla
 }
 export type SurveyView = ReturnType<typeof surveyView>;
 
-export interface SurveyOfferResult { survey: SurveyView | null; reason: SurveyReason | null }
+/** `unread`: the survey was never opened yet (the お知らせ row may show a small dot; nothing on the home screen). */
+export interface SurveyOfferResult { survey: SurveyView | null; reason: SurveyReason | null; unread: boolean }
 
 export const inFtue = (s: PlayerState) => !s.flags.tutorialGachaUsed;
 
 /** REQ-SURVEY-005: which survey (at most one) to show at this placement. Pure; the state is only read. */
 export function decideSurveyOffer(cfg: SurveysConfig, live: LiveSurvey[], s: PlayerState, f: SurveyFacts, placement: SurveyPlacement, lang: SurveyLang, now: number): SurveyOfferResult {
-  const no = (reason: SurveyReason): SurveyOfferResult => ({ survey: null, reason });
+  const no = (reason: SurveyReason): SurveyOfferResult => ({ survey: null, reason, unread: false });
+  const yes = (l: LiveSurvey): SurveyOfferResult => ({ survey: surveyView(l, lang, placement), reason: null, unread: (s.surveys?.shows[l.def.id]?.n ?? 0) === 0 });
   if (!cfg.enabled) return no('disabled');
   if (deletionScheduled(s)) return no('account_closing');
   if (inFtue(s) || f.inFtue) return no('ftue');
   const st = s.surveys;
   const open = (l: LiveSurvey) => l.startAt <= now && now < l.endAt && !st?.done[l.def.id]
-    && l.def.placements.includes(placement) && (st?.shows[l.def.id]?.n ?? 0) < cfg.maxShowsPerSurvey && targets(l.def.targeting, l.def.id, s, f, now);
+    && (st?.shows[l.def.id]?.n ?? 0) < cfg.maxShowsPerSurvey && targets(l.def.targeting, l.def.id, s, f, now);
   const cur = st?.current ? live.find((l) => l.def.id === st.current) : undefined;
-  if (cur && open(cur)) return { survey: surveyView(cur, lang, placement), reason: null };
+  if (cur && open(cur)) return yes(cur);
   if (st?.lastDoneAt != null && now - st.lastDoneAt < cfg.coolDownHours * 3_600_000) return no('cool_down');
   const order = [...live].sort((a, b) => a.endAt - b.endAt || (a.def.id < b.def.id ? -1 : 1));
   const next = order.find(open);
-  return next ? { survey: surveyView(next, lang, placement), reason: null } : no('none');
+  return next ? yes(next) : no('none');
 }
 
 // ------------------------------------------------------------------------------------------------ answers (REQ-SURVEY-009/012)

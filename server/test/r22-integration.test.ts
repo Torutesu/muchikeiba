@@ -25,14 +25,15 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 const csFiles = (dir: string) => readdirSync(join(ROOT, dir)).filter((f) => f.endsWith('.cs')).map((f) => read(join(dir, f))).join('\n');
 const section = (doc: string, from: string, to: string) => doc.slice(doc.indexOf(from), doc.indexOf(to, doc.indexOf(from) + 1));
 
-describe('§58.11 × Round 22: the outcome sheet and the survey go through the ONE prompt mechanism; the play-time sheet is the documented exception', () => {
-  it('the table has promotion_outcome after release_notes and survey last, and a numberless exempt row for the play-time reminder', () => {
+describe('§58.11 × Round 22: the outcome sheet goes through the ONE prompt mechanism; the play-time sheet is the documented exception; surveys never interrupt', () => {
+  it('the table has promotion_outcome after release_notes, no survey row, and a numberless exempt row for the play-time reminder', () => {
     const p = read('contracts/protocol.md');
     const s = section(p, '### 58.11', '## 59.');
     const ids = [...s.matchAll(/^\s*\| \d \| `([a-z_]+)` \|/gm)].map((x) => x[1]);
     expect(ids.indexOf('promotion_outcome')).toBe(ids.indexOf('release_notes') + 1);
     expect(ids.indexOf('promotion_outcome')).toBeLessThan(ids.indexOf('reminders_pre_permission'));
-    expect(ids.at(-1)).toBe('survey');
+    expect(ids).not.toContain('survey');
+    expect(ids.at(-1)).toBe('review_prompt');
     const exempt = s.split('\n').find((l) => /^\s*\| — \| `playtime_reminder` \|/.test(l));
     expect(exempt, 'exempt row').toBeTruthy();
     expect(exempt).toContain('§67');
@@ -43,25 +44,38 @@ describe('§58.11 × Round 22: the outcome sheet and the survey go through the O
       expect(sec, a).not.toMatch(/SessionPromptGate|SessionPromptKind/);
     }
     expect(section(p, '## 68.', '## 69.')).toContain('promotion_outcome');
-    expect(p.slice(p.indexOf('## 69.'))).toContain('`survey`');
+    // §69 (the user's change in R22 integration): a quiet row inside お知らせ, never a home card, never a sheet after a result
+    const s69 = p.slice(p.indexOf('## 69.'));
+    expect(s69).toContain('`inbox`');
+    expect(s69).toContain('お知らせ');
+    expect(s69).toMatch(/§58\.11 の表に入らない/);
   });
   it('Unity models, checks and the engine use Muchi.Client.SessionPrompts only (the Round 20 gate types are gone)', () => {
     const all = [csFiles('unity/Assets/Muchi/Game'), csFiles('unity/Checks~/GameChecks'), csFiles('engine/Muchi.Client')].join('\n');
     expect(all).not.toMatch(/class SessionPromptGate|new SessionPromptGate|SessionPromptGate \w+ \{|SessionPromptKind|\.Claim\(SessionPrompt/);
     const game = csFiles('unity/Assets/Muchi/Game');
     expect(game).toMatch(/TryClaim\(SessionPrompts\.PromotionOutcome\b/);
-    expect(game).toMatch(/CanShow\(SessionPrompts\.Survey\b/);
-    expect(game).toMatch(/TryClaim\(SessionPrompts\.Survey\b/);
+    expect(game).not.toMatch(/SessionPrompts\.Survey\b/);
+    expect(read('engine/Muchi.Client/ReleaseNotes.cs')).not.toMatch(/Survey = "survey"/);
+    const sv = read('unity/Assets/Muchi/Game/SurveyModel.cs');
+    expect(sv).not.toMatch(/SessionPrompts|Prompts \{ get; set; \}/);
+    expect(sv).not.toMatch(/CardVisible|"home"|"result"/);
     // the play-time sheet never claims (player-requested); it is shown before the prompts at the same safe point
     const slFile = read('unity/Assets/Muchi/Game/SelfLimitsModel.cs');
     const sl = slFile.slice(slFile.indexOf('class SelfLimitsModel'));
     expect(sl).not.toMatch(/Prompts|TryClaim/);
   });
-  it('the prototype claims promotion_outcome and survey through sessionPrompt; the play-time sheet does not', () => {
+  it('the prototype claims promotion_outcome through sessionPrompt; surveys and the play-time sheet do not', () => {
     const app = read('tools/figma-prototype/site/app.js');
     expect(app).toMatch(/sessionPrompt\.claim\('promotion_outcome'\)/);
     expect(app).not.toMatch(/sessionPrompt\.(claim|can)\('promotion'\)/);
-    expect(app).toMatch(/sessionPrompt\.claim\('survey'\)/);
+    expect(app).not.toMatch(/sessionPrompt\.(claim|can)\('survey'\)|shown === 'survey'/);
+    expect(app).not.toMatch(/SurveyHomeCard|svOffer\('home'\)|svOffer\('result'\)/);
+    // the quiet entry: a row on the お知らせ screen (with at most a small dot there), nothing on the home screen
+    const act = app.indexOf('async function Activity(');
+    expect(app.slice(act, app.indexOf('\n}\n', act))).toContain("dataset.action = 'survey'");
+    const home = app.indexOf('async function Home(');
+    expect(app.slice(home, app.indexOf('\n}\n', home))).not.toMatch(/[Ss]urvey|sv[A-Z]/);
     const i = app.indexOf('function PlaytimeSheet(');
     expect(i).toBeGreaterThan(0);
     expect(app.slice(i, app.indexOf('\n}\n', i))).not.toMatch(/sessionPrompt/);

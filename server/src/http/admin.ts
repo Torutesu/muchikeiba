@@ -191,7 +191,7 @@ function surveyCheck(m: Master, raw: unknown) {
   if (problems.length) return { problems, preview: null };
   const def = normalizeSurveyDef(raw as SurveyDef);
   const live = { def, rev: 0, startAt: 0, endAt: 0 };
-  return { problems, preview: { ja: surveyView(live, 'ja', def.placements[0]!), en: surveyView(live, 'en', def.placements[0]!) } };
+  return { problems, preview: { ja: surveyView(live, 'ja', 'inbox'), en: surveyView(live, 'en', 'inbox') } };
 }
 function validSurvey(m: Master, raw: unknown): SurveyDef {
   const c = surveyCheck(m, raw);

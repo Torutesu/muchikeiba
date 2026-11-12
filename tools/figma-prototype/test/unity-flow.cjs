@@ -528,7 +528,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('promotion-fail', 600);
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
     // §58.11: another prompt already showed this session — the outcome stays on the card, the sheet waits
-    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('passed'); globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest('consent'); return globalThis.__muchi.show('PromotionResult', 'passed', false); });
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('passed'); globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest('consent_pre_prompt'); return globalThis.__muchi.show('PromotionResult', 'passed', false); });
     await waitScreen('result'); await waitIn('.pp-card[data-status="passed"]');
     assert.equal(await page.locator('.screen.in .pp-sheet').count(), 0, 'promo: no sheet after another prompt');
     assert.equal((await page.evaluate(() => globalThis.__muchiPromo)).at(-1).sheet, 'deferred');
@@ -542,18 +542,27 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
-  // round 22 (REQ-SURVEY-*): ゲーム内アンケート — ops published a survey; a settled player's home shows the card (one card, the
-  // one-prompt gate) → 答える → the sheet: 1〜5, 1つ選ぶ, いくつでも (cap), the free text (optional, scrubbed) → 送る → thanks; the
-  // home shows no second survey this session; after a race result (ホーム) a due survey is the sheet; skip is one tap; no reward
+  // round 22 (REQ-SURVEY-*): ゲーム内アンケート — R22 integration (the user's change): never prominent, never an interruption.
+  // Ops published a survey; the home shows NO card and no badge for it, a race result goes straight home; the only entry is a
+  // quiet row inside お知らせ (a small dot while unread) → the sheet: 1〜5, 1つ選ぶ, いくつでも (cap), the free text (optional,
+  // scrubbed) → 送る → thanks → back to お知らせ (the row is gone); あとで keeps the row; skip is one tap; no prompt; no reward
   async function surveyFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
     const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
-    await page.evaluate(() => { globalThis.__muchiSurvey = []; return globalThis.__muchi.show('Survey', 'home'); });
-    await waitScreen('home'); await waitIn('.sv-card');
-    assert.equal(await page.locator('.screen.in [data-home-card]').count(), 1, 'survey: one home card');
-    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'survey', 'survey: the card claims the session (§58.11)');
-    await shot('survey-home-card', 500);
-    await page.locator('.screen.in .sv-answer').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]');
+    await page.evaluate(async () => { globalThis.__muchiSurvey = []; globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.surveys.demo(); return globalThis.__muchi.show('Home'); });
+    await waitScreen('home'); await page.waitForTimeout(800);
+    assert.equal(await page.locator('.screen.in .sv-card, .screen.in [data-home-card="survey"], .screen.in .sv-row').count(), 0, 'survey: nothing on the home screen');
+    await page.evaluate(() => globalThis.__muchi.show('Survey', 'inbox')); await waitScreen('activity'); await waitIn('.sv-row');
+    assert.equal(await page.locator('.screen.in .sv-row').getAttribute('data-unread'), '1', 'survey: a small dot while unread');
+    assert.equal(await page.locator('.screen.in .sv-dot').count(), 1, 'survey: the dot on the お知らせ screen');
+    assert.ok((await page.evaluate(async () => (await globalThis.__muchi.logic.activity(null, 50)).value.items)).every((x) => !/survey/.test(x.kind)), 'survey: never an activity entry (nothing on the bell count / home badge)');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), null, 'survey: the row takes no prompt (not in §58.11)');
+    await shot('survey-inbox-row', 500);
+    // あとで: back to お知らせ, the row stays (now read)
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await waitIn('.sv-sheet');
+    await page.locator('.screen.in .sv-later').click(); await waitScreen('activity'); await waitIn('.sv-row');
+    assert.equal(await page.locator('.screen.in .sv-row').getAttribute('data-unread'), '0', 'survey: opened once → no dot');
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]');
     assert.ok(await page.locator('.screen.in .sv-next').evaluate((n) => n.classList.contains('disabled')), 'survey: a required question blocks 次へ');
     await shot('survey-scale', 400);
     await page.locator('.screen.in [data-scale="4"]').click(); await page.locator('.screen.in .sv-next').click();
@@ -575,18 +584,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     const res = await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.results('sv_whip_feel')).value);
     assert.equal(res.total, 1, 'survey: the answer reached the ops table');
     assert.ok(res.questions.find((q) => q.id === 'free').texts[0].text.includes('<email>'), 'survey: the free text is scrubbed');
-    await page.locator('.screen.in .sv-close').click(); await waitScreen('home');
-    assert.equal(await page.locator('.screen.in .sv-card').count(), 0, 'survey: no second survey this session');
-    // after a race result: the sheet directly; skip is one tap and that survey never comes back
-    await page.evaluate(() => globalThis.__muchi.show('Survey', 'result')); await waitScreen('survey'); await waitIn('.sv-sheet');
-    await shot('survey-after-result', 400);
-    await page.locator('.screen.in .sv-skip').click(); await waitScreen('home');
-    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.offer('home', 'ja')).value), { survey: null, reason: 'cool_down' }, 'survey: skipped → never again, the cool-down starts');
+    await page.locator('.screen.in .sv-close').click(); await waitScreen('activity'); await page.waitForTimeout(600);
+    assert.equal(await page.locator('.screen.in .sv-row').count(), 0, 'survey: answered → the row is gone');
+    // skip is one tap from the sheet and that survey never comes back
+    await page.evaluate(() => globalThis.__muchi.show('Survey', 'sheet')); await waitScreen('survey'); await waitIn('.sv-sheet');
+    await page.locator('.screen.in .sv-skip').click(); await waitScreen('activity');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.offer('inbox', 'ja')).value), { survey: null, reason: 'cool_down', unread: false }, 'survey: skipped → never again, the cool-down starts');
     assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'survey: nothing granted');
-    // another prompt this session → no survey card
-    await page.evaluate(async () => { await globalThis.__muchi.logic.surveys.demo(); globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest('review'); return globalThis.__muchi.show('Home'); });
-    await waitScreen('home'); await page.waitForTimeout(800);
-    assert.equal(await page.locator('.screen.in .sv-card').count(), 0, 'survey: the review showed this session → no survey (lowest priority)');
     await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.logic.surveys.clear(); });
   }
 
@@ -1132,7 +1136,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal((await page.evaluate(() => globalThis.__muchiReview)).at(-1).skipped, 'session_prompt');
     await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
     // R21 integration (§58.11 = §64.6): ONE table for every prompt; several due → the table decides; none in the FTUE
-    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.prompts.priority()), ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt', 'survey'], 'the one prompt table');
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.prompts.priority()), ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt'], 'the one prompt table');
     assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.pick(['review_prompt', 'reminders_pre_permission', 'release_notes', 'account_link'])), 'release_notes', 'release notes before the reminders card, the account link and the review');
     assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.ftue(true); const r = [p.can('review_prompt'), p.can('consent_pre_prompt'), p.pick(['release_notes'])]; p.ftue(false); return r; }), [false, false, null], 'no prompt during the FTUE');
     assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.claimForTest('release_notes'); const r = [p.can('account_link'), p.can('reminders_pre_permission'), p.can('release_notes')]; p.reset(); return r; }), [false, false, true], 'the release notes took the session: no account link, no reminders card');

@@ -1655,6 +1655,7 @@
   "{g}　星{n}　{text}": "{g}  Star {n}  {text}",
   "{m}　星{n}　{text}　NEW": "{m}  Star {n}  {text}  NEW",
   "_surveys": "---- round 22: in-app surveys (§69)",
+  "アンケートにご協力ください ›": "Help us with a short survey ›",
   "{n}つまで選べます": "Choose up to {n}"
  }
 }

@@ -321,17 +321,19 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
   }
 
-  // round 22: アンケート in English (REQ-SURVEY-022): the home card, each question type, the thanks state
+  // round 22: アンケート in English (REQ-SURVEY-022): the お知らせ row, each question type, the thanks state
   {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
-    await show('Survey', 'home'); await waitScreen('home'); await waitIn('.sv-card'); await shot('survey-card', 500);
-    assert.match(await page.locator('.screen.in .sv-card').innerText(), /How the whip feels/, 'survey: the title in English');
-    await page.locator('.screen.in .sv-answer').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]'); await shot('survey-scale', 400);
+    // R22 integration (the user's change): the quiet row inside お知らせ is the only entry (no home card)
+    await show('Survey', 'inbox'); await waitScreen('activity'); await waitIn('.sv-row'); await shot('survey-row', 500);
+    assert.match(await page.locator('.screen.in .sv-row').innerText(), /Help us with a short survey/, 'survey: the お知らせ row in English');
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]'); await shot('survey-scale', 400);
+    assert.match(await page.locator('.screen.in .sv-title').innerText(), /How the whip feels/, 'survey: the title in English');
     await page.locator('.screen.in [data-scale="3"]').click(); await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="single"]'); await shot('survey-single', 400);
     await page.locator('.screen.in [data-option="events"]').click(); await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="multi"]'); await shot('survey-multi', 400);
     await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="text"]'); await shot('survey-text', 400);
     await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await waitIn('.sv-thanks'); await shot('survey-thanks', 400);
-    await page.locator('.screen.in .sv-close').click(); await waitScreen('home');
+    await page.locator('.screen.in .sv-close').click(); await waitScreen('activity');
     await page.evaluate(() => globalThis.__muchi.logic.surveys.clear());
   }
 

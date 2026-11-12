@@ -8,9 +8,10 @@ namespace Muchi.Game
     // R21 integration (§58.11 = §64.6): the Round 20 SessionPromptGate (consent → reminders → review) and the Round 21
     // SessionPrompts.TryClaim list were two gates for one rule. They are one now: Muchi.Client.SessionPrompts, with one priority
     // table (recommended update > consent pre-prompt > comeback welcome > release notes > promotion outcome (R22 §68) >
-    // reminders pre-permission card > account-link prompt > review prompt > survey (R22 §69)), at most one per session, none
-    // in the FTUE, none over a §46 screen. Every model that can interrupt the player takes the same instance through its
-    // Prompts property (ReleaseNotesModel through its constructor; PromotionModel and SurveyModel since R22). The §67
+    // reminders pre-permission card > account-link prompt > review prompt), at most one per session, none in the FTUE, none
+    // over a §46 screen. Every model that can interrupt the player takes the same instance through its Prompts property
+    // (ReleaseNotesModel through its constructor; PromotionModel since R22). §69 surveys never interrupt (a quiet row in
+    // お知らせ), so SurveyModel takes no prompt. The §67
     // play-time sheet is the exempt row: player-requested, it never takes or waits for the prompt (SelfLimitsModel has no
     // Prompts). This file keeps the device-side pieces that go with it.
 
@@ -41,7 +42,7 @@ namespace Muchi.Game
         public LocalNotificationModel Reminders { get; set; }
         public ClientErrorModel Errors { get; set; }
         public ReviewPromptModel Review { get; set; }
-        /// <summary>R22 §69: the survey card / sheet of the old account closes; a new session for the new one.</summary>
+        /// <summary>R22 §69: the old account's お知らせ survey row / sheet closes.</summary>
         public SurveyModel Surveys { get; set; }
         public SessionPrompts Prompts { get; set; }
         /// <summary>R21 integration (§63): the deferred deep link waiting on this device.</summary>

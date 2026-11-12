@@ -131,7 +131,7 @@ const SURVEY_FACTS = { platform: 'ios', appVersion: '1.4.0' };
 const DEMO_SURVEY: SurveyDef = {
   id: 'sv_whip_feel', title: { ja: 'ムチの手ごたえについて', en: 'How the whip feels' },
   intro: { ja: '4つの短い質問です。答えなくてもかまいません。', en: 'Four short questions. You do not have to answer.' },
-  placements: ['home', 'result'], targeting: { minRankedRaces: 1 },
+  targeting: { minRankedRaces: 1 },
   questions: [
     { id: 'feel', kind: 'scale', required: true, text: { ja: 'ムチを入れた時の手ごたえはどうですか？', en: 'How does it feel when you use the whip?' },
       labels: { low: { ja: '物足りない', en: 'Too little' }, high: { ja: 'ちょうどいい', en: 'Just right' } } },

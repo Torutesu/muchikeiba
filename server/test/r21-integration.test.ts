@@ -61,8 +61,9 @@ describe('§58 KPI classification of the Round 21 events (REQ-CNS-012, §58.7)',
 });
 
 describe('§58.11 = §64.6: ONE prompt gate with one priority table (C#, Unity, prototype, spec)', () => {
-  // R22 integration: §68 promotion_outcome (earned feedback, after release notes) and §69 survey (the lowest) joined the table
-  const TABLE = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt', 'survey'];
+  // R22 integration: §68 promotion_outcome (earned feedback, after release notes) joined the table; §69 surveys never
+  // interrupt (a quiet row in お知らせ), so they are not in it
+  const TABLE = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt'];
   it('the protocol table (§58.11) is the order, and §64.6 points at it instead of keeping its own list', () => {
     const p = read('contracts/protocol.md');
     const s = p.slice(p.indexOf('### 58.11'), p.indexOf('## 59.'));
@@ -82,13 +83,13 @@ describe('§58.11 = §64.6: ONE prompt gate with one priority table (C#, Unity, 
     expect(app).not.toMatch(/promptSession/);
     const game = csFiles('unity/Assets/Muchi/Game');
     expect(game).not.toMatch(/class SessionPromptGate|SessionPromptKind|new SessionPromptGate/);
-    for (const model of ['ConsentModel', 'LocalNotificationModel', 'ReviewPromptModel', 'AccountLinkPrompt', 'ComebackModel', 'MaintenanceModel', 'PromotionModel', 'SurveyModel']) {
+    for (const model of ['ConsentModel', 'LocalNotificationModel', 'ReviewPromptModel', 'AccountLinkPrompt', 'ComebackModel', 'MaintenanceModel', 'PromotionModel']) {
       const i = game.indexOf(`class ${model}`);
       expect(i, model).toBeGreaterThan(0);
       expect(game.slice(i, i + 40_000), model).toMatch(/public SessionPrompts Prompts \{ get; set; \}/);
     }
     // every kind is claimed by its model (the C# constant names appear in a TryClaim or CanShow)
-    for (const k of ['RecommendedUpdate', 'ConsentPrePrompt', 'ComebackWelcome', 'ReleaseNotes', 'PromotionOutcome', 'RemindersPrePermission', 'AccountLink', 'ReviewPrompt', 'Survey']) expect(game, k).toMatch(new RegExp(`(TryClaim|CanShow)\\(SessionPrompts\\.${k}\\b`));
+    for (const k of ['RecommendedUpdate', 'ConsentPrePrompt', 'ComebackWelcome', 'ReleaseNotes', 'PromotionOutcome', 'RemindersPrePermission', 'AccountLink', 'ReviewPrompt']) expect(game, k).toMatch(new RegExp(`(TryClaim|CanShow)\\(SessionPrompts\\.${k}\\b`));
   });
 });
 

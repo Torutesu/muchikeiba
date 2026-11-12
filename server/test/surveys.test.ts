@@ -36,7 +36,7 @@ const V = m.progression.consent!.privacyVersion;
 
 export const SAMPLE: SurveyDef = {
   id: 'sv_whip_feel', title: { ja: 'ムチの手ごたえ', en: 'How the whip feels' }, intro: { ja: '1分で終わる質問です。', en: 'Takes about a minute.' },
-  placements: ['home', 'result'], targeting: {},
+  targeting: {},
   questions: [
     { id: 'feel', kind: 'scale', required: true, text: { ja: 'ムチを入れた時の手ごたえは？', en: 'How does the whip feel?' }, labels: { low: { ja: '弱い', en: 'Weak' }, high: { ja: '強い', en: 'Strong' } } },
     { id: 'mode', kind: 'single', required: true, text: { ja: 'いちばん遊ぶのは？', en: 'What do you play most?' }, options: [{ id: 'ranked', text: { ja: 'ランク戦', en: 'Ranked' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }] },
@@ -80,7 +80,8 @@ describe('定義の検査 (REQ-SURVEY-001/002)', () => {
     expect(surveyDefProblems(m, def({ questions: [{ ...SAMPLE.questions[3]!, required: true }] })).join()).toMatch(/always optional/);
     expect(surveyDefProblems(m, def({ questions: [{ ...SAMPLE.questions[3]!, maxLength: 201 }] })).join()).toMatch(/maxLength/);
     expect(surveyDefProblems(m, def({ questions: [SAMPLE.questions[0]!, SAMPLE.questions[0]!] })).join()).toMatch(/used twice/);
-    expect(surveyDefProblems(m, def({ placements: ['race'] as never })).join()).toMatch(/unknown placement/);
+    // R22 integration (the user's change): one quiet place only (お知らせ › アンケート); a definition names no placement
+    expect(surveyDefProblems(m, def({ placements: ['inbox'] } as never)).join()).toMatch(/placements/);
   });
   it('betting words, pressure words, NG names and reward-like keys are refused (景表法: answers are never rewarded)', () => {
     expect(surveyDefProblems(m, def({ title: { ja: 'オッズの見方', en: 'Odds' } })).join()).toMatch(/betting words/);
@@ -121,8 +122,8 @@ describe('出す判断 (REQ-SURVEY-005/006)', () => {
   it('order: disabled → account_closing → ftue → current → cool_down → first open → none', async () => {
     const w = s0();
     const s = await st(w, 'p');
-    const d = (o: { cfg?: typeof CFG; l?: LiveSurvey[]; st?: PlayerState; placement?: 'home' | 'result'; ftue?: boolean } = {}) =>
-      decideSurveyOffer(o.cfg ?? CFG, o.l ?? [live()], o.st ?? s, { ...facts, inFtue: o.ftue }, o.placement ?? 'home', 'ja', NOW);
+    const d = (o: { cfg?: typeof CFG; l?: LiveSurvey[]; st?: PlayerState; placement?: 'inbox'; ftue?: boolean } = {}) =>
+      decideSurveyOffer(o.cfg ?? CFG, o.l ?? [live()], o.st ?? s, { ...facts, inFtue: o.ftue }, o.placement ?? 'inbox', 'ja', NOW);
     expect(d().reason).toBe('ftue'); // a new player: free 10-pull not used
     s.flags.tutorialGachaUsed = true;
     expect(d().survey?.id).toBe('sv_whip_feel');
@@ -131,24 +132,33 @@ describe('出す判断 (REQ-SURVEY-005/006)', () => {
     s.deletion = { status: 'scheduled' } as never;
     expect(d().reason).toBe('account_closing');
     delete s.deletion;
-    s.surveys = { v: 1, shows: {}, done: { sv_old: { at: NOW - HOUR, outcome: 'skipped', placement: 'home', title: { ja: 'a', en: 'a' } } }, current: null, lastDoneAt: NOW - HOUR };
+    s.surveys = { v: 1, shows: {}, done: { sv_old: { at: NOW - HOUR, outcome: 'skipped', placement: 'inbox', title: { ja: 'a', en: 'a' } } }, current: null, lastDoneAt: NOW - HOUR };
     expect(d().reason).toBe('cool_down');
     s.surveys.current = 'sv_whip_feel'; // shown earlier, not answered: it continues whatever the cool-down
     expect(d().survey?.id).toBe('sv_whip_feel');
     s.surveys.lastDoneAt = NOW - 73 * HOUR; s.surveys.current = null;
     expect(d().survey?.id).toBe('sv_whip_feel');
-    expect(d({ l: [live(def({ placements: ['result'] }))] }).reason).toBe('none');
     expect(d({ l: [live(SAMPLE, { startAt: NOW + HOUR })] }).reason).toBe('none'); // scheduled
     expect(d({ l: [] }).reason).toBe('none');
     s.surveys.shows.sv_whip_feel = { n: 2, firstAt: NOW, lastAt: NOW };
     expect(d().reason).toBe('none'); // maxShowsPerSurvey
+  });
+  it('R22 integration: the お知らせ row is unread until the survey was opened once (a small dot there, never a home badge)', async () => {
+    const w = s0();
+    await settled(w, 'p');
+    const l = live();
+    const o1 = await w.svc.surveyOffer('p', [l], facts, 'inbox', 'ja');
+    expect(o1).toMatchObject({ survey: { id: 'sv_whip_feel', placement: 'inbox' }, unread: true });
+    await w.svc.surveyShown('p', l, 'inbox');
+    expect(await w.svc.surveyOffer('p', [l], facts, 'inbox', 'ja')).toMatchObject({ survey: { id: 'sv_whip_feel' }, unread: false });
+    expect(decideSurveyOffer(CFG, [], await st(w, 'p'), facts, 'inbox', 'ja', NOW)).toEqual({ survey: null, reason: 'none', unread: false });
   });
   it('one at a time: the earliest end first; the texts of one language only', async () => {
     const w = s0();
     await settled(w, 'p');
     const s = await st(w, 'p');
     const a = live(def({ id: 'sv_aaa' }), { endAt: NOW + 5 * DAY }), b = live(def({ id: 'sv_bbb' }), { endAt: NOW + 2 * DAY });
-    const o = decideSurveyOffer(CFG, [a, b], s, facts, 'home', 'en', NOW);
+    const o = decideSurveyOffer(CFG, [a, b], s, facts, 'inbox', 'en', NOW);
     expect(o.survey?.id).toBe('sv_bbb');
     expect(o.survey?.title).toBe('How the whip feels');
     expect(JSON.stringify(o.survey)).not.toMatch(/[ぁ-んァ-ン一-龯]/);
@@ -158,7 +168,7 @@ describe('出す判断 (REQ-SURVEY-005/006)', () => {
     const w = s0();
     await settled(w, 'p');
     const s = await st(w, 'p');
-    const t = (targeting: SurveyDef['targeting'], f = facts) => decideSurveyOffer(CFG, [live(def({ targeting }))], s, f, 'home', 'ja', NOW).survey !== null;
+    const t = (targeting: SurveyDef['targeting'], f = facts) => decideSurveyOffer(CFG, [live(def({ targeting }))], s, f, 'inbox', 'ja', NOW).survey !== null;
     expect(t({ minRankedRaces: 30 })).toBe(true);
     expect(t({ minRankedRaces: 31 })).toBe(false);
     expect(t({ minDaysSinceInstall: 21 })).toBe(false);
@@ -217,15 +227,15 @@ describe('出した・スキップ・答え (REQ-SURVEY-007..010/013)', () => {
     await settled(w, 'p');
     const before = await st(w, 'p');
     const l = live();
-    expect(await w.svc.surveyShown('p', l, 'home')).toMatchObject({ surveyId: 'sv_whip_feel', shows: 1 });
+    expect(await w.svc.surveyShown('p', l, 'inbox')).toMatchObject({ surveyId: 'sv_whip_feel', shows: 1 });
     expect((await st(w, 'p')).surveys?.current).toBe('sv_whip_feel');
     const k1 = key();
-    const a = await w.svc.surveyAnswer('p', l, { placement: 'home', answers: GOOD, facts }, k1);
+    const a = await w.svc.surveyAnswer('p', l, { placement: 'inbox', answers: GOOD, facts }, k1);
     expect(a).toMatchObject({ surveyId: 'sv_whip_feel', outcome: 'answered', at: NOW });
-    expect(await w.svc.surveyAnswer('p', l, { placement: 'home', answers: GOOD, facts }, k1)).toEqual(a); // same key → same answer
-    expect(await code(w.svc.surveyAnswer('p', l, { placement: 'home', answers: GOOD, facts }, key()))).toBe('CONFLICT');
-    expect(await code(w.svc.surveyAnswer('p', l, { placement: 'home', answers: GOOD, facts }, null))).toBe('IDEMPOTENCY_KEY_REQUIRED');
-    expect(await code(w.svc.surveySkip('p', l, 'home'))).toBe('CONFLICT');
+    expect(await w.svc.surveyAnswer('p', l, { placement: 'inbox', answers: GOOD, facts }, k1)).toEqual(a); // same key → same answer
+    expect(await code(w.svc.surveyAnswer('p', l, { placement: 'inbox', answers: GOOD, facts }, key()))).toBe('CONFLICT');
+    expect(await code(w.svc.surveyAnswer('p', l, { placement: 'inbox', answers: GOOD, facts }, null))).toBe('IDEMPOTENCY_KEY_REQUIRED');
+    expect(await code(w.svc.surveySkip('p', l, 'inbox'))).toBe('CONFLICT');
     const after = await st(w, 'p');
     expect(after.wallet).toEqual(before.wallet);
     expect(after.items).toEqual(before.items);
@@ -233,53 +243,53 @@ describe('出した・スキップ・答え (REQ-SURVEY-007..010/013)', () => {
     expect(after.titles).toEqual(before.titles);
     expect(after.surveys?.current).toBeNull();
     expect(after.surveys?.done.sv_whip_feel).toMatchObject({ outcome: 'answered', synced: false, answers: GOOD, segment: { platform: 'ios', rankedBand: '10-49', installBand: '7-29d' } });
-    const o = await w.svc.surveyOffer('p', [l], facts, 'home', 'ja');
+    const o = await w.svc.surveyOffer('p', [l], facts, 'inbox', 'ja');
     expect(o.survey).toBeNull();
     expect(o.pending.map((x) => x.surveyId)).toEqual(['sv_whip_feel']);
     await w.svc.surveySynced('p', ['sv_whip_feel']);
-    expect((await w.svc.surveyOffer('p', [l], facts, 'home', 'ja')).pending).toEqual([]);
+    expect((await w.svc.surveyOffer('p', [l], facts, 'inbox', 'ja')).pending).toEqual([]);
     expect(w.kpi.filter((r) => r.name.startsWith('survey_')).map((r) => [r.name, r.s1, r.s2, r.count])).toEqual([
-      ['survey_shown', 'sv_whip_feel', 'home', 1], ['survey_answer', 'sv_whip_feel', 'home', 4]]);
+      ['survey_shown', 'sv_whip_feel', 'inbox', 1], ['survey_answer', 'sv_whip_feel', 'inbox', 4]]);
   });
   it('skip: one tap, never offered again, the cool-down starts, KPI once', async () => {
     const w = world();
     await settled(w, 'p');
     const a = live(def({ id: 'sv_aaa' })), b = live(def({ id: 'sv_bbb' }));
-    await w.svc.surveyShown('p', a, 'result');
-    expect(await w.svc.surveySkip('p', a, 'result')).toMatchObject({ outcome: 'skipped' });
-    expect(await w.svc.surveySkip('p', a, 'result')).toMatchObject({ outcome: 'skipped' });
-    expect((await w.svc.surveyOffer('p', [a, b], facts, 'home', 'ja')).reason).toBe('cool_down');
+    await w.svc.surveyShown('p', a, 'inbox');
+    expect(await w.svc.surveySkip('p', a, 'inbox')).toMatchObject({ outcome: 'skipped' });
+    expect(await w.svc.surveySkip('p', a, 'inbox')).toMatchObject({ outcome: 'skipped' });
+    expect((await w.svc.surveyOffer('p', [a, b], facts, 'inbox', 'ja')).reason).toBe('cool_down');
     w.clock.now = NOW + 73 * HOUR;
-    expect((await w.svc.surveyOffer('p', [a, b], facts, 'home', 'ja')).survey?.id).toBe('sv_bbb');
-    expect(await code(w.svc.surveyAnswer('p', a, { placement: 'home', answers: GOOD, facts }, key()))).toBe('CONFLICT');
+    expect((await w.svc.surveyOffer('p', [a, b], facts, 'inbox', 'ja')).survey?.id).toBe('sv_bbb');
+    expect(await code(w.svc.surveyAnswer('p', a, { placement: 'inbox', answers: GOOD, facts }, key()))).toBe('CONFLICT');
     expect(w.kpi.filter((r) => r.name === 'survey_skip')).toHaveLength(1);
   });
   it('closed, unknown, scheduled, targeting, deletion and tombstone', async () => {
     const w = world();
     await settled(w, 'p');
-    const ans = (l: LiveSurvey | null, id = 'p') => code(w.svc.surveyAnswer(id, l, { placement: 'home', answers: GOOD, facts }, key()));
+    const ans = (l: LiveSurvey | null, id = 'p') => code(w.svc.surveyAnswer(id, l, { placement: 'inbox', answers: GOOD, facts }, key()));
     expect(await ans(live(SAMPLE, { endAt: NOW - 1 }))).toBe('SURVEY_CLOSED');
     expect(await ans(null)).toBe('NOT_FOUND');
     expect(await ans(live(SAMPLE, { startAt: NOW + 1 }))).toBe('NOT_FOUND');
     expect(await ans(live(def({ targeting: { platforms: ['android'] } })))).toBe('NOT_ELIGIBLE');
-    expect(await code(w.svc.surveyShown('p', live(SAMPLE, { endAt: NOW - 1 }), 'home'))).toBe('SURVEY_CLOSED');
+    expect(await code(w.svc.surveyShown('p', live(SAMPLE, { endAt: NOW - 1 }), 'inbox'))).toBe('SURVEY_CLOSED');
     const off = world({ ...m, progression: { ...m.progression, surveys: { ...CFG, enabled: false } } });
     await settled(off, 'p');
-    expect(await code(off.svc.surveyAnswer('p', live(), { placement: 'home', answers: GOOD, facts }, key()))).toBe('SURVEY_CLOSED');
+    expect(await code(off.svc.surveyAnswer('p', live(), { placement: 'inbox', answers: GOOD, facts }, key()))).toBe('SURVEY_CLOSED');
     await w.svc.tx('p', null, (s) => { s.deletion = { status: 'scheduled' } as never; });
     expect(await ans(live())).toBe('NOT_ELIGIBLE');
     w.repo.delete('gone');
     expect(await ans(live(), 'gone')).toBe('NOT_FOUND');
-    expect(await code(w.svc.surveyOffer('gone', [live()], facts, 'home', 'ja'))).toBe('NOT_FOUND');
-    expect(await code(w.svc.surveySkip('gone', live(), 'home'))).toBe('NOT_FOUND');
+    expect(await code(w.svc.surveyOffer('gone', [live()], facts, 'inbox', 'ja'))).toBe('NOT_FOUND');
+    expect(await code(w.svc.surveySkip('gone', live(), 'inbox'))).toBe('NOT_FOUND');
   });
   it('analytics off: still answerable, no segment, the optional KPI rows are withheld (REQ-SURVEY-013)', async () => {
     const w = world();
     await settled(w, 'p');
     await w.svc.setPrivacyChoices('p', { privacyVersion: V, source: 'settings', analytics: false });
     w.kpi.length = 0;
-    await w.svc.surveyShown('p', live(), 'home');
-    await w.svc.surveyAnswer('p', live(), { placement: 'home', answers: GOOD, facts }, key());
+    await w.svc.surveyShown('p', live(), 'inbox');
+    await w.svc.surveyAnswer('p', live(), { placement: 'inbox', answers: GOOD, facts }, key());
     expect((await st(w, 'p')).surveys?.done.sv_whip_feel?.segment).toBeNull();
     expect(w.kpi.filter((r) => r.name.startsWith('survey_'))).toEqual([]);
     for (const n of ['survey_shown', 'survey_skip', 'survey_answer']) expect(kpiClassOf(n)).toBe('optional');
@@ -353,9 +363,9 @@ describe('仕組みのつながり (REQ-SURVEY-014/019/020)', () => {
     for (const p of ['/v1/surveys/current', '/v1/surveys/sv_x/answers', '/v1/surveys/sv_x/skip']) expect(endpointGroup(p)).toBe('core');
     const w = world();
     await settled(w, 'p');
-    await w.svc.surveyAnswer('p', live(), { placement: 'result', answers: GOOD, facts }, key());
+    await w.svc.surveyAnswer('p', live(), { placement: 'inbox', answers: GOOD, facts }, key());
     const doc = buildExportDocument(m, await st(w, 'p'), { ledger: [], gacha: [], names: {}, reportsMade: [], kpiEvents: null }, 'dex_x', 'ja', NOW);
-    expect(doc.analytics.surveys).toEqual([{ surveyId: 'sv_whip_feel', title: 'ムチの手ごたえ', titleEn: 'How the whip feels', outcome: 'answered', at: NOW, placement: 'result', answers: GOOD }]);
+    expect(doc.analytics.surveys).toEqual([{ surveyId: 'sv_whip_feel', title: 'ムチの手ごたえ', titleEn: 'How the whip feels', outcome: 'answered', at: NOW, placement: 'inbox', answers: GOOD }]);
   });
   it('the deletion run calls the surveys port', async () => {
     const calls: string[] = [];
@@ -412,27 +422,29 @@ describe('HTTP: プレイヤーと運営の画面 (REQ-SURVEY-005..011/015..018)
     expect((await call('POST', '/v1/admin/surveys', { role: 'operator', body: { survey: SAMPLE, reason: 'new survey' } })).body).toMatchObject({ status: 'draft', rev: 1 });
     expect((await call('PUT', '/v1/admin/surveys/sv_whip_feel', { role: 'operator', body: { survey: SAMPLE, rev: 1, reason: 'typo' } })).body.rev).toBe(2);
     // a draft is invisible to players
-    expect((await call('GET', '/v1/surveys/current?placement=home', { headers: hdr })).body).toEqual({ survey: null, reason: 'none' });
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'home', answers: GOOD }, idem: 'c:a1', headers: hdr })).status).toBe(404);
+    expect((await call('GET', '/v1/surveys/current?placement=inbox', { headers: hdr })).body).toEqual({ survey: null, reason: 'none', unread: false });
+    expect((await call('GET', '/v1/surveys/current?placement=home', { headers: hdr })).status).toBe(400); // R22 integration: no home card any more
+    expect((await call('GET', '/v1/surveys/current?placement=result', { headers: hdr })).status).toBe(400); // …and no sheet after a result
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, idem: 'c:a1', headers: hdr })).status).toBe(404);
     expect((await call('POST', '/v1/admin/surveys/sv_whip_feel/publish', { role: 'operator', body: { startAt: NOW, endAt: NOW + DAY, reason: 'go live' } })).status).toBe(403);
     expect((await call('POST', '/v1/admin/surveys/sv_whip_feel/publish', { role: 'admin', body: { startAt: NOW, endAt: NOW + DAY, reason: 'go live' } })).body.status).toBe('live');
     // player: offer in English, shown, answer (strict), answer again
-    const cur = await call('GET', '/v1/surveys/current?placement=result', { headers: hdr, lang: 'en' });
-    expect(cur.body).toMatchObject({ reason: null, survey: { id: 'sv_whip_feel', title: 'How the whip feels', placement: 'result' } });
+    const cur = await call('GET', '/v1/surveys/current?placement=inbox', { headers: hdr, lang: 'en' });
+    expect(cur.body).toMatchObject({ reason: null, survey: { id: 'sv_whip_feel', title: 'How the whip feels', placement: 'inbox' } });
     expect(cur.body.pending).toBeUndefined();
     expect((await call('GET', '/v1/surveys/current?placement=race')).status).toBe(400);
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/shown', { body: { placement: 'result' } })).body.shows).toBe(1);
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'result', answers: GOOD }, headers: hdr })).status).toBe(400); // no key
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'result', answers: { ...GOOD, x: 1 } }, idem: 'c:a2', headers: hdr })).status).toBe(400);
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'result', answers: GOOD, coins: 5 }, idem: 'c:a2', headers: hdr })).status).toBe(400);
-    const a = await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'result', answers: { ...GOOD, free: 'mail me at a@b.co' } }, idem: 'c:a3', headers: hdr });
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/shown', { body: { placement: 'inbox' } })).body.shows).toBe(1);
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, headers: hdr })).status).toBe(400); // no key
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: { ...GOOD, x: 1 } }, idem: 'c:a2', headers: hdr })).status).toBe(400);
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD, coins: 5 }, idem: 'c:a2', headers: hdr })).status).toBe(400);
+    const a = await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: { ...GOOD, free: 'mail me at a@b.co' } }, idem: 'c:a3', headers: hdr });
     expect(a.body).toEqual({ surveyId: 'sv_whip_feel', outcome: 'answered', at: NOW });
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'result', answers: GOOD }, idem: 'c:a3', headers: hdr })).body).toEqual(a.body);
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'result', answers: GOOD }, idem: 'c:a4', headers: hdr })).status).toBe(409);
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, idem: 'c:a3', headers: hdr })).body).toEqual(a.body);
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, idem: 'c:a4', headers: hdr })).status).toBe(409);
     expect((await st(w, 'p')).surveys?.done.sv_whip_feel?.synced).toBe(true);
     // q skips
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/skip', { user: 'q', body: { placement: 'home' } })).body.outcome).toBe('skipped');
-    expect((await call('GET', '/v1/surveys/current?placement=home', { user: 'q', headers: hdr })).body.reason).toBe('cool_down');
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/skip', { user: 'q', body: { placement: 'inbox' } })).body.outcome).toBe('skipped');
+    expect((await call('GET', '/v1/surveys/current?placement=inbox', { user: 'q', headers: hdr })).body.reason).toBe('cool_down');
     // results (no ids), CSV, hide
     const res = await call('GET', '/v1/admin/surveys/sv_whip_feel/results', { role: 'viewer' });
     expect(res.body).toMatchObject({ total: 1, segmented: 1 });
@@ -451,22 +463,22 @@ describe('HTTP: プレイヤーと運営の画面 (REQ-SURVEY-005..011/015..018)
     setNow(NOW + HOUR);
     const r3 = await settled(w, 'r');
     void r3;
-    const closed = await call('POST', '/v1/surveys/sv_whip_feel/answers', { user: 'r', body: { placement: 'home', answers: GOOD }, idem: 'c:a5', headers: hdr });
+    const closed = await call('POST', '/v1/surveys/sv_whip_feel/answers', { user: 'r', body: { placement: 'inbox', answers: GOOD }, idem: 'c:a5', headers: hdr });
     expect(closed.status).toBe(409);
     expect(closed.body.error.code).toBe('SURVEY_CLOSED');
-    expect((await call('GET', '/v1/surveys/current?placement=home', { user: 'r', headers: hdr })).body.survey).toBeNull();
+    expect((await call('GET', '/v1/surveys/current?placement=inbox', { user: 'r', headers: hdr })).body.survey).toBeNull();
   });
   it('self-QA: the retry of an answer saved just before the close gets its original result, a new one SURVEY_CLOSED', async () => {
     const { w, call, ops, setNow } = await app();
     await settled(w, 'p'); await settled(w, 'q');
     await ops.api.surveys!.create(normalizeSurveyDef(SAMPLE), 'op', NOW);
     await ops.api.surveys!.publish('sv_whip_feel', NOW, NOW + DAY, 5, 'ad', NOW);
-    const first = await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'home', answers: GOOD }, idem: 'c:r1' });
+    const first = await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, idem: 'c:r1' });
     expect(first.status).toBe(200);
     await ops.api.surveys!.close('sv_whip_feel', 'ad', NOW + HOUR);
     setNow(NOW + 2 * HOUR);
-    expect(await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'home', answers: GOOD }, idem: 'c:r1' })).toEqual(first);
-    const late = await call('POST', '/v1/surveys/sv_whip_feel/answers', { user: 'q', body: { placement: 'home', answers: GOOD }, idem: 'c:r2' });
+    expect(await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, idem: 'c:r1' })).toEqual(first);
+    const late = await call('POST', '/v1/surveys/sv_whip_feel/answers', { user: 'q', body: { placement: 'inbox', answers: GOOD }, idem: 'c:r2' });
     expect([late.status, late.body.error.code]).toEqual([409, 'SURVEY_CLOSED']);
   });
   it('an answer the ops table missed is re-sent on the next offer read', async () => {
@@ -476,10 +488,10 @@ describe('HTTP: プレイヤーと運営の画面 (REQ-SURVEY-005..011/015..018)
     await ops.api.surveys!.publish('sv_whip_feel', NOW, NOW + DAY, 5, 'ad', NOW);
     const ingest = ops.api.surveys!.ingest;
     ops.api.surveys!.ingest = async () => { throw new Error('ops down'); };
-    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'home', answers: GOOD }, idem: 'c:z1' })).status).toBe(200); // saved on the player
+    expect((await call('POST', '/v1/surveys/sv_whip_feel/answers', { body: { placement: 'inbox', answers: GOOD }, idem: 'c:z1' })).status).toBe(200); // saved on the player
     expect((await st(w, 'p')).surveys?.done.sv_whip_feel?.synced).toBe(false);
     ops.api.surveys!.ingest = ingest;
-    await call('GET', '/v1/surveys/current?placement=home');
+    await call('GET', '/v1/surveys/current?placement=inbox');
     expect((await st(w, 'p')).surveys?.done.sv_whip_feel?.synced).toBe(true);
     expect(ops.surveys.results('sv_whip_feel', NOW).total).toBe(1);
   });

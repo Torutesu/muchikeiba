@@ -11,7 +11,7 @@ const STATUS = { draft: '下書き', scheduled: '予定', live: '公開中', end
 const KIND = { single: '1つ選ぶ', multi: 'いくつでも', scale: '1〜5', text: '自由な文' };
 const TEMPLATE = {
   id: 'sv_example', title: { ja: '題', en: 'Title' }, intro: { ja: '短い質問です。', en: 'A few short questions.' },
-  placements: ['home', 'result'], targeting: { minRankedRaces: 5 },
+  targeting: { minRankedRaces: 5 },
   questions: [
     { id: 'feel', kind: 'scale', required: true, text: { ja: '質問', en: 'Question' }, labels: { low: { ja: '低い', en: 'Low' }, high: { ja: '高い', en: 'High' } } },
     { id: 'pick', kind: 'single', required: true, text: { ja: '質問', en: 'Question' }, options: [{ id: 'a', text: { ja: 'A', en: 'A' } }, { id: 'b', text: { ja: 'B', en: 'B' } }] },
@@ -109,7 +109,7 @@ async function detailView(main, id) {
     h('h1', {}, statusBadge(s.status), ' ', s.title.ja, h('span', { class: 'muted small' }, `　${s.id} · rev ${s.rev}`)),
     actions.length ? h('div', { class: 'row' }, actions) : null,
     card('概要', kv([['状態', STATUS[s.status]], ['窓（JST）', s.startAt ? `${jst(s.startAt)} 〜 ${jst(s.endAt)}` : '未公開'], ['早く閉じた', s.closedAt ? jst(s.closedAt) : '—'],
-      ['出す場所', s.placements.map((p) => (p === 'home' ? 'ホームのカード' : 'レース結果の後')).join('・')], ['対象', JSON.stringify(s.def.targeting)],
+      ['出す場所', 'お知らせの中の行だけ（割り込まない・ホームに出さない）'], ['対象', JSON.stringify(s.def.targeting)],
       ['作成', `${jst(s.createdAt)} ${s.createdBy}`], ['公開', s.publishedAt ? `${jst(s.publishedAt)} ${s.publishedBy}` : '—']], 'sv-summary')),
     publishForm,
     results ? resultsView(main, id, results) : card('質問', h('ol', {}, s.def.questions.map((q) => h('li', {}, `${q.text.ja}（${KIND[q.kind]}）`)))));

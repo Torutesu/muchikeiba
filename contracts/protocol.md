@@ -3505,7 +3505,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - サーバー：`POST /v1/client-errors` は認証された束でもプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（§60.6）。
 - 設定の画面では「プライバシー」の中に「広告と分析」と「エラーの自動送信」を並べ、エラーの自動送信の画面は「プレイヤーIDを添えるかは『分析への協力』に従います」と案内する。
 
-### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64・§67・§68・§69 との関係、R20 統合・R21 統合で1つの表に、R22 統合で2行と表の外の1行を足した）
+### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64・§67・§68・§69 との関係、R20 統合・R21 統合で1つの表に、R22 統合で1行と表の外の1行を足した）
 - **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。**FTUE の間はどれも出さない**。§46 のメンテナンス・強制アップデートの画面（`ApiClient.Outage` が `None` 以外）の上にも出さない（それは案内ではなく画面で、その間は判定もしない）。
 - **同じ時に2つ以上が出せる時の順（この表が唯一の決まり。§64.6 もこの表を指す。R21 統合）**：
 
@@ -3518,13 +3518,14 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | 5 | `promotion_outcome` | 昇級戦の結果のシート（突破／届かず、§68.6。R22 統合） | 自分で勝ち取った結果の知らせ（お願いではない）。取れなければ結果画面の中の一言だけで、シートは次のホームで |
   | 6 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
   | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
-  | 8 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ |
-  | 9 | `survey` | ゲーム内アンケート（§69、ホームのカード・結果の後のシート。R22 統合） | 意見を聞くだけ。いちばん低い |
+  | 8 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
   | — | `playtime_reminder` | 遊ぶ時間のお知らせ（§67.4）。**表の外**（R22 統合で決めた） | 本人が頼んだお知らせでお願いの画面ではない。枠を使わず・取られない。同じ区切りではこれを先に出し、表のものは次の区切り |
+
+  §69 のゲーム内アンケートは**この表に入らない**（R22 統合での変更：割り込まず、お知らせの中の行から本人が開くだけ。枠を使わない・取らない）。
 
   だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューが他のどれかのすぐ後に出ることも無い。
 - 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
-- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts`・`PromotionModel.Prompts`（R22）・`SurveyModel.Prompts`（R22）に渡す。`SelfLimitsModel` には渡さない（表の外）。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を、`server/test/r22-integration.test.ts` が R22 の行と表の外の行を確かめる。
+- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts`・`PromotionModel.Prompts`（R22）に渡す。`SelfLimitsModel` には渡さない（表の外）。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を、`server/test/r22-integration.test.ts` が R22 の行と表の外の行を確かめる。
 - **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5。§65 の予定表の印から作った通知も含む）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、端末で待っているディープリンク（§63）を捨て（前のアカウントに届いたもの）、アップデートのお知らせの「このセッションで出した」（§64。見た印はサーバーのアカウントごと）を戻し、この1つの規則を最初に戻す（R21 統合）。
 - **Round 22（§67.4）遊ぶ時間のお知らせはこの規則の外**（上の表の `—` の行）：本人が頼んだお知らせでお願いの画面ではないので、`SessionPrompts`／プロトタイプの `sessionPrompt` を通らず、枠を使わない・取られない。同じ区切りではこのシートを先に出し、お願いの画面は次の区切りに回す（Unity は `SelfLimitsModel.SheetVisible`）。
 - **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
@@ -4435,13 +4436,12 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - ヘルプ（§48）に記事 `promotion_series`（数字は `{{promo_races}}` などのトークン）、ヒント集（§57）に `promotion_series_tip`。
 
 ## 69. ゲーム内アンケート（ops-run in-app surveys、REQ-SURVEY-001〜024、`server/src/domain/surveys.ts`・`server/src/ops/surveys.ts`（OpsDO の表）、C# `Surveys.cs`（`SurveyRules`・`SurveyAnswerBuilder`）・`Muchi.Game.SurveyModel`、docs/handoff-codex-round22-surveys.md）
-運営（ライブオプス）がプレイヤーに短い質問をして、製品の方向を決める材料にする。体験を邪魔しないことが最優先：**答えても何も配らない**（偏りを生む報酬・景表法の懸賞の扱いを避ける。E 番号なし）、**スキップは1タップでその後は二度と聞かない**、FTUE の間は出さない、§58.11 の「1セッションに1つ」の門を最も低い優先度で通る。
+運営（ライブオプス）がプレイヤーに短い質問をして、製品の方向を決める材料にする。体験を邪魔しないことが最優先：**答えても何も配らない**（偏りを生む報酬・景表法の懸賞の扱いを避ける。E 番号なし）、**スキップは1タップでその後は二度と聞かない**、FTUE の間は出さない、**目立つ場所に出さず割り込まない**（R22 統合での変更：ホームのカード・レース結果の後のシートは無し。入口は「お知らせ」の中の静かな1行だけで、本人が開いた時だけ聞く。**§58.11 の表に入らない**＝「1セッションに1つ」の枠を使わない・取らない。印はその画面の小さな未読の点まで、ホームにはバッジを出さない）。
 
 ### 69.1 アンケートの定義（運営が作る、REQ-SURVEY-001/002）
 ```json
 { "id": "sv_whip_feel_2026_11", "title": { "ja": "ムチの手ごたえ", "en": "How the whip feels" },
   "intro": { "ja": "1分で終わる質問です。", "en": "Takes about a minute." },
-  "placements": ["home", "result"],
   "targeting": { "minRankedRaces": 10, "minDaysSinceInstall": 3, "platforms": ["ios", "android"], "appVersion": { "min": "1.4.0" }, "classes": ["C", "B"], "samplePercent": 50 },
   "questions": [
     { "id": "feel", "kind": "scale", "required": true, "text": { "ja": "ムチを入れた時の手ごたえは？", "en": "How does the whip feel?" },
@@ -4455,7 +4455,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - 種類（`kind`）：`single`（1つ選ぶ、選択肢 2〜6）・`multi`（いくつでも、`maxChoices` 1〜選択肢の数、既定は全部）・`scale`（1〜5、両端の言葉 `labels.low`／`labels.high`）・`text`（自由な短い文、`maxLength` 1〜`textMax`（既定・上限 200 字）、**必ず任意**＝`required: false`）。
 - 文言はどれも**日本語と英語の両方**が必要：題 40 字・前置き 120 字・問い 120 字・選択肢 40 字・両端の言葉 20 字まで。
 - **言葉の検査**（`surveyDefProblems`）：共通の賭けの言葉（`bettingWords.ts`）、煽りの言葉（「倍」「お得」「今だけ」「残りわずか」「通常価格」）、実在の名前の NG リスト（`ng-names.json`、名前と同じ正規化）に当たる文言は問題。**報酬を思わせるキー**（`reward`・`coins`・`items`・`grant`・`gift`・`bonus`・`incentive`）はどこにあっても「答えには何も配らない」問題。知らないキーも問題（strict）。
-- `placements`：`home`（ホームのカード）・`result`（レース結果を閉じた後のシート）の1つ以上。
+- 出す場所を選ぶキーは無い（R22 統合：`placements` は廃止。書くと知らないキーとして問題）。場所はいつも `inbox`（お知らせの中の行）。
 - `targeting`（すべて任意、書いたものは全部満たす＝AND）：`minRankedRaces`（ランク戦の数 `rating.rankedRaces` 以上、0〜100000）・`minDaysSinceInstall`／`maxDaysSinceInstall`（`createdAt` からの日数、0〜3650、min ≤ max）・`platforms`（`ios`・`android`・`editor` の部分集合、要求の `x-client-platform`）・`appVersion { min?, max? }`（`x.y.z`、両端を含む、要求の `x-client-version`。無い・読めない版は当たらない）・`classes`（今のクラス `season.classId`、マスターのクラス id）・`samplePercent`（1〜100：`fnv1a64("<surveyId>:<playerId>")` を 100 で割った余り < 値。同じ人はいつも同じ側＝安定した抽出）。
 
 ### 69.2 状態と公開の窓（REQ-SURVEY-003）
@@ -4467,17 +4467,17 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 ### 69.3 設定 `progression.surveys`（起動時とリモート設定の各版で検査、REQ-SURVEY-004）
 `{ "enabled": true, "coolDownHours": 72, "maxShowsPerSurvey": 2, "maxLive": 5, "textMax": 200 }`。範囲：`coolDownHours` 0〜2160（アンケートとアンケートの間、答えた・スキップした時から）、`maxShowsPerSurvey` 1〜5（出したのに答えも スキップもしなかった回数の上限。超えたらもう出さない）、`maxLive` 1〜20、`textMax` 20〜200。知らないキー・報酬を思わせるキーは問題。`enabled: false` で全員に出さない（答えの受け付けも閉じる）。無ければこの既定値。
 
-### 69.4 出すかどうか（`GET /v1/surveys/current?placement=home|result`、REQ-SURVEY-005/006）
-`{ "survey": { "id", "rev", "title", "intro", "questions": [ … 要求の言語の文言だけ … ], "placement" } | null, "reason": null | "disabled" | "account_closing" | "ftue" | "cool_down" | "none" }`
-判断の順（最初に当たった理由）：`disabled`（設定）→ `account_closing`（削除の予約中）→ `ftue`（無料10連が未使用＝FTUE の途中、§59 と同じ）→ 続きの1本（出したが答えていない `current`）があれば、それが `live` で対象のままならそれを返す（間隔に関係なく、**同時に1本**）→ `cool_down`（最後に答えた・スキップした時から `coolDownHours`）→ `live` の定義を `endAt` の早い順・id 順に見て、答えた・スキップした・`placement` が合わない・`maxShowsPerSurvey` に達した・対象外のものを除いた最初の1本。無ければ `none`。読むだけ（状態を変えない）。
-**端末の決まり**：ホームのカードか結果の後のシートとしてだけ出す（レース中・ガチャの演出中・購入の途中には出さない）。端末も FTUE なら聞かない。§58.11 の1つの仕組み（`SessionPrompts`／プロトタイプ `sessionPrompt`）を `SessionPrompts.Survey`（`survey`）で通り、**優先度は表の最後**（R22 統合）。ホームのカードは門を取る（同じセッションでほかのシートを出さない）。
+### 69.4 出すかどうか（`GET /v1/surveys/current?placement=inbox`、REQ-SURVEY-005/006）
+`{ "survey": { "id", "rev", "title", "intro", "questions": [ … 要求の言語の文言だけ … ], "placement": "inbox" } | null, "reason": null | "disabled" | "account_closing" | "ftue" | "cool_down" | "none", "unread": boolean }`。`placement` は `inbox` だけ（`home`・`result` は 400。R22 統合）。`unread` はまだ一度も開いていない（`shows` が 0）時 true：お知らせの行に小さな点を付けてよい（ホームのベルの数・バッジには数えない）。
+判断の順（最初に当たった理由）：`disabled`（設定）→ `account_closing`（削除の予約中）→ `ftue`（無料10連が未使用＝FTUE の途中、§59 と同じ）→ 続きの1本（出したが答えていない `current`）があれば、それが `live` で対象のままならそれを返す（間隔に関係なく、**同時に1本**）→ `cool_down`（最後に答えた・スキップした時から `coolDownHours`）→ `live` の定義を `endAt` の早い順・id 順に見て、答えた・スキップした・`maxShowsPerSurvey`（開いたが答えもスキップもしなかった回数）に達した・対象外のものを除いた最初の1本。無ければ `none`。読むだけ（状態を変えない）。
+**端末の決まり**（R22 統合で変更）：お知らせ（ホームのベル）の画面の中に「アンケートにご協力ください ›」の1行を出すだけ（出せる1本がある時。まだ開いていなければ行の横に小さな点）。**自分から割り込まない**：ホームのカード・レース結果の後のシート・ポップアップ・プッシュ・ローカル通知は無く、ホームのベルの未読の数にも足さない。**§58.11 の表に入らない**（本人が開く行なので「1セッションに1つ」の枠を使わず、取られもしない）。行を押すとアンケートの画面（問いごと）が開き、そこで `shown` を送る。端末も FTUE なら出さない。
 
 ### 69.5 出した・スキップ・答え（REQ-SURVEY-007〜011）
 - `POST /v1/surveys/:surveyId/shown { "placement" }`：出した回数を数え、`current` にする。KPI `survey_shown`。`live` でない → 409 `SURVEY_CLOSED`。
 - `POST /v1/surveys/:surveyId/skip { "placement" }`：**1タップ**。そのアンケートは二度と出さない（`done[id] = skipped`）、間隔が始まる。KPI `survey_skip`。何度送っても同じ。答えた後は 409 `CONFLICT`。
 - `POST /v1/surveys/:surveyId/answers`（**冪等キー必須**）：
 ```json
-{ "placement": "home", "answers": { "feel": 4, "mode": "ranked", "wish": ["events", "stables"], "free": "ムチの音がもっと欲しい" } }
+{ "placement": "inbox", "answers": { "feel": 4, "mode": "ranked", "wish": ["events", "stables"], "free": "ムチの音がもっと欲しい" } }
 ```
   - 検査は厳しく（400 `BAD_REQUEST`）：知らない問いの id、型の違い（`single` は選択肢 id の文字列、`multi` は重複なしの配列 1〜`maxChoices`、`scale` は 1〜5 の整数、`text` は文字列）、知らない選択肢、必須の問いが無い、`text` が `maxLength` を超える。空白だけの文は「答えなし」。
   - 自由な文は**サーバーで**§60.3 のスクラブの規則（メール・トークン・URL・長い id・長い数字。§60 と同じ `SCRUB_RULES` のうち、日本語の文と引用符はそのまま残す）を通し、`maxLength` で切る。
@@ -4515,8 +4515,8 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 69.10 クライアント（REQ-SURVEY-021/022）
 - `Muchi.Client`：`SurveyView`・`SurveyQuestion`・`SurveyOffer`・`SurveyAnswerBuilder`（種類ごとの検査をサーバーと同じ規則で、送る前に）・`SurveyRules`（`MaxTextLength`・FTUE）・`ApiClient.GetSurveyAsync`／`SurveyShownAsync`／`SkipSurveyAsync`／`AnswerSurveyAsync`（冪等キーは答えの組ごとに1回作り再送でも同じ）。
-- `Muchi.Game`：`SurveyModel`（ホームのカード・結果の後のシート・問いごとの画面・ありがとう、スキップ1タップ、`SessionPrompts.Survey`（§58.11 の表の最後）、FTUE・オフラインでは出さない、`SURVEY_CLOSED` は静かに閉じる）。描画は docs/handoff-codex-round22-surveys.md。
-- プロトタイプ：ホームのカード・アンケートのシート（4 種類）・ありがとう（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。運営の画面に一覧・作成・プレビュー・公開・結果・CSV。
+- `Muchi.Game`：`SurveyModel`（お知らせの中の行と未読の点・問いごとの画面・ありがとう、スキップ1タップ、お知らせの中の行から開く（§58.11 の表に入らない）、FTUE・オフラインでは出さない、`SURVEY_CLOSED` は静かに閉じる）。描画は docs/handoff-codex-round22-surveys.md。
+- プロトタイプ：お知らせの中の行（未読の小さな点）・アンケートの画面（4 種類）・ありがとう（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。運営の画面に一覧・作成・プレビュー・公開・結果・CSV。
 
 ### 69.11 ヘルプ（REQ-SURVEY-023）・法務（REQ-SURVEY-024）
 - ヘルプセンター（§48）に記事 `surveys`「アンケートについて」：任意であること、答えても何も配られないこと、スキップしたら二度と聞かないこと、自由な文に個人情報を書かないこと、分析の選択との関係、開示と削除。

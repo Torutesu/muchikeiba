@@ -18,7 +18,7 @@ namespace Muchi.Engine.Tests
             _api = new ApiClient(_http, new FakeAuth(), opt, new FakeDelay(), new SeqIds());
         }
 
-        internal const string OfferJson = "{\"reason\":null,\"survey\":{\"id\":\"sv_whip_feel\",\"rev\":2,\"placement\":\"home\",\"endAt\":1790000000000,\"title\":\"ムチの手ごたえ\",\"intro\":\"1分で終わる質問です。\",\"questions\":["
+        internal const string OfferJson = "{\"reason\":null,\"unread\":true,\"survey\":{\"id\":\"sv_whip_feel\",\"rev\":2,\"placement\":\"inbox\",\"endAt\":1790000000000,\"title\":\"ムチの手ごたえ\",\"intro\":\"1分で終わる質問です。\",\"questions\":["
             + "{\"id\":\"feel\",\"kind\":\"scale\",\"required\":true,\"text\":\"手ごたえは？\",\"options\":null,\"maxChoices\":null,\"labels\":{\"low\":\"弱い\",\"high\":\"強い\"},\"maxLength\":null},"
             + "{\"id\":\"mode\",\"kind\":\"single\",\"required\":true,\"text\":\"いちばん遊ぶのは？\",\"options\":[{\"id\":\"ranked\",\"text\":\"ランク戦\"},{\"id\":\"events\",\"text\":\"イベント\"}],\"maxChoices\":null,\"labels\":null,\"maxLength\":null},"
             + "{\"id\":\"wish\",\"kind\":\"multi\",\"required\":false,\"text\":\"増えてほしいものは？\",\"options\":[{\"id\":\"tracks\",\"text\":\"コース\"},{\"id\":\"events\",\"text\":\"イベント\"},{\"id\":\"silks\",\"text\":\"勝負服\"}],\"maxChoices\":2,\"labels\":null,\"maxLength\":null},"
@@ -28,15 +28,16 @@ namespace Muchi.Engine.Tests
         public async Task OfferShownAnswerSkip()
         {
             _http.Reply(200, OfferJson);
-            var o = await _api.GetSurveyAsync("home");
-            Assert.Equal("/v1/surveys/current?placement=home", _http.Requests[0].Path);
+            var o = await _api.GetSurveyAsync("inbox");
+            Assert.Equal("/v1/surveys/current?placement=inbox", _http.Requests[0].Path);
             Assert.Null(o.Reason);
+            Assert.True(o.Unread); // R22 integration: a small dot on the お知らせ row only
             Assert.Equal(4, o.Survey.Questions.Count);
             Assert.Equal("弱い", o.Survey.Question("feel").LowLabel);
             Assert.Equal(2, o.Survey.Question("wish").MaxChoices);
 
             _http.Reply(200, "{\"surveyId\":\"sv_whip_feel\",\"shows\":1,\"done\":null}");
-            Assert.Equal(1, (await _api.SurveyShownAsync("sv_whip_feel", "home")).Shows);
+            Assert.Equal(1, (await _api.SurveyShownAsync("sv_whip_feel", "inbox")).Shows);
             Assert.Equal("/v1/surveys/sv_whip_feel/shown", _http.Requests[1].Path);
 
             var b = new SurveyAnswerBuilder(o.Survey);
@@ -56,7 +57,7 @@ namespace Muchi.Engine.Tests
             Assert.Throws<ArgumentException>(() => b.Text("nope", "x"));
 
             _http.Reply(200, "{\"surveyId\":\"sv_whip_feel\",\"outcome\":\"answered\",\"at\":1790000000000}");
-            var a = await _api.AnswerSurveyAsync("sv_whip_feel", "home", b, "c:survey-1");
+            var a = await _api.AnswerSurveyAsync("sv_whip_feel", "inbox", b, "c:survey-1");
             Assert.Equal("answered", a.Outcome);
             var req = _http.Requests[2];
             Assert.Equal("/v1/surveys/sv_whip_feel/answers", req.Path);
@@ -66,7 +67,7 @@ namespace Muchi.Engine.Tests
             Assert.Equal("{\"feel\":4,\"mode\":\"ranked\",\"wish\":[\"tracks\",\"silks\"],\"free\":\"ムチの音が好き🐎\"}", ans.ToString());
 
             _http.Reply(200, "{\"surveyId\":\"sv_whip_feel\",\"outcome\":\"skipped\",\"at\":1}");
-            Assert.Equal("skipped", (await _api.SkipSurveyAsync("sv_whip_feel", "result")).Outcome);
+            Assert.Equal("skipped", (await _api.SkipSurveyAsync("sv_whip_feel", "inbox")).Outcome);
         }
 
         [Fact]
@@ -75,7 +76,7 @@ namespace Muchi.Engine.Tests
             var b = new SurveyAnswerBuilder(SurveyOfferParse());
             b.Scale("feel", 1).Choose("mode", "events");
             _http.Reply(409, "{\"error\":{\"code\":\"SURVEY_CLOSED\",\"message\":\"this survey has ended\"}}");
-            var e = await Assert.ThrowsAnyAsync<ApiException>(() => _api.AnswerSurveyAsync("sv_whip_feel", "home", b, "c:k"));
+            var e = await Assert.ThrowsAnyAsync<ApiException>(() => _api.AnswerSurveyAsync("sv_whip_feel", "inbox", b, "c:k"));
             Assert.Equal(ApiErrorCode.SurveyClosed, e.Code);
             Assert.Single(_http.Requests); // a 409 is never retried
             Assert.Contains("SURVEY_CLOSED", ApiErrorCodes.WireCodes);

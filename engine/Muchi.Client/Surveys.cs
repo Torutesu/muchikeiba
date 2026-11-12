@@ -8,11 +8,11 @@ using Muchi.Net;
 namespace Muchi.Client
 {
     // REQ-SURVEY-001..024 ゲーム内アンケート — ops-run in-app surveys (server/src/domain/surveys.ts, contracts/protocol.md §69).
-    // The server decides which survey (at most one) to show at a placement (home card / after a race result) and keeps the
+    // The server decides which survey (at most one) the quiet お知らせ row offers (R22 integration: no home card, no sheet after a result) and keeps the
     // player's answers; the device only draws it, checks an answer with the same rules before sending it (SurveyAnswerBuilder)
     // and keeps one idempotency key per answer set. NOTHING is granted for answering: no reward type, field or call exists here.
-    // Skipping is one tap and that survey never comes back. Never during the FTUE; the game layer shows it through the §58.11
-    // one-prompt-per-session gate with the lowest priority (Muchi.Game.SurveyModel).
+    // Skipping is one tap and that survey never comes back. Never during the FTUE; never an interruption (not in the §58.11
+    // prompt table): the player opens it from the row (Muchi.Game.SurveyModel).
 
     public static class SurveyKinds
     {
@@ -22,8 +22,9 @@ namespace Muchi.Client
 
     public static class SurveyPlacements
     {
-        public const string Home = "home", Result = "result";
-        public static readonly string[] All = { Home, Result };
+        /// <summary>R22 integration: the one place — a quiet row inside お知らせ (no home card, no sheet after a result).</summary>
+        public const string Inbox = "inbox";
+        public static readonly string[] All = { Inbox };
     }
 
     /// <summary>Fixed limits shared with the server (§69.1).</summary>
@@ -91,7 +92,9 @@ namespace Muchi.Client
     {
         public SurveyView Survey;
         public string Reason;
-        internal static SurveyOffer Parse(JsonNode o) => new SurveyOffer { Survey = SurveyView.Parse(J.Opt(o, "survey")), Reason = J.Str(o, "reason") };
+        /// <summary>Never opened yet: a small dot on the お知らせ row (never a home badge).</summary>
+        public bool Unread;
+        internal static SurveyOffer Parse(JsonNode o) => new SurveyOffer { Survey = SurveyView.Parse(J.Opt(o, "survey")), Reason = J.Str(o, "reason"), Unread = J.Bool(o, "unread") };
     }
 
     /// <summary>shown / skip / answers.</summary>
@@ -191,7 +194,7 @@ namespace Muchi.Client
 
     public sealed partial class ApiClient
     {
-        /// <summary>REQ-SURVEY-005: the one survey to show at <paramref name="placement"/> (home | result), or why none (a read).</summary>
+        /// <summary>REQ-SURVEY-005: the one survey to show at <paramref name="placement"/> (always inbox: the お知らせ row), or why none (a read).</summary>
         public Task<SurveyOffer> GetSurveyAsync(string placement, CancellationToken ct = default)
             => Call("GET", "/v1/surveys/current?placement=" + Uri.EscapeDataString(placement), null, true, null, true, SurveyOffer.Parse, ct);
 

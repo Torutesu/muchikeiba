@@ -1623,7 +1623,7 @@ ORDER BY season DESC, class
 ```
 
 ## ゲーム内アンケート：出した・スキップ・答えた（REQ-SURVEY-019、Round 22、contracts/protocol.md §69.9。R22 統合で追加）
-列（すべてサーバー、§58 の分類は optional：分析がオフの人の行は書かない）：`survey_shown` `blob8` = アンケート id、`blob9` = `home`／`result`、`double5`（count）= その人に出した回数。`survey_skip` `blob8` = id、`blob9` = 場所。`survey_answer` `blob8` = id、`blob9` = 場所、`double5` = 答えた問いの数。**答えの中身は KPI に無い**（結果は運営の画面 §69.7 と CSV で、プレイヤー ID なしで見る）。
+列（すべてサーバー、§58 の分類は optional：分析がオフの人の行は書かない）：`survey_shown` `blob8` = アンケート id、`blob9` = `inbox`（お知らせの中の行。R22 統合でホームのカード・結果の後のシートは無くなった）、`double5`（count）= その人に出した回数。`survey_skip` `blob8` = id、`blob9` = 場所。`survey_answer` `blob8` = id、`blob9` = 場所、`double5` = 答えた問いの数。**答えの中身は KPI に無い**（結果は運営の画面 §69.7 と CSV で、プレイヤー ID なしで見る）。
 
 **答えた率・スキップ率**（アンケート・場所ごと。スキップが多い場所・題は、出す場所か前置きを見直す。答えた人の数は運営の画面の件数と同じくらいのはず。差は分析をオフにした人）：
 

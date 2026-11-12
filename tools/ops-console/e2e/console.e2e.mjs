@@ -247,7 +247,7 @@ try {
   await step('surveys (§69): operator drafts (betting words refused, JA / EN preview), admin publishes, a player answers, results without ids, hide, CSV, close', async () => {
     const id = `sv_e2e_${runId.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20)}`;
     const def = {
-      id, title: { ja: 'ムチの手ごたえ', en: 'How the whip feels' }, placements: ['home', 'result'], targeting: {},
+      id, title: { ja: 'ムチの手ごたえ', en: 'How the whip feels' }, targeting: {},
       questions: [
         { id: 'feel', kind: 'scale', required: true, text: { ja: '手ごたえは？', en: 'How does it feel?' }, labels: { low: { ja: '弱い', en: 'Weak' }, high: { ja: '強い', en: 'Strong' } } },
         { id: 'mode', kind: 'single', required: true, text: { ja: 'いちばん遊ぶのは？', en: 'What do you play most?' }, options: [{ id: 'ranked', text: { ja: 'ランク戦', en: 'Ranked' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }] },
@@ -284,10 +284,10 @@ try {
     await confirmWith('e2e: publish the survey');
     await tid('sv-results').waitFor();
     // a player answers (strict: an unknown question is 400; the free text is scrubbed); nothing is granted
-    const r400 = await fetch(API + `/v1/surveys/${id}/answers`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-user': PLAYER, 'idempotency-key': `e2e-${runId}-sv0` }, body: JSON.stringify({ placement: 'home', answers: { feel: 4, mode: 'ranked', nope: 1 } }) });
+    const r400 = await fetch(API + `/v1/surveys/${id}/answers`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-user': PLAYER, 'idempotency-key': `e2e-${runId}-sv0` }, body: JSON.stringify({ placement: 'inbox', answers: { feel: 4, mode: 'ranked', nope: 1 } }) });
     assert.equal(r400.status, 400);
     const walletBefore = (await asAdmin('admin', 'GET', `/v1/admin/players/${PLAYER}`)).body.state.walletDetail;
-    const ans = await asPlayer('POST', `/v1/surveys/${id}/answers`, { placement: 'home', answers: { feel: 4, mode: 'ranked', free: 'メールは e2e@example.com です' } });
+    const ans = await asPlayer('POST', `/v1/surveys/${id}/answers`, { placement: 'inbox', answers: { feel: 4, mode: 'ranked', free: 'メールは e2e@example.com です' } });
     assert.equal(ans.outcome, 'answered');
     assert.deepEqual((await asAdmin('admin', 'GET', `/v1/admin/players/${PLAYER}`)).body.state.walletDetail, walletBefore, 'nothing granted');
     await page.reload();
@@ -307,7 +307,7 @@ try {
     await tid('sv-close').click();
     await confirmWith('e2e: enough answers');
     await page.getByText('終了しました').first().waitFor();
-    const closed = await fetch(API + `/v1/surveys/${id}/answers`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-user': `${PLAYER}_2`, 'idempotency-key': `e2e-${runId}-sv9` }, body: JSON.stringify({ placement: 'home', answers: { feel: 1, mode: 'events' } }) });
+    const closed = await fetch(API + `/v1/surveys/${id}/answers`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-dev-user': `${PLAYER}_2`, 'idempotency-key': `e2e-${runId}-sv9` }, body: JSON.stringify({ placement: 'inbox', answers: { feel: 1, mode: 'events' } }) });
     assert.equal(closed.status, 409);
     assert.equal((await closed.json()).error.code, 'SURVEY_CLOSED');
   });

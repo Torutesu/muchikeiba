@@ -5,44 +5,44 @@
 
 分担はこれまでと同じ：**Claude＝ロジック（サーバー・API クライアント・画面のビューモデル）／Codex＝見た目**。
 
+> **R22 統合での変更（必読）**：アンケートは**目立つ場所に出さず、割り込まない**。ホームのカードとレース結果の後のシートは**無くなった**。入口は「お知らせ（ホームのベル）」の画面の中の静かな1行「アンケートにご協力ください ›」だけ。未読ならその画面で行の横に小さな点だけ（**ホームのバッジ・ベルの数には足さない**）。§58.11 の「1セッションに1つ」の表にも入らない（`SessionPrompts` を渡さない）。
+
 ## 1. いまの状態
 
 | 項目 | 状態 |
 |---|---|
-| サーバー | ✅ `GET /v1/surveys/current?placement=home\|result`・`POST /v1/surveys/:id/shown`・`POST /v1/surveys/:id/skip`・`POST /v1/surveys/:id/answers`（冪等キー必須）。定義は運営の画面（`/v1/admin/surveys`、OpsDO の表。**新しい Durable Object・wrangler の移行は無い**）。設定は `progression.surveys` |
+| サーバー | ✅ `GET /v1/surveys/current?placement=inbox`（応答に `unread`）・`POST /v1/surveys/:id/shown`・`POST /v1/surveys/:id/skip`・`POST /v1/surveys/:id/answers`（冪等キー必須）。定義は運営の画面（`/v1/admin/surveys`、OpsDO の表。**新しい Durable Object・wrangler の移行は無い**）。設定は `progression.surveys` |
 | C# | ✅ `engine/Muchi.Client/Surveys.cs`：`SurveyView`・`SurveyQuestion`・`SurveyOffer`・`SurveyAnswerBuilder`（サーバーと同じ検査）・`SurveyRules`・`ApiClient.GetSurveyAsync` / `SurveyShownAsync` / `SkipSurveyAsync` / `AnswerSurveyAsync`。エラー `ApiErrorCode.SurveyClosed` |
-| ゲーム層 | ✅ `Muchi.Game.SurveyModel`（`unity/Assets/Muchi/Game/SurveyModel.cs`、チェック `unity/Checks~/GameChecks/SurveyChecks.cs`）。`SessionPromptGate` に `SessionPromptKind.Survey`（**最も低い優先度**）、`AccountChangeReset.Surveys`。英語は `ui-en.json` |
-| 見本 | ✅ `tools/figma-prototype/site/index.html`：`__muchi.show('Survey', 'home')`（ホームのカード）・`'result'`（結果の後のシート）・`'thanks'`。デモの状態（運営が公開したアンケート1本、落ち着いたプレイヤー） |
-| **Codex** | モデルを呼ぶ場所（§2）、ホームのカード（§3）、シートと4種類の問い（§4）、ありがとう（§5）、文字の大きさ・英語（§6） |
+| ゲーム層 | ✅ `Muchi.Game.SurveyModel`（`unity/Assets/Muchi/Game/SurveyModel.cs`、チェック `unity/Checks~/GameChecks/SurveyChecks.cs`）。`SessionPrompts` は使わない（割り込まない）、`AccountChangeReset.Surveys`。英語は `ui-en.json` |
+| 見本 | ✅ `tools/figma-prototype/site/index.html`：`__muchi.show('Survey', 'inbox')`（お知らせの中の行）・`'sheet'`（行を押した後のシート）・`'thanks'`。デモの状態（運営が公開したアンケート1本、落ち着いたプレイヤー） |
+| **Codex** | モデルを呼ぶ場所（§2）、お知らせの中の行（§3）、シートと4種類の問い（§4）、ありがとう（§5）、文字の大きさ・英語（§6） |
 
 ## 2. モデルを呼ぶ場所
 
-アプリ起動ごとに `SurveyModel` を1つ作り、`Prompts` に同意・通知・レビューと**同じ** `Muchi.Client.SessionPrompts` を渡す（R22 統合）。`inFtue` には `OnboardingFlow.InFtue` を渡す。アカウントが変わった時の `AccountChangeReset` の `Surveys` にも入れる。
+アプリ起動ごとに `SurveyModel` を1つ作る（`Prompts` は無い：割り込まないので §58.11 の表に入らない）。`inFtue` には `OnboardingFlow.InFtue` を渡す。アカウントが変わった時の `AccountChangeReset` の `Surveys` にも入れる。
 
 | いつ | 呼ぶもの |
 |---|---|
-| ホームが表示されて落ち着いた時（ホームのカードの枠：お知らせ・復帰のカードが出ない時だけ） | `await CheckAsync(SurveyPlacements.Home)` → true なら `CardVisible` |
-| レースの結果画面を「ホーム」で閉じた所（広告のオファー・かんたん操作の提案の後） | `await CheckAsync(SurveyPlacements.Result)` → true なら `SheetVisible`（シートをそのまま出す）、false ならホームへ |
-| カードの「答える」 | `Open()` |
+| お知らせ（ホームのベル）の画面を開いた時 | `await CheckAsync()` → true なら `RowVisible`（行を出す）。`Unread` なら行の横に小さな点 |
+| 行「アンケートにご協力ください ›」を押した時 | `await OpenAsync()` → `SheetVisible`（ここで初めて「出した」を数える） |
 | シートの「次へ」「とばす」 | `Next()`（最後のページは `SubmitAsync()`） |
 | シートの「戻る」 | `Back()` |
-| カード・シートの「スキップ」（**1タップ**、確認ダイアログを出さない） | `await SkipAsync()` |
+| シートの「あとで」・Android の戻るボタン（スキップではない） | `Later()` → お知らせに戻る。行は残る（サーバーが開いた回数に上限を持つ） |
+| シートの「スキップ」（**1タップ**、確認ダイアログを出さない） | `await SkipAsync()` → お知らせに戻る。行は消える |
 | 「送る」 | `await SubmitAsync()` → 成功なら `ThanksVisible`。`SURVEY_CLOSED` などは `Message`（「このアンケートは終了しました」）をトーストで出してシートを閉じる |
-| ありがとうの「閉じる」 | `CloseThanks()` → 元の画面（ホーム／結果の後の行き先） |
-| Android の戻るボタン（スキップではない） | `Later()`（また出ることがある。サーバーが出す回数に上限を持つ） |
+| ありがとうの「閉じる」 | `CloseThanks()` → お知らせへ（行は消えている） |
 
-**出さない所**：レース中・ゲートの演出・ガチャの演出・購入の途中・チュートリアル（FTUE）の間。オフラインでは出さない（モデルが判断）。1セッションに1本だけ（モデルが判断）。
+**出さない所**：ホーム（カード・バッジ・ベルの数）・レースの前後・ガチャ・購入・チュートリアル（FTUE）の間・プッシュ・ローカル通知。オフラインでは行を出さない（モデルが判断）。
 
-## 3. ホームのカード（`CardVisible`）
+## 3. お知らせの中の行（`RowVisible`）
 
-- 置き場所はホームのカードの枠（左上、シーズンの下。プロトタイプ `HOME_CARD` 450×214）。**カードは1枚だけ**（お知らせ・復帰キャンペーン > アンケート > 広告のオファー）。
-- 紺の半透明のパネル、上に水色の小さな字間を空けた見出し `SurveyModel.Kicker`「アンケート」、題 `Survey.Title`（太字、1行、はみ出す時は縮める）、`SurveyModel.NoRewardNote`（小さな灰色）。
-- 主ボタン（水色の斜めの CTA「»」）`AnswerLabel`「答える」と、副ボタン（紺に水色の線）`SkipLabel`「スキップ」を**横に並べる**（スキップを隠さない・小さくしすぎない）。
-- 赤い点・バッジ・カウントダウン・「今だけ」は付けない。終了日を出すなら日付だけ（`Survey.EndAt`、JST）。
+- お知らせの画面の右の面、「予定表 ›」の下に、同じテキストリンクの形で `SurveyModel.RowLabel`「アンケートにご協力ください ›」。目立つ色・アイコン・アニメーションは付けない。
+- `Unread` の時だけ、行の左に小さな点（お知らせの一覧の未読の点と同じもの、10px）。**ホームのベルの数字・バッジには足さない**。
+- 赤い点の明滅・カウントダウン・「今だけ」・報酬の言葉は付けない。
 
 ## 4. シート（`SheetVisible`）
 
-- 画面の中央の紺のダイアログ（プロトタイプ 1040×700）。背景は直前の画面のアート（ホーム or レース結果）を暗くしたもの。
+- 画面の中央の紺のダイアログ（プロトタイプ 1040×700）。背景はお知らせの画面のアートを暗くしたもの。
 - 上：`Kicker`、題（小さく灰色）、右上に `Progress`（「2 / 4」、水色、数字の字体）。
 - 問い `Current.Text`（大きく太字、2行まで折り返す）。任意の問いには `OptionalNote`「任意」の小さなラベル。
 - 種類ごと（`Current.Kind`）：
@@ -50,7 +50,7 @@
   - `multi`：同じチップで `Answers.Toggle(id, optionId)`。上に `string.Format(Loc.T(ChoicesFormat), MaxChoices)`。上限を超えて押したら何も変えず小さなトースト。
   - `scale`：1〜5 の5つの四角いボタン（同じ大きさ、数字は大きく）。左下に `LowLabel`、右下に `HighLabel`。`Answers.Scale(id, n)`。
   - `text`：複数行の入力欄（`TouchScreenKeyboard`）。下に `TextHint`（個人情報を書かない）と `string.Format(Loc.T(RemainingFormat), Answers.Remaining(id))`、0未満なら赤く、主ボタンを押せなくする（`CanNext`）。入力は `Answers.Text(id, text)`。**送る前にプレイヤーの文を端末で直さない**（スクラブはサーバーがする）。
-- 下：左に `SkipLabel`（テキストリンク、1タップ）、真ん中に `BackLabel`（2ページ目から）、右に主ボタン `NextButton`（「次へ」／「とばす」／「送る」）。必須の問いに答えるまで主ボタンは押せない（`CanNext`）。
+- 下：左に「あとで」と `SkipLabel`（どちらもテキストリンク、1タップ）、真ん中に `BackLabel`（2ページ目から）、右に主ボタン `NextButton`（「次へ」／「とばす」／「送る」）。必須の問いに答えるまで主ボタンは押せない（`CanNext`）。
 - **報酬・コイン・アイテム・プレゼントの言葉、演出（紙吹雪など）は出さない。**
 
 ## 5. ありがとう（`ThanksVisible`）

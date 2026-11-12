@@ -113,7 +113,7 @@ export class SurveysCore {
 
   summary(r: SurveyRecord, now: number) {
     return {
-      id: r.def.id, title: r.def.title, status: statusOf(r, now), rev: r.rev, questions: r.def.questions.length, placements: r.def.placements,
+      id: r.def.id, title: r.def.title, status: statusOf(r, now), rev: r.rev, questions: r.def.questions.length,
       startAt: r.startAt, endAt: r.endAt, closedAt: r.closedAt, publishedAt: r.publishedAt, publishedBy: r.publishedBy,
       createdAt: r.createdAt, createdBy: r.createdBy, updatedAt: r.updatedAt, updatedBy: r.updatedBy, answers: this.repo.count(r.def.id),
     };

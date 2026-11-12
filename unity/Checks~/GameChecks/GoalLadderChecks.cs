@@ -95,7 +95,7 @@ static class GoalLadderChecks
             wk.Use(GoalLadderView.FromJson(View.Replace("\"week\":null", WeekJson.Replace("RR", "null"))));
             check(wk.Rungs.Select(r => r.Key).SequenceEqual(new[] { "today", "path", "week", "season" }) && wk.Rungs[2].Main == "チャレンジ 1/3　·　ライバル 2-1", "goals: the week rung beside the path (" + string.Join(",", wk.Rungs.Select(r => r.Key)) + " " + wk.Rungs[2].Main + ")");
             wk.Use(GoalLadderView.FromJson(View.Replace("\"week\":null", WeekJson.Replace("RR", "{\"weekId\":\"2026-11-30\",\"outcome\":\"win\",\"me\":3,\"them\":1,\"freeCoins\":20}"))));
-            check(wk.Rungs[2].Main == "チャレンジ 1/3　·　ライバルの結果が出ました" && wk.View.Week.RivalResultCoins == 20, "goals: last week's rival result first while unseen (" + wk.Rungs[2].Main + ")");
+            check(wk.Rungs[2].Main == "チャレンジ 1/3　·　ライバル 結果発表" && wk.View.Week.RivalResultCoins == 20, "goals: last week's rival result first while unseen (" + wk.Rungs[2].Main + ")");
 
             // wording: no urgency, no shop; and every line in English
             var all = m.Rungs.SelectMany(r => new[] { r.Label, r.Main, r.Figure, r.Sub }).Concat(m.Today.SelectMany(r => new[] { r.Title, r.RewardText, r.PurposeText }))

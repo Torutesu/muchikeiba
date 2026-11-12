@@ -3459,7 +3459,7 @@ function glRungs(v) {
   if (v.week) {
     const w = v.week, parts = [];
     if (w.challenge) parts.push(`チャレンジ ${w.challenge.cleared}/${w.challenge.total}`);
-    if (w.rivalResult) parts.push('ライバルの結果が出ました');
+    if (w.rivalResult) parts.push('ライバル 結果発表');
     else if (w.rival) parts.push(`ライバル ${w.rival.me}-${w.rival.them}`);
     if (w.teamGoal) parts.push(`支部 ${w.teamGoal.reached}/${w.teamGoal.tiers}段`);
     out.push({ key: 'week', label: '今週', main: parts.join('　·　'), figure: null, fill: w.challenge ? w.challenge.cleared / Math.max(1, w.challenge.total) : 0, ready: !!w.rivalResult });
@@ -3665,7 +3665,7 @@ function ClassLadder(v) {
       if (c.rewards.top) Txt(`${c.rewards.top.maxRank === 1 ? '1位' : `上位${c.rewards.top.maxRank}位`} ${glReward(c.rewards.top.reward)}`, 150, 48, 398, 13, GOLD, row, { weight: 700, nowrap: true });
       if (c.rewards.floor) Txt(`出走した人みんな ${glReward(c.rewards.floor)}`, 150, 72, 398, 12, SOFT, row, { nowrap: true });
     });
-  });
+  }, 660, { solo: true }); // solo: the goals columns step aside while the ladder is open (largest text)
 }
 
 // ================================================================= round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)

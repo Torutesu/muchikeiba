@@ -2426,7 +2426,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
 | `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
+| `core` | それ以外のすべて（マイリプレイ `/v1/replays*` §37（見どころ §72 は新しい口を持たず、ここのログを端末で再計算する。R23）・アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
@@ -4145,3 +4145,65 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 72. レースの見どころ（automatic race highlights、REQ-HL-001〜020、C# `Highlights.cs`（`HighlightRules`・`HighlightDetector`・`HighlightMoment`・`HighlightReel`・`HighlightCaptions`・`HighlightShare`）・`Muchi.Game.HighlightsModel`、共有ベクター `contracts/highlights.vectors.json`、docs/handoff-codex-round23-highlights.md）
+レースが終わったら、そのレースの**いちばんの瞬間を3つまで**自動で選び、15〜30秒の「見どころ」として続けて再生・共有できるようにする。**表示だけ**：コインもアイテムも動かない（E番号なし、経済は変わらない）。
+
+**決まりごと**
+- **決定論・読むだけ**：見どころは §7 のリプレイログ（設定＋確定入力）を C# のエンジンで**もう一度計算**して選ぶ（`HighlightDetector.Detect`）。走っているレースの `RaceSim` には触らない。レースの結果・チェックサム・結果ハッシュ・ゴールデンは変わらない。同じログと同じ `focusSlot` なら、端末（Unity・プロトタイプの WASM）でも検証サーバー（`Muchi.Verifier highlights`）でも**同じ答え**（共有ベクター `contracts/highlights.vectors.json` を両方が確かめる）。整数（Q16.16 の生の値・mm・tick）だけで計算し、浮動小数・時刻・乱数・端末の設定を使わない。
+- **保存しない**（Round 23 で決定）：瞬間の一覧はサーバーに置かない。再生する人の端末がログから毎回計算する（12頭で 50ms 未満）。理由：(1) 見る時は必ずログを再計算する（§37.4）ので一覧を運ぶ必要がない、(2) 置かなければ §51 の開示・アカウント削除・リプレイの削除の対象が増えない、(3) 判定の版を上げても古い一覧と食い違わない。**プレイヤーの状態に新しいキーを足さない・wrangler の移行もない**。
+- 判定の版：`HighlightRules.Version`（今は `1`）。しきい値は下の表の定数で、リモート設定では変えない（変えると端末と検証の答えがずれる）。変える時は版を上げ、ベクターを作り直す。
+
+### 72.1 瞬間の種類（`kind`）と点数（REQ-HL-002〜004）
+`n` = 出走頭数、`hz` = `config.net.tickHz`、`残り` = その馬の残りの距離。`focusSlot` = 見る人の馬（結果画面は自分の馬、マイリプレイは `ReplayData.focusSlot`、観戦などで無ければ `-1`）。
+
+| kind | 見つけ方 | 主役 `slot`／相手 `slot2` | `value` | 点数 `score` | 窓（鍵の tick からの前・後） |
+|---|---|---|---|---|---|
+| `photo_finish` | 隣り合う着順の差（`RaceResult.Margins`）が **0.5 m 未満**。1着と2着、または `focusSlot` が入る組 | 後ろの馬／前の馬 | 差（mm） | 90 ＋ (500 − 差mm)/25 | 前 5.0 秒・後 1.5 秒（鍵 = 後ろの馬のゴールの tick） |
+| `near_miss` | 隣り合う着順の差が 0.5 m 以上 **1.5 m 未満**。1〜3着の組、または `focusSlot` が入る組 | 後ろの馬／前の馬 | 差（mm） | 50 ＋ (1500 − 差mm)/50 | 前 5.0 秒・後 1.5 秒 |
+| `lead_change` | 先頭が替わった（`LeaderChanged`）時、新しい先頭の残りが **400 m 以下** | 新しい先頭／前の先頭 | 残り（m） | 60 ＋ (400 − 残りm)/10 | 前 3.0 秒・後 2.0 秒 |
+| `whip_burst` | ムチ（`Whip`）を打った tick の順位から、**3.0 秒後**の順位で **2つ以上** 上がった | その馬／−1 | 上がった数 | 45 ＋ 12 × min(上がった数, 6) | 前 1.5 秒・後 3.5 秒 |
+| `comeback` | 残り **600 m** の時に後ろ3分の1（0始まりの順位 ≥ `n − ⌈n/3⌉`）にいて **3着以内** でゴール（`n ≥ 5`） | その馬／−1 | 残り600mの順位（1始まり） | 55 ＋ min(40, 8 × (その順位 − 着順)) ＋ 1着なら 15 | 前 7.0 秒・後 1.0 秒（鍵 = ゴールの tick） |
+| `unique_skill` | 固有スキル（`Skill`、ルールセット 1.3）が出た | その馬／−1 | 出た時の順位（1始まり） | 40 | 前 1.0 秒・後 3.0 秒 |
+| `finish` | いつも1つ（どのレースにも見どころがあるように） | 1着の馬／−1 | 0 | 10 | 前 4.0 秒・後 1.5 秒（鍵 = 1着のゴールの tick） |
+
+- `focusSlot` が `slot` か `slot2` なら **＋30**。
+- 窓は `[0, RaceResult.EndTick]` に収める。tick ＝ 秒 × `hz`（切り捨て）。
+- 同じ種類は **2つまで**、`whip_burst` は**同じ馬で1つまで**。
+
+### 72.2 選び方（REQ-HL-005）
+1. 候補を `score` の大きい順 → `keyTick` の小さい順 → 種類の順（上の表の順）→ `slot` の小さい順に並べる（全順序）。
+2. 上から、すでに選んだ窓と**重ならない**（`a.start ≤ b.end && b.start ≤ a.end` でない）ものを、72.1 の数の上限を守って **3つまで**選ぶ。
+3. 選んだものを時間の順に並べ、**合計が 15 秒未満なら窓を広げる**：足りない分を残りの窓の数で割り（切り上げ）、時間の順に、まず前へ（前の窓の終わり＋1、または 0 まで）、足りなければ後ろへ（次の窓の始まり−1、または `EndTick` まで）。広げられなくなったら止める（短いレースは短いまま）。1つの窓は最長 10 秒なので合計は 30 秒を超えない。
+4. 答え：`{ "version": 1, "focusSlot", "endTick", "totalTicks", "moments": [ { "rank": 1..3（点数の順）, "kind", "startTick", "endTick", "keyTick", "slot", "slot2", "value", "remainingM", "score" } ]（時間の順） }`。`remainingM` は鍵の tick の主役の残り（m、切り捨て、0 以上）。
+
+### 72.3 見どころの再生（REQ-HL-008〜011）
+- 入口：結果画面の「見どころ」（どのモードでも、レースが終わった後。ログは端末にある）・マイリプレイ（§37）の再生画面と一覧の行の「見どころ」（保存・名場面・最近のレース・フレンドの公開リプレイ）。チュートリアルは結果画面に出さない（FTUE の流れを変えない）。
+- `HighlightReel`：`ReplayPlayer`（§37.4 と同じ再計算・同じハッシュの確認・同じカメラ `RaceCameraRig`）の上で、窓を順に**続けて**再生する。窓ごとにカメラを主役の馬に向け、窓の始まりで切り替える（つなぎの見せ方は Codex、引き継ぎ書）。ハッシュが合わない・再生できないログは見どころも出さない（「再生できません」、§37.4 と同じ）。
+- **スキップ**：「次へ」で次の窓へ、「スキップ」で終わり（結果画面・再生画面へ戻る）。速度は 1× 固定（短いので）。
+- **字幕**（`HighlightCaptions`）：窓ごとに1行（例「最後の直線で3頭抜き」「ハナ差の写真判定」「残り400mで先頭が替わる」「後方から追い込んで2着」「固有スキル発動」）。馬の名前は馬の名前だけ、乗り手は「あなた」・CPU・他の人間は出さない（§37 と同じ：名前を出さない）。英語あり。最大の文字（§41）で2行まで。
+- **実況**：§36 の装備中の実況パックで全体を `Commentator` に通し、窓の中に始まる行だけを流す（`HighlightReel.LinesIn`）。チュートリアルは標準（§36 と同じ）。窓の外の行は流さない。
+- 動きを減らす設定（§41 `MotionPolicy`）では、つなぎの動き（ズーム・ワイプ）をやめて切り替えだけにする。
+
+### 72.4 共有（REQ-HL-012〜014）
+- **共有カード**：`HighlightShare.Card` ＝ 既存の `ShareCard`（REQ-UXS-071）に、1位の瞬間の字幕を足したもの（`Kind = "highlight_image"`）。他の人の名前・プレイヤー ID を入れない。画像は端末で作り OS の共有シートへ（`IClipRecorder`／`IShareSheet`）。
+- **リプレイのリンク**（§63 の `replay`）：本文 `{ "type": "replay", "target": { "raceId": "…", "startTick": 1234 } }`。`startTick`（任意、整数 0〜72000）＝1位の瞬間の始まり。作れるのは今までどおり**自分の公開した保存リプレイだけ**（保存していない・非公開は `404 NOT_FOUND`。画面は「保存して公開すると、リンクで送れます」と出す）。同じリプレイでも `startTick` が違えば別の行き先（`targetKey` = `raceId@startTick`）。開いた人には `target.startTick` を返し、アプリはそのリプレイをその tick から再生する（範囲外は端末が `[0, endTick]` に収める）。**URL にプレイヤー ID・tick を入れない**（トークンだけ）。見られる人・ブロック・メンテナンス（`social`）・期限は §63 のまま。
+- `shareText` は §63 の `replay` の文のまま（名前・tick を入れない）。
+
+### 72.5 KPI（REQ-HL-015、すべてクライアント、§58 で `optional`）
+| イベント | いつ | props → s1／s2／value |
+|---|---|---|
+| `highlight_view` | 見どころの再生を始めた時 | `surface`（`result`・`my_replays`・`friend_replay`・`link`）→ s1、`top`（1位の瞬間の kind）→ s2、`moments`（1〜3）→ value |
+| `highlight_share` | OS の共有シートに渡した時だけ | `surface` → s1、`via`（`card`・`link`）→ s2 |
+レース・プレイヤー・tick は入れない。クエリは docs/ops/kpi-queries.md「レースの見どころ」。
+
+### 72.6 ゲート・データ・ヘルプ
+- **新しい口は無い**。ログは §37 の `/v1/replays*`（グループ `core`）とフレンドの `/v1/friends/*`（`social`）、リンクは `/v1/links`（`social`）から。結果画面の見どころは端末だけで動く（オフラインでも見られる。共有のリンクだけオンライン）。
+- **§51**：プレイヤーの状態に新しいキーは無い（分類の追加なし）。リンクの `startTick` は §63 の `links` の行の `data` に入り、§63.7 のとおりアカウント削除で消える。リプレイの削除で写しが消えれば、そのリンクは §63 のとおり `unavailable`。
+- **ヘルプ**：記事 `race_highlights`（カテゴリ `races`：見どころの選び方・共有のしかた・リンクは公開した保存リプレイだけ）、ヒント `highlights_tip`（記事へのリンク）。
+- アカウントの切り替え（`AccountChangeReset`）：見どころは端末に何も残さない（計算した一覧は画面を閉じれば捨てる）。
+
+### 72.7 クライアント
+- `Muchi.Client`：`HighlightRules`（定数・版）、`HighlightDetector.Detect(config, inputs, focusSlot)`／`Detect(ReplayPlayer)`（同じ答え）、`HighlightSet`・`HighlightMoment`（`ToJson`）、`HighlightReel`（`ReplayPlayer` の上の再生：`Advance`・`Next`・`Skip`・`Frame`・`Current`・`LinesIn`）、`HighlightCaptions`（字幕、日英）、`HighlightShare`（`Card`・`LinkTarget`）、`AnalyticsEvent.HighlightView`・`HighlightShare`。
+- `Muchi.Game`：`HighlightsModel`（結果画面・マイリプレイからの入口、再生・スキップ・字幕・実況の行、共有シートでカードとリンク（保存して公開していなければ案内）、KPI）。
+- 画面が守ること：docs/handoff-codex-round23-highlights.md。

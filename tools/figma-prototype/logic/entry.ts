@@ -17,6 +17,7 @@ import { dayRule } from '../../../server/src/domain/time.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
 import { shopProducts } from '../../../server/src/domain/shop.js';
+import { ticketDisclosure } from '../../../server/src/domain/itemShop.js';
 import { buildRaceConfig, toRaceHorse } from '../../../server/src/domain/raceConfig.js';
 import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
@@ -691,6 +692,11 @@ export const MuchiLogic = {
   tutorialDraw: () => wrap(() => svc.tutorialDraw(ID, key())),
   draw: (bannerId: string, count: 1 | 10) => wrap(() => svc.draw(ID, bannerId, count, key())),
   pityExchange: (bannerId: string, templateId: string) => wrap(() => svc.pityExchange(ID, bannerId, templateId, key())),
+  // quality pass 2 (docs/quality/shop.md): the scout confirmation (GET /v1/gacha/:id/options) and a ticket pull
+  // (POST /v1/items/tickets/:itemId/use, the 10-pull ticket's `results`) on the real rules
+  scoutOptions: (bannerId: string) => wrap(() => svc.scoutOptions(ID, bannerId)),
+  useTicket: (itemId: string, bannerId: string | null) => wrap(() => svc.useTicket(ID, itemId, bannerId, key())),
+  ticketOdds: (itemId: string) => wrap(async () => ticketDisclosure(master, itemId)),
   nameHorse: (horseId: string, name: string) => wrap(() => svc.nameHorse(ID, horseId, name)),
   setAge: (y: number, m: number, guardian: boolean) => wrap(() => svc.setAge(ID, y, m, guardian)),
   purchaseIntent: (productId: string) => wrap(() => svc.purchaseIntent(ID, productId)),

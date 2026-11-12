@@ -1,3 +1,5 @@
+import { scoutOptions } from './scoutOptions.js';
+import { purchaseReceipt } from './receipt.js';
 import { AppError } from './errors.js';
 import { playerQchatCheck, playerQchatOptions, type QChatSlotInput } from './quickChat.js';
 import type { Master, Reward } from './master.js';
@@ -575,7 +577,8 @@ export class PlayerService {
       if (!duplicate && moderationOf(s, now) === 'banned') (s.supportFlags ??= []).push(`purchase_while_banned:${record.txId}`);
       if (!duplicate && deletionScheduled(s)) (s.supportFlags ??= []).push(`purchase_while_deletion_pending:${record.txId}`);
       if (!duplicate) emit({ name: 'purchase', s1: record.productId, s2: platform, s3: record.sandbox ? 'sandbox' : 'real', amountYen: record.priceYen, paidCoins: record.paidCoinsGranted, freeCoins: record.bonusCoinsGranted, isFirst: first && record.priceYen > 0 && !record.sandbox });
-      return { record, duplicate, wallet: playerView(s).wallet };
+      // quality pass 2: what the purchase put in the player's hands and the one step that uses it (additive)
+      return { record, duplicate, wallet: playerView(s).wallet, receipt: purchaseReceipt(this.d.master, s, record) };
     });
     if (v.finalize) {
       // Consume/acknowledge only after the grant is saved. A failure is retried when the app re-sends the receipt.
@@ -649,6 +652,8 @@ export class PlayerService {
 
   /** REQ-GACHA-012..014: pity meter, carry-over rule and step-up progress (read only; the period-end conversion is previewed). */
   async gachaStatus(id: string) { return gachaStatus(this.d.master, await this.load(id), this.d.clock()); }
+  /** Quality pass 2: every way this player can pull on a banner now, each with the exact paid / free split or the ticket (read only). */
+  async scoutOptions(id: string, bannerId: string) { return scoutOptions(this.d.master, await this.load(id), bannerId, this.d.clock()); }
 
   async pityExchange(id: string, bannerId: string, templateId: string, idemKey: string | null) {
     return this.tx(id, this.requireKey(idemKey), (s, now) => exchangePity(this.d.master, s, bannerId, templateId, now));

@@ -1123,3 +1123,11 @@ html[data-reduce-motion="on"] .el.hl-wipe { display: none; }
 .tkt-note { flex: none; font-size: 13px; font-weight: 500; line-height: 1.6; color: var(--text-3); letter-spacing: .04em; overflow-wrap: anywhere; }
 .tkt-gift { flex: none; font: inherit; cursor: pointer; border: 0; text-align: left; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 10px 16px;
   color: var(--gold); background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 1px rgba(255, 211, 79, .55); }
+
+/* quality pass 2 (docs/quality/shop.md): the scout confirmation's spend bar (paid ◈ gold first, then free ◎ cyan — the
+   order the wallet spends them) and the receipt rows (they arrive one after another; at once with reduce motion) */
+.spend-bar { display: flex; border-radius: 6px; overflow: hidden; background: #23394a; }
+.spend-bar i { display: block; height: 100%; }
+.spend-bar i.paid { background: var(--gold); }
+.spend-bar i.free { background: var(--cyan); }
+html[data-reduce-motion="on"] .screen .receipt-row { animation: none; }

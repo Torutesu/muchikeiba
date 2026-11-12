@@ -195,6 +195,10 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Store', 'recommended'); await waitScreen('shop-recommended'); await shot('shop-recommended', english, 600);
     await show('Store', 'coins'); await waitScreen('shop-coins'); await shot('shop-coins', english, 500);
     await show('Scout'); await waitScreen('scout'); await shot('scout', english, 800);
+    // quality pass 2 (docs/quality/shop.md): the scout confirmation and the purchase receipt at the largest text
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').first().click(); await waitScreen(['scout-confirm', 'shortfall']); await shot('scout-confirm', english, 500);
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const r = await L.demoPurchase('starter_pack'); const rc = r.ok ? r.value.receipt : (await L.demoPurchase('coin_160')).value.receipt; return globalThis.__muchi.show('Receipt', rc); });
+    await waitScreen('receipt'); await shot('purchase-receipt', english, 700);
     await show('Odds', 'standard'); await shot('odds', english, 500);
     await show('Stable'); await shot('stable', english, 600);
     await show('SeasonPass'); await waitScreen('pass'); await shot('season-pass', english, 600);
@@ -421,7 +425,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
 
   // 4) the scout reveal with reduce motion: the face at once, every result in the plan
   await show('Scout'); await waitScreen('scout');
-  await page.locator('.screen.in .btn[data-label^="10回引く"]').first().click(); await waitScreen('scout-reveal');
+  // quality pass 2: the pull is confirmed first (paid / free named)
+  await page.locator('.screen.in .btn[data-label^="10回引く"]').first().click(); await page.locator('.screen.in [data-action="scout-pull"]').click(); await waitScreen('scout-reveal');
   await page.waitForTimeout(60);
   assert.equal(await page.locator('.screen.in .rcard.back').count(), 0, 'reduce motion: the card face shows at once (no glow wait)');
   const plan = await page.evaluate(() => globalThis.__muchi.reveal);

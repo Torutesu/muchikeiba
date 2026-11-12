@@ -105,6 +105,8 @@ export interface ShopOffersConfig { starterPlaceAtOrWorse: number; starterAfterR
 /** Shop display texts and labels (master/products.json `display`, REQ-UXS-022). */
 export interface ShopDisplay {
   itemLabels: Record<string, string>;
+  /** Quality pass 2: what each item does in play, one plain line (shown on product cards and the purchase receipt). */
+  itemPurposes?: Record<string, string>;
   notices: Record<string, string>;
   legalLinks: { key: string; title: string }[];
 }

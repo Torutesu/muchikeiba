@@ -4237,6 +4237,49 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Game.HorseProfileModel`（馬カード）、`TrainingModel.Outlook(menuId)`・`TrainingModel.StageUp`（結果で段階が上がったか）、`BreedingModel.Reveal`／`RevealStep`／`ParentGifts`（親ごとに渡せるもの）。
 
 
+## Q2. スカウトの確認・購入の受け取り・パスの合計（品質パス2：課金の体験、`server/src/domain/scoutOptions.ts`・`receipt.ts`・`shop.ts`、C# `Gacha.cs`（`ScoutOptions`・`ScoutWay`）・`Models.cs`（`PurchaseReceipt`）・`Shop.cs`（`ProductContent.Purpose`／`TrackTotal`／`TotalLabel`）・`Muchi.Game.ScoutConfirmModel`／`PurchaseReceiptModel`、`docs/quality/shop.md`）
+**読み取りと表示だけ**：付与・抽選・価格・確率は何も変えない（経済 E1〜E20 は同じ）。追加はすべて任意のフィールド（古いクライアントはそのまま動く）。
+
+### Q2.1 `GET /v1/gacha/:bannerId/options`（要認証、スカウトの確認）
+```json
+{ "bannerId": "pickup_ginga", "name": "ピックアップ：ギンガノカナタ", "status": "active", "paidOnly": false, "stepUp": false,
+  "wallet": { "paid": 300, "free": 2144 },
+  "ways": [
+    { "id": "coins_10", "via": "coins", "count": 10, "itemId": null, "label": "10回引く", "price": 1000,
+      "pays": { "paid": 300, "free": 700 }, "after": { "paid": 0, "free": 1444 }, "owned": null,
+      "available": true, "block": null, "shortfall": null, "line": "有償コイン300枚と無償コイン700枚を使います", "pityGain": 10 },
+    { "id": "ticket:gacha_ticket", "via": "ticket", "count": 1, "itemId": "gacha_ticket", "label": "スカウト券で1回引く", "price": null, "pays": null, "after": null,
+      "owned": 2, "available": true, "block": null, "shortfall": null, "line": "スカウト券を1枚使います（コインは使いません）", "pityGain": 1 } ],
+  "srPlus": { "itemId": "ticket_sr_plus", "name": "SR以上確定スカウト券", "owned": 1, "line": "…", "oddsPath": "/v1/items/tickets/ticket_sr_plus/odds" },
+  "notice": "有償コインから先に使われます。" }
+```
+- `ways`：コイン（`coins_1`・`coins_10`、ステップアップは `coins_10` だけで今のステップの価格）と、**持っている**このバナー用の券（`ticket:<itemId>`、有償限定・ステップアップのバナーには出ない、REQ-ITEM-001・REQ-GACHA-014）。`pays` は `spend`（wallet.ts）と同じ順（有償から先、有償限定は有償だけ）で計算した内訳、`after` は引いた後の残高。足りなければ `available: false`・`block: "short"`・`shortfall`（§29 の数え方と同じ）。`block` は `short`／`closed`／`upcoming`／`debt`／`null`。
+- `srPlus`：SR以上確定券を持っている間だけ（どのバナーにも属さない専用の表、REQ-ITEM-002。天井ポイントは加算しない）。
+- `line`・`label`・`notice` はサーバーの文（英語は `server-en.json`）。「倍」・急かす言葉は使わない（テストで確認）。
+- 引く操作は従来どおり `POST /v1/gacha/:id/draw`・`POST /v1/items/tickets/:itemId/use`。サーバーは取引の時刻で改めて判断する（この表示は何も予約しない）。メンテナンスの区分は `/v1/gacha` と同じ。エラー：`NOT_FOUND`（予告前・存在しないバナー）。
+
+### Q2.2 `POST /v1/shop/purchase` の `receipt`（追加）
+```json
+{ "record": {…}, "duplicate": false, "wallet": {…},
+  "receipt": { "txId": "…", "productId": "starter_pack", "name": "スターターパック", "priceYen": 480, "at": 1796871607000,
+    "lines": [ { "kind": "paid_coins", "label": "有償コイン300枚", "purpose": null, "qty": 300 },
+               { "kind": "item", "label": "SR以上確定スカウト券×1", "purpose": "スカウトの画面で使うと、SR以上の馬が1頭来ます（…）", "itemId": "ticket_sr_plus", "qty": 1 } ],
+    "wallet": { "paid": 300, "free": 2144 },
+    "next": { "action": "use_sr_ticket", "label": "SR以上確定スカウト券を使う", "itemId": "ticket_sr_plus", "pattern": null },
+    "notes": [ "購入の記録は「その他」→「購入履歴」でいつでも確かめられます" ] } }
+```
+- `lines[].kind`：`paid_coins`・`free_coins`（テスト購入）・`bonus_free_coins`（はじめての購入、「倍」とは書かない）・`item`・`pass`（`endsAt` = シーズンの実際の終わり、日付はクライアントが書く）・`pass_levels`・`allowance`。`purpose` は `products.json` の `display.itemPurposes`（見た目の品は「ランク戦の能力は変わりません」を必ず含む）。
+- `next`：買った物を使う一歩だけ（**別の商品には決して案内しない**）。優先順：SR以上確定券 → `use_sr_ticket`、パス → `open_pass`、厩舎手当 → `claim_allowance`、勝負服の柄（visuals.json の `unlockItem`）→ `wear_silks`（`pattern`）、コイン → `scout`。重複の配達（`duplicate: true`）も同じ受け取りを返す。
+
+### Q2.3 商品の表示（`GET /v1/shop/products` の `contents[]` に追加）
+- `pass_premium`：`total`（全段の合計、`{ freeCoins, items }`）と `totalLabel`（「30段の合計：無償コイン1,500枚＋配合素材×30」）。合計は足し算で書き、比率・「倍」・価格の比較は書かない。従来の `label` はそのまま。
+- `item`：`purpose`（上と同じ、無ければ `null`）。
+
+### Q2.4 KPI（§58：どちらも `optional`、数だけ）
+- `scout_confirm`（クライアント）`{ stage: view|pull|cancel, via: coins|ticket|sr_ticket, count: 1|10 }` → s1 = stage、s2 = via、count。
+- `purchase_receipt`（クライアント）`{ stage: view|next, productId, action: use_sr_ticket|wear_silks|open_pass|claim_allowance|scout|none }` → s1・s2・s3。
+- C# `AnalyticsEvent.ScoutConfirm`・`AnalyticsEvent.PurchaseReceipt`。クエリは `docs/ops/kpi-queries.md`「スカウトの確認・購入の受け取り」。
+
 ## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
 マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。
 

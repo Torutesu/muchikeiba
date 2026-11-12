@@ -17,6 +17,7 @@ import { clawbackFree, grantFree } from './wallet.js';
 import { levelOf, passPurchasesFor, seasonEndMs } from './pass.js';
 import { experimentsView } from './onboarding.js';
 import { windowActive } from './comeback.js';
+import { itemPurpose, rewardTimes } from './receipt.js';
 
 export interface OfferRecord { triggeredAt?: number; reason?: string; viewedAt?: number }
 /** REQ-UXS-018: one 厩舎手当 purchase. Day 1 = `startDate` (game day, gameDayKey); the last day is startDate + days − 1. */
@@ -57,9 +58,13 @@ function rewardText(m: Master, r: Reward): string {
 export type ProductContent =
   | { type: 'paid_coins'; qty: number; label: string }
   | { type: 'daily_free_coins'; qty: number; days: number; total: number; label: string }
-  | { type: 'pass_premium'; levels: number; reward: Reward; label: string }
+  | { type: 'pass_premium'; levels: number; reward: Reward; label: string;
+      /** Quality pass 2: every tier added up, stated plainly (never as a ratio), so the track's value is legible. */
+      total: Reward; totalLabel: string }
   | { type: 'pass_levels'; qty: number; label: string }
-  | { type: 'item'; itemId: string; qty: number; label: string };
+  | { type: 'item'; itemId: string; qty: number; label: string;
+      /** Quality pass 2: what it does in play (products.json display.itemPurposes), null when not stated. */
+      purpose: string | null };
 
 /** REQ-UXS-022: what the product contains, in display order, with quantities and server-built labels. */
 export function productContents(m: Master, p: Product): ProductContent[] {
@@ -72,10 +77,12 @@ export function productContents(m: Master, p: Product): ProductContent[] {
   if (p.kind === 'season_pass') {
     const pr = m.progression.passRewards.premium;
     const levels = Math.floor(m.progression.passMaxLevel / pr.every);
-    out.push({ type: 'pass_premium', levels, reward: pr.reward, label: `シーズンパス有料ライン 全${levels}段（各段：${rewardText(m, pr.reward)}）` });
+    const total = rewardTimes(pr.reward, levels);
+    out.push({ type: 'pass_premium', levels, reward: pr.reward, label: `シーズンパス有料ライン 全${levels}段（各段：${rewardText(m, pr.reward)}）`,
+      total, totalLabel: `${levels}段の合計：${rewardText(m, total)}` });
     if (p.pass?.levels) out.push({ type: 'pass_levels', qty: p.pass.levels, label: `パスのレベル＋${p.pass.levels}（購入時）` });
   }
-  for (const it of p.items ?? []) out.push({ type: 'item', itemId: it.itemId, qty: it.qty, label: `${itemLabel(m, it.itemId)}×${it.qty}` });
+  for (const it of p.items ?? []) out.push({ type: 'item', itemId: it.itemId, qty: it.qty, label: `${itemLabel(m, it.itemId)}×${it.qty}`, purpose: itemPurpose(m, it.itemId) });
   return out;
 }
 

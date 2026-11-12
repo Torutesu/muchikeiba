@@ -174,6 +174,8 @@ static class Program
         await GoalLadderChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality integration: home says each thing once (NextActionModel.HomeLine, one link), the ladder counts the pass rewards and links its cap to the horse card");
         await QualityIntegrationChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== quality pass 2: the scout confirmation (paid / free split, tickets, the SR+ ticket, shortfall route) and the purchase receipt (rows, next step, KPI)");
+        MonetizationQualityChecks.Run(Check);
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");

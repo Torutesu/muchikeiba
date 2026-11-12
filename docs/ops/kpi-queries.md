@@ -1740,3 +1740,36 @@ GROUP BY category ORDER BY reopens DESC
 
 - `auto_closed` が多い種類は、返信の文がそのまま答えになっているか（追加の質問が要らないか）を見直す。
 - `ticket_reopen` の多い種類はひな形（`help.replyTemplates`）か記事を見直す。
+
+## スカウトの確認・購入の受け取り：出した・引いた・閉じた・次の一歩（品質パス2、docs/quality/shop.md、contracts/protocol.md「スカウトの確認」「購入の受け取り」）
+
+`scout_confirm`（クライアント、`optional`）：`blob8` = `view` / `pull` / `cancel`、`blob9` = `coins` / `ticket` / `sr_ticket`、`double5` = 1 か 10。`purchase_receipt`（クライアント、`optional`）：`blob8` = `view` / `next`、`blob9` = 商品 id、`blob10` = 次の一歩（`use_sr_ticket` / `wear_silks` / `open_pass` / `claim_allowance` / `scout` / `none`）。引いた結果・購入そのものはサーバーの `gacha_draw`・`purchase`（`essential`）。
+
+**確認で閉じた割合**（日ごと、引き方ごと）。コインの確認で閉じる人が多い（> 30%）なら、有償・無償の内訳を見て思いとどまっている（想定どおりの「だまさない」効果）か、確認が邪魔になっている。`gacha_draw` の回数と合わせて見る。
+
+```sql
+SELECT
+  blob6 AS day, blob9 AS via,
+  sumIf(_sample_interval, blob8 = 'view') AS shown,
+  sumIf(_sample_interval, blob8 = 'pull') AS pulled,
+  sumIf(_sample_interval, blob8 = 'cancel') AS closed
+FROM muchi_kpi
+WHERE blob1 = 'scout_confirm' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day, via
+ORDER BY day DESC, via
+```
+
+**受け取りの次の一歩を押した割合**（商品ごと）。スターターパックの `use_sr_ticket` が低いなら、買った券がその場で使われていない（受け取りの画面の言い方・ボタンを見直す）。
+
+```sql
+SELECT
+  blob9 AS product, blob10 AS action,
+  sumIf(_sample_interval, blob8 = 'view') AS receipts,
+  sumIf(_sample_interval, blob8 = 'next') AS next_taken
+FROM muchi_kpi
+WHERE blob1 = 'purchase_receipt' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY product, action
+ORDER BY receipts DESC
+```
+
+- **購入直後の不安**：`purchase_receipt`（`view`）の後、同じ日に `history_view`（`purchases`）を開く課金者の割合が受け取りの導入前より下がっていれば、「届いた」が受け取りで伝わっている。

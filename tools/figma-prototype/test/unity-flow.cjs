@@ -2122,7 +2122,6 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .ped-panel').getAttribute('data-flow'), 'columns', 'pedigree: columns at the standard text size');
   assert.equal(await page.locator('.screen.in .ped-box').count() + await page.locator('.screen.in .el.ped-empty').count(), 15, 'pedigree: 15 slots (3 generations)');
   assert.match(await page.locator('.screen.in .ped-panel').innerText(), /記録なし/, 'pedigree: template parents have no record');
-  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /系統の祖/, 'pedigree: the founder of the line');
   await shot('pedigree-partner', 300);
   const pd = await page.evaluate(async () => (await globalThis.__muchi.logic.pedigree.demo()).value);
   await page.evaluate(() => globalThis.__muchi.show('BreedingPair')); await waitScreen('pedigree-pair'); await page.waitForTimeout(500);
@@ -2139,6 +2138,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(Number(await page.locator('.screen.in .ped-panel').getAttribute('data-shared')) === 0, 'the brother himself is not inbred');
   await page.evaluate((id) => globalThis.__muchi.show('Pedigree', id, 'horse'), pd.studFoalId); await waitScreen('pedigree'); await page.waitForTimeout(400);
   assert.match(await page.locator('.screen.in .ped-panel').innerText(), /他のトレーナーの馬/, 'pedigree: another trainer\'s stallion has no owner name');
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /系統の祖/, 'pedigree: the stallion\'s sire is the founder of its line');
   await shot('pedigree-stud', 300);
   await page.locator('.screen.in [data-action="ped-lines"]').click(); await waitScreen('bloodlines'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in .ped-line-row').count(), 7, 'bloodlines: every line');

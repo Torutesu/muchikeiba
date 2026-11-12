@@ -154,6 +154,25 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.ok(worst.card, 'quality-2: the promotion card is on the same result');
   await shot('result-fullest', 600);
 
+  // quality-2 integration (shop × first week): the receipt's step and the scout screen agree — the SR+ ticket bought is used on
+  // the scout screen (the screen はじめの10歩 opens for its scout step); closing a first receipt brings the account-link prompt
+  // (FirstPurchase, §58.11 row 7) after it, never over it
+  const buy = async () => {
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const y = new Date(L.now() + 9 * 3600000).getUTCFullYear(); await L.setAge(y - 31, 1, false); });
+    await page.evaluate(() => globalThis.__muchi.show('PurchaseConfirm', 'starter_pack'));
+    await page.waitForFunction(() => document.querySelector('.screen.in .pstate')?.dataset.state === 'registered', null, { timeout: 20000 });
+    await page.locator('.screen.in [data-demo-buy]').click(); await waitScreen('receipt', 20000);
+  };
+  await page.evaluate(() => globalThis.__muchi.demo('day1')); await page.waitForTimeout(1500);
+  await buy();
+  assert.equal(await page.locator('.screen.in [data-action="receipt-next"]').getAttribute('data-next'), 'use_sr_ticket', 'q2 shop: the starter pack\'s step uses its SR+ ticket');
+  await page.locator('.screen.in [data-action="receipt-next"]').click(); await waitScreen('scout-confirm', 20000);
+  assert.match(await page.locator('.screen.in [data-spend]').innerText(), /SR以上確定スカウト券/, 'q2 shop: the receipt step lands on the scout confirmation with the ticket');
+  await page.evaluate(() => globalThis.__muchi.demo('day1')); await page.waitForTimeout(1500);
+  await buy();
+  await page.locator('.screen.in').getByText(/^閉じる$/).click(); await waitScreen('link-prompt', 10000);
+  assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'FirstPurchase', 'q2: the first purchase\'s account-link prompt comes after the receipt');
+
   // d) the raising screens: the type floor; the reveal under reduce motion
   const minFont = () => page.evaluate(() => {
     // the screen's own panels (the shared top bar and wallet belong to the presentation pass's later screen-by-screen floor)

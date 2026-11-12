@@ -80,5 +80,5 @@ FTUE の「aha 30 秒」の道筋（タイトル→初レース→勝利→命�
 ## 6. 他の作業との合わせ方
 
 - 目標の階段（`goals.ts`／`Goals.cs`／`GoalLadderModel`）に**項目を足しただけ**（既存の項目・順番・意味は同じ。古いサーバーの JSON も読める）。ランク戦・ショップのワークストリームと同じファイルに触れる場合は `today.tomorrow`・`partner`・`path.current.screen/open` を残せばよい。
-- プロトタイプのホーム：相棒の札（`.partner-plate`）の中身だけを変えた（位置・大きさは同じ。名前は成長の行がある時 44px）。テストが見るのは `.pp-growth`・`.pp-delta`・`.pp-next`・`.pp-stage`・`[data-rung="path"][data-go]`・`.gl-tomorrow`・`.gl-tomorrow-block`・`[data-action="gl-step"]`。
+- プロトタイプのホーム：相棒の札（`.partner-plate`）の中身だけを変えた（位置・大きさは同じ。成長の行がある時は「あなたの相棒」の見出しを金の線だけにして名前を上へ）。テストが見るのは `.pp-growth`・`.pp-delta`・`.pp-next`・`.pp-stage`・`[data-rung="path"][data-go]`・`.gl-tomorrow`・`.gl-tomorrow-block`・`[data-action="gl-step"]`。
 - `AccountLinkPrompt.ShouldShow`：3日目のホームは false（結果を閉じた後は true）。プロトタイプは結果の「ホーム」から来た時に `ResultClosed` で聞く。

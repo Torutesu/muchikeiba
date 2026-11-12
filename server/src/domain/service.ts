@@ -115,6 +115,7 @@ import {
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
 import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
+import { horseProfile } from './horseProfile.js';
 import { answerReviewPrompt, checkReviewPrompt, reviewPromptStatus, type ReviewCheckInput, type ReviewStep } from './reviewPrompt.js';
 import { localRemindersView } from './localNotify.js';
 import {
@@ -610,6 +611,8 @@ export class PlayerService {
   // ---- 馬ごとの目標 (REQ-HGOAL-*, horseGoals.ts) ----
   /** REQ-HGOAL-010: a horse's goal chain (a read: completion is recorded where results are counted, never here). */
   async horseGoals(id: string, horseId: string) { return horseGoalsView(this.d.master, await this.load(id), horseId); }
+  /** Quality pass (docs/quality/raising-breeding.md): 馬カード — the horse growing, read-only. */
+  async horseProfile(id: string, horseId: string) { return horseProfile(this.d.master, await this.load(id), horseId); }
   /** REQ-HGOAL-007: pin one horse's goal to the home (null = unpin). Idempotent; hgoal_pin only when the pin changes. */
   pinHorseGoal(id: string, horseId: string | null) { return this.tx(id, null, (s, _now, emit) => pinHorseGoal(this.d.master, s, horseId, emit)); }
   async pinnedHorseGoal(id: string) { return { pinned: pinnedGoalView(this.d.master, await this.load(id)) }; }

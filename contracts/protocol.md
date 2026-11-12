@@ -889,6 +889,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "open": null,
   "rules": { "rankedNormalized": true, "fatigueAffectsRaces": false, "inherited": false, "paidBoosts": false } }
 ```
+- 品質パス（`docs/quality/raising-breeding.md`）：`horses[].menus[]` に `outlook`（任意・古いサーバーは無い）：`{ "min", "max", "efficiencyPermille", "bondPermille", "softPermille" }`。今この馬がこのメニューを始めたときの伸び（整数部分）をミニゲームなし／満点で、finish と同じ `computeGain`（今の疲れ・絆・端数）から出す。合計は seed に依らないので幅は正確（能力の分け方だけ seed で決まる）。start の `preview` と同じ値。差分（`partial`）の馬にも入る。
 - `horses` は現役の馬だけ。`blocked`（馬）・`menus[].blocked`（メニュー）：`null` / `no_slots` / `horse_daily_limit` / `potential_full` / `tired`（疲れを足すメニューだけ）/ `retired`。`condition`：`fresh`（疲れ < 40）/ `normal` / `tired`（≥ `restAt`）。
 - `open`：仕上げていないセッション（`sessionId`・`horseId`・`menuId`・`startedAt`・`expiresAt`・`beats`・`durationMs`）。期限を過ぎたものはこの GET で**ミニゲームなしとして記録**される（その時だけ取引で書き込む。普段は読み取りだけ）。
 - `rules` は画面に「ランク戦はクラスの上限にそろえる」「疲れはレースに影響しない」と書くための値（いつも上の値）。
@@ -4145,3 +4146,32 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
+番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。
+
+### Q1.1 `GET /v1/horses/:horseId/profile`（要認証）
+```json
+{ "horseId": "h1", "name": "アカツキ", "rarity": "SR", "sex": "male", "style": "sashi", "status": "active", "surface": "turf", "distMinM": 1600, "distMaxM": 2400, "goingAptitude": "any", "partner": true,
+  "stats": [ { "key": "speed", "base": 700, "awakening": 0, "trained": 4, "race": 704, "ranked": 593 } ],
+  "totals": { "base": 3320, "effective": 3320, "race": 3332, "ranked": 2799, "classId": "C", "cap": 2800, "capped": true, "toCap": 0 },
+  "growth": { "trainedTotal": 12, "potential": 240, "perStatCap": 96, "stage": 0, "stageKey": "debut", "nextStageAt": 24, "sessions": 2 },
+  "leaning": { "stat": "burst", "trained": 6, "sharePermilleBefore": 216, "sharePermilleNow": 217 },
+  "lineage": { "generation": 1, "line": "…", "sireName": "…", "damName": "…", "studSire": false, "bred": false, "skill": { "id": "…", "name": "末脚一閃", "…": "…" }, "skillFrom": "own", "atavism": null },
+  "career": { "races": 12, "wins": 3, "places": 6, "rivalWins": 1, "tournamentWins": 0, "biggestWin": null, "firstRaceAt": 1796871607000 },
+  "recentTraining": [ { "at": 1796871607000, "menuId": "hill", "grade": "great", "gain": 6, "score": 10 } ] }
+```
+- `stats[]`：5能力を `base`（基礎）＋`awakening`（覚醒）＋`trained`（調教。1000 の天井の後）＝`race`（レースで使う値、`raceStats`）。`ranked` は今のクラスの上限で `normalizeStats` した値。**正規化は合計だけを上限にそろえ、比率はそのまま**なので、調教で伸ばした能力の配分はランク戦にも残る（課金で伸びは増えない：§25）。
+- `growth`（調教が無効なら `null`）：成長段階 `stage` 0〜4（`debut` 新馬・`growing` 成長期・`prime` 充実期・`peak` 本格化・`complete` 完成）は素質の使った割合（0・100・350・650・1000‰）。`complete` は素質いっぱいの時だけ。`nextStageAt` は次の段階が始まる伸びの合計（最後は `null`）。**表示だけで報酬は付かない**。TS `growthStage` と C# `GrowthStages.Of` は `contracts/horse-profile.vectors.json` で一致を確認。
+- `leaning`：調教で一番伸ばした能力と、その能力が馬の中で占める割合（‰）の前後。伸びが無ければ `null`。
+- `lineage.generation`：この厩舎での世代（スカウト・配布の馬は1、仔は厩舎にいる親の世代の大きい方 +1。厩舎にいない親は1とみなす）。`skillFrom`：`own`（テンプレートの固有スキル）／`sire`／`dam`（同じスキルを持つ親）／`null`。`atavism` は §8.5 の隔世遺伝の記録。
+- `career` は §34 の戦績（確定したレースだけ）、`recentTraining` は §25 の調教日誌の新しい5件。
+- エラー：`HORSE_NOT_FOUND`。
+
+### Q1.2 配合の見込みの `rarity`（`POST /v1/breeding/preview`・`/v1/stud/preview` に追加、任意）
+`"rarity": { "R": 912345, "SR": 80000, "SSR": 7655 }`（百万分率、3つの和はちょうど 1,000,000。R が端数を持つ）。仔のレア度は `rarityForTotal`（合計 3,200 で SR・3,700 で SSR）。各能力 = 基準値（`baseline`：親の平均 × 覚醒・ニックス・近親を含む）＋ −60〜+60 の一様な整数（`randRange`）を 0〜1000 に収めたもの、なので**合計の分布を畳み込みで厳密に**出す（`foalRarityOdds`）。新しい乱数・新しい確率は無い（実際の抽選と同じ規則。`server/test/horse-profile.test.ts` で同じ規則を4万回引いた頻度と一致）。
+
+### Q1.3 クライアント
+- C# `HorseProfile.Parse`、`ApiClient.GetHorseProfileAsync(horseId)`、`TrainingMenuOutlook`（`TrainingHorse.MenuOutlook`）、`BreedingPreview.Rarity`。`FoalReveal.Build(preview, foal)`：生まれた仔を順にめくる手順（性別と脚質 → 5能力が見込みの幅のどこに着地したか → レア度 → 固有スキル・隔世遺伝）。着地の位置は見込みの幅（`stats[].min/max`）に対する割合だけで、新しい判定は無い。
+- `Muchi.Game.HorseProfileModel`（馬カード）、`TrainingModel.Outlook(menuId)`・`TrainingModel.StageUp`（結果で段階が上がったか）、`BreedingModel.Reveal`／`RevealStep`／`ParentGifts`（親ごとに渡せるもの）。
+

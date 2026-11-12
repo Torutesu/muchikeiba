@@ -444,8 +444,22 @@ function horseView(m: Master, c: TrainingConfig, s: PlayerState, h: HorseInstanc
     fatigue, condition: conditionOf(c, fatigue), bondLevel: horseBondLevel(m, s, h.id),
     todayCount: rec && sameGameDay(rec.day, today) ? rec.dayCount : 0, sessions: rec?.sessions ?? 0, ...(withLog ? { log: rec?.log ?? [] } : {}),
     blocked: blockReason(m, c, s, h, null, now),
-    menus: c.menus.map((x) => ({ id: x.id, blocked: blockReason(m, c, s, h, x, now) })),
+    menus: c.menus.map((x) => ({ id: x.id, blocked: blockReason(m, c, s, h, x, now), outlook: menuOutlook(m, c, s, h, x, fatigue, rec) })),
   };
+}
+
+/**
+ * Quality pass (docs/quality/raising-breeding.md): what this menu would give this horse if it started now — the whole points
+ * without the mini-game and with a full score, from computeGain (the function finish uses), at the horse's current fatigue,
+ * bond and carry. The total does not depend on the session seed (only the split between stats does), so the range is exact.
+ * `fatiguePermille` / `bondPermille` say what moved it (efficiency below 1000 = tired; bond above 0 = the bond bonus).
+ */
+function menuOutlook(m: Master, c: TrainingConfig, s: PlayerState, h: HorseInstance, menu: TrainingMenu, fatigue: number, rec: HorseTraining | undefined) {
+  const input = { fatigueBefore: fatigue, bondLevel: horseBondLevel(m, s, h.id), carry: rec?.carry ?? 0, seed: 0 };
+  const base = effectiveStats(m, h);
+  const lo = computeGain(c, h, base, menu, { ...input, timingPermille: 0 });
+  const hi = computeGain(c, h, base, menu, { ...input, timingPermille: maxScore(c.timing) * c.timing.permillePerPoint });
+  return { min: lo.whole, max: hi.whole, efficiencyPermille: lo.efficiencyPermille, bondPermille: lo.bondPermille, softPermille: lo.softPermille };
 }
 
 function sessionView(c: TrainingConfig, x: TrainingSession) {

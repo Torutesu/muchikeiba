@@ -1,0 +1,160 @@
+{
+  "_note": "Quality pass (docs/quality/raising-breeding.md): server/src/domain/horseProfile.ts growthStage and C# Muchi.Client GrowthStages.Of must agree. Thresholds: permille of the training potential used (0 / 100 / 350 / 650 / 1000).",
+  "v": 1,
+  "stages": [
+    "debut",
+    "growing",
+    "prime",
+    "peak",
+    "complete"
+  ],
+  "cases": [
+    {
+      "trained": 0,
+      "potential": 240,
+      "index": 0,
+      "key": "debut",
+      "nextAt": 24
+    },
+    {
+      "trained": 23,
+      "potential": 240,
+      "index": 0,
+      "key": "debut",
+      "nextAt": 24
+    },
+    {
+      "trained": 24,
+      "potential": 240,
+      "index": 1,
+      "key": "growing",
+      "nextAt": 84
+    },
+    {
+      "trained": 83,
+      "potential": 240,
+      "index": 1,
+      "key": "growing",
+      "nextAt": 84
+    },
+    {
+      "trained": 84,
+      "potential": 240,
+      "index": 2,
+      "key": "prime",
+      "nextAt": 156
+    },
+    {
+      "trained": 155,
+      "potential": 240,
+      "index": 2,
+      "key": "prime",
+      "nextAt": 156
+    },
+    {
+      "trained": 156,
+      "potential": 240,
+      "index": 3,
+      "key": "peak",
+      "nextAt": 240
+    },
+    {
+      "trained": 239,
+      "potential": 240,
+      "index": 3,
+      "key": "peak",
+      "nextAt": 240
+    },
+    {
+      "trained": 240,
+      "potential": 240,
+      "index": 4,
+      "key": "complete",
+      "nextAt": null
+    },
+    {
+      "trained": 300,
+      "potential": 240,
+      "index": 4,
+      "key": "complete",
+      "nextAt": null
+    },
+    {
+      "trained": 0,
+      "potential": 0,
+      "index": 0,
+      "key": "debut",
+      "nextAt": null
+    },
+    {
+      "trained": 5,
+      "potential": 0,
+      "index": 0,
+      "key": "debut",
+      "nextAt": null
+    },
+    {
+      "trained": -3,
+      "potential": 300,
+      "index": 0,
+      "key": "debut",
+      "nextAt": 30
+    },
+    {
+      "trained": 30,
+      "potential": 300,
+      "index": 1,
+      "key": "growing",
+      "nextAt": 105
+    },
+    {
+      "trained": 105,
+      "potential": 300,
+      "index": 2,
+      "key": "prime",
+      "nextAt": 195
+    },
+    {
+      "trained": 194,
+      "potential": 300,
+      "index": 2,
+      "key": "prime",
+      "nextAt": 195
+    },
+    {
+      "trained": 195,
+      "potential": 300,
+      "index": 3,
+      "key": "peak",
+      "nextAt": 300
+    },
+    {
+      "trained": 299,
+      "potential": 300,
+      "index": 3,
+      "key": "peak",
+      "nextAt": 300
+    },
+    {
+      "trained": 18,
+      "potential": 180,
+      "index": 1,
+      "key": "growing",
+      "nextAt": 63
+    },
+    {
+      "trained": 17,
+      "potential": 180,
+      "index": 0,
+      "key": "debut",
+      "nextAt": 18
+    },
+    {
+      "trained": 117,
+      "potential": 180,
+      "index": 3,
+      "key": "peak",
+      "nextAt": 180
+    }
+  ]
+}

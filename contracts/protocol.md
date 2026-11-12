@@ -2426,7 +2426,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
 | `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
+| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・血統図と系統 `/v1/horses/:horseId/pedigree`・`/v1/breeding/pedigree`・`/v1/bloodlines` §71（Round 23。他のプレイヤーの馬の図も読むだけなので `core`）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
@@ -4145,3 +4145,57 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 71. 血統図と系統（pedigree viewer & bloodlines、REQ-PED-001〜020、`server/src/domain/pedigree.ts`・`server/master/bloodlines.json`、C# `Pedigree.cs`（`PedigreeView`・`PedigreeRecord`・`PedigreeTree`・`BreedingPedigree`・`BloodlineList`）・`Muchi.Game.PedigreeModel`／`BloodlinesModel`、docs/handoff-codex-round23-pedigree.md）
+配合（§8.5 の種牡馬の貸し借り・隔世遺伝・見た目の継承）の長い遊びを深める**読むだけ**の画面。馬の 3 代の血統図、系統（父系）ごとのまとまり、配合の組み合わせで受け継ぎやすいもの、近親の共通の祖先を見せる。**何も配らない・何も売らない**（E 番号なし、balance-targets の節なし）。**新しい乱数も新しい仕組みも足さない**：見せる確率・数は既存の配合の規則（`previewFor`・`goingAptitudeOdds`・`skillInheritOdds`・`atavismOdds`・`inbreedingCount`・`BREED`・`nicks.json`）がそのまま返すものだけ。レースの結果・ゴールデンは変わらない。系統を集めても報酬は無い（コンプガチャにならない：系統の数・揃い具合に何も結び付けない）。
+
+### 71.1 血統の記録（REQ-PED-001/002）
+- 既存：馬は `sireId`・`damId`・`sireName`・`damName` を持ち、借りた種牡馬の仔は `studSire`（持ち主・馬 ID・その父母名、REQ-BREED-014）を持つ。馬は厩舎から消えない（引退しても `status: retired` で残る）ので、自分の厩舎の祖先はいつでも今の馬から読める。
+- **足すもの：生まれた時の写し `lineage`**（配合で生まれた仔だけ。`breedWith` が仔を作る時に 1 回だけ書き、その後は変えない）。`{ v: 1, sire: LineageSnap, dam: LineageSnap }`、`LineageSnap = { name, named?, templateId, rarity, sex, style, goingAptitude?, surface, line, skillId?, appearance, stats（配合の時の覚醒込みの能力 effectiveStats）, sireName, damName }`。借りた種牡馬の写しは持ち主の馬の写し（§8.5 の `StudSnapshot.horse`）から作る。**他のプレイヤーの ID は写しに入れない**（持ち主は既存の `studSire.ownerId` だけ）。乱数は使わない（配合の抽選がすべて終わった後に書くので、仔の結果も乱数の使い方も変わらない）。
+- 読む順：自分の厩舎の今の馬 → 写し `lineage` → 名前だけ（`sireName`／`damName`、テンプレートの架空の親の名前）→ 何も無ければ出さない。名前だけの祖先は `rec: null`（「記録なし」）。
+- **移行は無い**（wrangler の移行も無し）：`lineage` は任意。前からいる馬の親は今の馬から読めるので写しは要らない。写しの無い前の借りた種牡馬は名前と持ち主だけ（能力などは「記録なし」）。
+
+### 71.2 血統図 `GET /v1/horses/:horseId/pedigree[?playerId=<id>]`（要認証、読むだけ、REQ-PED-003〜008）
+- 既存の口（REQ-HORSE-007）の答えに**足すだけ**（`key`・`name`・`horseId`・`sire`・`dam` はそのまま、新しい欄を足す）。自分の馬は 5 代まで（既存）、他のプレイヤーの馬は 3 代まで。画面は 3 代（父母・祖父母・曾祖父母、14 頭）を描く。
+- 節（`PedigreeNode`）に足す欄：`gen`（0 = 本人）、`rec`（下記。無ければ `null`）、`recordText`（`rec` が無い時「記録なし」）、`shared`（共通の祖先なら `true`）、`founder`（系統の祖の名前なら `true`）、`lent`（他のプレイヤーの種牡馬の節だけ：`{ ownerName, label }`）、`nameHidden`（13 歳未満の持ち主の名前を隠した時 `true`）。
+- `rec` = `{ source: "live"|"snapshot", rarity, sex, style, goingAptitude, surface, line, lineName, appearance, thumbKey, skill: {id, name}|null, status: "active"|"retired"|null, statTotal, stats?（自分の馬だけ）, best: {races, wins, places, tournamentWins}|null, bestText }`。`thumbKey` はテンプレートの馬なら既存の `collection/portrait/<templateId>`、ほかは `null`（`appearance` から描く、§17 のキー）。`best` は §34 の通算記録（確定した結果だけ、`CareerRecord`）から。写しの馬は `best: null`。
+- 根に足す欄：`v: 2`、`relation`（`self`・`friend`・`other`）、`generations`、`line`・`lineName`（系統）、`sharedKeys`（共通の祖先の `key`）、`inbreeding`（既存の規則をそのまま：`{ count, penaltyPerAncestor: BREED.inbreedingPenalty, statPenalty }`、`count` = この馬の父側（2 代）と母側（2 代）の両方に出る祖先の数＝生まれた時の `inbreedingCount` と同じ数え方）、`young`、`rev`（中身のハッシュ）。
+- **近親**：既存の規則（REQ-HORSE-007：3 代以内の同じ祖先 1 頭につき能力の基準 −`inbreedingPenalty`）を見せるだけ。祖先の `key` は既存の `pedigree()` と同じ（自分の馬は馬 ID、他人の種牡馬は `stud:<持ち主>:<馬ID>`、名前だけは `name:<名前>`）なので、図の強調と配合の計算はいつも同じ。**新しい規則は足さない。**
+- **借りた種牡馬**：`lent.ownerName` は、持ち主が見る人本人か、見る人のフレンド（ブロックしていない・公開プロフィールがあり停止中でない）の時だけ表示名。それ以外は `null` で `label` が「他のトレーナーの馬」（英語 "Another trainer's horse"）。持ち主の ID は答えに入れない（他人の図では `key` の `stud:<持ち主>:…` も `stud:<連番>` に置き換える）。
+- **他のプレイヤーの馬**（`playerId` が自分でない）：相手の公開プロフィールが無い・停止中・どちらかがブロック（§47.1 の 1 つの一覧）→ `404 NOT_FOUND`（理由は言わない、厩舎の訪問と同じ）。相手の状態で、その馬が**今公開されている**（マイ厩舎の公開の写しの馬房 `stableSnapshot().horses`、またはトレーナーカードの愛馬 `showcaseCopy().horse`）時だけ答える。どちらにも無い・削除の予約中・停止中 → `404 NOT_FOUND`。
+- **13 歳未満の持ち主**（§62 と同じ `showcaseYoung`）：他の人が見る図に、持ち主が付けた名前を入れない（名前を付けた馬・写しの名前、マスターの名前（テンプレートの馬・その架空の親）でない名前だけの祖先は「名前は非公開」、`nameHidden: true`）。自分で見る時は隠さない。
+- 文言：系統の名前は見る人の言語で組から選ぶ（`lineName`・`founderName`、境界で訳さない）。馬の名前はこれまでどおり。`ownerName` はプレイヤーの文字で訳さない。
+- **キャッシュ**：答えは保存された血統から作るので、同じ状態なら同じ。`ETag`（`rev`）と `cache-control: private, no-cache` を付け、`If-None-Match` が合えば `304`。クライアントは `(playerId, horseId)` ごとに `rev` で持つ。
+
+### 71.3 配合の組み合わせ `GET /v1/breeding/pedigree?sireId&damId`（要認証、読むだけ、REQ-PED-009/010）
+- 配合の画面の「血統を見る」。自分の引退した牡馬と牝馬（`breedingPreview` と同じ確認：`HORSE_NOT_RETIRED`・`BREEDING_INVALID_PAIR`・`HORSE_NOT_FOUND`）。
+- 答え：`{ sire: PedigreeNode（3 代）, dam: PedigreeNode（3 代）, sharedKeys, shared: [{key, name}], inbreeding: { count, penaltyPerAncestor, statPenalty }, nick: { on, bonus }, hints: Hint[], line: { id, lineName }, notice }`。`sharedKeys` は既存の `inbreedingCount(s, sire, dam)` が数える祖先そのもの（数は `inbreeding.count` と必ず同じ。テストで確かめる）。
+- `Hint` =「この組み合わせで受け継ぎやすい能力」：`{ kind, text, permille?, value? }`。どれも `previewFor` の答えから作る（新しい計算・乱数なし）：`line`（仔の系統は父の系統）・`nick`（ニックスなら `+bonus`）・`stat`（基準の高い能力 2 つとその幅）・`style`（脚質ごとの確率、`styles` の百分率をそのまま）・`going`（馬場の適性の確率）・`skill`（固有スキルの確率）・`atavism`（隔世遺伝の候補と確率、`progression.atavismPermille` が無ければ出さない）・`inbreeding`（近親の数 × 罰）。確率はデータが決めているものだけ（ニックス・近親は確率でなく数）。
+- 借りた種牡馬との組み合わせは既存の `POST /v1/stud/preview`（`inbreedingCount` を返す）が受け持つ（この口は自分の馬どうしだけ）。
+
+### 71.4 系統 `GET /v1/bloodlines`（要認証、読むだけ、REQ-PED-011〜013）
+- 系統＝**父系の始まりの系統**（馬の `line`。仔は父の `line` を受け継ぐ、既存）。名前はマスター `master/bloodlines.json`（`{ version, lines: [{ id, ja, en, founder: {ja, en}, note: {ja, en} }] }`）。検証（`bloodlineProblems`）：id の形・重複、テンプレートの `line` とニックスの系統がすべて載っている、日英が揃う、禁止語（「倍」「お得」「今だけ」「残りわずか」「通常価格」・賭けの言葉・英語の禁止語）を使わない、英語に日本語が残らない。起動時に検証し、問題があれば起動しない。
+- 答え：`{ lines: [{ id, lineName, founderName, note, count, active, retired, nickWith: [{ id, lineName, role: "sire"|"dam", bonus }], horses: [{ horseId, name, sex, status, rarity }]（最大 50） }], total, rules: { lineFromSire: true, nickBonus, inbreedingPenalty, generations: 3 }, notice }`。系統はマスターの順。厩舎にいない系統も 0 頭で出す（集める目標にしない：「揃えた」「達成」の表示・報酬は無い）。`notice` =「系統の数で報酬はありません。」。
+- 系統ごとの「受け継ぎやすさ」は規則の説明だけ（ニックスの相手と `bonus`、系統は父から）。
+
+### 71.5 ゲート・データの開示・削除（REQ-PED-014/015）
+- メンテナンスのゲート（§46）：3 つとも `core`（`/v1/horses/*`・`/v1/breeding/*`・`/v1/bloodlines`。他のプレイヤーの馬の図も `core`：読むだけで、相手の状態は公開の判定とブロックだけ読む）。
+- 個人データの開示（§51）：新しい状態のキーは無い。`lineage` は馬（`horses` の節、`horseOut`）の中に入る（自分の馬の生まれた時の親の写し。他のプレイヤーの ID は入らない）。
+- アカウント削除：`lineage` は馬と一緒に最後の `wipe` で消える。他のプレイヤーの図に残るのは、その人の馬の `studSire` と写し（既存の §8.5 と同じ：名前と能力の写しだけ。持ち主が削除されると公開プロフィールが無いので「他のトレーナーの馬」）。
+
+### 71.6 KPI（REQ-PED-016）
+- クライアント：`pedigree_view`（`props: { source: "horse"|"breeding"|"stable"|"showcase"|"bloodlines", relation: "self"|"friend"|"other", shared: 0..14 }`）→ s1 = source、s2 = relation、count = shared。`bloodline_view`（`props: { source: "breeding"|"pedigree"|"help", lines: 0..64 }`）→ s1 = source、value = lines。
+- どれも相手のプレイヤー ID・馬 ID を持たない（strict）。§58 の分類：どちらも `optional`。
+
+### 71.7 画面（REQ-PED-017/018）
+- 入口：馬の詳細の「血統」（既存の馬の画面。その他の行には置かない）、配合の画面の組み合わせの「血統を見る」と共通の祖先の強調、系統の一覧は配合の画面と血統図の「系統 ›」から。厩舎の訪問・トレーナーカードの愛馬から相手の馬の図（公開されている時だけ）。
+- 血統図：本人 → 父母 → 祖父母 → 曾祖父母を左から右へ（縦長・文字「特大」では上から下へ流し直す）。各頭に名前・見た目の小さな絵・脚質・馬場の適性・固有スキル・一番の成績。共通の祖先はシアンの縁と印「共通」。借りた種牡馬は持ち主（または「他のトレーナーの馬」）。記録の無い祖先は「記録なし」。
+- 新しい割り込みのシートは無い（§58.11 の表は変わらない）。端末に新しいアカウントごとの状態は持たない（`rev` のキャッシュはメモリだけで、`AccountChangeReset` で捨てる）。
+- ディープリンク（§63）：足さない（馬の ID はプレイヤーごとで、共有の行き先にならない）。
+
+### 71.8 ヘルプ（REQ-PED-019）
+- 記事 `pedigree`（血統図の見方・記録なし・他のトレーナーの馬・系統・近親の罰 `{{inbreeding_penalty}}`・ニックスの加算 `{{nick_bonus}}`・系統を集めても報酬が無いこと）。画面の「？」の文脈 `pedigree`、画面のリンク `bloodlines`。ヒントのカード `pedigree_tip`（`horses`、記事へのリンク）。
+
+### 71.9 クライアント（REQ-PED-020）
+- `Muchi.Client`：`ApiClient.GetPedigreeViewAsync(horseId, playerId)`（既存の `GetPedigreeAsync` はそのまま）・`GetBreedingPedigreeAsync(sireId, damId)`・`GetBloodlinesAsync()`、`PedigreeView`・`PedigreeRecord`・`PedigreeTree`（3 代の 14 枠への並べ方・共通の祖先）・`BreedingPedigree`・`BloodlineList`、`AnalyticsEvent.PedigreeView`・`BloodlineView`。
+- `Muchi.Game`：`PedigreeModel`（開く・枠・強調・記録なし・他のトレーナーの馬・祖先の図へ移る・KPI）、`BloodlinesModel`（一覧・ニックスの相手・報酬なしの注記）。描画は docs/handoff-codex-round23-pedigree.md。

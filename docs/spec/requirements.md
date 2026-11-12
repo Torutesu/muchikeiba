@@ -1423,3 +1423,26 @@
 - REQ-CAL-018 クライアント：C# `ApiClient.GetCalendarAsync`・`MarkCalendarAsync`、Unity `CalendarModel`（月・週・日ごとの行・JST の表示・印の切り替えとオフラインの貯め置き・行き先）。
 - REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。
+
+## 71. 血統図と系統（TS＋C#、`src/domain/pedigree.ts`・`server/master/bloodlines.json`・`Muchi.Client/Pedigree.cs`・`Muchi.Game.PedigreeModel`／`BloodlinesModel`、`contracts/protocol.md` §71）
+拘束条件：読むだけ。既存の配合の規則が返す数・確率だけを見せる（新しい乱数・新しい仕組みなし）。何も配らない・何も売らない（E番号なし）。系統の収集に報酬を付けない（コンプガチャにしない）。レースの結果・ゴールデンは変わらない。
+- REQ-PED-001 写し：配合で生まれた仔に、生まれた時の父母の写し `lineage`（名前・見た目・脚質・適性・系統・固有スキル・能力）を 1 回だけ書く。乱数を使わず、その後は変えない。他のプレイヤーの ID を入れない。
+- REQ-PED-002 読む順：今の馬 → 写し → 名前だけ → 無し。名前だけの祖先は「記録なし」。移行なし（写しの無い前の借りた種牡馬は名前と持ち主だけ）。
+- REQ-PED-003 血統図：`GET /v1/horses/:horseId/pedigree` の答えに欄を足す（既存の欄はそのまま）。各頭に名前・見た目・脚質・適性・固有スキル・一番の成績（§34 の通算記録）。自分の馬は 5 代、他人の馬は 3 代。画面は 3 代。
+- REQ-PED-004 近親：既存の規則（3代以内の同じ祖先1頭につき −`inbreedingPenalty`）を見せ、共通の祖先を強調する。祖先の識別は既存の `pedigree()` と同じで、配合の計算といつも一致する。新しい規則は足さない。
+- REQ-PED-005 借りた種牡馬：持ち主の表示名は本人かフレンド（ブロックなし・公開プロフィールあり・停止中でない）の時だけ。それ以外は「他のトレーナーの馬」。持ち主の ID は返さない。
+- REQ-PED-006 他人の馬：`?playerId=`。相手のマイ厩舎の公開の写しかトレーナーカードの愛馬に今出ている馬だけ。ブロック（どちらでも）・停止中・削除の予約中・公開されていない → 404（理由を言わない）。
+- REQ-PED-007 13歳未満：他の人が見る図に持ち主が付けた名前を出さない（「名前は非公開」）。マスターの名前はそのまま。
+- REQ-PED-008 キャッシュ：中身のハッシュ `rev` を ETag にし、`If-None-Match` が合えば 304。`cache-control: private, no-cache`。
+- REQ-PED-009 組み合わせ：`GET /v1/breeding/pedigree?sireId&damId`。両方の 3 代・共通の祖先（`inbreedingCount` と同じ数）・近親の罰・ニックス。
+- REQ-PED-010 受け継ぎやすさ：`previewFor` の答えから作るヒント（系統・ニックス・基準の高い能力・脚質・馬場の適性・固有スキル・隔世遺伝・近親）。確率はデータにあるものだけ。
+- REQ-PED-011 系統：父系（`line`）ごと。名前はマスター `bloodlines.json`（日英、創始の馬の名前、説明）。起動時に検証。
+- REQ-PED-012 系統の一覧：`GET /v1/bloodlines`。系統ごとの頭数（現役・引退）・ニックスの相手と基準の加算・厩舎の馬。いない系統も 0 頭で出す。
+- REQ-PED-013 収集に報酬なし：系統の数・揃い具合に報酬・称号・実績・「達成」の表示を結び付けない（`notice`）。
+- REQ-PED-014 ゲート：`/v1/horses/*`・`/v1/breeding/*`・`/v1/bloodlines` は `core`。
+- REQ-PED-015 データの開示・削除：新しい状態のキーなし。`lineage` は `horses` の節に入り、馬と一緒に消える。
+- REQ-PED-016 KPI：クライアント `pedigree_view`（入口・関係・共通の祖先の数）・`bloodline_view`（入口・系統の数）。どちらも `optional`。相手の ID を持たない。
+- REQ-PED-017 画面：馬の詳細の「血統」、配合の「血統を見る」と共通の祖先の強調、「系統 ›」、厩舎の訪問・トレーナーカードから相手の馬。その他の行には置かない。新しい割り込みのシートなし。ディープリンクなし。
+- REQ-PED-018 プロトタイプ：血統図（写真の馬の絵・半透明の紺のパネル・シアンの線）、系統の一覧、配合の組み合わせの強調。ムチ一閃の調子。日本語と英語、文字「特大」で木が流し直る。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+- REQ-PED-019 ヘルプ：記事 `pedigree`（トークン `inbreeding_penalty`・`nick_bonus`）、文脈 `pedigree`、画面 `bloodlines`、ヒントのカード `pedigree_tip`。
+- REQ-PED-020 クライアント：C# `GetPedigreeViewAsync`・`GetBreedingPedigreeAsync`・`GetBloodlinesAsync`・`PedigreeTree`、Unity `PedigreeModel`・`BloodlinesModel`、Codex への引き継ぎ docs/handoff-codex-round23-pedigree.md。

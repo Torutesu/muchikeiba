@@ -2568,24 +2568,24 @@ async function Settings(tab) {
   en.style.fontSize = '14px'; en.style.whiteSpace = 'nowrap'; en.style.padding = '0'; ja.dataset.name = 'Language';
   Hair(36, 162, 428, a);
   // 引き継ぎ (REQ-API-005): the same buttons as the prompt; the prompt itself shows once (REQ-UXS-073)
-  Txt('引き継ぎ（Apple・Google）', 36, 178, 428, 21, WHITE, a, { weight: 500 });
+  Txt('引き継ぎ（Apple・Google）', 36, 184, 428, 21, WHITE, a, { weight: 500 });
   const lp = linkedProvider();
-  Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 212, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
-  if (!lp) { Ghost('Apple', 36, 244, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 244, 120, 52, () => Link('google', Settings), a); }
+  Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 220, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
+  if (!lp) { Ghost('Apple', 36, 250, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 250, 120, 52, () => Link('google', Settings), a); }
   // round 19 (REQ-TRF-001): 引き継ぎコード — ID and password, with or without Apple / Google
-  Ghost('IDとパスワード', lp ? 36 : 296, 244, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
+  Ghost('IDとパスワード', lp ? 36 : 296, 250, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
   // round 23 (REQ-DEV-*, §70.6): ログイン中の端末 on the account panel, under 引き継ぎ (その他 keeps its eight rows)
-  TextLink('ログイン中の端末 ›', 36, 302, 428, () => DeviceList(), a).dataset.action = 'devices';
-  Hair(36, 344, 428, a);
+  TextLink('ログイン中の端末 ›', 36, 306, 428, () => DeviceList(), a).dataset.action = 'devices';
+  Hair(36, 348, 428, a);
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
-  Txt('アカウント削除', 36, 362, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
+  Txt('アカウント削除', 36, 364, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
   const d = player.deletion;
   if (d?.status === 'scheduled') {
-    Txt(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 36, 400, 428, 16, GOLD, a, { weight: 500, lh: 1.6 });
+    Txt(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 36, 402, 428, 16, GOLD, a, { weight: 500, lh: 1.6 });
     Cta('アカウント削除の取り消し', 36, 480, 428, async () => { const r = await L.cancelDeletion(); toast(r.ok ? '削除を取り消しました' : r.message); Settings(); }, a, 'small');
   } else {
-    Txt('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 36, 400, 428, 15, MUTED, a, { lh: 1.6 });
-    Ghost('アカウントを削除する', 36, 464, 300, 56, async () => {
+    Txt('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 36, 402, 428, 15, MUTED, a, { lh: 1.6 });
+    Ghost('アカウントを削除する', 36, 466, 300, 56, async () => {
       const r = await L.requestDeletion(null);
       if (!r.ok) { toast(r.message); return; }
       ConfirmDeletion(r.value);
@@ -7210,8 +7210,9 @@ const DEV_OS = { ios: 'iOS', android: 'Android' };
 /** 「iPhone（iOS 18）」 / 「iOSの端末」 / 「端末」 — the same as C# DeviceLabel (EN: proto-en templates). Model names are never translated. */
 function devName(x) {
   const os = DEV_OS[x?.platform] ? (x.osMajor != null ? `${DEV_OS[x.platform]} ${x.osMajor}` : DEV_OS[x.platform]) : null;
-  if (x?.model) return os ? `${x.model}（${os}）` : x.model;
-  return os ? `${os}の端末` : '端末';
+  // English: ASCII brackets here (the full-width ones are not Japanese to the translator, so no template would apply)
+  if (x?.model) return os ? (isJa() ? `${x.model}（${os}）` : `${x.model} (${os})`) : x.model;
+  return os ? (isJa() ? `${os}の端末` : `${os} device`) : isJa() ? '端末' : 'Device';
 }
 const devRegion = (c) => (!c ? null : c === 'JP' ? '日本' : c);
 const devDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
@@ -7276,20 +7277,22 @@ async function DeviceList(state = {}) {
 }
 /** The confirm sheet before a sign-out (`target` null = all the other devices). */
 function DeviceConfirm(v, target, state) {
-  Shade('dim heavy');
-  const box = Dialog('Device sign-out', 920, 460);
+  // its own screen (the list's rows would sit under the sheet's longer lines at the largest text size)
+  currentScreen = () => DeviceConfirm(v, target, state);
+  Clear('devices-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const box = Dialog('Device sign-out', 920, 580);
   box.classList.add('dev-confirm');
   Kicker('確認', 52, 44, box);
-  Txt(target ? `${devName(target)}をログアウトしますか？` : 'この端末以外をすべてログアウトしますか？', 52, 104, 816, 26, WHITE, box, { weight: 700, cls: 'keep-ja dev-confirm-title' });
+  Txt(target ? `${devName(target)}をログアウトしますか？` : 'この端末以外をすべてログアウトしますか？', 52, 104, 816, 26, WHITE, box, { weight: 700, cls: 'dev-confirm-title' });
   Txt(target ? 'その端末は次に通信した時にログアウトされます。' : 'その端末は次に通信した時にログアウトされます。この端末より前にログインした端末も、一覧にない端末も、すべてログアウトされます。', 52, 158, 816, 16, MUTED, box, { lh: 1.6 });
-  if (v.anonymousOnly) Txt('その端末ではこのアカウントに戻れなくなります（Apple・Googleの連携か引き継ぎコードがあれば戻れます）。', 52, 236, 816, 15, GOLD, box, { weight: 500, lh: 1.6, cls: 'dev-anon' });
-  Cta('ログアウトする', 52, 330, 420, async () => {
+  if (v.anonymousOnly) Txt('その端末ではこのアカウントに戻れなくなります（Apple・Googleの連携か引き継ぎコードがあれば戻れます）。', 52, 280, 816, 15, GOLD, box, { weight: 500, lh: 1.6, cls: 'dev-anon' });
+  Cta('ログアウトする', 52, 450, 420, async () => {
     const x = target ? await L.devices.signOut(target.sessionId) : await L.devices.signOutOthers();
     if (x.ok) toast(x.value.signedOut > 0 ? 'ログアウトしました' : 'ログアウトする端末はありません');
     else toast(x.code === 'DEVICE_SIGNOUT_TOO_SOON' ? devTooSoon(v.trustAfterHours) : x.code === 'RATE_LIMITED' ? '今日はこれ以上ログアウトできません' : 'ログアウトできませんでした。時間をおいてお試しください');
     DeviceList(state);
   }, box, 'small dev-confirm-yes');
-  Ghost('やめる', 496, 336, 220, 50, () => DeviceList(state), box, 'quiet').classList.add('dev-confirm-no');
+  Ghost('やめる', 496, 456, 220, 50, () => DeviceList(state), box, 'quiet').classList.add('dev-confirm-no');
 }
 const SEC_ICON = { new_device: '新', signout_device: '出', signout_others: '出', signout_support: '出', transfer_issued: '引', transfer_revoked: '引', transfer_redeemed: '引', link_added: '連', link_removed: '連' };
 /** セキュリティの記録 (newest first; view only). */
@@ -7309,7 +7312,7 @@ async function SecurityLog() {
     row.dataset.kind = x.kind;
     Txt(jstDate(x.at), 0, 6, 220, 15, SOFT, row, { nowrap: true, cls: 'num' });
     Txt(x.text, 236, 4, 1000, 18, WHITE, row, { weight: 700, nowrap: true });
-    if (x.device) Txt([devName(x.device), devRegion(x.device.region)].filter(Boolean).join('・'), 236, 32, 1000, 14, SOFT, row, { nowrap: true, cls: 'keep-ja' });
+    if (x.device) Txt([devName(x.device), devRegion(x.device.region)].filter(Boolean).join('・'), 236, 32, 1000, 14, SOFT, row, { nowrap: true });
     Hair(0, 59, 1456, row);
   });
   if (items.length > 8) Txt(`ほか${items.length - 8}件`, 36, 626, 1400, 14, SOFT, lp, { nowrap: true });

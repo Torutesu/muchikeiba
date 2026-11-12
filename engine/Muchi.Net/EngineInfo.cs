@@ -9,6 +9,10 @@ namespace Muchi.Net
     /// </summary>
     public static class EngineInfo
     {
-        public const int Level = 1;
+        /// <summary>
+        /// 2 = knows ruleset 1.4 (tactics: the whip hold, START = WHIP_RELEASE after departure, docs/quality/race-play.md).
+        /// A 1.4 race needs level 2 (server ruleset.ts raceEngineLevel); 1.3 races still accept level 1.
+        /// </summary>
+        public const int Level = 2;
     }
 }

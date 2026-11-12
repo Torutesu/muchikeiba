@@ -380,6 +380,9 @@
         { "id": "ground_dirt_sloppy_night_1", "text": "ナイターの照明の下、ダートは不良馬場。前が止まりにくい馬場です。" },
         { "id": "ground_dirt_sloppy_night_2", "text": "ナイターの照明の下、水の浮いた不良馬場。逃げ馬が残りそうです。" }
       ]
-    }
+    },
+    "go": {"priority": 75, "variants": [{"id": "go_1", "text": "{name}、ここで仕掛けた！"}, {"id": "go_2", "text": "{name}が動いた！"}]},
+    "go_issen": {"priority": 78, "variants": [{"id": "go_issen_1", "text": "溜めに溜めて{name}、一閃！"}, {"id": "go_issen_2", "text": "{name}、満を持して仕掛けた！"}]},
+    "slingshot": {"priority": 65, "variants": [{"id": "slingshot_1", "text": "{name}、外に持ち出して一気に伸びる！"}, {"id": "slingshot_2", "text": "{name}、風よけから抜け出した！"}]}
   }
 }

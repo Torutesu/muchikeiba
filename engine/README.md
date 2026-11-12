@@ -19,7 +19,9 @@ dotnet test engine/Muchi.Engine.Tests
 dotnet run --project engine/Muchi.Verifier -- replay "$PWD/contracts/golden/race-turf1600-mixed.json"   # リプレイログ（ゴールデンファイルも可）
 dotnet run --project engine/Muchi.Verifier -- serve --urls http://0.0.0.0:8080                 # POST /verify, GET /healthz（VERIFIER_AUTH_SECRET を設定すると Bearer 必須。$PORT にも対応）
 docker build -f engine/Muchi.Verifier/Dockerfile -t muchi-verifier engine                      # Cloud Run 用イメージ（VERIFIER_REQUIRE_AUTH=1：シークレットなしでは起動しない。docs/ops/deploy.md）
-dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json"   # パスは絶対パスで（Web SDKは実行時の作業ディレクトリをプロジェクトに変えるため）
+dotnet run --project engine/Muchi.Verifier -- golden "$PWD/contracts/golden" "$PWD/contracts/ruleset-params.default.json" "$PWD/contracts/ruleset-params.1.4.0.json"   # パスは絶対パスで（Web SDKは実行時の作業ディレクトリをプロジェクトに変えるため）。3つ目（1.4.0）は race-turf2000-tactics.json を足す
+dotnet run -c Release --project engine/Muchi.Verifier -- harness-tactics "$PWD/contracts/ruleset-params.1.4.0.json" [curve]   # ルールセット 1.4 の駆け引きの目標 K1〜K8（docs/spec/balance-targets.md §2.4）。curve は仕掛けの位置とタイムの形
+dotnet run -c Release --project engine/Muchi.Verifier -- harness-audit "$PWD/contracts/ruleset-params.default.json"   # 乗り方の判断を1つずつ抜いた時の価値（docs/quality/race-play.md §1.2）
 dotnet run --project engine/Muchi.Verifier -- balance "$PWD/contracts/ruleset-params.default.json" 1000 [key=value ...]
 dotnet run -c Release --project engine/Muchi.Verifier -- harness "$PWD/contracts/ruleset-params.default.json" [key=value ...]   # バランス目標の全項目（docs/spec/balance-targets.md）
 dotnet run -c Release --project engine/Muchi.Verifier -- ta-thresholds "$PWD/contracts/ruleset-params.default.json" "$PWD/server/master/tracks.json" 3200   # タイムアタックのメダル秒数

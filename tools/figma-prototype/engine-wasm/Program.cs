@@ -180,6 +180,8 @@ public static partial class MuchiRace
 
     [JSExport] public static void Lane(int dir) => _input.Lane(dir);
     [JSExport] public static void Spur() => _input.Spur();
+    /// <summary>Ruleset 1.4: the whip button was let go (tap mode) — releases the hold before the go (RaceInput.SpurRelease).</summary>
+    [JSExport] public static void SpurRelease() => _input.SpurRelease();
     [JSExport] public static void Rein(bool held) => _input.SetRein(held);
 
     private static CommentaryPackCatalog _packs;
@@ -567,7 +569,23 @@ public static partial class MuchiRace
             if (i > 0) sb.Append(',');
             sb.Append("{\"kind\":\"").Append(hud.Cues[i].Kind.ToString()).Append("\",\"text\":\"").Append(Esc(hud.Cues[i].Text)).Append("\"}");
         }
-        sb.Append("]}");
+        sb.Append(']');
+        var t = hud.Tactics;
+        if (t != null)
+        {
+            // ruleset 1.4 (HudSnapshot.Tactics): the go line, the hold, the rhythm ring, slingshot, duel
+            sb.Append(",\"tactics\":{\"phase\":\"").Append(t.Phase).Append("\",\"windowM\":").Append(t.GoWindowM).Append(",\"autoGoM\":").Append(t.AutoGoM)
+              .Append(",\"goLineM\":").Append(t.GoLineM).Append(",\"inWindow\":").Append(B(t.InWindow)).Append(",\"goNow\":").Append(B(t.GoNow))
+              .Append(",\"lineReached\":").Append(B(t.LineReached)).Append(",\"gathering\":").Append(B(t.Gathering)).Append(",\"charge\":").Append(t.ChargePermille)
+              .Append(",\"committed\":").Append(B(t.Committed)).Append(",\"goCharge\":").Append(t.GoCharge).Append(",\"kick\":").Append(B(t.KickActive))
+              .Append(",\"beat\":").Append(t.BeatPermille).Append(",\"goldFrom\":").Append(t.GoldFromPermille).Append(",\"goldTo\":").Append(t.GoldToPermille)
+              .Append(",\"rhythm\":\"").Append(t.Beat ? "gold" : t.Committed ? "wait" : "").Append("\",\"perfect\":").Append(t.PerfectWhips)
+              .Append(",\"slingReady\":").Append(B(t.SlingReady)).Append(",\"sling\":").Append(B(t.SlingActive)).Append(",\"duel\":").Append(t.DuelSlot)
+              .Append(",\"duelName\":\"").Append(t.DuelSlot >= 0 ? Esc(_driver.Config.Entrants[t.DuelSlot].Horse.Name) : "").Append('"')
+              .Append(",\"boxed\":").Append(B(t.Boxed)).Append(",\"perfectPop\":").Append(B(t.PerfectPop)).Append(",\"goPop\":").Append(B(t.GoPop))
+              .Append(",\"slingPop\":").Append(B(t.SlingPop)).Append(",\"lastGoCharge\":").Append(t.LastGoCharge).Append(",\"maxCharge\":").Append(_driver.Config.Ruleset.GatherMaxTicks).Append('}');
+        }
+        sb.Append('}');
         var sim = _driver.Sim;
         int ps = _driver.PlayerSlot;
         var mySkill = sim.SkillOf(ps);
@@ -613,6 +631,14 @@ public static partial class MuchiRace
           .Append("\",\"marginMm\":").Append(d?.MarginMm ?? 0).Append(",\"margin\":\"").Append(d == null ? "" : Esc(RaceFeel.MarginText(d.MarginMm)))
           .Append("\",\"primary\":\"").Append(Esc(m.PrimaryAction)).Append("\",\"secondary\":\"").Append(Esc(m.SecondaryAction))
           .Append("\",\"tutorialRetry\":").Append(B(m.TutorialRetry)).Append(",\"nextAttempt\":").Append(m.NextTutorialAttempt);
+        if (m.Counterfactual != null)
+        {
+            // ruleset 1.4: the 仕掛け lesson from re-simulated races (GoCounterfactual) and the 会心 count
+            var cf = m.Counterfactual;
+            sb.Append(",\"lesson\":{\"line\":\"").Append(Esc(m.GoLesson)).Append("\",\"perfect\":\"").Append(Esc(m.PerfectLine))
+              .Append("\",\"shiftTicks\":").Append(cf.BestShiftTicks).Append(",\"bestPlace\":").Append(cf.BestPlace).Append(",\"goM\":").Append(cf.GoRemainingM)
+              .Append(",\"goCharge\":").Append(cf.GoCharge).Append(",\"sims\":").Append(cf.Simulations).Append(",\"noDecision\":").Append(B(cf.NoDecision)).Append('}');
+        }
         if (d != null)
         {
             var f = d.Facts;

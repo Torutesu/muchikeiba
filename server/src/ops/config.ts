@@ -24,7 +24,7 @@ import { buildBanner, buildPityGroups, gameDaySchedules, rescheduleGacha, splitM
 import { validateGacha } from '../domain/gacha.js';
 import { skillProblems } from '../domain/skills.js';
 import { collectionProblems } from '../domain/collection.js';
-import { buildRuleset, DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
+import { buildRuleset, DEFAULT_RULESET, raceTacticsProblems, type Ruleset } from '../domain/ruleset.js';
 import { trackSchema } from '../domain/schemas.js';
 import { eventProblems } from '../domain/events.js';
 import type { EventDef } from '../domain/master.js';
@@ -181,6 +181,7 @@ export function resolveBundle(base: Master, bundle: ConfigBundle): { master: Mas
   if (b.progression && 'teams' in b.progression) problems.push(...teamRewardProblems(progression.teams?.seasonRewards, new Set(collectItemIds(base))));
   if (b.progression && 'dayRollover' in b.progression) problems.push(...dayRolloverProblems(progression.dayRollover)); // REQ-DAY-001
   if (b.progression && 'replayHoldDays' in b.progression) problems.push(...holdPolicyProblems(progression.replayHoldDays));
+  if (b.progression && 'raceTactics' in b.progression) problems.push(...raceTacticsProblems(progression.raceTactics)); // ruleset 1.4 rollout
   if (b.progression && ('stud' in b.progression || 'atavismPermille' in b.progression)) problems.push(...studConfigProblems(progression));
 
   // REQ-UXS-*: consent, partner, beginner match, beginner login bonus, unlocks, beginner/season missions (unique ids),

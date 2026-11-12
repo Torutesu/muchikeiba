@@ -49,6 +49,9 @@ namespace Muchi.Engine
         private readonly SkillSpec[] _skill;
         private readonly int[] _skSpeed, _skAccel, _skDrain, _skRecover, _skTicks;
         private readonly Fx _finalStraight; // length of the final straight counted for FinalStraight (0 = course ends in a corner)
+        // tactics (ruleset 1.4): the 仕掛け window and the auto go mark (both 0 without the tactics keys)
+        private readonly bool _tactics;
+        private readonly Fx _goWindow, _autoGo;
 
         public RaceSim(RaceConfig config)
         {
@@ -84,6 +87,12 @@ namespace Muchi.Engine
             _minGap = Fx.FromMilli(P.MinGapMm);
             var lastSeg = config.Track.Segments[config.Track.Segments.Count - 1];
             _finalStraight = lastSeg.Kind == SegmentKind.Straight ? Fx.Min(Fx.FromInt(lastSeg.LengthM), _spurtDist) : Fx.Zero;
+            _tactics = P.HasTacticsKeys;
+            if (_tactics)
+            {
+                _goWindow = Fx.FromRaw(_spurtDist.Raw * P.GoWindowPermille / 1000);
+                _autoGo = Fx.FromRaw(_spurtDist.Raw * P.AutoGoPermille / 1000);
+            }
 
             // ground condition (REQ-RACE-034): absent going = Good, which is neutral (1000‰) on turf,
             // so configs without the new fields reproduce exactly the same results as before.
@@ -136,6 +145,8 @@ namespace Muchi.Engine
                     FinishTick = -1,
                     Rank = i,
                     CpuControlled = e.Kind == EntrantKind.Cpu,
+                    GoTick = -1,
+                    RhythmRefTick = -100000,
                 };
                 _cur[i] = s;
                 _prev[i] = s;
@@ -202,6 +213,63 @@ namespace Muchi.Engine
         /// <summary>Length of the spurt zone in this race (m); scales with distance from ruleset 1.2.</summary>
         public int SpurtZoneM => (int)(_spurtDist.Raw >> 16);
         internal int[] RankOrderInternal => _rankOrder;
+
+        /// <summary>Ruleset 1.4 tactics are on (the spurt is the rider's 仕掛け).</summary>
+        public bool TacticsEnabled => _tactics;
+        /// <summary>Ruleset 1.4: metres to go at which the 仕掛け window opens (0 without tactics).</summary>
+        public int GoWindowM => (int)(_goWindow.Raw >> 16);
+        /// <summary>Ruleset 1.4: metres to go at which a horse that has not gone goes by itself (0 without tactics).</summary>
+        public int AutoGoM => (int)(_autoGo.Raw >> 16);
+
+        /// <summary>
+        /// Metres the horse's current stamina would carry a spurt (integer estimate, deterministic: CPUs use it inside the
+        /// simulation). Spurt speed = top + spurt bonus × burst × stamina‰; drain per metre = v × drain coefficient × tick rate ×
+        /// the ground's drain factor. The speed actually falls as stamina drains, so the true distance is a little longer;
+        /// <see cref="GoLineM"/> applies the ruleset's calibration.
+        /// </summary>
+        public int SustainableSpurtM(int slot)
+        {
+            var h = _cur[slot];
+            var horse = Config.Entrants[slot].Horse;
+            long topMm = _topSpeed[slot].Raw * 1000 >> 16;
+            long vMm = topMm + (long)P.SpurtSpeedBonusMaxMmPerSec * horse.Burst / 1000 * h.StaminaPermille / 1000;
+            long perMetre = PerMetreMicro(vMm);
+            if (perMetre <= 0) return 100000;
+            long staminaMilli = h.Stamina.Raw * 1000 >> 16; // stamina points × 1000
+            long m = staminaMilli * 1000L / perMetre;
+            if (_tactics && P.LongSpurtBonusPermille < 1000)
+            {
+                // ruleset 1.4: before the spurt mark a long spurt runs on part of the bonus (cheaper per metre)
+                long mark = Math.Min(_spurtDist.Raw >> 16, Math.Max(0, (Track.Distance - h.Distance).Raw >> 16));
+                long need = mark * perMetre / 1000; // stamina × 1000 for the spurt from the mark
+                if (staminaMilli > need)
+                {
+                    long vLong = topMm + (vMm - topMm) * P.LongSpurtBonusPermille / 1000;
+                    long perLong = PerMetreMicro(vLong);
+                    m = mark + (perLong <= 0 ? 100000 : (staminaMilli - need) * 1000L / perLong);
+                }
+            }
+            return m > 100000 ? 100000 : (int)m;
+        }
+
+        /// <summary>Stamina points per metre × 1e6 at <paramref name="vMm"/> mm/s: v × coefficient(µ) / 1000 × tick rate × ground drain (‰).</summary>
+        private long PerMetreMicro(long vMm)
+        {
+            if (vMm < 1000) vMm = 1000;
+            return vMm * P.DrainMicroPerSpeedSqPerTick / 1000 * _tickHz * _goingDrainPermille / 1000;
+        }
+
+        /// <summary>
+        /// Ruleset 1.4: the go line — going with this many metres to go spends the stamina about right (HUD gold mark, CPU go).
+        /// = SustainableSpurtM × goLinePermille, never later than the auto mark (a horse short of stamina still goes there, with
+        /// the kick if it held) and at most the 仕掛け window. 0 without tactics.
+        /// </summary>
+        public int GoLineM(int slot)
+        {
+            if (!_tactics) return 0;
+            long m = (long)SustainableSpurtM(slot) * P.GoLinePermille / 1000;
+            return (int)Math.Min(Math.Max(m, AutoGoM), GoWindowM);
+        }
 
         // ------------------------------------------------------------------ stepping
 
@@ -305,10 +373,16 @@ namespace Muchi.Engine
                     {
                         h.LaneTarget = target;
                         _events.Add(new RaceEvent(t, RaceEventType.LaneChange, i, target));
+                        // ruleset 1.4 slingshot: pulling out of a slipstream held long enough, inside the 仕掛け window
+                        if (_tactics && h.SlipTicks >= P.SlingshotMinSlipTicks && Track.Distance - h.Distance <= _goWindow && P.SlingshotTicks > 0)
+                        {
+                            h.SlingTicksLeft = P.SlingshotTicks;
+                            _events.Add(new RaceEvent(t, RaceEventType.Slingshot, i, target));
+                        }
                     }
                 }
             }
-            else if (P.AutoRailIntervalTicks > 0 && !h.IsChangingLane && h.LaneTarget > 0
+            else if (P.AutoRailIntervalTicks > 0 && !h.IsChangingLane && h.LaneTarget > 0 && !(_tactics && (h.InSpurt || h.Gathering))
                 && (t + i) % P.AutoRailIntervalTicks == 0 && t - h.LastManualLaneTick >= P.AutoRailHoldTicks
                 && Track.Distance - h.Distance > _spurtDist && LaneClear(i, h.LaneTarget - 1) && !SlowerAheadIn(i, h.LaneTarget - 1))
             {
@@ -317,12 +391,37 @@ namespace Muchi.Engine
                 _events.Add(new RaceEvent(t, RaceEventType.LaneChange, i, h.LaneTarget));
             }
 
+            // ruleset 1.4: the whip button inside the 仕掛け window before the go is the hold (溜め); START is its release
+            if (_tactics && !h.InSpurt)
+            {
+                if (h.Gathering)
+                {
+                    if ((c & Cmd.Start) != 0) Go(i, ref h, t, h.GatherTicks);
+                    return;
+                }
+                if ((c & Cmd.Whip) != 0 && Track.Distance - h.Distance <= _goWindow)
+                {
+                    h.Gathering = true;
+                    h.GatherTicks = 0;
+                    _events.Add(new RaceEvent(t, RaceEventType.Gather, i, (int)((Track.Distance - h.Distance).Raw >> 16)));
+                    if ((c & Cmd.Start) != 0) Go(i, ref h, t, 0); // pressed and released on one tick: a plain go
+                    return;
+                }
+            }
+
             // Whip (REQ-RACE-047)
             if ((c & Cmd.Whip) != 0 && h.WhipsLeft > 0)
             {
-                bool spurt = Track.Distance - h.Distance <= _spurtDist;
+                bool spurt = _tactics ? h.InSpurt : Track.Distance - h.Distance <= _spurtDist;
                 int effect = 1000;
-                if (t - h.LastWhipTick < P.WhipDiminishWindowTicks && h.WhipTicksLeft > 0)
+                bool perfect = false;
+                if (_tactics && spurt && t - h.RhythmRefTick >= P.RhythmFromTicks && t - h.RhythmRefTick <= P.RhythmToTicks)
+                {
+                    // 会心: on the beat after the go or the previous whip (overrides the diminish rule)
+                    effect = 1000 + P.RhythmBonusPermille;
+                    perfect = true;
+                }
+                else if (t - h.LastWhipTick < P.WhipDiminishWindowTicks && h.WhipTicksLeft > 0)
                     effect = h.WhipEffectPermille * P.WhipDiminishPermille / 1000;
                 if (!spurt)
                 {
@@ -335,7 +434,33 @@ namespace Muchi.Engine
                 h.LastWhipTick = t;
                 h.Stamina = Fx.Max(Fx.Zero, h.Stamina - Fx.FromInt(P.WhipStaminaCost));
                 _events.Add(new RaceEvent(t, RaceEventType.Whip, i, h.WhipsLeft));
+                if (_tactics)
+                {
+                    h.RhythmRefTick = t;
+                    if (perfect)
+                    {
+                        h.PerfectWhips++;
+                        _events.Add(new RaceEvent(t, RaceEventType.Rhythm, i, h.WhipsLeft));
+                    }
+                }
             }
+        }
+
+        /// <summary>
+        /// Ruleset 1.4 仕掛け: the spurt starts now. <paramref name="charge"/> = ticks gathered (the 一閃 kick scales with it),
+        /// -1 = the auto go (no kick). The rhythm counts from here.
+        /// </summary>
+        private void Go(int i, ref HorseState h, int t, int charge)
+        {
+            h.Gathering = false;
+            h.InSpurt = true;
+            h.GoTick = t;
+            h.GoCharge = charge;
+            int c = Math.Max(0, Math.Min(charge, P.GatherMaxTicks));
+            h.KickPermille = c * 1000 / P.GatherMaxTicks;
+            h.KickTicksLeft = c > 0 ? P.KickTicks : 0;
+            h.RhythmRefTick = t;
+            _events.Add(new RaceEvent(t, RaceEventType.Go, i, charge));
         }
 
         /// <summary>Would moving into <paramref name="lane"/> put this horse right behind a slower one? (pre-step state)</summary>
@@ -391,16 +516,24 @@ namespace Muchi.Engine
             if (!h.Departed) return;
 
             Fx remaining = Track.Distance - h.Distance;
-            bool spurt = remaining <= _spurtDist;
-            if (spurt && !h.InSpurt)
+            if (_tactics && !h.InSpurt)
             {
-                h.InSpurt = true;
+                // a full charge goes by itself (溜めきり); a horse that never went goes at the auto mark
+                if (h.Gathering) { if (h.GatherTicks >= P.GatherMaxTicks) Go(i, ref h, t, P.GatherMaxTicks); }
+                else if (remaining <= _autoGo) Go(i, ref h, t, -1);
+            }
+            bool spurtMark = remaining <= _spurtDist;
+            bool spurt = _tactics ? h.InSpurt : spurtMark;
+            if (_tactics ? spurtMark && !h.SpurtCalled : spurt && !h.InSpurt)
+            {
+                // ruleset 1.4: the spurt mark is only the final-stretch call (the spurt itself starts on the go)
+                if (_tactics) h.SpurtCalled = true; else h.InSpurt = true;
                 // Value = the horse's rank (0 = leader) as it reached the spurt mark (ranks of the previous tick);
                 // presentation only, not part of the checksum or result hash
                 _events.Add(new RaceEvent(t, RaceEventType.SpurtStart, i, h.Rank));
             }
 
-            if (_skill[i] != null && !h.SkillUsed && SkillCondition(i, _skill[i], remaining, spurt))
+            if (_skill[i] != null && !h.SkillUsed && SkillCondition(i, _skill[i], remaining, spurtMark))
             {
                 h.SkillUsed = true;
                 h.SkillTicksLeft = _skTicks[i];
@@ -418,9 +551,11 @@ namespace Muchi.Engine
             if (spurt)
             {
                 long bonusMm = (long)P.SpurtSpeedBonusMaxMmPerSec * horse.Burst / 1000 * staminaPermille / 1000;
+                // ruleset 1.4: a long spurt (went before the spurt mark) runs on part of the bonus until the mark
+                if (_tactics && !spurtMark) bonusMm = bonusMm * P.LongSpurtBonusPermille / 1000;
                 target = top + Fx.FromMilli(bonusMm);
             }
-            else if (h.IsKakari && !h.Reining)
+            else if (h.IsKakari && !h.Reining && !h.Gathering)
             {
                 target = top;
             }
@@ -428,7 +563,8 @@ namespace Muchi.Engine
             {
                 target = top.MulPermille(P.CruiseSpeedPermille);
             }
-            if (h.Reining) target = target.MulPermille(P.ReinSpeedPermille);
+            if (h.Gathering) target = target.MulPermille(P.GatherSpeedPermille);
+            else if (h.Reining) target = target.MulPermille(P.ReinSpeedPermille);
             if (skillOn && _skSpeed[i] > 0) target = target.MulPermille(1000 + _skSpeed[i]);
 
             // exhaustion (REQ-RACE-041)
@@ -439,6 +575,16 @@ namespace Muchi.Engine
             {
                 target = target + Fx.FromMilli((long)P.WhipSpeedBonusMmPerSec * h.WhipEffectPermille / 1000);
                 accel = accel + Fx.FromMilli((long)P.WhipAccelBonusMmPerSec2 * h.WhipEffectPermille / 1000) / _tickHz;
+            }
+            if (h.KickTicksLeft > 0)
+            {
+                target = target + Fx.FromMilli((long)P.KickSpeedBonusMmPerSec * h.KickPermille / 1000);
+                accel = accel + Fx.FromMilli((long)P.KickAccelBonusMmPerSec2 * h.KickPermille / 1000) / _tickHz;
+            }
+            if (h.SlingTicksLeft > 0)
+            {
+                target = target + Fx.FromMilli(P.SlingshotSpeedBonusMmPerSec);
+                accel = accel + Fx.FromMilli(P.SlingshotAccelBonusMmPerSec2) / _tickHz;
             }
             if (h.StartBoostTicksLeft > 0) accel = accel.MulPermille(1000 + P.StartBoostPermille);
             if (skillOn && _skAccel[i] > 0) accel = accel.MulPermille(1000 + _skAccel[i]);
@@ -479,7 +625,8 @@ namespace Muchi.Engine
             Fx v2 = h.Speed * h.Speed;
             long drainRaw = v2.Raw * P.DrainMicroPerSpeedSqPerTick / 1000000;
             if (slip) drainRaw = drainRaw * (1000 - P.SlipstreamSavePermille) / 1000;
-            if (h.Reining) drainRaw = drainRaw * P.ReinDrainPermille / 1000;
+            if (h.Gathering) drainRaw = drainRaw * P.GatherDrainPermille / 1000;
+            else if (h.Reining) drainRaw = drainRaw * P.ReinDrainPermille / 1000;
             if (h.Composure < P.BadComposureThreshold) drainRaw = drainRaw * (1000 + P.BadComposureExtraDrainPermille) / 1000;
             if (_goingDrainPermille != 1000) drainRaw = drainRaw * _goingDrainPermille / 1000;
             if (skillOn && _skDrain[i] > 0) drainRaw = drainRaw * (1000 - _skDrain[i]) / 1000;
@@ -523,7 +670,7 @@ namespace Muchi.Engine
             MoveLane(ref h);
 
             // composure (REQ-RACE-046)
-            if (!spurt && h.KakariTicksLeft == 0)
+            if (!spurtMark && h.KakariTicksLeft == 0) // 1.4: a long spurt (gone before the mark) can still pull
             {
                 int chance = (int)((long)P.KakariChancePer100000PerTickAtTemper0 * (1000 - horse.Temper) / 1000);
                 if (chance > 0 && _kakariRng[i].Chance(chance, 100000))
@@ -550,6 +697,9 @@ namespace Muchi.Engine
             if (h.WhipTicksLeft > 0) h.WhipTicksLeft--;
             if (h.StartBoostTicksLeft > 0) h.StartBoostTicksLeft--;
             if (h.SkillTicksLeft > 0) h.SkillTicksLeft--;
+            if (h.KickTicksLeft > 0) h.KickTicksLeft--;
+            if (h.SlingTicksLeft > 0) h.SlingTicksLeft--;
+            if (h.Gathering && h.GatherTicks < P.GatherMaxTicks) h.GatherTicks++;
             h.SlipTicks = slip ? h.SlipTicks + 1 : 0;
         }
 
@@ -650,6 +800,14 @@ namespace Muchi.Engine
                 f.AddInt64(h.Composure);
                 f.AddInt64(h.WhipsLeft);
                 f.AddInt64(h.FinishTick);
+                if (_tactics)
+                {
+                    // ruleset 1.4 only, so older rulesets keep their checksums
+                    f.AddInt64((h.InSpurt ? 1 : 0) | (h.Gathering ? 2 : 0));
+                    f.AddInt64(h.GatherTicks);
+                    f.AddInt64(h.KickTicksLeft);
+                    f.AddInt64(h.SlingTicksLeft);
+                }
             }
             return f.Hex;
         }

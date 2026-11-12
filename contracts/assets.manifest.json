@@ -216,7 +216,7 @@
    "fallback": "voice/ja/phrase/default",
    "description": "実況の定型フレーズ（Resources/Muchi/commentary-ja.json の各断片）",
    "dynamic": false,
-   "count": 317
+   "count": 324
   },
   "voice/ja/num": {
    "fallback": "voice/ja/num/default",
@@ -744,6 +744,11 @@
   "voice/ja/phrase/gate_open_ranked_2_p0",
   "voice/ja/phrase/gate_open_tutorial_1_p0",
   "voice/ja/phrase/gate_open_tutorial_2_p0",
+  "voice/ja/phrase/go_1_p0",
+  "voice/ja/phrase/go_2_p0",
+  "voice/ja/phrase/go_issen_1_p0",
+  "voice/ja/phrase/go_issen_1_p1",
+  "voice/ja/phrase/go_issen_2_p0",
   "voice/ja/phrase/going_call_dirt_fast_1_p0",
   "voice/ja/phrase/going_call_dirt_fast_1_p1",
   "voice/ja/phrase/going_call_dirt_fast_2_p0",
@@ -1006,6 +1011,8 @@
   "voice/ja/phrase/skill_2_p2",
   "voice/ja/phrase/skill_3_p0",
   "voice/ja/phrase/skill_3_p1",
+  "voice/ja/phrase/slingshot_1_p0",
+  "voice/ja/phrase/slingshot_2_p0",
   "voice/ja/phrase/spurt_1_p0",
   "voice/ja/phrase/spurt_2_p0",
   "voice/ja/phrase/spurt_aoba_1_p0",

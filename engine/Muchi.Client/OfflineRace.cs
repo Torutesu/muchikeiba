@@ -182,6 +182,19 @@ namespace Muchi.Client
             if ((c & Cmd.LaneIn) != 0 && (c & Cmd.LaneOut) != 0) c = (byte)(c & ~(Cmd.LaneIn | Cmd.LaneOut));
             if ((c & Cmd.ReinPress) != 0 && (c & Cmd.ReinRelease) != 0) c = (byte)(c & ~Cmd.ReinPress);
 
+            // ruleset 1.4: before the go, the whip inside the 仕掛け window is the hold and START (after departure) its release
+            if (sim.TacticsEnabled && h.Departed && !h.InSpurt)
+            {
+                bool inWindow = (sim.Track.Distance - h.Distance).Raw >> 16 <= sim.GoWindowM;
+                if (h.Gathering) return (byte)(c & ~Cmd.Whip); // only the release (and rein / lanes) can matter
+                if ((c & Cmd.Whip) != 0 && inWindow)
+                {
+                    // the press starts the hold (whips left do not matter); a release on the same tick is a plain go
+                    c = TacticsLanes(sim, h, c);
+                    return c;
+                }
+                c = (byte)(c & ~Cmd.Start);
+            }
             // START only matters on the tick it releases the horse from the gate
             if ((c & Cmd.Start) != 0 && (h.Departed || t < p.GateOpenTick)) c = (byte)(c & ~Cmd.Start);
             bool departs = h.Departed || (t >= p.GateOpenTick && ((c & Cmd.Start) != 0 || t - p.GateOpenTick >= p.AutoStartDelayTicks));
@@ -197,6 +210,19 @@ namespace Muchi.Client
                 if (h.IsChangingLane || target < 0 || target >= p.LaneCount) c = (byte)(c & ~(Cmd.LaneIn | Cmd.LaneOut));
             }
             if ((c & Cmd.Whip) != 0 && h.WhipsLeft <= 0) c = (byte)(c & ~Cmd.Whip);
+            return c;
+        }
+
+        /// <summary>The rein and lane rules of <see cref="EffectiveCommand"/> for a 1.4 hold press (the press and START stay).</summary>
+        private static byte TacticsLanes(RaceSim sim, HorseState h, byte c)
+        {
+            if ((c & Cmd.ReinPress) != 0 && h.Reining) c = (byte)(c & ~Cmd.ReinPress);
+            if ((c & Cmd.ReinRelease) != 0 && !h.Reining) c = (byte)(c & ~Cmd.ReinRelease);
+            if ((c & (Cmd.LaneIn | Cmd.LaneOut)) != 0)
+            {
+                int target = h.LaneTarget + ((c & Cmd.LaneIn) != 0 ? -1 : 1);
+                if (h.IsChangingLane || target < 0 || target >= sim.P.LaneCount) c = (byte)(c & ~(Cmd.LaneIn | Cmd.LaneOut));
+            }
             return c;
         }
 

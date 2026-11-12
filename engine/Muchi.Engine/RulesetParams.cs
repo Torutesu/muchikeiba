@@ -121,6 +121,32 @@ namespace Muchi.Engine
         /// <summary>True when the skill keys were present (absent before 1.3; then horse skills are ignored entirely).</summary>
         public bool HasSkillKeys;
 
+        // ---- tactics (ruleset 1.4, docs/quality/race-play.md): 仕掛け with the whip hold (溜め → 一閃), rhythm whips, slingshot ----
+        /// <summary>The 仕掛け window opens at (spurt zone × this‰) metres to go: a press of the whip there starts the 溜め (gather).</summary>
+        public int GoWindowPermille;
+        /// <summary>A horse that has not gone by itself goes at (spurt zone × this‰) to go (1000 = where every spurt began before 1.4).</summary>
+        public int AutoGoPermille;
+        /// <summary>Target speed while gathering (‰ of cruise) and stamina drain while gathering (‰).</summary>
+        public int GatherSpeedPermille, GatherDrainPermille;
+        /// <summary>Ticks of gathering for a full charge; a full charge goes by itself (溜めきり).</summary>
+        public int GatherMaxTicks;
+        /// <summary>The 一閃 kick on release at full charge (scaled by charge / max): speed and acceleration bonus for kickTicks.</summary>
+        public int KickSpeedBonusMmPerSec, KickAccelBonusMmPerSec2, KickTicks;
+        /// <summary>A whip landing this many ticks (inclusive range) after the go or the previous whip is a 会心 (perfect rhythm) whip.</summary>
+        public int RhythmFromTicks, RhythmToTicks;
+        /// <summary>Extra whip effect (‰) of a 会心 whip (the effect is 1000 + this).</summary>
+        public int RhythmBonusPermille;
+        /// <summary>Slingshot: changing lane after this many ticks in a slipstream inside the 仕掛け window gives a burst.</summary>
+        public int SlingshotMinSlipTicks, SlingshotSpeedBonusMmPerSec, SlingshotAccelBonusMmPerSec2, SlingshotTicks;
+        /// <summary>The go line (HUD and CPU): the distance the horse's stamina sustains a spurt × this‰ (calibrated by the harness).</summary>
+        public int GoLinePermille;
+        /// <summary>CPUs at or above this level gather and time their go from the go line; lower levels leave it to the auto go.</summary>
+        public int CpuTacticsMinLevel;
+        /// <summary>Share (‰) of the spurt speed bonus a horse that went early gets until it reaches the spurt mark (a long spurt runs at top speed plus this).</summary>
+        public int LongSpurtBonusPermille;
+        /// <summary>True when the tactics keys were present (absent before 1.4; then nothing of the above exists).</summary>
+        public bool HasTacticsKeys;
+
         /// <summary>
         /// Permille factor for a race of <paramref name="distanceM"/>: 1000 + scale × (distance − ref) / ref, clamped to 200..5000,
         /// with the surface's reference distance. Exactly 1000 when the distance keys are absent or off.
@@ -206,6 +232,20 @@ namespace Muchi.Engine
         /// <summary>Neutral values for <see cref="SkillIntKeys"/> (same order).</summary>
         public static readonly int[] SkillNeutralValues = { 0, 0, 0, 0, 0 };
 
+        /// <summary>
+        /// Fifth optional group (ruleset 1.4): tactics — the spurt is the rider's decision (hold the whip to gather, release to
+        /// go: 一閃), whips on the rhythm are 会心, pulling out of a slipstream late gives a slingshot. All or none; absent = the
+        /// spurt starts at the spurt mark by itself and none of this exists, so 1.3 and older replays reproduce exactly.
+        /// After departure, START (bit 0) means WHIP_RELEASE in 1.4 (it was ignored before).
+        /// </summary>
+        public static readonly string[] TacticsIntKeys =
+        {
+            "goWindowPermille", "autoGoPermille", "gatherSpeedPermille", "gatherDrainPermille", "gatherMaxTicks",
+            "kickSpeedBonusMmPerSec", "kickAccelBonusMmPerSec2", "kickTicks", "rhythmFromTicks", "rhythmToTicks", "rhythmBonusPermille",
+            "slingshotMinSlipTicks", "slingshotSpeedBonusMmPerSec", "slingshotAccelBonusMmPerSec2", "slingshotTicks", "goLinePermille", "cpuTacticsMinLevel",
+            "longSpurtBonusPermille",
+        };
+
         /// <summary>Builds params from a key/value map. Missing or unknown keys throw ArgumentException.</summary>
         public static RulesetParams FromValues(string rulesetVersion, IDictionary<string, long> values)
         {
@@ -215,6 +255,7 @@ namespace Muchi.Engine
             foreach (var k in BalanceIntKeys) known.Add(k);
             foreach (var k in DistanceIntKeys) known.Add(k);
             foreach (var k in SkillIntKeys) known.Add(k);
+            foreach (var k in TacticsIntKeys) known.Add(k);
             foreach (var k in values.Keys)
                 if (!known.Contains(k)) throw new ArgumentException("unknown ruleset key: " + k);
             int optionalPresent = 0;
@@ -233,6 +274,10 @@ namespace Muchi.Engine
             foreach (var k in SkillIntKeys) if (values.ContainsKey(k)) skillPresent++;
             if (skillPresent != 0 && skillPresent != SkillIntKeys.Length)
                 throw new ArgumentException("skill ruleset keys must be all present or all absent");
+            int tacticsPresent = 0;
+            foreach (var k in TacticsIntKeys) if (values.ContainsKey(k)) tacticsPresent++;
+            if (tacticsPresent != 0 && tacticsPresent != TacticsIntKeys.Length)
+                throw new ArgumentException("tactics ruleset keys must be all present or all absent");
             foreach (var k in IntKeys)
                 if (!values.ContainsKey(k)) throw new ArgumentException("missing ruleset key: " + k);
 
@@ -337,6 +382,28 @@ namespace Muchi.Engine
                 p.SkillMaxRecoverPermille = G("skillMaxRecoverPermille");
                 p.SkillMaxDurationTicks = G("skillMaxDurationTicks");
             }
+            if (tacticsPresent > 0)
+            {
+                p.HasTacticsKeys = true;
+                p.GoWindowPermille = G("goWindowPermille");
+                p.AutoGoPermille = G("autoGoPermille");
+                p.GatherSpeedPermille = G("gatherSpeedPermille");
+                p.GatherDrainPermille = G("gatherDrainPermille");
+                p.GatherMaxTicks = G("gatherMaxTicks");
+                p.KickSpeedBonusMmPerSec = G("kickSpeedBonusMmPerSec");
+                p.KickAccelBonusMmPerSec2 = G("kickAccelBonusMmPerSec2");
+                p.KickTicks = G("kickTicks");
+                p.RhythmFromTicks = G("rhythmFromTicks");
+                p.RhythmToTicks = G("rhythmToTicks");
+                p.RhythmBonusPermille = G("rhythmBonusPermille");
+                p.SlingshotMinSlipTicks = G("slingshotMinSlipTicks");
+                p.SlingshotSpeedBonusMmPerSec = G("slingshotSpeedBonusMmPerSec");
+                p.SlingshotAccelBonusMmPerSec2 = G("slingshotAccelBonusMmPerSec2");
+                p.SlingshotTicks = G("slingshotTicks");
+                p.GoLinePermille = G("goLinePermille");
+                p.CpuTacticsMinLevel = G("cpuTacticsMinLevel");
+                p.LongSpurtBonusPermille = G("longSpurtBonusPermille");
+            }
             p.Validate();
             return p;
         }
@@ -390,6 +457,17 @@ namespace Muchi.Engine
                 int[] sk = { SkillMaxSpeedPermille, SkillMaxAccelPermille, SkillMaxDrainSavePermille, SkillMaxRecoverPermille, SkillMaxDurationTicks };
                 for (int i = 0; i < SkillIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(SkillIntKeys[i], sk[i]));
             }
+            if (HasTacticsKeys)
+            {
+                int[] tk =
+                {
+                    GoWindowPermille, AutoGoPermille, GatherSpeedPermille, GatherDrainPermille, GatherMaxTicks,
+                    KickSpeedBonusMmPerSec, KickAccelBonusMmPerSec2, KickTicks, RhythmFromTicks, RhythmToTicks, RhythmBonusPermille,
+                    SlingshotMinSlipTicks, SlingshotSpeedBonusMmPerSec, SlingshotAccelBonusMmPerSec2, SlingshotTicks, GoLinePermille, CpuTacticsMinLevel,
+                    LongSpurtBonusPermille,
+                };
+                for (int i = 0; i < TacticsIntKeys.Length; i++) v.Add(new KeyValuePair<string, long>(TacticsIntKeys[i], tk[i]));
+            }
             return v;
         }
 
@@ -423,6 +501,23 @@ namespace Muchi.Engine
                 || SkillMaxDrainSavePermille < 0 || SkillMaxDrainSavePermille > 1000 || SkillMaxRecoverPermille < 0 || SkillMaxRecoverPermille > 500)
                 throw new ArgumentException("skill caps out of range (speed 0..200, accel 0..1000, drain 0..1000, recover 0..500)");
             if (SkillMaxDurationTicks < 0 || SkillMaxDurationTicks > 1200) throw new ArgumentException("skillMaxDurationTicks must be 0..1200");
+            if (HasTacticsKeys)
+            {
+                if (AutoGoPermille < 100 || AutoGoPermille > 3000 || GoWindowPermille < AutoGoPermille || GoWindowPermille > 3000)
+                    throw new ArgumentException("autoGoPermille must be 100..3000 and goWindowPermille autoGoPermille..3000");
+                if (!Permille(GatherSpeedPermille + 500) || GatherDrainPermille < 0 || GatherDrainPermille > 1000)
+                    throw new ArgumentException("gatherSpeedPermille must be 0..1500 and gatherDrainPermille 0..1000");
+                if (GatherMaxTicks < 1 || GatherMaxTicks > 200) throw new ArgumentException("gatherMaxTicks must be 1..200");
+                if (KickSpeedBonusMmPerSec < 0 || KickSpeedBonusMmPerSec > 10000 || KickAccelBonusMmPerSec2 < 0 || KickAccelBonusMmPerSec2 > 20000 || KickTicks < 0 || KickTicks > 200)
+                    throw new ArgumentException("kick values out of range (speed 0..10000, accel 0..20000, ticks 0..200)");
+                if (RhythmFromTicks < 1 || RhythmToTicks < RhythmFromTicks || RhythmToTicks > 200 || RhythmBonusPermille < 0 || RhythmBonusPermille > 2000)
+                    throw new ArgumentException("rhythm values out of range (1 <= from <= to <= 200, bonus 0..2000)");
+                if (SlingshotMinSlipTicks < 1 || SlingshotSpeedBonusMmPerSec < 0 || SlingshotSpeedBonusMmPerSec > 10000 || SlingshotAccelBonusMmPerSec2 < 0 || SlingshotAccelBonusMmPerSec2 > 20000 || SlingshotTicks < 0 || SlingshotTicks > 200)
+                    throw new ArgumentException("slingshot values out of range");
+                if (GoLinePermille < 100 || GoLinePermille > 5000) throw new ArgumentException("goLinePermille must be 100..5000");
+                if (CpuTacticsMinLevel < 1 || CpuTacticsMinLevel > 6) throw new ArgumentException("cpuTacticsMinLevel must be 1..6");
+                if (LongSpurtBonusPermille < 0 || LongSpurtBonusPermille > 1000) throw new ArgumentException("longSpurtBonusPermille must be 0..1000");
+            }
         }
         private static bool Permille(int v) => v >= 500 && v <= 2000;
     }

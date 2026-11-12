@@ -2009,7 +2009,7 @@ export class PlayerService {
   // ---- 出走前アドバイス pre-race coach (REQ-ADV-*, contracts/protocol.md §39): read-only, free, the same for everyone ----
   async raceAdvice(id: string, q: AdviceQuery, ruleset?: Ruleset) { return raceAdviceFor(this.d.master, await this.load(id), q, this.d.clock(), ruleset); }
   /** REQ-PRAC-002 (§50.1): the practice catalog — read-only, never saves; practice results have no server path at all. */
-  async practiceCatalog(id: string, ruleset?: Ruleset) { return practiceCatalog(this.d.master, await this.load(id), this.d.clock(), ruleset); }
+  async practiceCatalog(id: string, ruleset?: Ruleset, engineLevel: number | null = null) { return practiceCatalog(this.d.master, await this.load(id), this.d.clock(), ruleset, engineLevel); }
   async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
   /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
   wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {

@@ -1157,5 +1157,10 @@
     "retentionDays": 30,
     "spikeMinCount": 50,
     "spikeWindowHours": 24
+  },
+  "raceTactics": {
+    "_note": "Ruleset 1.4.0 (仕掛け with the whip hold, 会心 rhythm whips, slingshot; docs/quality/race-play.md) per mode. Deploy order (docs/ops/deploy.md §7.1): the verifier that knows 1.4, the Worker, the app (engine level 2); practice is on from the start (only for apps sending x-engine-level 2), then friend / cup / career by remote config once most players have the app (raise maintenance.minEngineLevel to 2), then ranked after a week of verified 1.4 races. Time attack, weekly challenges and the tutorial never switch (medals, ghosts, FTUE).",
+    "ruleset": "1.4.0",
+    "modes": { "practice": true, "friend": false, "cup": false, "career": false, "ranked": false, "event": false, "tournament": false }
   }
 }

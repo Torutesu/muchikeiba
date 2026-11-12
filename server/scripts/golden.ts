@@ -11,7 +11,10 @@ import { addJstDays, dayRule, gameWeekStartMs } from '../src/domain/time.js';
 
 /** Configs written to contracts/golden for the C# side to run (contracts/protocol.md §9). Fixed seeds. */
 export function goldenConfigs(): Record<string, RaceStartConfig> {
-  const m = loadMaster();
+  // the 1.3 configs are built with the 1.4 switch off, so they never move with the rollout (progression.raceTactics)
+  const m = { ...loadMaster() };
+  const shippedTactics = m.progression.raceTactics;
+  m.progression = { ...m.progression, raceTactics: undefined };
   const p = newPlayer('golden', 0, '2026-11');
   const horse = (tid: string) => toRaceHorse(m, createHorseFromTemplate(p, m.templateById.get(tid)!, 0));
   const ranked = buildRaceConfig(m, {
@@ -59,5 +62,13 @@ export function goldenConfigs(): Record<string, RaceStartConfig> {
       challenges[`ts-config-challenge-${ch.id}.json`] = startChallenge(m, s, ch.id, { loan: true }, `golden_${ch.id}`, seededRng(3100 + i * 10 + j), now, () => undefined).config;
     });
   });
-  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack, 'ts-config-dirt-night.json': dirt, 'ts-config-event.json': event, ...challenges };
+  // ruleset 1.4 (docs/quality/race-play.md): the same friend room with the tactics switched on for friend races
+  const m14 = { ...m, progression: { ...m.progression, raceTactics: { ruleset: shippedTactics?.ruleset ?? '1.4.0', modes: { friend: true } } } };
+  const friendTactics = buildRaceConfig(m14, {
+    raceId: 'r_golden_friend_tactics', mode: 'friend', trackId: 'minato_turf_2400',
+    humans: [{ playerId: 'p_alice', horse: horse('t_ginga') }, { playerId: 'p_bob', horse: horse('t_tsukikage') }],
+    cpuCount: 6, cpuLevel: 4, statCap: null, rng: seededRng(1400),
+    ground: { going: 'good', night: false },
+  });
+  return { 'ts-config-ranked.json': ranked, 'ts-config-friend.json': friend, 'ts-config-timeattack.json': timeattack, 'ts-config-dirt-night.json': dirt, 'ts-config-event.json': event, 'ts-config-friend-tactics.json': friendTactics, ...challenges };
 }

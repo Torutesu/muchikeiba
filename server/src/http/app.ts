@@ -914,9 +914,10 @@ export const routes: Route[] = [
   } },
   // 練習レース (REQ-PRAC-002, contracts/protocol.md §50.1): read-only catalog. There is deliberately no route that takes a
   // practice result — practice runs on the device and grants nothing (REQ-PRAC-011).
-  { method: 'GET', path: '/v1/practice/catalog', auth: 'player', handler: async (_r, _p, c, u) => {
+  { method: 'GET', path: '/v1/practice/catalog', auth: 'player', handler: async (r, _p, c, u) => {
     const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
-    return c.player(u).invoke('practiceCatalog', u, ruleset);
+    // ruleset 1.4 only for an app whose engine knows it (x-engine-level ≥ 2); older apps keep the active ruleset
+    return c.player(u).invoke('practiceCatalog', u, ruleset, clientHeaders(r.headers).engine);
   } },
   // spectating (REQ-SPEC-*)
   { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },

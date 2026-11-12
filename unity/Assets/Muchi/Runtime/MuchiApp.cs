@@ -733,7 +733,8 @@ namespace Muchi.Client
         {
             if(driver?.Sim==null||driver.PlayerSlot<0)return; // spectating: no horse to spur
             var me=driver.Sim.GetHorse(driver.PlayerSlot);
-            if(me.Departed&&me.WhipsLeft<=0)return;
+            // ruleset 1.4: before the go the press is the hold (溜め) and needs no whip left
+            if(me.Departed&&me.WhipsLeft<=0&&!(driver.Sim.TacticsEnabled&&!me.InSpurt))return;
             if(tutorial&&me.Departed)Ftue("race1_whip"); // the first whip of the first ride (KPI funnel step 3)
             input.Spur();
             feedback.text=LocaleService.Text(me.Departed?"SPUR!":"GO!");messageUntil=Time.time+1.2f;
@@ -746,10 +747,13 @@ namespace Muchi.Client
             if(Input.GetKeyDown(KeyCode.LeftArrow))input.Lane(-1);
             if(Input.GetKeyDown(KeyCode.RightArrow))input.Lane(1);
             if(Input.GetKeyDown(KeyCode.E))Spur();
+            // ruleset 1.4: letting go of the whip is the release of the hold (仕掛け). TODO(Codex): the SPUR button's pointer-up /
+            // cancel calls input.SpurRelease() too (docs/quality/race-play.md §5; the press stays on pointer-down).
+            if(Input.GetKeyUp(KeyCode.E))input.SpurRelease();
             input.SetRein(reinHeld||Input.GetKey(KeyCode.Space));
             long now=MuchiServices.NowMs;
-            // Input for the next engine tick (start / lane / rein edges / whip), then advance the race.
-            if(driver.Sim!=null&&driver.PlayerSlot>=0)driver.Input(input.Collect(driver.Sim.GetHorse(driver.PlayerSlot)));
+            // Input for the next engine tick (start / lane / rein edges / whip / the 1.4 release), then advance the race.
+            if(driver.Sim!=null&&driver.PlayerSlot>=0)driver.Input(input.Collect(driver.Sim,driver.PlayerSlot));
             driver.Update(now);
             if(!worldPrepared&&driver.Config!=null&&driver.Sim!=null)
             {

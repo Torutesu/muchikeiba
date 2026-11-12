@@ -84,6 +84,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 
 - 端末が bit6/bit7 を送ってきたら部屋はその2bitを落とす。
 - 同じtick・同じスロットに複数の入力が来たら部屋はビットORで合成する。
+- **ルールセット 1.4（駆け引きのキー群、§14.1）では、発走後の bit0 は `WHIP_RELEASE`**（ムチのボタンを離した）。1.3 以前では発走後の START は何もしない（今までどおり無視）ので、1.3 のレースの結果は変わらない。1.4 では仕掛けの前に `WHIP` が来ると「溜め」が始まり、`WHIP_RELEASE` で仕掛ける（同じtickに両方なら溜めなしで仕掛ける）。端末は 1.4 のレースで、発走後・仕掛けの前にボタンを離すたびに bit0 を送る（溜めがまだ計算されていなくても送る。溜めの無い bit0 は無視される）。
 
 ## 4. ロックステップのメッセージ（WebSocket、JSON、1メッセージ1オブジェクト）
 
@@ -381,6 +382,20 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
 - **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
 - ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。
+
+## 14.1 ルールセット 1.4 の駆け引き（品質パス、docs/quality/race-play.md、REQ-RACE-090〜099）
+- 追加キー（**全部あるか全部ないか**、他のキー群とは独立。C# `RulesetParams.TacticsIntKeys` と TS `TACTICS_RULESET_KEYS` は一致させる）：`goWindowPermille`・`autoGoPermille`・`gatherSpeedPermille`・`gatherDrainPermille`・`gatherMaxTicks`・`kickSpeedBonusMmPerSec`・`kickAccelBonusMmPerSec2`・`kickTicks`・`rhythmFromTicks`・`rhythmToTicks`・`rhythmBonusPermille`・`slingshotMinSlipTicks`・`slingshotSpeedBonusMmPerSec`・`slingshotAccelBonusMmPerSec2`・`slingshotTicks`・`goLinePermille`・`cpuTacticsMinLevel`・`longSpurtBonusPermille`。**ない場合は 1.3 以前と同じ計算**（スパートはスパート区間に入った瞬間に自動で始まる）。1.4.0 の値は `contracts/ruleset-params.1.4.0.json`（1.3.0 ＋ このキー群 ＋ `cpuWhipIntervalTicks` 18）。既定のルールセット（`ruleset-params.default.json`）は 1.3.0 のまま。
+- **仕掛け（スパートはプレイヤーの判断）**：スパートは「仕掛けた」tickから始まる（`InSpurt`）。仕掛けの窓 ＝ 残り ≤ スパート区間 × `goWindowPermille`。窓の中・仕掛けの前の `WHIP` は**溜め**（`Gathering`、ムチは減らない）：目標速度 × `gatherSpeedPermille`、消耗 × `gatherDrainPermille`（手綱と同じ扱い、重ねない）、溜めの tick が `gatherMaxTicks` まで増える。`WHIP_RELEASE` で仕掛け、溜めが満タンなら自分で仕掛ける（溜めきり）。溜めずに窓を過ぎた馬は残り ≤ スパート区間 × `autoGoPermille` で自動で仕掛ける（溜め 0、一閃なし）。窓より前の `WHIP` は今までどおりの早打ち。
+- **一閃**：仕掛けた瞬間から `kickTicks` の間、目標速度 ＋ `kickSpeedBonusMmPerSec` × 溜め/最大、加速 ＋ `kickAccelBonusMmPerSec2` × 溜め/最大。
+- **ロングスパート**：スパート区間より前に仕掛けた馬は、スパート区間に入るまでスパートの上乗せの `longSpurtBonusPermille`‰ だけ（1.4.0 は 0 ＝ 最高速）。スパート区間より前は仕掛けた後でも掛かる（掛かりの抽選はスパート区間の距離で判定）。
+- **会心**：仕掛けた tick または前のムチから `rhythmFromTicks`〜`rhythmToTicks` tick 後のムチは効果 1000 ＋ `rhythmBonusPermille`‰（連打の減衰より優先）。
+- **抜け出し**：窓の中で、`slingshotMinSlipTicks` tick 以上続けて風よけにいた馬がレーンを変える（受け付けられた時）と、`slingshotTicks` の間 目標速度 ＋ `slingshotSpeedBonusMmPerSec`、加速 ＋ `slingshotAccelBonusMmPerSec2`。
+- **持つライン**（HUD の金の線・CPU）：`RaceSim.GoLineM(slot)` ＝ いまのスタミナで仕掛けて足りる残り距離（スパート区間の分 ＋ その前のロングスパートの分、整数の見積もり）× `goLinePermille`、窓で頭打ち。CPU はレベルごとのずれ（レベル5 は線の近く、低いレベルほど遅く広く）で線から溜めて仕掛け、逃げ馬は早めに仕掛ける。レベル ≥ `cpuTacticsMinLevel` だけ（1.4.0 は全レベル）。
+- イベント（表示・実況用、チェックサムと結果ハッシュの外）：`Gather`（13、値＝残りm）、`Go`（14、値＝溜めの tick、自動は −1）、`Rhythm`（15、会心、値＝残りムチ）、`Slingshot`（16、値＝新しいレーン）。`SpurtStart` は 1.4 でもスパート区間の距離に入った時（最後の直線の実況）で、仕掛けとは別。
+- チェックサム：1.4 のレースだけ、各馬に (仕掛け済み|溜め中)・溜めの tick・一閃の残り・抜け出しの残り を足す（1.3 以前のチェックサムは同じ）。
+- **エンジンの水準**（§46.4）：1.4 を計算できるのは `EngineInfo.Level` 2 以上。部屋は 1.4 のレースに 2 未満の `hello.engine` を `VERSION_MISMATCH`（4026）で断る（`raceEngineLevel`）。練習のカタログ（§50.1）は `x-engine-level` が 2 以上の要求にだけ 1.4 を渡す（無い・1 なら有効なルールセットのまま）。
+- **モードごとの切り替え**（`progression.raceTactics`、リモート設定で変更可・検査あり）：`{ "ruleset": "1.4.0", "modes": { "practice": true, "friend": false, … } }`。`buildRaceConfig`・練習のカタログが `rulesetForMode` で 1.3.0 にキー群を足す（同梱の 1.3.0 なら版は "1.4.0"、それ以外の有効なルールセットなら `<版>+t1.4`）。タイムアタック・週替わりチャレンジ・チュートリアルは切り替えられない（メダル・ゴースト・FTUE）。
+- ゴールデン：`contracts/golden/race-turf2000-tactics.json`（溜め→一閃・会心・抜け出し・タップの仕掛け・全レベルの CPU）、`contracts/golden/ts-config-friend-tactics.json`（TS の 1.4 のフレンド戦の設定）。1.3.0 以前のゴールデンは変わらない。
 
 ## 15. ゲーム日（REQ-DAY-001〜006、`server/src/domain/time.ts`）
 - **ゲーム日**＝ JST の切り替え時刻からの24時間。キーは `YYYY-MM-DD`＝「JST の時刻から切り替え時刻を引いた日付」（例：4:00 切り替えなら 12月5日 03:59 JST は `2026-12-04`、04:00 は `2026-12-05`）。JST に夏時間は無い。

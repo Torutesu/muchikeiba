@@ -108,6 +108,15 @@ namespace Muchi.Game
         /// <summary>The debrief line, e.g. 「残り200mのムチで2頭抜いた」 (null while verifying / void / spectating).</summary>
         public string DebriefLine;
         public string DebriefTip;
+        /// <summary>
+        /// Ruleset 1.4: the lesson from re-simulated races (GoCounterfactual) — 「仕掛けがあと0.5秒早ければ2着」 or
+        /// 「仕掛けのタイミングは最善だった」; null when not computed (tutorial, older rulesets, no inputs). Use <see cref="AddGoLesson"/>.
+        /// </summary>
+        public string GoLesson;
+        /// <summary>Ruleset 1.4: 「会心のムチ 3/5」 (null without whips after the go).</summary>
+        public string PerfectLine;
+        /// <summary>Ruleset 1.4: the counterfactual itself (shift, places, simulations) for KPI / tests.</summary>
+        public GoCounterfactual Counterfactual;
         public string DebriefCode;
         public DebriefReason? Reason;
         /// <summary>Status line for online races (「結果を照合中…」, void notice), null otherwise.</summary>
@@ -175,6 +184,10 @@ namespace Muchi.Game
                 m.Reason = debrief.Reason;
             }
 
+            // ruleset 1.4: the data-driven 仕掛け lesson for an offline race (online: AddGoLesson with the confirmed inputs)
+            if (!m.Tutorial && agrees && d is OfflineRaceDriver od && d.Config.Ruleset.HasTacticsKeys)
+                m.AddGoLesson(d.Config, od.Race.AllInputs(), d.PlayerSlot);
+
             if (m.Tutorial)
             {
                 if (tutorialAttempt <= 0 && d is OfflineRaceDriver o && o.Race.Director is TutorialDirector td) tutorialAttempt = td.Attempt;
@@ -184,6 +197,22 @@ namespace Muchi.Game
                 m.SecondaryAction = null;
             }
             return m;
+        }
+
+        /// <summary>
+        /// Runs <see cref="GoCounterfactual.Analyze"/> (about ten races on the device) and fills <see cref="GoLesson"/>,
+        /// <see cref="PerfectLine"/> and, when it says more than the debrief, the tip. Online races pass the confirmed inputs
+        /// (<c>LockstepClient.ConfirmedInputs</c>); only for a confirmed result.
+        /// </summary>
+        public void AddGoLesson(RaceConfig config, IList<InputRecord> inputs, int slot)
+        {
+            if (config == null || inputs == null || slot < 0 || !config.Ruleset.HasTacticsKeys || config.Mode == RaceMode.Tutorial) return;
+            var cf = GoCounterfactual.Analyze(config, inputs, slot);
+            if (cf.ActualPlace != Place) return; // the lesson must explain the place shown
+            Counterfactual = cf;
+            GoLesson = cf.Line;
+            PerfectLine = cf.PerfectLine;
+            if (cf.Tip != null && (cf.NoDecision || cf.BestShiftTicks != 0 || Reason == DebriefReason.LossOutpaced)) DebriefTip = cf.Tip;
         }
     }
 }

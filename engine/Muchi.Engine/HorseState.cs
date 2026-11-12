@@ -48,6 +48,30 @@ namespace Muchi.Engine
         /// <summary>Consecutive ticks spent in another horse's slipstream (skill condition).</summary>
         public int SlipTicks;
 
+        // ---- ruleset 1.4 tactics (all zero/false without the tactics keys) ----
+        /// <summary>The rider is holding the whip inside the 仕掛け window (溜め): the horse is held, the charge builds.</summary>
+        public bool Gathering;
+        /// <summary>Ticks gathered so far (the charge, capped at gatherMaxTicks).</summary>
+        public int GatherTicks;
+        /// <summary>Tick the horse went (仕掛け), -1 before. The spurt (InSpurt) starts on it.</summary>
+        public int GoTick;
+        /// <summary>Charge of the go in ticks (0 = a plain tap, -1 = the auto go: the rider never went).</summary>
+        public int GoCharge;
+        /// <summary>The 一閃 kick: strength (‰ of the full kick) and ticks left.</summary>
+        public int KickPermille, KickTicksLeft;
+        /// <summary>Reference tick for the whip rhythm: the go, then every whip.</summary>
+        public int RhythmRefTick;
+        /// <summary>会心 (perfect rhythm) whips this race.</summary>
+        public int PerfectWhips;
+        /// <summary>Ticks of slingshot burst left (pulled out of a slipstream inside the window).</summary>
+        public int SlingTicksLeft;
+        /// <summary>The horse passed the spurt mark (the final-stretch call, SpurtStart); in 1.4 the spurt itself is InSpurt.</summary>
+        public bool SpurtCalled;
+
+        public bool IsGathering => Gathering;
+        public bool IsKickActive => KickTicksLeft > 0;
+        public bool IsSlingActive => SlingTicksLeft > 0;
+
         public bool Finished => FinishTick >= 0;
         public bool IsKakari => KakariTicksLeft > 0;
         public bool IsWhipActive => WhipTicksLeft > 0;

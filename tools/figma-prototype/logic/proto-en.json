@@ -1605,6 +1605,14 @@
   "印を付けました": "Marked",
   "印を外しました": "Mark removed",
   "冬のミニ大会": "Winter mini tournament",
-  "ナイター記念大会": "Night race memorial tournament"
+  "ナイター記念大会": "Night race memorial tournament",
+  "_race14": "---- ruleset 1.4 race HUD and result (paintTactics, docs/quality/race-play.md)",
+  "仕掛けどころ": "Go zone",
+  "今：長押し": "Now: hold",
+  "会心 {n}": "Perfect {n}",
+  "離す": "Release",
+  "一閃": "Issen",
+  "競り合い　{name}": "Duel  {name}",
+  "振り返り：{s}": "Review: {s}"
  }
 }

@@ -121,11 +121,13 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
     const labels = [...document.querySelectorAll('.screen.in .glass .label')].filter((n) => n !== l && n.textContent.trim());
     const overlaps = l ? labels.filter((n) => { const a = box(n), b = box(l); return n.offsetParent && a.top < b.bottom - 2 && a.bottom > b.top + 2 && Math.abs(n.getBoundingClientRect().left - l.getBoundingClientRect().left) < 300; }).map((n) => n.textContent) : [];
     return { lesson: l?.textContent ?? null, stagger: !!l && l.classList.contains('fx-stat') && parseFloat(l.style.animationDelay) > parseFloat(document.querySelectorAll('.screen.in .fx-stat')[2]?.style.animationDelay ?? '0'),
+      inPanel: !l || (() => { const a = l.getBoundingClientRect(), g = l.closest('.glass').getBoundingClientRect(); return a.right <= g.right + 1 && l.scrollWidth <= l.clientWidth + 1; })(),
       debrief: document.querySelector('.screen.in [data-debrief]')?.textContent ?? '', lessonBox: box(l), cta: box(document.querySelector('.screen.in .btn.cta')), overlaps, quiet: document.querySelectorAll('.screen.in .btn.quiet').length, place: document.querySelector('.screen.in').dataset.place };
   });
   assert.ok(res.lesson && /^振り返り：/.test(res.lesson), 'quality c: the 1.4 lesson on the result: ' + res.lesson);
   if (/最善/.test(res.lesson)) assert.ok(Number(res.place) <= 3 && !/早すぎ|遅すぎ|連打/.test(res.debrief), `quality c: 「最善」 never next to a poor finish or a timing 敗因 (${res.place}着, ${res.debrief})`);
   assert.ok(res.stagger, 'quality c: the lesson arrives in the stagger, after the numbers');
+  assert.ok(res.inPanel, 'quality c: the lesson stays inside the result panel (wraps, never runs into the art): ' + res.lesson);
   assert.ok(res.lessonBox.bottom <= res.cta.top, 'quality c: the lesson sits above the CTA');
   assert.deepEqual(res.overlaps, [], 'quality c: the lesson overlaps no other line');
   // the promotion card speaks only for a series this race was part of (started, counted or decided it)

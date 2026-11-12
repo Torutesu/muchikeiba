@@ -275,7 +275,37 @@ export function previewFor(m: Master, s: PlayerState, sire: HorseInstance, dam: 
     goingAptitude: goingAptitudeOdds(sire, dam),
     atavism: atavismOdds(m, atavismOptions(sire, dam, grand)),
     skill: skillPreview(m, sire, dam),
+    rarity: foalRarityOdds(b.stats),
   };
+}
+
+/**
+ * Quality pass (docs/quality/raising-breeding.md): the foal's rarity odds, computed exactly from the same rules breedWith draws
+ * with — each stat is the baseline + an independent uniform integer in [−variation, +variation] (randRange), clamped to 0..1000,
+ * and the rarity is rarityForTotal of the sum. No new randomness and no estimate: the distribution of the total is the
+ * convolution of the five clamped uniforms. Parts per million, rounded so the three add up to exactly 1,000,000 (R takes the rest).
+ */
+export function foalRarityOdds(baseline: Stats): { R: number; SR: number; SSR: number } {
+  const V = BREED.variation, n = 2 * V + 1;
+  let dist = new Float64Array(1); dist[0] = 1;
+  for (const k of STAT_KEYS) {
+    const vals = new Map<number, number>();
+    for (let d = -V; d <= V; d++) { const v = clampStat(baseline[k] + d); vals.set(v, (vals.get(v) ?? 0) + 1 / n); }
+    const next = new Float64Array(dist.length + 1000);
+    for (let i = 0; i < dist.length; i++) {
+      const p = dist[i]!;
+      if (p === 0) continue;
+      for (const [v, q] of vals) next[i + v] = next[i + v]! + p * q;
+    }
+    dist = next;
+  }
+  let sr = 0, ssr = 0;
+  for (let t = 0; t < dist.length; t++) {
+    const r = rarityForTotal(t);
+    if (r === 'SSR') ssr += dist[t]!; else if (r === 'SR') sr += dist[t]!;
+  }
+  const SSR = Math.round(ssr * 1e6), SR = Math.round(sr * 1e6);
+  return { R: 1_000_000 - SR - SSR, SR, SSR };
 }
 
 /** REQ-UXS-050: the foal's skill odds, from the same function breed() draws with (skillInheritOdds). */

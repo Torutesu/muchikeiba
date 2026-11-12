@@ -75,10 +75,51 @@ namespace Muchi.Game
             return t.Value switch { "heavy" => "重馬場巧者", "fast" => "良馬場巧者", _ => "馬場不問" };
         }
 
+        // ---- quality pass (docs/quality/raising-breeding.md, protocol Q1): intent before, a reveal after. Odds are the server's
+        // (the preview's own fields; the rarity odds are exact from the breeding rules). Nothing here draws or invents a chance.
+
+        /// <summary>"仔のレア度の見込み　SSR 1.2%・SR 20.5%・R 78.3%", or null on older servers.</summary>
+        public string RarityLine => Preview?.Rarity == null || !Preview.Rarity.Known ? null
+            : "仔のレア度の見込み　SSR " + FoalRarityOdds.Percent(Preview.Rarity.SSR) + "・SR " + FoalRarityOdds.Percent(Preview.Rarity.SR) + "・R " + FoalRarityOdds.Percent(Preview.Rarity.R);
+
+        /// <summary>
+        /// What one parent can pass on, one line each, from the preview: its running style (the share the preview gives it) and its
+        /// unique skill (the inherit chance). <paramref name="who"/> = "sire" | "dam". 隔世遺伝 candidates are in <see cref="AtavismLines"/>.
+        /// </summary>
+        public List<string> ParentGifts(string who)
+        {
+            var lines = new List<string>();
+            if (Preview == null || Sire == null || Dam == null) return lines;
+            string style = who == "sire" ? Sire.Style : Dam.Style;
+            if (style != null && Preview.StyleMilliPercent.TryGetValue(style, out var sp))
+                lines.Add("脚質 " + TraitLabel(new AtavismTrait { Trait = "style", Value = style }) + " " + Milli(sp));
+            foreach (var c in Preview.Skill.Candidates.Where(c => c.From.Contains(who)))
+                lines.Add("固有スキル「" + c.Skill?.Name + "」 " + Percent(c.Permille * 1000L / Math.Max(1, c.From.Length)));
+            return lines;
+        }
+
+        private static string Milli(long milliPercent) => (milliPercent / 1000).ToString(CultureInfo.InvariantCulture) + (milliPercent % 1000 == 0 ? "" : "." + (milliPercent % 1000 / 100).ToString(CultureInfo.InvariantCulture)) + "%";
+
+        /// <summary>The foal reveal after a breeding (null before). Steps: <see cref="FoalReveal.Steps"/>.</summary>
+        public FoalReveal Reveal { get; private set; }
+        /// <summary>How many reveal steps are uncovered (0..4). The screen advances it on a tap; "すべて見る" jumps to the end.</summary>
+        public int RevealStep { get; private set; }
+        public bool RevealDone => Reveal != null && RevealStep >= FoalReveal.Steps.Length;
+        public void NextRevealStep() { if (Reveal != null && RevealStep < FoalReveal.Steps.Length) RevealStep++; }
+        public void RevealAll() { if (Reveal != null) RevealStep = FoalReveal.Steps.Length; }
+
+        /// <summary>"期待以上が2つ" / "見込みどおり" — how the five stats landed in the preview's range.</summary>
+        public string RevealVerdict => Reveal == null ? null : Reveal.HighCount > 0 ? "期待以上が" + Reveal.HighCount.ToString(CultureInfo.InvariantCulture) + "つ" : "見込みどおり";
+        /// <summary>"SR（見込み 20.5%）" — the rarity and the chance the preview gave it.</summary>
+        public string RevealRarityText => Reveal == null ? null : Reveal.Foal.Rarity + (Reveal.RarityChancePpm >= 0 ? "（見込み " + FoalRarityOdds.Percent(Reveal.RarityChancePpm) + "）" : "");
+        /// <summary>"脚質 差し：父から" / "脚質 逃げ：隔世遺伝".</summary>
+        public string RevealStyleText => Reveal == null ? null : "脚質 " + TraitLabel(new AtavismTrait { Trait = "style", Value = Reveal.Foal.Style }) + "：" + StyleFromText(Reveal.StyleFrom);
+        public static string StyleFromText(string from) => from switch { "sire" => "父から", "dam" => "母から", "both" => "父と母から", "atavism" => "隔世遺伝", _ => "新しい脚質" };
+
         /// <summary>Retired stallions/mares from the stable, plus friends' and public stud listings when online.</summary>
         public async Task LoadAsync(CancellationToken ct = default)
         {
-            Online = false; Message = null; Preview = null; Offer = null; Foal = null; Sire = null; Dam = null;
+            Online = false; Message = null; Preview = null; Offer = null; Foal = null; Sire = null; Dam = null; Reveal = null; RevealStep = 0;
             var horses = B.Player?.Horses ?? new List<Horse>();
             Dams = horses.Where(h => h.IsRetired && h.Sex == "female").ToList();
             Sires = horses.Where(h => h.IsRetired && h.Sex == "male").Select(h => new SireChoice
@@ -102,8 +143,8 @@ namespace Muchi.Game
             catch (ApiException e) { Fail(e); Online = e.Status == 404; } // 404: stud lending switched off; own breeding still works
         }
 
-        public void SelectSire(string key) { Sire = Sires.FirstOrDefault(s => s.Key == key); Preview = null; Offer = null; Foal = null; }
-        public void SelectDam(string horseId) { Dam = Dams.FirstOrDefault(h => h.Id == horseId); Preview = null; Offer = null; Foal = null; }
+        public void SelectSire(string key) { Sire = Sires.FirstOrDefault(s => s.Key == key); Preview = null; Offer = null; Foal = null; Reveal = null; RevealStep = 0; }
+        public void SelectDam(string horseId) { Dam = Dams.FirstOrDefault(h => h.Id == horseId); Preview = null; Offer = null; Foal = null; Reveal = null; RevealStep = 0; }
 
         public async Task<ActionResult> PreviewAsync(CancellationToken ct = default)
         {
@@ -145,6 +186,8 @@ namespace Muchi.Game
                     Foal = r.Foal; LastAtavism = r.Atavism; LastFeeStatus = null;
                 }
                 Kv.Set(slot, null);
+                Reveal = Foal == null ? null : FoalReveal.Build(Preview, Foal, Sire.Style, Dam.Style);
+                RevealStep = 0;
                 await B.RefreshAsync(ct);
                 Message = "新しい相棒が生まれました" + (LastAtavism != null ? "  /  隔世遺伝: " + TraitLabel(LastAtavism) + "（" + LastAtavism.From + "）" : "")
                     + (LastFeeStatus == "pending" ? "  /  種付け料は確認中です" : "");

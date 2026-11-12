@@ -108,7 +108,7 @@ export type PlayerMethod =
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
   | 'nextActions' | 'dismissNextAction' | 'goals' | 'claimGoals'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
-  | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
+  | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal' | 'horseProfile'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
@@ -735,6 +735,8 @@ export const routes: Route[] = [
   } },
   // 馬ごとの目標 (REQ-HGOAL-*, contracts/protocol.md §53)
   { method: 'GET', path: '/v1/horses/:horseId/goals', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseGoals', u, p.horseId!) },
+  // quality pass (docs/quality/raising-breeding.md): 馬カード (read-only)
+  { method: 'GET', path: '/v1/horses/:horseId/profile', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseProfile', u, p.horseId!) },
   { method: 'PUT', path: '/v1/horse-goals/pin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pinHorseGoal', u, (await body(r, z.object({ horseId: z.string().min(1).max(32).nullable() }).strict())).horseId) },
   { method: 'GET', path: '/v1/horse-goals/pinned', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pinnedHorseGoal', u) },
   // レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59): no reward path anywhere (Apple 5.6.1 / Google Play)

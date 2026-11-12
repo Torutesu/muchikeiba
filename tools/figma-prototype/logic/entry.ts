@@ -20,7 +20,7 @@ import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
 import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
-import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
+import { BREED, createHorseFromTemplate } from '../../../server/src/domain/horses.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
 import { raceFieldSeen } from '../../../server/src/domain/collection.js';
@@ -572,6 +572,8 @@ export const MuchiLogic = {
     products: master.products,
     pityCost: (g: string) => master.gacha.pityGroups[g]?.cost ?? 100,
     classes: master.progression.classes,
+    breedRules: { basePermille: BREED.basePermille, perAwakeningPermille: BREED.potentialPermillePerAwakening, inbreedingPenalty: BREED.inbreedingPenalty, variation: BREED.variation },
+    nickBonus: master.nicks.bonus, // quality pass: the breeding screen's 「見込みを上げるには」 (horses.ts baseline)
     dailyMissions: master.progression.dailyMissions,
     loginBonus: master.progression.loginBonus,
     raceFreeCoinsByPlace: master.progression.raceFreeCoinsByPlace,
@@ -622,6 +624,51 @@ export const MuchiLogic = {
   retire: (horseId: string) => wrap(() => svc.retire(ID, horseId)),
   breedingPreview: (sireId: string, damId: string) => wrap(() => svc.breedingPreview(ID, sireId, damId)),
   breed: (sireId: string, damId: string, useMaterial = false) => wrap(() => svc.breed(ID, sireId, damId, key(), useMaterial)),
+  // Quality pass (raising & breeding, docs/quality/raising-breeding.md, protocol Q1): 馬カード on the real horseProfile (read-only)
+  horseProfile: (horseId: string) => wrap(() => svc.horseProfile(ID, horseId)),
+  /**
+   * Demo 「育成」: `days` game days of training on the real rules after a week of play — each day the partner trains twice
+   * (hill / wood / awase, the pool when tired) and the next horse once. The mini-game is skipped (no bonus), so the growth is
+   * what an average player gets without it.
+   */
+  async seedRaising(days = 12) {
+    await this.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]);
+    const s0 = await svc.state(ID);
+    const p = s0.flags.partnerHorseId!;
+    const other = s0.horses.find((h) => h.status === 'active' && h.id !== p)?.id;
+    const order = ['hill', 'wood', 'awase'];
+    let k = 0;
+    for (let d = 0; d < days; d++) {
+      this.setDayOffset(7 + d);
+      for (const [h, n] of [[p, 2], [other, 1]] as const) {
+        if (!h) continue;
+        for (let i = 0; i < n; i++) {
+          const v = await svc.training(ID);
+          const hv = v.enabled ? v.horses.find((x) => x.horseId === h) : null;
+          if (!hv || hv.blocked) break;
+          const menu = hv.fatigue >= 60 ? 'pool' : order[k++ % order.length]!;
+          const st = await svc.trainingStart(ID, h, menu, key());
+          await svc.trainingFinish(ID, st.session.sessionId, { taps: [], skipped: true }, key());
+        }
+      }
+      // and a race a day with the partner (settled through applyRace with the horse, as settleRace does: the §34 career)
+      await svc.applyRace(ID, { raceId: `demo_rs_${d}`, mode: 'ranked', place: [3, 1, 2, 5, 1, 4][d % 6]!, fieldSize: 12, newRating: null, void: false, humans: 1, horseId: p,
+        details: { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, whips: 3, startReactionTicks: null, whipMashed: false, cpuAssisted: false } });
+    }
+    return svc.view(ID);
+  },
+  /** Demo 「配合」: a week of play, then the strongest other stallion retired next to the beginner mare (both from the real rules). */
+  async seedBreeding() {
+    await this.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]);
+    const s = await svc.state(ID);
+    const total = (h: (typeof s.horses)[number]) => Object.values(h.base).reduce((a, b) => a + b, 0);
+    const stallion = s.horses.filter((h) => h.status === 'active' && h.sex === 'male' && h.id !== s.flags.partnerHorseId).sort((a, b) => total(b) - total(a))[0];
+    if (stallion) await svc.retire(ID, stallion.id);
+    // and the strongest active mare, so there are two dams to compare (the beginner gift mare is retired already)
+    const mare = s.horses.filter((h) => h.status === 'active' && h.sex === 'female').sort((a, b) => total(b) - total(a))[0];
+    if (mare) await svc.retire(ID, mare.id);
+    return svc.view(ID);
+  },
   // Friend room conditions (REQ-ROOM-002): validated and stored by the real presets rules.
   presets: () => wrap(() => svc.presets(ID)),
   setRoomConditions: (c: Parameters<PlayerService['setRoomConditions']>[1]) => wrap(() => svc.setRoomConditions(ID, c)),

@@ -78,4 +78,5 @@ node "$HERE/test/round21-showcase.test.mjs" # round 21: トレーナーカード
 node "$HERE/test/round21-deep-links.test.mjs" # round 21: ディープリンク・再戦 — share (one link per target, no id in the URL), open → the screen behind a confirmation, one neutral answer, revoke, KPI without tokens, rematch (window, someone left, everyone in → a new room on the same conditions)
 node "$HERE/test/round21-release-notes.test.mjs" # round 21: アップデートのお知らせ — a new install never, the updater once (skipped count, numbers from data, never the shop), seen idempotent, the past list JA / EN, KPI, nothing granted
 node "$HERE/test/quality-race.test.mjs" # quality pass (docs/quality/race-play.md): ruleset 1.4 in WASM — the hold / release go, 会心 on the gold ring, the tactics HUD, the re-simulated lesson; 1.3 untouched
+node "$HERE/test/quality-raising.test.mjs"       # quality pass: raising & breeding — 馬カード (layers, stage, leaning, career, read-only), the training outlook = the start preview, exact foal rarity odds, the foal's generation
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

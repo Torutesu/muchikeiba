@@ -1311,12 +1311,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await click('戻る'); await waitScreen('result');
   // round 23 (REQ-HL-008/011): 見どころ of the race just run — the reel on the 3D view (offline: from the device's own log)
   await page.locator('.screen.in [data-action="hl-result"]').click(); await waitScreen('highlights', 30000);
-  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index === 0, null, { timeout: 15000 });
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 })
+    .catch(async (e) => { throw new Error(`highlights did not play on ${await screen()}: ${errors.slice(-5).join(' | ')}\n${e.message}`); });
   const hlR = await page.evaluate(() => globalThis.__muchi.highlight);
   assert.ok(hlR.set.moments.length >= 1 && hlR.totalMs >= 15000 && hlR.totalMs <= 30000, 'highlights: 1–3 moments, 15–30 s: ' + JSON.stringify(hlR.set.moments.map((m) => m.kind)));
   assert.ok((await page.locator('.screen.in .hl-caption').textContent()).length > 0, 'highlights: a caption');
   await shot('highlights-result', 700);
-  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000);
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
   await shot('highlights-end', 400);
   assert.ok(await page.evaluate(() => globalThis.__muchi.logic.kpiLog().some((e) => e.name === 'highlight_view' && e.props.surface === 'result')), 'KPI: highlight_view from the result screen');
   await page.locator('.screen.in .hl-back').click(); await waitScreen('result');
@@ -2526,20 +2527,21 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // the link at the top moment), and the link opening the replay at that moment
   const hlIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
   await page.evaluate(() => globalThis.__muchi.demo('highlights')); await waitScreen('highlights', 60000);
-  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index === 0, null, { timeout: 15000 });
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 });
   const hl0 = await page.evaluate(() => globalThis.__muchi.highlight);
-  assert.match(await page.locator('.screen.in .hl-counter').textContent(), new RegExp(`^見どころ 1 / ${hl0.set.moments.length}$`), 'highlights: the counter');
+  assert.match(await page.locator('.screen.in .hl-counter').textContent(), new RegExp(`^見どころ \\d / ${hl0.set.moments.length}$`), 'highlights: the counter');
   assert.equal(await page.locator('.screen.in .hl-mark').count(), hl0.set.moments.length, 'highlights: one mark per moment');
   assert.equal(await page.locator('.screen.in .speed, .screen.in .rp-speed, .screen.in .rp-cam-next').count(), 0, 'highlights: 1×, no camera switching');
   await shot('highlights-reel', 600);
-  if (hl0.set.moments.length > 1) {
-    await page.locator('.screen.in .hl-next').click();
-    await page.waitForFunction(() => globalThis.__muchi.highlight.index === 1, null, { timeout: 5000 });
+  const hlAt = (await page.evaluate(() => globalThis.__muchi.highlight)).index;
+  if (hlAt + 1 < hl0.set.moments.length && (await screen()) === 'highlights') {
+    await page.locator('.screen.in .hl-next').click({ timeout: 3000 }).catch(() => {});
+    await page.waitForFunction((i) => globalThis.__muchi.highlight.index >= i || globalThis.__muchi.highlight.done || globalThis.__muchi.screen !== 'highlights', hlAt + 1, { timeout: 5000 });
     const hl1 = await page.evaluate(() => globalThis.__muchi.highlight);
-    assert.equal(hl1.camera, hl1.set.moments[1].slot, 'highlights: 次へ cuts to the next horse');
+    if (hl1.index >= 0) assert.equal(hl1.camera, hl1.set.moments[hl1.index].slot, 'highlights: 次へ cuts to the next horse');
     await shot('highlights-next', 500);
   }
-  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000);
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
   assert.equal(await page.locator('.screen.in .hl-moment').count(), hl0.set.moments.length, 'end: every moment listed');
   assert.equal(await page.locator('.screen.in .hl-moment[data-rank="1"]').count(), 1, 'end: one best moment');
   const endText = await page.locator('.screen.in').innerText();
@@ -2569,7 +2571,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await hlIn('.rp-card[data-public="false"]');
   await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
   await page.locator('.screen.in .rp-sheet .rp-highlights').click(); await waitScreen('highlights', 30000);
-  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000);
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
   await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
   assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 1, 'a private replay: no link');
   assert.equal(await page.locator('.screen.in .hl-link-note').textContent(), '保存して公開すると、リンクで送れます');

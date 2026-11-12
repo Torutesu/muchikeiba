@@ -960,7 +960,7 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   }).classList.add('rp-keep-result');
   if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
   // round 23 (REQ-HL-011): the race's best moments, re-simulated from its own log (offline too)
-  if (!first) { const back = currentScreen; Ghost('見どころ', 996, 724, 274, 60, () => HighlightReel({ kind: 'result' }, back)).dataset.action = 'hl-result'; }
+  if (!first) { const back = () => show(ResultScreen, f, rewards, passXp, pass, missions); Ghost('見どころ', 996, 724, 274, 60, () => HighlightReel({ kind: 'result' }, back)).dataset.action = 'hl-result'; }
   EnToggle();
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -6248,14 +6248,14 @@ function HlShareSheet() {
   Sheet('見どころを共有', 'ムチ一閃　/　見どころ', (s, close, y) => {
     s.classList.add('hl-share-sheet');
     Txt(c.lines[0] ?? '', 48, y, 564, 26, GOLD, s, { weight: 700, lh: 1.35 }).classList.add('hl-card-caption');
-    Txt(`${c.horse}　${c.placeText}　${c.time}`, 48, y + 76, 564, 17, WHITE, s, { weight: 500, nowrap: true, cls: 'keep-ja' });
-    Txt(c.course, 48, y + 108, 564, 15, MUTED, s, { nowrap: true });
-    Txt('名前・IDは入りません（馬の名前だけ）', 48, y + 146, 564, 13, SOFT, s);
-    Cta('画像で共有', 48, y + 190, 564, () => {
+    Txt(c.horse, 48, y + 84, 564, 17, WHITE, s, { weight: 500, cls: 'keep-ja' });
+    Txt(`${c.placeText}　${c.time}　·　${c.course}`, 48, y + 114, 564, 15, MUTED, s, { lh: 1.4 });
+    Txt('名前・IDは入りません（馬の名前だけ）', 48, y + 160, 564, 13, SOFT, s);
+    Cta('画像で共有', 48, y + 204, 564, () => {
       const r = JSON.parse(engine.HighlightsShareCard('', L.now()));
       hlKpi(); close(); toast(r.ok ? '共有しました（アプリでは共有シートを開きます）' : 'このレースは共有できません');
     }, s, 'gold').classList.add('hl-share-card');
-    const link = Ghost('リンクで送る', 48, y + 296, 564, 60, async () => {
+    const link = Ghost('リンクで送る', 48, y + 310, 564, 60, async () => {
       const made = await L.links.create('replay', { raceId: c.raceId, startTick: c.startTick });
       if (!made.ok) { toast(made.code === 'NOT_FOUND' ? '保存して公開すると、リンクで送れます' : made.message); return; }
       const r = JSON.parse(engine.HighlightsShareLink(JSON.stringify(made.value), L.now()));
@@ -6264,9 +6264,9 @@ function HlShareSheet() {
       toast(r.ok ? 'リンクを共有しました（いちばんの場面から始まります）' : r.message);
     }, s);
     link.classList.add('hl-share-link');
-    if (c.linkNote) { disable(link); Txt(c.linkNote, 48, y + 368, 564, 14, MUTED, s, { lh: 1.55 }).classList.add('hl-link-note'); }
-    else Txt('リンクを開いたフレンドは、いちばんの場面から見られます', 48, y + 368, 564, 14, SOFT, s, { lh: 1.55 });
-  });
+    if (c.linkNote) { disable(link); Txt(c.linkNote, 48, y + 384, 564, 14, MUTED, s, { lh: 1.55 }).classList.add('hl-link-note'); }
+    else Txt('リンクを開いたフレンドは、いちばんの場面から見られます', 48, y + 384, 564, 14, SOFT, s, { lh: 1.55 });
+  }, 660, { solo: true });
 }
 
 // ================================================================= round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)

@@ -1840,6 +1840,25 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
   await shot('help-inquiry-sent', 300);
+  // ------------------------------------------------------------------ 6. round 23: お問い合わせ履歴 (REQ-TKT-*)
+  // status chips on the list (確認中 / 解決 / 受付済み), the resolved ticket's thread with its apology gift, a reply that
+  // reopens it (one key; the server's ticket_reopen / ticket_player_reply rows carry no text), and the gift box link
+  assert.ok(await page.locator('.screen.in .inq-list [data-chip="in_progress"]').count() >= 1, 'the list shows a 確認中 chip');
+  await page.locator('.screen.in .inq-list [data-status="resolved"]').first().click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'resolved');
+  assert.equal(await page.locator('.screen.in .inq-detail [data-chip="resolved"]').innerText(), '解決');
+  assert.equal(await page.locator('.screen.in [data-action="ticket-gift"]').count(), 1, 'the linked apology gift opens the gift box');
+  assert.equal(await page.locator('.screen.in [data-auto-close]').count(), 1, 'a resolved ticket says when it closes by itself');
+  await shot('ticket-thread-resolved', 300);
+  await page.locator('.screen.in .inq-detail textarea.field').fill('まだ1件だけ届いていません。もう一度確認してください。');
+  await page.locator('.screen.in [data-action="ticket-reply"]').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the reply reopens the ticket (受付済み)');
+  assert.equal(await page.locator('.screen.in .inq-detail [data-reply="player"]').count(), 2, 'the inquiry and the reply are in the thread');
+  const tk = await page.evaluate(() => globalThis.__muchi.logic.ticketKpi());
+  assert.ok(tk.some((k) => k.name === 'ticket_reopen' && k.s2 === 'resolved') && tk.some((k) => k.name === 'ticket_player_reply'), 'ticket_reopen / ticket_player_reply from the server');
+  assert.ok(!JSON.stringify(tk).includes('届いていません'), 'KPI rows never carry the text');
+  await shot('ticket-thread-reply', 300);
+  await page.locator('.screen.in [data-action="ticket-gift"]').click(); await waitScreen('gift-box'); await page.waitForTimeout(300);
   // ------------------------------------------------------------------ 6. round 19: 画質・通信量 / ストレージ (REQ-PERF-*)
   // the settings row → four rows with what auto means here; a choice applies at once (the 3D view's pixel ratio and
   // shadows, the frame cap, the home art's drift) and is stored on this device only; perf_setting_change only for a real

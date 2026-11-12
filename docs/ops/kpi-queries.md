@@ -1533,3 +1533,28 @@ GROUP BY kind ORDER BY opens DESC
 ```
 
 - `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。
+
+## お問い合わせの状況：返信・再開・解決（REQ-TKT-012、contracts/protocol.md §73.8、Round 23）
+
+**サポートがどれだけ早く・何回のやりとりで解決しているか**。どれもサーバーのイベントで本文は入らない。`ticket_player_reply`（`blob8` = 種類、`blob9` = 返信の前の状態、`double9` = 置き換えた数）・`ticket_reopen`（`blob8` = 種類、`blob9` = `resolved` / `closed`）・`ticket_resolved`（`blob8` = 種類、`blob9` = `resolved` / `closed` / `auto_closed`、`double6` = 受付からの ms）は **essential**（サポートの記録、同意に関係なく残る）。`ticket_reply_view`（`blob8` = 種類、運営の返信を開いた）は optional。チケットを作る・最初の返信は §48 の `inquiry_submit`・`inquiry_answered`。
+
+```sql
+-- 種類ごとの解決までの時間（中央値）と、閉じ方の内訳
+SELECT blob8 AS category, blob9 AS how, sum(_sample_interval) AS n, quantileWeighted(0.5)(double6, _sample_interval) / 3600000 AS median_hours
+FROM muchi_kpi
+WHERE blob1 = 'ticket_resolved' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category, how ORDER BY n DESC
+```
+
+```sql
+-- 再開の割合（解決・クローズにしたのにプレイヤーが戻ってきた）
+SELECT blob8 AS category,
+  sum(if(blob1 = 'ticket_reopen', _sample_interval, 0)) AS reopens,
+  sum(if(blob1 = 'ticket_resolved', _sample_interval, 0)) AS resolved
+FROM muchi_kpi
+WHERE blob1 IN ('ticket_reopen', 'ticket_resolved') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category ORDER BY reopens DESC
+```
+
+- `auto_closed` が多い種類は、返信の文がそのまま答えになっているか（追加の質問が要らないか）を見直す。
+- `ticket_reopen` の多い種類はひな形（`help.replyTemplates`）か記事を見直す。

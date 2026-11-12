@@ -239,7 +239,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HelpCenter'); await waitScreen('help'); await shot('help-center', english, 500);
     await show('HelpArticle', 'pity', 'list'); await waitScreen('help-article'); await shot('help-article', english, 500);
     await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', english, 500);
+    if (!english) await page.evaluate(() => globalThis.__muchi.logic.seedInquiries()); // R23: the demo threads (answered, checking, resolved)
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
+    // round 23 (REQ-TKT-019): the thread of the resolved ticket (chips, gift line, notes, the reply box) at the largest size
+    if (await page.locator('.screen.in .inq-list [data-status="resolved"]').count()) { await page.locator('.screen.in .inq-list [data-status="resolved"]').first().click(); await waitScreen('my-inquiries'); }
+    await shot('ticket-thread', english, 500);
     // Round 19: ヒント (the library, a card, a tour page, a lesson briefing) at the largest size (REQ-TUT-018)
     await show('Tips'); await waitScreen('tips'); await shot('tips', english, 500);
     await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);

@@ -202,7 +202,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .tkt-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -8359,10 +8359,10 @@ async function ReleaseNotesDemo() {
 // attaches, one key kept across retries) and my inquiries (status, the support reply, read on opening). Articles come in
 // the language the screen shows (lang = en in English); what the player typed and support's replies stay as written
 // (.keep-ja). ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
-const helpState = { back: null, q: '', cat: null, formKey: null, draft: null, sel: null, picks: null };
+const helpState = { back: null, q: '', cat: null, formKey: null, draft: null, sel: null, picks: null, reply: '', replyKey: null, replyFor: null };
 const helpLang = () => (isJa() ? 'ja' : 'en');
 const helpKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
-const HELP_STATUS_COLOR = { received: GOLD, answered: CYAN, closed: SOFT };
+const HELP_STATUS_COLOR = { received: GOLD, in_progress: CYAN, answered: CYAN, resolved: SOFT, closed: SOFT };
 /** Where an article's screen link leads (protocol §48.1 screens). */
 const helpGo = (screen, back) => ({
   home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => Tips(), tips: () => Tips(),
@@ -8411,7 +8411,7 @@ async function HelpCenter(back = null) {
   Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
   Txt('よくある質問で解決しないときは、運営に問い合わせできます。返信はアクティビティでお知らせします。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
   const unread = player?.help?.unreadReplies ?? 0;
-  const mine = Btn('自分の問い合わせ', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
+  const mine = Btn('お問い合わせ履歴', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
   mine.dataset.action = 'my-inquiries'; mine.dataset.unread = String(unread);
   { const em = document.createElement('em'); em.textContent = unread > 0 ? `未読 ${unread}` : '›'; mine.appendChild(em); }
   Txt('問い合わせには、アプリの版・端末の種類・プレイヤーID・直近のレースIDだけが自動で添えられます。', 36, 290, 376, 13, SOFT, d, { lh: 1.6 });
@@ -8466,7 +8466,7 @@ function helpSide() {
   const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
   Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
   Txt('解決しないときは、運営に問い合わせできます。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
-  TextLink('自分の問い合わせ', 36, 160, 376, () => MyInquiries(), d);
+  TextLink('お問い合わせ履歴', 36, 160, 376, () => MyInquiries(), d);
   Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
 }
 /** An article: `source` = list | search | context | link | related (help_article_view once per opening). */
@@ -8519,7 +8519,7 @@ function HelpArticleView(A, back) {
 
 // ---------------------------------------------------------------- the inquiry form
 async function InquiryForm(category = null) {
-  helpState.draft ??= { category: 'other', description: '', refs: [] };
+  helpState.draft ??= { category: 'other', description: '', refs: [], share: true };
   if (category) helpState.draft.category = category;
   currentScreen = () => InquiryForm();
   const [idx, list] = await Promise.all([helpState.index ? { ok: true, value: helpState.index } : L.help(helpLang()), L.inquiries(helpLang())]);
@@ -8563,10 +8563,17 @@ async function InquiryForm(category = null) {
   // right: what is attached automatically (REQ-HELP-011), limits, the CTA
   const d = Glass('Inquiry diagnostics', 1116, 134, 448, 676, undefined, .9);
   Kicker('自動で添える情報', 36, 30, d, { size: 15, rule: false });
-  [['アプリの版', 'proto'], ['端末の種類', 'Editor'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', '最大3件・自動で添えます']].forEach(([k, v], i) => {
-    Txt(k, 36, 80 + i * 34, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 80 + i * 34, 206, 14, WHITE, d, { weight: 700, nowrap: true });
+  // round 23 (REQ-TKT-003): the diagnostics go only with the player's consent (default on; off sends none of them)
+  Txt('診断情報を添える', 36, 66, 170, 14, WHITE, d, { weight: 700, nowrap: true });
+  [['オン', true], ['オフ', false]].forEach(([l, v], j) => {
+    const b = Btn(l, 216 + j * 100, 56, 92, 40, () => { D.share = v; InquiryForm(); }, 'choice' + ((D.share !== false) === v ? ' on' : ''), d);
+    b.dataset.share = v ? 'on' : 'off'; b.style.fontSize = '15px';
   });
-  Txt(H.inquiry.diagnosticsNote, 36, 230, 376, 12, SOFT, d, { lh: 1.6 }).dataset.diagnostics = '1';
+  const share = D.share !== false;
+  [['アプリの版', share ? 'proto' : '送りません'], ['端末の種類', share ? 'Editor' : '送りません'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', share ? '最大3件・自動で添えます' : '送りません']].forEach(([k, v], i) => {
+    Txt(k, 36, 112 + i * 30, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 112 + i * 30, 206, 14, WHITE, d, { weight: 700, nowrap: true });
+  });
+  Txt(H.inquiry.diagnosticsNote, 36, 240, 376, 12, SOFT, d, { lh: 1.6 }).dataset.diagnostics = '1';
   const lim = list.ok ? list.value.limits : null;
   if (lim) Txt(`返信待ち ${lim.open} / ${lim.openMax}　·　今日 ${lim.today} / ${lim.perDay}`, 36, 470, 376, 13, MUTED, d, { weight: 500, nowrap: true, cls: 'num' }).dataset.limits = `${lim.open}/${lim.openMax}`;
   const send = Cta('送信する', 36, 576, 376, async () => {
@@ -8574,7 +8581,7 @@ async function InquiryForm(category = null) {
     if (n < H.inquiry.descriptionMin) { toast('内容をもう少し詳しく書いてください'); return; }
     // REQ-HELP-012: one key per form, kept until the server accepted it (a retry returns the same inquiry)
     helpState.formKey ??= `form-${Date.now()}`;
-    const r = await L.submitInquiry({ category: D.category, description: D.description, refs: D.refs }, helpState.formKey, helpLang());
+    const r = await L.submitInquiry({ category: D.category, description: D.description, refs: D.refs, shareDiagnostics: D.share !== false }, helpState.formKey, helpLang());
     if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'いまは送信できません。返信をお待ちいただくか、時間をおいてください' : r.code === 'NOT_FOUND' ? '期間外の記録が含まれています' : r.message); return; }
     helpState.draft = null; helpState.formKey = null; helpState.picks = null;
     toast('問い合わせを受け付けました。返信はアクティビティでお知らせします');
@@ -8585,7 +8592,20 @@ async function InquiryForm(category = null) {
   Back(() => { HelpCenter(); }, '戻る', 40, 834);
 }
 
-// ---------------------------------------------------------------- my inquiries
+// ---------------------------------------------------------------- my inquiries — round 23: お問い合わせ履歴 (REQ-TKT-*, protocol §73)
+// The list with status chips (受付済み / 確認中 / 返信あり / 解決 / クローズ) and the thread: the inquiry, the support replies
+// and the player's replies in time order (a person's words stay as written: .keep-ja), the auto-close / reopen notes from
+// the server's clocks, an apology gift → the gift box, and the reply box (one key kept until the server accepted it,
+// rate limits and a closed ticket as sentences). The thread scrolls inside its panel: text grows with the text size.
+const TKT_CHIP = { received: 'warn', in_progress: 'info', answered: 'ok', resolved: 'muted', closed: 'muted' };
+function TicketChip(status, text, x, y, parent) {
+  const c = el('tkt-chip tkt-scale ' + (TKT_CHIP[status] ?? 'warn'), x, y, null, null, parent);
+  c.textContent = text; c.dataset.chip = status;
+  return c;
+}
+function tktNode(tag, cls, text, parent) {
+  const n = document.createElement(tag); n.className = cls; if (text != null) n.textContent = text; parent.appendChild(n); return n;
+}
 async function MyInquiries(sel = helpState.sel) {
   currentScreen = () => MyInquiries();
   const r = await L.inquiries(helpLang());
@@ -8593,6 +8613,7 @@ async function MyInquiries(sel = helpState.sel) {
   const P = r.value;
   // the first unread reply, else the newest
   if (!P.items.some((x) => x.ticketId === sel)) sel = (P.items.find((x) => x.unread) ?? P.items[0])?.ticketId ?? null;
+  if (helpState.replyFor !== sel) { helpState.reply = ''; helpState.replyKey = null; helpState.replyFor = sel; }
   helpState.sel = sel;
   let T = null;
   if (sel) {
@@ -8603,40 +8624,79 @@ async function MyInquiries(sel = helpState.sel) {
     }
   }
   Clear('my-inquiries'); SetArt('Art/home-paddock', false); Shade('left');
-  TopBar('自分の問い合わせ', '受付済み → 回答済み → 完了　·　返信はアクティビティでもお知らせします');
-  const p = Glass('Inquiry list', 36, 134, 620, 676, undefined, .88);
+  TopBar('お問い合わせ履歴', '受付済み → 確認中 → 返信あり → 解決 → クローズ　·　返信はアクティビティでもお知らせします');
+  const p = Glass('Inquiry list', 36, 134, 560, 676, undefined, .88);
   p.classList.add('inq-list');
   Kicker('新しい順', 36, 30, p, { size: 15 });
-  if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 540, 18, MUTED, p).dataset.inqEmpty = '1';
+  if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 480, 18, MUTED, p).dataset.inqEmpty = '1';
   P.items.slice(0, 7).forEach((it, i) => {
-    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 74, 572, 68, p);
+    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 76, 512, 70, p);
     row.dataset.ticket = it.ticketId; row.dataset.status = it.status; row.dataset.unread = it.unread ? '1' : '0'; row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `${it.categoryTitle} ${it.statusText}`);
     if (it.unread && it.ticketId !== sel) el('act-dot', 6, 30, 10, 10, row);
-    Txt(it.statusText, 22, 8, 160, 12, HELP_STATUS_COLOR[it.status] ?? CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
-    Txt(jstDate(it.createdAt), 200, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
-    Txt(it.categoryTitle, 22, 30, 520, 18, WHITE, row, { weight: 700, nowrap: true });
+    TicketChip(it.status, it.statusText, 22, 8, row);
+    Txt(jstDate(it.createdAt), 300, 10, 190, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num', align: 'right' });
+    Txt(it.categoryTitle, 22, 38, 470, 17, WHITE, row, { weight: 700, nowrap: true });
     row.addEventListener('click', () => MyInquiries(it.ticketId));
   });
-  const d = Glass('Inquiry detail', 676, 134, 888, 676, undefined, .9);
+  const d = Glass('Inquiry detail', 616, 134, 948, 676, undefined, .9);
   d.classList.add('inq-detail');
   if (T) {
-    d.dataset.ticket = T.ticketId; d.dataset.status = T.status;
-    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false });
-    Txt(T.statusText, 700, 34, 150, 14, HELP_STATUS_COLOR[T.status] ?? CYAN, d, { weight: 700, align: 'right', nowrap: true });
-    Txt('送った内容', 36, 76, 300, 13, MUTED, d, { weight: 500 });
-    const mine = Txt(T.inquiryText, 36, 100, 816, 16, WHITE, d, { lh: 1.6, h: 110 }); mine.classList.add('keep-ja', 'typed'); mine.style.overflow = 'hidden';
-    if (T.attachments.length) Txt(T.attachments.map((a) => a.ref).join('　·　'), 36, 216, 816, 13, CYAN, d, { cls: 'num', nowrap: true });
-    Hair(36, 250, 816, d);
-    let y = 268;
-    if (!T.messages.length) Txt('運営が確認しています。返信が届くとアクティビティでお知らせします。', 36, y, 816, 15, MUTED, d, { lh: 1.6 });
-    T.messages.slice(-2).forEach((m) => {
-      Txt(m.from === 'support' ? '運営からの返信' : 'あなた', 36, y, 300, 13, m.from === 'support' ? CYAN : MUTED, d, { weight: 700, ls: '.12em' });
-      Txt(jstDate(m.at), 560, y, 292, 12, SOFT, d, { align: 'right', cls: 'num', nowrap: true });
-      const tx = Txt(m.messageText, 36, y + 24, 816, 16, WHITE, d, { lh: 1.6, h: 120 }); tx.classList.add('keep-ja', 'typed'); tx.style.overflow = 'hidden'; tx.dataset.reply = m.from;
-      y += 160;
-    });
-  } else Txt('問い合わせを選んでください', 36, 100, 600, 16, MUTED, d);
-  Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+    d.dataset.ticket = T.ticketId; d.dataset.status = T.status; d.dataset.canReply = T.canReply ? '1' : '0';
+    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false, w: 640 });
+    TicketChip(T.status, T.statusText, 760, 24, d);
+    // the thread (scrolls in its panel)
+    const box = el('tkt-thread', 24, 70, 900, T.canReply ? 330 : 420, d);
+    box.dataset.thread = T.ticketId; box.setAttribute('role', 'log'); box.setAttribute('aria-label', 'やりとり');
+    const msg = (who, at, text, support) => {
+      const m = tktNode('div', 'tkt-msg' + (support ? ' support' : ''), null, box);
+      m.dataset.from = support ? 'support' : 'player';
+      const head = tktNode('div', 'tkt-head', null, m);
+      tktNode('span', 'tkt-scale tkt-who', who, head);
+      tktNode('span', 'tkt-scale tkt-at num', jstDate(at), head);
+      const tx = tktNode('div', 'tkt-scale tkt-text keep-ja typed', text, m);
+      tx.dataset.reply = support ? 'support' : 'player';
+    };
+    msg('あなた', T.createdAt, T.inquiryText, false);
+    if (T.attachments.length) tktNode('div', 'tkt-scale tkt-note num', T.attachments.map((a) => a.ref).join('　·　'), box);
+    T.messages.forEach((m) => msg(m.from === 'support' ? '運営からの返信' : 'あなた', m.at, m.messageText, m.from === 'support'));
+    if (!T.messages.some((m) => m.from === 'support')) tktNode('div', 'tkt-scale tkt-note', '運営が確認しています。返信が届くとアクティビティでお知らせします。', box);
+    if (T.compensation?.length) {
+      const g = tktNode('button', 'tkt-scale tkt-gift', 'お詫びの品をプレゼントボックスに入れました　›', box);
+      g.dataset.action = 'ticket-gift'; g.addEventListener('click', () => GiftBox('box'));
+    }
+    if (T.autoCloseAt) tktNode('div', 'tkt-scale tkt-note', `返信がないまま ${jstDate(T.autoCloseAt)} を過ぎると自動でクローズします`, box).dataset.autoClose = '1';
+    if (T.status === 'closed' && T.canReply && T.replyUntil) tktNode('div', 'tkt-scale tkt-note', `${jstDate(T.replyUntil)} まで返信できます（返信するとお問い合わせを続けられます）`, box).dataset.reopen = '1';
+    if (!T.canReply) tktNode('div', 'tkt-scale tkt-note', 'このお問い合わせはクローズしました。新しく問い合わせてください', box).dataset.closedNote = '1';
+    requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+    if (T.canReply) {
+      const fb = el('fieldbox', 36, 414, 876, 118, d);
+      const ta = document.createElement('textarea');
+      ta.className = 'field'; ta.maxLength = 1000; ta.value = helpState.reply ?? ''; ta.placeholder = '返信を書く（パスワード・メールアドレスは書かないでください）'; ta.setAttribute('aria-label', '返信の内容');
+      Object.assign(ta.style, { left: '16px', top: '8px', width: '844px', height: '100px', fontSize: '17px', resize: 'none', lineHeight: '1.5' });
+      ta.addEventListener('input', () => { helpState.reply = ta.value; });
+      fb.appendChild(ta);
+      const send = Cta('返信する', 492, 576, 420, async () => {
+        const text = (helpState.reply ?? '').trim();
+        if (!text) { toast('返信の内容を書いてください'); return; }
+        // REQ-TKT-004: one key per reply, kept until the server accepted it (a retry returns the same thread)
+        helpState.replyKey ??= `reply-${Date.now()}`;
+        const rr = await L.inquiryReply(T.ticketId, text, helpState.replyKey, helpLang());
+        if (!rr.ok) {
+          if (rr.code === 'CONFLICT') { helpState.replyKey = null; toast('このお問い合わせはクローズしました。新しく問い合わせてください'); return MyInquiries(T.ticketId); }
+          toast(rr.code === 'RATE_LIMITED' ? 'いまは返信できません。時間をおいてください' : rr.message); return;
+        }
+        helpState.reply = ''; helpState.replyKey = null;
+        toast('返信を送りました');
+        MyInquiries(T.ticketId);
+      }, d, 'small');
+      send.dataset.action = 'ticket-reply';
+      Ghost('新しく問い合わせる', 36, 582, 420, 52, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+    } else Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+  } else {
+    Txt('問い合わせを選んでください', 36, 100, 600, 16, MUTED, d);
+    Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+  }
   Back(() => HelpCenter(), '戻る', 40, 834);
 }
 

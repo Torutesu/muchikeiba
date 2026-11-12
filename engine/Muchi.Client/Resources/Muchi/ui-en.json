@@ -1143,7 +1143,7 @@
   "お詫びの品をプレゼントボックスに入れました": "We put an apology gift in your gift box",
   "プレゼントボックスを開く": "Open the gift box",
   "診断情報を添える": "Attach diagnostics",
-  "新しく問い合わせる": "Send a new inquiry",
+  "新しく問い合わせる": "New inquiry",
   "送りません": "Not sent",
   "{date} まで返信できます（返信するとお問い合わせを続けられます）": "You can reply until {date} (a reply continues this inquiry)",
   "返信がないまま {date} を過ぎると自動でクローズします": "Closes by itself if there is no reply by {date}",

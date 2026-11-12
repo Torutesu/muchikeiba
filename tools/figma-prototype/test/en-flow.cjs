@@ -464,7 +464,12 @@ await shot('diagnostics', 600);
   // round 17: ヘルプセンター in English (REQ-HELP-020): articles come in English from the master, typed text and replies stay as written
   await page.evaluate(() => globalThis.__muchi.demo('help')); await waitScreen('my-inquiries', 60000);
   await shot('help-my-inquiries', 500);
-  assert.match(await page.locator('.screen.in').innerText(), /Answered/, 'my inquiries: the status in English');
+  assert.match(await page.locator('.screen.in').innerText(), /Replied/, 'my inquiries: the status in English (R23 §73.1)');
+  // round 23 (REQ-TKT-019): the resolved thread with its apology gift and the auto-close note, in English
+  await page.locator('.screen.in .inq-list [data-status="resolved"]').first().click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
+  await shot('ticket-thread', 500);
+  assert.match(await page.locator('.screen.in .inq-detail').innerText(), /Resolved[\s\S]*apology gift[\s\S]*Closes by itself/, 'thread: status, gift and the auto-close note in English');
+  assert.match(await page.locator('.screen.in .inq-list').innerText(), /Checking/, 'list: the 確認中 chip in English');
   await show('HelpCenter'); await waitScreen('help'); await shot('help-center', 500);
   assert.match(await page.locator('.screen.in').innerText(), /Scout \(rates & pity\)/, 'help: the categories in English');
   await page.locator('.screen.in input.field').fill('pity'); await click('検索'); await waitScreen('help-search'); await shot('help-search', 400);

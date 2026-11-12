@@ -2439,7 +2439,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
 - **リンクを開く口**（§63、R21 統合）：`POST /v1/links/resolve` は止めない。窓の間・古いアプリからは、行き先の状態（`maintenance`／`update_required`）を答えの `state` で返し、リンクは捨てない（その画面がいつ開けるかを言う）。`/v1` の外にある Web の代わりのページ `GET /l/:token` と、ユニバーサルリンク・App Links の検証ファイル `GET /.well-known/apple-app-site-association`・`/.well-known/assetlinks.json` は入口の検査の外（窓の間も OS の検証が切れない）。
-- **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
+- **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`・プレイヤーの返信 `POST /v1/help/inquiries/:ticketId/messages`（Round 23、§73.9）、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
 - **主催カップ**（§42）：窓が `cups`（か `all`）を含む間は作成・参加・次のレースの出走が止まる。走っているカップのレースはソケットと結果の確定（Durable Object の中の通知）で最後まで確定し、順位に入る。窓の間に `closesAt` を過ぎたカップは §42 のとおり走ったところまでで終わる（`partial`）。
 
 ### 46.3 1回だけの入口の検査と応答（REQ-MNT-006/007）
@@ -2687,7 +2687,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 **`POST /v1/help/inquiries/:ticketId/read`** → `{ ticketId, unread: false, unreadTotal }`（何度送っても同じ）。
 
-- 状態 `status`：`received`（受付済み・返信待ち）→ `answered`（回答済み）→ `closed`（完了）。運営が返すと `answered`（`close: true` なら `closed`）。`statusText` は「受付済み」「回答済み」「完了」。
+- 状態 `status`：`received`（受付済み・返信待ち）→ `answered`（回答済み）→ `closed`（完了）。運営が返すと `answered`（`close: true` なら `closed`）。`statusText` は「受付済み」「回答済み」「完了」。**Round 23（§73.1）で `in_progress`（確認中）・`resolved`（解決）を足し、文字は「返信あり」「クローズ」に変わった。**
 - `GET /v1/player`・bootstrap に `help: { "unreadReplies": n }`（設定画面の「ヘルプ・お問い合わせ」のバッジ）。
 
 ### 48.7 運営（管理 API・ops コンソール、REQ-HELP-015〜017）
@@ -2700,7 +2700,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ### 48.8 アクティビティ（§40 への追加）
 | 種類 `kind` | 書く箇所 | 送り元 id | まとめる | `category` | `link.screen` |
 |---|---|---|---|---|---|
-| `inquiry_answered` | 運営の返信（`adminInquiryReply`） | `inquiry:{ticketId}:{n}` | しない | `support`（プッシュの種類ではない：プッシュは送らない） | `help_inquiry`（`id` = ticketId） |
+| `inquiry_answered` | 運営の返信（`adminInquiryReply`） | `inquiry:{ticketId}:{n}` | しない | `support`（アクティビティの分類。Round 23 からプッシュは別にテンプレート `inquiry_reply`・カテゴリ `gifts` で送る、§73.7） | `help_inquiry`（`id` = ticketId） |
 文：「お問い合わせに運営から返信がありました」。
 
 ### 48.9 KPI
@@ -3476,7 +3476,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 
 ### 58.7 KPI の分類（REQ-CNS-012〜014、`server/src/domain/kpiConsent.ts`）
 - すべての KPI イベント名を **`essential`（必須：法定の記録・不正対策・同意の証跡）** か **`optional`（任意：分析）** に分類する（`KPI_EVENT_CLASS`）。分類の無い名前は `optional` として扱う（迷ったら送らない）。テストがサーバーのコードから出すイベント名・クライアントのイベント名を全部集め、分類が無ければ失敗する。
-- `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
+- `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）、R23 §73.8 の `ticket_player_reply`・`ticket_reopen`・`ticket_resolved`（サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
 - **Round 19〜21 のイベント（R20・R21 統合で決めたこと）**：
   | イベント | 送り手 | 分類 | 理由 |
   |---|---|---|---|
@@ -3731,7 +3731,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
 | `calendar_mark`（R21 統合） | 予定表（§65）で印を付けた行の**始まり** | `reminders`（自分で付けた印なので呼び戻しと同じ種類、既定オフ） | `startAt − leadHours.calendar_mark`（既定 2 時間） | 印があり、まだ始まっていない（始まった行・印を外した行・`until` を過ぎた行は予約しない）。名前は文言に入れない（「印を付けた予定が{date}に始まります」） | `calendar` |
 
-- 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
+- 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`）・お問い合わせへの返信（`inquiry_reply`、Round 23 §73.7））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
 - 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。
 

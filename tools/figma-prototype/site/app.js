@@ -5750,7 +5750,7 @@ async function Bloodlines(source = 'pedigree', back = null) {
     const ct = document.createElement('span'); ct.className = 'ped-scale ped-line-count'; ct.textContent = `${l.count}頭（現役${l.active}・引退${l.retired}）`; top.appendChild(ct);
     row.appendChild(top);
     const f = document.createElement('div'); f.className = 'ped-scale ped-line-founder'; f.textContent = `${l.founderName}　·　${l.note}`; row.appendChild(f);
-    if (l.nickWith.length) { const n = document.createElement('div'); n.className = 'ped-scale ped-line-nick'; n.textContent = l.nickWith.map((x) => `ニックス：${x.lineName}（${x.role === 'dam' ? '母' : '父'}）+${x.bonus}`).join('　'); row.appendChild(n); }
+    for (const x of l.nickWith) { const n = document.createElement('div'); n.className = 'ped-scale ped-line-nick'; n.textContent = `ニックス：${x.lineName}（${x.role === 'dam' ? '母' : '父'}）+${x.bonus}`; row.appendChild(n); } // one line per partner (PedigreeModel.NickLines)
     if (l.horses.length) { const h = document.createElement('div'); h.className = 'ped-scale ped-line-horses'; h.textContent = l.horses.slice(0, 6).map((x) => x.name).join('・'); row.appendChild(h); }
     box.appendChild(row);
   }

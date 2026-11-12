@@ -172,6 +172,8 @@ static class Program
         await ConsentChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 21: トレーナーカード (ShowcaseCardModel / ShowcaseEditorModel: card lines, neutral card, share without a player id, report targets, editor limits, locked backgrounds, KPI, English; REQ-SHOW-*)");
         await ShowcaseChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 23: レースの見どころ (HighlightsModel: vectors = verifier, result gate, reel / next / skip, captions JA/EN, commentary windows, card and link share, KPI; REQ-HL-*)");
+        await HighlightsChecks.Run(Check, Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

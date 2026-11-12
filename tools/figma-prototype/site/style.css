@@ -791,3 +791,8 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
 .ped-line-founder { font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; line-height: 1.5; }
 .ped-line-nick { font-size: 13px; font-weight: 700; color: var(--cyan); overflow-wrap: anywhere; }
 .ped-line-horses { font-size: 13px; color: var(--text-3); overflow-wrap: anywhere; }
+
+/* round 23: レースの見どころ (REQ-HL-*) — the cut between moments: a short navy sweep (no flash, none with reduce motion) */
+.el.hl-wipe { pointer-events: none; background: linear-gradient(100deg, transparent 0%, rgba(8, 26, 54, .72) 40%, rgba(8, 26, 54, .72) 60%, transparent 100%); animation: hl-wipe .42s ease-out both; z-index: 30; }
+@keyframes hl-wipe { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+html[data-reduce-motion="on"] .el.hl-wipe { display: none; }

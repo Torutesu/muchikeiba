@@ -61,7 +61,7 @@ import { CALENDAR_ENTRY_ID_RE, type CalendarExternal } from '../domain/calendar.
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
 import type { TransferService } from '../domain/transferService.js';
 import type { LinkService, LinkTargets } from '../domain/linkService.js';
-import { androidAssetLinks, appleAssociation, fallbackPage, LINK_TYPES, linksConfig } from '../domain/deepLinks.js';
+import { androidAssetLinks, appleAssociation, fallbackPage, LINK_TYPES, linksConfig, replayLinkExtra, replayLinkRow, replayStartTick } from '../domain/deepLinks.js';
 import type { RematchView } from '../domain/rematch.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
@@ -1640,9 +1640,11 @@ export function linkTargetsFrom(c: AppContext): LinkTargets {
         }
         case 'replay': {
           const raceId = str(t, 'raceId', /^[\w-]{1,64}$/);
+          // REQ-HL-013 (§72.4): an optional start tick (the sharer's top highlight); a different tick is a different target
+          const st = replayStartTick(t);
           const v = (await myReplays(c).view(uid)) as unknown as { saved?: SavedRow[] };
           if (!v.saved?.some((x) => x.raceId === raceId && x.public)) throw gone();
-          return { targetKey: raceId, data: { raceId } };
+          return replayLinkRow(raceId, st);
         }
         case 'invite': {
           const v = await invite(c).view(uid, null);
@@ -1680,7 +1682,8 @@ export function linkTargetsFrom(c: AppContext): LinkTargets {
             rows = (await myReplays(c).friendList(viewer, rec.ownerId)).replays as { raceId: string; replayTitle: string | null }[];
           }
           const r = rows.find((x) => x.raceId === d.raceId);
-          return r ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle } } : null;
+          // REQ-HL-013: `startTick` = where the shared highlight starts (only for a link that carries one)
+          return r ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle, ...replayLinkExtra(d) } } : null;
         }
         case 'invite':
           return { state: 'ok', target: { code: d.code } };

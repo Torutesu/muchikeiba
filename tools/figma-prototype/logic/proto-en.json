@@ -1670,6 +1670,19 @@
   "ニックス（相性の良い系統の組み合わせ）は能力の基準 +{n}": "A nick (a good line match) adds {n} to the base stats",
   "3代以内に共通の祖先がいる配合は、1頭につき能力の基準 −{n}": "A pairing with a shared ancestor within three generations takes {n} off the base stats per shared ancestor",
   "血統のヘルプ": "Pedigree help",
-  "血統のヘルプ ›": "Pedigree help ›"
+  "血統のヘルプ ›": "Pedigree help ›",
+  "いまのレースから自動で選んだ場面": "Moments picked from the race you just ran",
+  "選ばれた場面": "Moments picked",
+  "いちばんの場面": "Best moment",
+  "選び方は全員同じです。自分の馬が出る場面を少し優先します。レースの結果は変わりません": "Everyone gets the same picks. Moments with your horse come first. The race result never changes",
+  "もう一度見る": "Watch again",
+  "ムチ一閃　/　見どころ": "Muchi Issen / Highlights",
+  "名前・IDは入りません（馬の名前だけ）": "No names or IDs (horse names only)",
+  "リンクを共有しました（いちばんの場面から始まります）": "Link shared (it starts at the best moment)",
+  "リンクを開いたフレンドは、いちばんの場面から見られます": "Friends who open the link start at the best moment",
+  "違うレースを流さないため、再計算の結果が一致しないレースは再生しません": "To never show a different race, a replay that does not re-simulate to the same result is not played",
+  "見どころを見る ›": "Highlights ›",
+  "{n}つの場面": "{n} moments",
+  "あわせて{n}秒": "{n} s in all"
  }
 }

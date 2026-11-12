@@ -1584,3 +1584,27 @@ GROUP BY source ORDER BY views DESC
 ```
 
 - 配合（`breeding`）から開いた図で `with_shared` が高いのに配合の数が変わらないなら、近親の罰の説明（ヘルプ `pedigree`）が届いているかを見る。系統の数は目標にしない（報酬・達成の表示は無い）。
+
+## レースの見どころ：見た・共有した（REQ-HL-015、contracts/protocol.md §72.5、Round 23）
+
+**見どころがどこから見られているか、どの瞬間がいちばんに選ばれているか、共有につながるか**。どちらもクライアントのイベントで §58 の `optional`（分析をオフにした人の行は無い）。`highlight_view`（`blob8` = 入口：`result`・`my_replays`・`friend_replay`・`link`、`blob9` = 1位の瞬間の種類：`photo_finish`・`near_miss`・`lead_change`・`whip_burst`・`comeback`・`unique_skill`・`finish`、`double9` = 瞬間の数 1〜3）、`highlight_share`（`blob8` = 入口、`blob9` = `card`（画像）／`link`（§63 のリプレイのリンク））。レース・プレイヤー・tick は入らない。
+
+```sql
+-- 入口ごとの再生と共有（共有率）
+SELECT blob8 AS surface,
+  sum(if(blob1 = 'highlight_view', _sample_interval, 0)) AS views,
+  sum(if(blob1 = 'highlight_share', _sample_interval, 0)) AS shares
+FROM muchi_kpi
+WHERE blob1 IN ('highlight_view', 'highlight_share') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY surface ORDER BY views DESC
+```
+
+```sql
+-- 1位に選ばれた瞬間の種類（`finish` ばかりなら判定の版を見直す目安）
+SELECT blob9 AS top, sum(_sample_interval) AS views, sum(double9 * _sample_interval) / sum(_sample_interval) AS avg_moments
+FROM muchi_kpi
+WHERE blob1 = 'highlight_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY top ORDER BY views DESC
+```
+
+- リンクで送れるのは公開した保存リプレイだけ（§72.4）。`link` の共有が少なく `card` が多いのは、保存・公開の前に共有しているため。リンクを開いた側は §63 の `link_resolve`（`s1 = replay`）と、ここの `highlight_view`（`link`）。

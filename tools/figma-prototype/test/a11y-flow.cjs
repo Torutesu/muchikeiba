@@ -267,6 +267,14 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in .ped-panel').getAttribute('data-flow'), 'rows', 'pedigree: the tree reflows at the largest text size');
     await show('BreedingPair'); await waitScreen('pedigree-pair'); await shot('pedigree-pair', english, 500);
     await show('Bloodlines'); await waitScreen('bloodlines'); await shot('bloodlines', english, 500);
+    // Round 23: レースの見どころ (the caption panel and controls, the end screen, the share sheet) at the largest size (REQ-HL-019);
+    // reduce motion is on here: a plain cut between moments
+    await show('HighlightsDemo'); await waitScreen('highlights', 60000);
+    await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 });
+    assert.equal(await page.evaluate(() => globalThis.__muchi.highlight.transition), 'cut', 'highlights: reduce motion cuts');
+    await shot('highlights', english, 600);
+    if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000); await shot('highlights-end', english, 400);
+    await page.locator('.screen.in .hl-share').click(); await page.waitForSelector('.screen.in .hl-share-sheet'); await shot('highlights-share', english, 400);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)

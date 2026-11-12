@@ -1469,3 +1469,26 @@
 - REQ-PED-018 プロトタイプ：血統図（写真の馬の絵・半透明の紺のパネル・シアンの線）、系統の一覧、配合の組み合わせの強調。ムチ一閃の調子。日本語と英語、文字「特大」で木が流し直る。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-PED-019 ヘルプ：記事 `pedigree`（トークン `inbreeding_penalty`・`nick_bonus`）、文脈 `pedigree`、画面 `bloodlines`、ヒントのカード `pedigree_tip`。
 - REQ-PED-020 クライアント：C# `GetPedigreeViewAsync`・`GetBreedingPedigreeAsync`・`GetBloodlinesAsync`・`PedigreeTree`、Unity `PedigreeModel`（系統の一覧も）、Codex への引き継ぎ docs/handoff-codex-round23-pedigree.md。
+
+## 72. レースの見どころ（automatic race highlights、C#＋TS（リンクだけ）、`Muchi.Client/Highlights.cs`・`Muchi.Game.HighlightsModel`・`src/domain/deepLinks.ts`／`src/http/app.ts`（リンクの `startTick`）、`contracts/protocol.md` §72）
+拘束条件：読むだけ。レースの結果・チェックサム・ゴールデンを変えない。何も配らない・何も売らない（E番号なし）。他の人の名前・プレイヤー ID を出さない。
+- REQ-HL-001 決定論：見どころはリプレイログ（設定＋確定入力）をエンジンで再計算して選ぶ純粋な関数（`HighlightDetector.Detect`）。整数だけ。同じログ・同じ `focusSlot` なら端末と検証サーバー（`Muchi.Verifier highlights`）で同じ答え（共有ベクター `contracts/highlights.vectors.json`、ゴールデンのリプレイで確かめる）。
+- REQ-HL-002 種類：`photo_finish`（差 0.5 m 未満）・`near_miss`（0.5〜1.5 m）・`lead_change`（残り 400 m 以下で先頭交代）・`whip_burst`（ムチから 3 秒で2つ以上上がる）・`comeback`（残り 600 m で後ろ3分の1 → 3着以内）・`unique_skill`（固有スキル）・`finish`（いつも1つ）。
+- REQ-HL-003 点数：§72.1 の表の式。自分の馬（`focusSlot`）が主役か相手なら＋30。
+- REQ-HL-004 上限：同じ種類は2つまで、`whip_burst` は同じ馬で1つまで。窓はレースの中（0〜`EndTick`）。
+- REQ-HL-005 選び方：点数 → 鍵の tick → 種類 → slot の全順序で、重ならない窓を3つまで。時間の順に並べ、合計 15 秒未満なら前・後ろへ広げる（重ねない）。1つの窓は 10 秒まで（窓が1つだけなら 15 秒、合計 30 秒まで）。
+- REQ-HL-006 結果を変えない：検出はレースの状態・結果ハッシュ・チェックサム・ゴールデンを変えない（ゴールデンの検査で差なし）。走っているレースの `RaceSim` に触らない。
+- REQ-HL-007 速さ：12頭のレースで 50 ms 未満（中位の端末の目安。テストは `WallClockSerial` の中で、負荷のある CI のために余裕を持った上限で測る）。
+- REQ-HL-008 再生：`HighlightReel` が `ReplayPlayer` の上で窓を続けて再生（同じ再計算・ハッシュの確認・カメラ）。窓ごとに主役の馬にカメラ。ハッシュが合わなければ出さない（「再生できません」）。
+- REQ-HL-009 スキップ：「次へ」（次の窓）・「スキップ」（終わり）。合計 15〜30 秒。
+- REQ-HL-010 字幕と実況：窓ごとに1行の字幕（日英、馬の名前だけ、他の人の名前なし）。実況は装備中のパック（§36、チュートリアルは標準）で、窓の中に始まる行だけ。
+- REQ-HL-011 入口：結果画面の「見どころ」（チュートリアル以外）、マイリプレイ（§37）の再生画面と行。その他の行は増やさない。
+- REQ-HL-012 共有カード：`ShareCard` に1位の字幕（`highlight_image`）。名前・ID なし。
+- REQ-HL-013 リンク：§63 の `replay` に任意の `startTick`（0〜72000 の整数）。自分の公開した保存リプレイだけ（それ以外は `404`、画面は保存・公開の案内）。`startTick` が違えば別の行き先。開いた人に `startTick` を返す。URL にプレイヤー ID・tick を入れない。見られる人・ブロック・期限は §63 のまま。
+- REQ-HL-014 オフライン：結果画面の見どころと共有カードはオフラインでも動く。リンクだけオンライン。
+- REQ-HL-015 KPI：クライアント `highlight_view`（入口・1位の種類・数）・`highlight_share`（入口・`card`／`link`）。§58 で `optional`。レース・プレイヤー・tick を入れない。
+- REQ-HL-016 保存しない：瞬間の一覧はサーバーにも端末にも残さない（毎回計算）。プレイヤーの状態の新しいキーなし（§51 の分類の追加なし）、wrangler の移行なし。リンクの `startTick` は §63 の行と一緒に消える。
+- REQ-HL-017 ゲート：新しい口なし。ログは `/v1/replays*`（`core`）・`/v1/friends/*`（`social`）、リンクは `/v1/links`（`social`）。
+- REQ-HL-018 ヘルプ：記事 `race_highlights`（`races`）とヒント `highlights_tip`。
+- REQ-HL-019 クライアント：C# `HighlightDetector`・`HighlightReel`・`HighlightCaptions`・`HighlightShare`・`AnalyticsEvent.HighlightView`／`HighlightShare`、Unity `HighlightsModel`。プロトタイプ（結果画面の「見どころ」、字幕つきの見どころの再生（WASM の本物のエンジン）、共有シート、ムチ一閃の調子、日英、最大の文字、e2e／en-flow／a11y-flow）。
+- REQ-HL-020 Codex への引き継ぎ：docs/handoff-codex-round23-highlights.md（つなぎのカメラ・字幕の見せ方）。

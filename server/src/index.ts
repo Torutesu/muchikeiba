@@ -61,7 +61,7 @@ import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
 import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
-import type { ClientErrorsApi, OpsApi } from './http/admin.js';
+import type { ClientErrorsApi, OpsApi, SurveysApi } from './http/admin.js';
 import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
@@ -305,6 +305,13 @@ function tournamentBackend(env: Env): TournamentBackend {
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
 
+const surveysApis = new WeakMap<object, SurveysApi>();
+const surveysApiFor = (key: object, make: () => SurveysApi): SurveysApi => {
+  let a = surveysApis.get(key);
+  if (!a) { a = make(); surveysApis.set(key, a); }
+  return a;
+};
+
 /** Ops backend over the OpsDO / IntegrityDO singletons (REQ-OPS-*). */
 export function makeOpsApi(env: Env): OpsApi | undefined {
   if (!env.OPS || !env.INTEGRITY) return undefined;
@@ -365,6 +372,23 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
         forget: (pid) => call(stub(env.CLIENT_ERRORS!, 'global').ceForget!(pid)),
       } satisfies ClientErrorsApi,
     } : {}),
+    // REQ-SURVEY-*: in-app surveys (OpsDO tables, no migration). One object per OPS binding so the 30 s live cache
+    // (liveSurveysCached, keyed by this object) survives the per-request contexts of an isolate.
+    surveys: surveysApiFor(env.OPS, () => ({
+      create: (d, by, now) => call(ops().svCreate!(d, by, now)),
+      update: (id, d, rev, by, now) => call(ops().svUpdate!(id, d, rev, by, now)),
+      publish: (id, a, b, max, by, now) => call(ops().svPublish!(id, a, b, max, by, now)),
+      close: (id, by, now) => call(ops().svClose!(id, by, now)),
+      list: (now) => call(ops().svList!(now)),
+      get: (id, now) => call(ops().svGet!(id, now)),
+      live: (now) => call(ops().svLive!(now)),
+      one: (id) => call(ops().svOne!(id)),
+      ingest: (xs) => call(ops().svIngest!(xs)),
+      results: (id, now) => call(ops().svResults!(id, now)),
+      csv: (id, now) => call(ops().svCsv!(id, now)),
+      hideText: (id, ref, h) => call(ops().svHideText!(id, ref, h)),
+      forget: (pid) => call(ops().svForget!(pid)),
+    })),
     // REQ-HELP-016: the inquiry index (OpsDO)
     inquiries: {
       upsert: (items) => call(ops().inqUpsert!(items)),

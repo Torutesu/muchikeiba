@@ -32,7 +32,8 @@ export type ErrorCode =
   | 'LINK_LIMIT'
   // REQ-LIMIT-005 (§67.2): the purchase would go over the player's own monthly limit (409; details name the setting)
   | 'SELF_LIMIT_EXCEEDED'
-  | 'CAREER_LOCKED' | 'CAREER_LIMIT_REACHED' | 'CAREER_SESSION_EXPIRED' | 'CAREER_SESSION_USED' | 'CAREER_RESULT_MISMATCH';
+  | 'CAREER_LOCKED' | 'CAREER_LIMIT_REACHED' | 'CAREER_SESSION_EXPIRED' | 'CAREER_SESSION_USED' | 'CAREER_RESULT_MISMATCH'
+  | 'SURVEY_CLOSED';
 
 const STATUS: Partial<Record<ErrorCode, number>> = {
   BAD_REQUEST: 400, CONFIG_INVALID: 500, UNAUTHORIZED: 401, NOT_FOUND: 404, HORSE_NOT_FOUND: 404,
@@ -54,6 +55,8 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   LINK_LIMIT: 429,
   // REQ-CAREER-* (§66): 騎手の道. CAREER_LOCKED = the race before is not cleared yet (409 default)
   CAREER_LIMIT_REACHED: 429, CAREER_RESULT_MISMATCH: 422,
+  // REQ-SURVEY-009 (§69): the survey has ended (a neutral close; the device closes the sheet quietly)
+  SURVEY_CLOSED: 409,
 };
 
 export class AppError extends Error {

@@ -39,6 +39,8 @@ namespace Muchi.Game
         public LocalNotificationModel Reminders { get; set; }
         public ClientErrorModel Errors { get; set; }
         public ReviewPromptModel Review { get; set; }
+        /// <summary>R22 §69: the survey card / sheet of the old account closes; a new session for the new one.</summary>
+        public SurveyModel Surveys { get; set; }
         public SessionPrompts Prompts { get; set; }
         /// <summary>R21 integration (§63): the deferred deep link waiting on this device.</summary>
         public DeepLinkModel Links { get; set; }
@@ -55,6 +57,7 @@ namespace Muchi.Game
             Guard(() => Review?.ResetSession());
             Guard(() => Links?.ForgetPending());
             Guard(() => ReleaseNotes?.NewSession());
+            Guard(() => Surveys?.ResetSession());
             Prompts?.NewSession();
         }
 

@@ -3,6 +3,8 @@
 // wallet paid/free ordering, purchase-intent age checks, season pass), odds disclosure from the same tables.
 // State lives in localStorage (one player, "local"). No server, no billing.
 import { COMMENTARY_PACKS } from '../../../server/src/domain/commentaryPacks.js';
+import { normalizeSurveyDef, surveysConfig, surveyView, validateSurveyAnswers, type SurveyDef, type SurveyLang, type SurveyPlacement } from '../../../server/src/domain/surveys.js';
+import { MemorySurveyRepo, SurveysCore } from '../../../server/src/ops/surveys.js';
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
 import { clientBatchSchema, clientToKpi, type ClientBatch } from '../../../server/src/domain/kpi.js';
@@ -122,6 +124,25 @@ const repo = new LocalRepo();
 const serverKpi: { name: string; s1?: string; s2?: string; s3?: string }[] = [];
 // round 20 (REQ-REV-005): each review check carries its own idempotency key (two checks in one millisecond must not share one)
 let revKeySeq = 0;
+// round 22 (§69): the ops survey store in memory (OpsDO tables on the server) and the one demo survey ops would publish
+let surveyRepo = new MemorySurveyRepo();
+let surveyCore = new SurveysCore(surveyRepo);
+const SURVEY_FACTS = { platform: 'ios', appVersion: '1.4.0' };
+const DEMO_SURVEY: SurveyDef = {
+  id: 'sv_whip_feel', title: { ja: 'ムチの手ごたえについて', en: 'How the whip feels' },
+  intro: { ja: '4つの短い質問です。答えなくてもかまいません。', en: 'Four short questions. You do not have to answer.' },
+  placements: ['home', 'result'], targeting: { minRankedRaces: 1 },
+  questions: [
+    { id: 'feel', kind: 'scale', required: true, text: { ja: 'ムチを入れた時の手ごたえはどうですか？', en: 'How does it feel when you use the whip?' },
+      labels: { low: { ja: '物足りない', en: 'Too little' }, high: { ja: 'ちょうどいい', en: 'Just right' } } },
+    { id: 'mode', kind: 'single', required: true, text: { ja: 'いちばんよく遊ぶのは？', en: 'What do you play most?' },
+      options: [{ id: 'ranked', text: { ja: 'ランク戦', en: 'Ranked races' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }, { id: 'training', text: { ja: '調教・配合', en: 'Training and breeding' } }, { id: 'friends', text: { ja: 'フレンドとのレース', en: 'Races with friends' } }] },
+    { id: 'wish', kind: 'multi', required: false, maxChoices: 2, text: { ja: 'これから増えてほしいものは？', en: 'What would you like more of?' },
+      options: [{ id: 'tracks', text: { ja: 'コース', en: 'Tracks' } }, { id: 'silks', text: { ja: '勝負服のデザイン', en: 'Silks designs' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }, { id: 'stable', text: { ja: '厩舎の飾り', en: 'Stable decorations' } }] },
+    { id: 'free', kind: 'text', required: false, maxLength: 200, text: { ja: 'ほかに、ひとことあればどうぞ', en: 'Anything else you would like to tell us?' } },
+  ],
+};
+let surveyKeySeq = 0;
 const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
@@ -649,6 +670,7 @@ export const MuchiLogic = {
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
     master.progression.consent = SHIPPED_CONSENT; // round 20: the shipped privacy policy version
+    surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo); // round 22: no live survey
   },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
@@ -1449,6 +1471,50 @@ export const MuchiLogic = {
       await race(state === 'failed' ? 9 : 3);
       return true;
     }),
+  },
+  // ---------------------------------------------------------------- round 22: ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69)
+  // The real PlayerService / surveys.ts rules on the local player and the real ops store (SurveysCore, in memory here): the
+  // offer (FTUE, cool-down, one at a time), shown, skip (one tap, never again), the strict answer check + free-text scrub, once
+  // per player, the ops table and its results. The prototype plays an iOS 1.4.0 device. Nothing is granted for answering.
+  surveys: {
+    offer: (placement: SurveyPlacement, lang: SurveyLang) => wrap(async () => {
+      const { pending, ...o } = await svc.surveyOffer(ID, surveyCore.live(now()), SURVEY_FACTS, placement, lang);
+      if (pending.length) {
+        surveyCore.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: ID, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
+        await svc.surveySynced(ID, pending.map((x) => x.surveyId));
+      }
+      return o;
+    }),
+    /** The texts of one language for a survey on screen (the language toggle redraws the sheet). */
+    view: (id: string, lang: SurveyLang, placement: SurveyPlacement) => { const l = surveyCore.one(id); return l ? surveyView(l, lang, placement) : null; },
+    shown: (id: string, placement: SurveyPlacement) => wrap(() => svc.surveyShown(ID, surveyCore.one(id), placement)),
+    skip: (id: string, placement: SurveyPlacement) => wrap(() => svc.surveySkip(ID, surveyCore.one(id), placement)),
+    /** The HTTP route's order: unknown / closed first, then the strict check (400) before anything is written, once per player. */
+    answer: (id: string, placement: SurveyPlacement, answers: Record<string, unknown>, key: string | null) => wrap(async () => {
+      const l = surveyCore.one(id);
+      if (!l || now() < l.startAt) throw new AppError('NOT_FOUND', 'unknown survey');
+      const clean = validateSurveyAnswers(l.def, answers, surveysConfig(master)); // an ended survey: SURVEY_CLOSED from the player (after its key check)
+      const { pending, ...out } = await svc.surveyAnswer(ID, l, { placement, answers: clean, facts: SURVEY_FACTS }, key ?? `c:/v1/surveys/answers:${id}:${++surveyKeySeq}`);
+      surveyCore.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: ID, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
+      await svc.surveySynced(ID, pending.map((x) => x.surveyId));
+      return out;
+    }),
+    /** What ops would see (no player ids). */
+    results: (id: string) => wrap(() => surveyCore.results(id, now())),
+    close: (id: string) => wrap(() => surveyCore.close(id, 'ops', now())),
+    /**
+     * Demo state: ops published the demo survey (live for a week) and the player is settled (FTUE done, a few ranked races,
+     * no earlier survey). The store starts over.
+     */
+    demo: () => wrap(async () => {
+      surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo);
+      surveyCore.create(normalizeSurveyDef(DEMO_SURVEY), 'ops', now() - 1000);
+      surveyCore.publish(DEMO_SURVEY.id, now() - 1000, now() + 7 * DAY_MS, surveysConfig(master).maxLive, 'ops', now() - 1000);
+      await svc.tx(ID, null, (st) => { st.flags.tutorialGachaUsed = true; st.rating.rankedRaces = Math.max(st.rating.rankedRaces, 3); delete st.surveys; });
+      return true;
+    }),
+    /** No live survey (the store starts empty — what every other demo state sees). */
+    clear: () => { surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo); },
   },
   // ---------------------------------------------------------------- round 20: 端末のローカル通知 (REQ-LNOTIF-*, contracts/protocol.md §61)
   // The real digest (bootstrap / GET /v1/player localReminders), the shared planner (= C# LocalNotificationPlanner), the push

@@ -78,6 +78,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'calendar_view', 'calendar_entry_open', 'calendar_mark',
   // Round 22 (§67): a purchase confirmation refused by the own limit, play-time settings (server) and the reminder sheet (client)
   'self_limit_block', 'playtime_setting_change', 'playtime_reminder_shown',
+  // R22 §69 ゲーム内アンケート (server rows; the answers themselves are never in KPI)
+  'survey_shown', 'survey_skip', 'survey_answer',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

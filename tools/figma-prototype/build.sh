@@ -79,4 +79,5 @@ node "$HERE/test/round21-showcase.test.mjs" # round 21: トレーナーカード
 node "$HERE/test/round21-deep-links.test.mjs" # round 21: ディープリンク・再戦 — share (one link per target, no id in the URL), open → the screen behind a confirmation, one neutral answer, revoke, KPI without tokens, rematch (window, someone left, everyone in → a new room on the same conditions)
 node "$HERE/test/round21-release-notes.test.mjs" # round 21: アップデートのお知らせ — a new install never, the updater once (skipped count, numbers from data, never the shop), seen idempotent, the past list JA / EN, KPI, nothing granted
 node "$HERE/test/round22-promotion.test.mjs" # round 22: 昇級戦 — start on the line (not counted), pips, pass early, fail → setback, ack once, grace, kill switch, English
+node "$HERE/test/round22-surveys.test.mjs" # round 22: ゲーム内アンケート — none in the FTUE / without a live survey, the demo survey at home and after a result, strict check, once per player, scrub, skip → cool-down, results without ids, nothing granted, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

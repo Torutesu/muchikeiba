@@ -234,6 +234,14 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('PromotionResult', 'failed'); await waitScreen('result'); await page.waitForSelector('.screen.in .pp-sheet', { timeout: 15000 }); await shot('promotion-fail', english, 500);
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
     await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
+    // Round 22: ゲーム内アンケート — the home card, each question type and the thanks state at the largest size (REQ-SURVEY-022)
+    await show('Survey', 'home'); await waitScreen('home'); await page.waitForSelector('.screen.in .sv-card', { timeout: 15000 }); await shot('survey-card', english, 500);
+    await page.locator('.screen.in .sv-answer').click(); await waitScreen('survey'); await page.waitForSelector('.screen.in .sv-sheet[data-kind="scale"]', { timeout: 15000 }); await shot('survey-scale', english, 400);
+    await page.locator('.screen.in [data-scale="5"]').click(); await page.locator('.screen.in .sv-next').click(); await page.waitForSelector('.screen.in .sv-sheet[data-kind="single"]', { timeout: 15000 }); await shot('survey-single', english, 400);
+    await page.locator('.screen.in [data-option="training"]').click(); await page.locator('.screen.in .sv-next').click(); await page.waitForSelector('.screen.in .sv-sheet[data-kind="multi"]', { timeout: 15000 }); await shot('survey-multi', english, 400);
+    await page.locator('.screen.in .sv-next').click(); await page.waitForSelector('.screen.in .sv-sheet[data-kind="text"]', { timeout: 15000 }); await shot('survey-text', english, 400);
+    await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await shot('survey-thanks', english, 400);
+    await page.evaluate(() => globalThis.__muchi.logic.surveys.clear());
     await show('HorseGoals', await page.evaluate(async () => (await globalThis.__muchi.logic.view()).flags.partnerHorseId)); await waitScreen('horse-goals'); await page.waitForSelector('.screen.in .hg-row', { timeout: 15000 }); await shot('horse-goals', english, 500);
     await show('CupCreate'); await waitScreen('cup-create'); await shot('cup-create', english, 500);
     await show('CupJoin'); await waitScreen('cup-join'); await shot('cup-join', english, 500);

@@ -1176,5 +1176,13 @@
     "topPlace": 3,
     "setbackPoints": 40,
     "graceRaces": 10
+  },
+  "surveys": {
+    "_note": "REQ-SURVEY-*（contracts/protocol.md §69）。ゲーム内アンケート。答えても何も配らない。coolDownHoursはアンケートとアンケートの間（答えた・スキップした時から）、maxShowsPerSurveyは答えもスキップもしなかった時に出す回数の上限、maxLiveは同時に公開できる本数、textMaxは自由な文の上限（200字まで）。定義は運営の画面（/v1/admin/surveys、OpsDO）で作る。",
+    "enabled": true,
+    "coolDownHours": 72,
+    "maxShowsPerSurvey": 2,
+    "maxLive": 5,
+    "textMax": 200
   }
 }

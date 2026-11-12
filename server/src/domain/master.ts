@@ -236,6 +236,8 @@ export interface Progression {
   localNotifications?: import('./localNotify.js').LocalNotifyConfig;
   /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 (selfLimits.ts, validated by selfLimitsProblems). Absent = the defaults (no kill switch). */
   selfLimits?: import('./selfLimits.js').SelfLimitsConfig;
+  /** REQ-SURVEY-004 (§69): ゲーム内アンケート (surveys.ts, validated by surveysProblems). Absent = SURVEYS_DEFAULTS. */
+  surveys?: Partial<import('./surveys.js').SurveysConfig>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

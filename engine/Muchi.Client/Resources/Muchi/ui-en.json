@@ -1517,6 +1517,17 @@
   "何度でも無料でやり直せます": "Retry for free as often as you like",
   "どの馬も章ごとの能力の上限にそろえ、固有スキルは使いません。相棒でも上限まで届きます。報酬は初クリアと星ごとに一度だけ。何度でも無料でやり直せます。": "Every horse races at the chapter's stat cap, with no unique skills. Your partner reaches the cap too. Rewards come once for the first clear and once per star. Retry for free as often as you like.",
   "ランク戦のレーティング・クラス・ランキング・ミッションには数えません。": "Career races do not count toward ranked rating, class, rankings or missions.",
-  "今日はここまで。4:00からまた走れます。": "That's all for today. You can race again from 4:00."
+  "今日はここまで。4:00からまた走れます。": "That's all for today. You can race again from 4:00.",
+  "アンケート": "Survey",
+  "答える": "Answer",
+  "とばす": "Pass",
+  "任意": "Optional",
+  "答えても何ももらえません。ゲームの内容も変わりません。": "Answering gives you nothing and changes nothing in the game.",
+  "ありがとうございました": "Thank you",
+  "いただいた声は、これからのムチ一閃づくりに使います。": "Your answers help shape the future of Muchi Issen.",
+  "このアンケートは終了しました": "This survey has ended",
+  "名前やメールアドレスなどは書かないでください": "Please do not write your name, email address or other personal details",
+  "{0}つまで選べます": "Choose up to {0}",
+  "あと{0}文字": "{0} characters left"
  }
 }

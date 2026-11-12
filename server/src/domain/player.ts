@@ -266,6 +266,8 @@ export interface PlayerState {
   privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
   /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 — the player's own monthly spending limit (and a pending raise), play-time reminder settings, history (selfLimits.ts). */
   selfLimits?: import('./selfLimits.js').SelfLimitsState;
+  /** REQ-SURVEY-* (§69): surveys shown / answered / skipped and the player's own answers (surveys.ts). Nothing is ever granted. */
+  surveys?: import('./surveys.js').SurveysState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

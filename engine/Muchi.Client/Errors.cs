@@ -155,6 +155,8 @@ namespace Muchi.Client
         CareerSessionUsed,
         /// <summary>REQ-CAREER-007: 422 — the server's re-simulation differs from the device's run.</summary>
         CareerResultMismatch,
+        /// <summary>REQ-SURVEY-009 (§69): 409 — the survey has ended; close the sheet quietly (a neutral message, no retry).</summary>
+        SurveyClosed,
     }
 
     public static class ApiErrorCodes
@@ -283,6 +285,7 @@ namespace Muchi.Client
             ["CAREER_SESSION_EXPIRED"] = ApiErrorCode.CareerSessionExpired,
             ["CAREER_SESSION_USED"] = ApiErrorCode.CareerSessionUsed,
             ["CAREER_RESULT_MISMATCH"] = ApiErrorCode.CareerResultMismatch,
+            ["SURVEY_CLOSED"] = ApiErrorCode.SurveyClosed,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;

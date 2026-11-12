@@ -1653,6 +1653,8 @@
   "第{n}章　{title}": "Chapter {n}  {title}",
   "{g}　星 {a}/{b}": "{g}  Stars {a}/{b}",
   "{g}　星{n}　{text}": "{g}  Star {n}  {text}",
-  "{m}　星{n}　{text}　NEW": "{m}  Star {n}  {text}  NEW"
+  "{m}　星{n}　{text}　NEW": "{m}  Star {n}  {text}  NEW",
+  "_surveys": "---- round 22: in-app surveys (§69)",
+  "{n}つまで選べます": "Choose up to {n}"
  }
 }

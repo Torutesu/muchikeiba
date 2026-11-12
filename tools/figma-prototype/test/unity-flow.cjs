@@ -542,6 +542,54 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 
+  // round 22 (REQ-SURVEY-*): ゲーム内アンケート — ops published a survey; a settled player's home shows the card (one card, the
+  // one-prompt gate) → 答える → the sheet: 1〜5, 1つ選ぶ, いくつでも (cap), the free text (optional, scrubbed) → 送る → thanks; the
+  // home shows no second survey this session; after a race result (ホーム) a due survey is the sheet; skip is one tap; no reward
+  async function surveyFlow() {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    const wallet = await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet);
+    await page.evaluate(() => { globalThis.__muchiSurvey = []; return globalThis.__muchi.show('Survey', 'home'); });
+    await waitScreen('home'); await waitIn('.sv-card');
+    assert.equal(await page.locator('.screen.in [data-home-card]').count(), 1, 'survey: one home card');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'survey', 'survey: the card claims the session (§58.11)');
+    await shot('survey-home-card', 500);
+    await page.locator('.screen.in .sv-answer').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]');
+    assert.ok(await page.locator('.screen.in .sv-next').evaluate((n) => n.classList.contains('disabled')), 'survey: a required question blocks 次へ');
+    await shot('survey-scale', 400);
+    await page.locator('.screen.in [data-scale="4"]').click(); await page.locator('.screen.in .sv-next').click();
+    await waitIn('.sv-sheet[data-kind="single"]'); await shot('survey-single', 400);
+    await page.locator('.screen.in [data-option="ranked"]').click(); await page.locator('.screen.in .sv-next').click();
+    await waitIn('.sv-sheet[data-kind="multi"]');
+    await page.locator('.screen.in [data-option="silks"]').click(); await page.locator('.screen.in [data-option="tracks"]').click(); await page.locator('.screen.in [data-option="events"]').click();
+    assert.equal(await page.locator('.screen.in .sv-option.on').count(), 2, 'survey: at most maxChoices');
+    await shot('survey-multi', 400);
+    await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="text"]');
+    assert.equal(await page.locator('.screen.in .sv-next').getAttribute('data-action'), 'pass', 'survey: an empty optional text offers とばす');
+    await page.locator('.screen.in .sv-text').fill('ムチの音が好きです。連絡は taro@example.com まで');
+    assert.equal(await page.locator('.screen.in .sv-next').getAttribute('data-action'), 'send', 'survey: typed text → 送る');
+    await shot('survey-text', 400);
+    const text = await page.locator('.screen.in').innerText();
+    for (const w of ['報酬', 'プレゼント', 'コイン', '倍', '今だけ', 'お得']) assert.ok(!text.includes(w), 'survey: no reward / urgency word: ' + w);
+    await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await waitIn('.sv-thanks');
+    await shot('survey-thanks', 400);
+    const res = await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.results('sv_whip_feel')).value);
+    assert.equal(res.total, 1, 'survey: the answer reached the ops table');
+    assert.ok(res.questions.find((q) => q.id === 'free').texts[0].text.includes('<email>'), 'survey: the free text is scrubbed');
+    await page.locator('.screen.in .sv-close').click(); await waitScreen('home');
+    assert.equal(await page.locator('.screen.in .sv-card').count(), 0, 'survey: no second survey this session');
+    // after a race result: the sheet directly; skip is one tap and that survey never comes back
+    await page.evaluate(() => globalThis.__muchi.show('Survey', 'result')); await waitScreen('survey'); await waitIn('.sv-sheet');
+    await shot('survey-after-result', 400);
+    await page.locator('.screen.in .sv-skip').click(); await waitScreen('home');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.surveys.offer('home', 'ja')).value), { survey: null, reason: 'cool_down' }, 'survey: skipped → never again, the cool-down starts');
+    assert.deepEqual(await page.evaluate(async () => (await globalThis.__muchi.logic.view()).wallet), wallet, 'survey: nothing granted');
+    // another prompt this session → no survey card
+    await page.evaluate(async () => { await globalThis.__muchi.logic.surveys.demo(); globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest('review'); return globalThis.__muchi.show('Home'); });
+    await waitScreen('home'); await page.waitForTimeout(800);
+    assert.equal(await page.locator('.screen.in .sv-card').count(), 0, 'survey: the review showed this session → no survey (lowest priority)');
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.logic.surveys.clear(); });
+  }
+
   // round 18 (REQ-HGOAL-*): 馬ごとの目標 — confirmed races for the partner → the goals panel on the horse detail → the full chain →
   // pin to home → the home strip (hgoal_view home once) → tap → back to the chain → unpin, all on the real server rules
   async function horseGoalsFlow() {
@@ -1423,6 +1471,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await horseGoalsFlow();
   await reviewPromptFlow();
   await promotionFlow(); // round 22: 昇級戦
+  await surveyFlow(); // round 22: ゲーム内アンケート
   await rosterFlow();
   await recapFlow();
   await cupsFlow();

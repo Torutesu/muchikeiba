@@ -1709,6 +1709,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('invite-deeplink', 300);
   await page.evaluate(() => localStorage.removeItem('muchi.invite.linkCode'));
   await page.goto(url); await ready();
+  // R23 integration: the reload brought the bundled config back (the §68 series is on again) and Round 23 adds ranked races
+  // to the later steps — a real series would end with its outcome sheet over a later home; switch it off again (as above)
+  await page.evaluate(() => globalThis.__muchi.logic.promotion.setEnabled(false));
 
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
@@ -2767,7 +2770,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in .dev-none').count(), 1, 'only this device is left');
   assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.devices.kpi().map((k) => k.name + ':' + k.s1)), ['new_device_notice:android', 'device_signout:one', 'device_signout:others'], 'KPI: essential rows, categories only');
   await page.locator('.screen.in [data-action="security-log"]').click(); await waitScreen('security-log'); await page.waitForTimeout(300);
-  assert.deepEqual(await page.locator('.screen.in .sec-row').evaluateAll((els) => els.map((e) => e.dataset.kind)), ['signout_others', 'signout_device', 'new_device']);
+  // newest first; older rows come from the earlier steps of this flow (R23 integration: the 引き継ぎ step issued codes on this
+  // account after the list began — REQ-DEV-011 logs them), so only the three rows of this step are fixed
+  const secKinds = await page.locator('.screen.in .sec-row').evaluateAll((els) => els.map((e) => e.dataset.kind));
+  assert.deepEqual(secKinds.slice(0, 3), ['signout_others', 'signout_device', 'new_device']);
+  assert.ok(secKinds.slice(3).every((k) => ['transfer_issued', 'transfer_revoked', 'link_added', 'link_removed'].includes(k)), 'older rows: ' + secKinds.join(','));
   await shot('security-log', 300);
   const devChanges = await page.evaluate(() => globalThis.__muchiAccountChanges ?? 0);
   await page.evaluate(() => globalThis.__muchi.show('SessionRevoked')); await waitScreen('session-revoked'); await page.waitForTimeout(300);
@@ -2855,6 +2862,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('highlights-next', 500);
   }
   if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  await hlIn('.hl-moment', 10000); // the screen name is set before the new screen takes the .in class (a busy machine shows the gap)
   assert.equal(await page.locator('.screen.in .hl-moment').count(), hl0.set.moments.length, 'end: every moment listed');
   assert.equal(await page.locator('.screen.in .hl-moment[data-rank="1"]').count(), 1, 'end: one best moment');
   const endText = await page.locator('.screen.in').innerText();

@@ -3485,9 +3485,12 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | `review_prompt_eligible`・`review_prompt_shown`・`review_soft_answer`（§59） | サーバー | `optional` | 頼む時の調整のための分析。分析がオフでもレビュー依頼の規則（間隔・回数）は状態 `reviewPrompt` で守られ、KPI に頼らない |
   | `cheer_send`・`cheer_seen`（§55）、`perf_setting_change`・`asset_predownload`（§56）、`tutorial_replay`・`tip_view`・`tip_context_open`（§57）、`lnotif_scheduled`・`lnotif_opened`・`lnotif_permission`（§61） | クライアント | `optional` | 遊び方・設定の分析だけ。端末の `ConsentState.AllowsClientEvent` が捨て、サーバーも捨てる |
   | `showcase_save`（サーバー）・`showcase_view`・`showcase_share`（§62）、`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）・`deep_link_open`（§63）、`release_notes_view`・`release_notes_target`・`release_notes_history`（§64）、`calendar_view`・`calendar_entry_open`・`calendar_mark`（サーバー、§65）（R21 統合） | サーバー／クライアント | `optional` | カード・リンク・お知らせ・予定表の使われ方の分析だけ。支払い・法定・アカウントの入口の記録は無い。リンクの行はトークン・行き先・相手の id を元から入れない（§63.9）。分析がオフなら書かない（リンク・再戦・カードの見た目はそのまま動く） |
-  | `device_signout`・`new_device_notice`（§70.9、Round 23） | サーバー | `essential` | アカウントへの入口の監査（`transfer_*` と同じ扱い）。ログアウトの操作と新しい端末の増え方で乗っ取りを見つける。端末のハッシュ・セッションの ID・地域・機種は入れない |
+  | `device_signout`・`new_device_notice`（§70.9、Round 23） | サーバー | `essential` | アカウントへの入口の監査（`transfer_*` と同じ扱い）。ログアウトの操作と新しい端末の増え方で乗っ取りを見つける。端末のハッシュ・セッションの ID・地域・機種は入れない。**法務の確認待ち**（R23 統合）：分析をオフにした人の行も残す扱い（`transfer_*` と同じ根拠）でよいか、法務の確認を受けてから本番で有効にする（docs/planning/03-legal-risk.md の Round 23 の補足） |
   | `device_list_view`（§70.9、Round 23） | クライアント | `optional` | 一覧と記録の使われ方の分析 |
   | `pedigree_view`・`bloodline_view`（§71、Round 23） | クライアント | `optional` | 血統図・系統の一覧の使われ方の分析だけ。プレイヤー・馬の ID を持たない。分析がオフなら書かない（画面はそのまま動く） |
+  | `highlight_view`・`highlight_share`（§72.5、Round 23） | クライアント | `optional` | 見どころの再生と共有の使われ方の分析だけ。レース・プレイヤー・tick を持たない。分析がオフなら書かない（見どころはそのまま動く） |
+  | `ticket_player_reply`・`ticket_reopen`・`ticket_resolved`（§73.8、Round 23） | サーバー | `essential` | サポートの記録（`inquiry_submit`・`inquiry_answered` と同じ扱い）。いつ連絡し、いつ再開・解決したかは返金・苦情の対応の証跡。本文・番号は入れない |
+  | `ticket_reply_view`（§73.8、Round 23） | サーバー（既読の時） | `optional` | 運営の返信が読まれたかの分析だけ |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。

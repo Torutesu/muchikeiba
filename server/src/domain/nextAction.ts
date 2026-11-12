@@ -18,7 +18,7 @@ import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import { addJstDays, dayRule, gameDayKey, gameDayStartMs, sameGameDay } from './time.js';
-import { UNLOCK_KEYS, unlocksView, type UnlockKey } from './onboarding.js';
+import { UNLOCK_KEYS, beginnerMissionsView, seasonMissionsView, unlocksView, type UnlockKey } from './onboarding.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { levelOf } from './pass.js';
 import { trainingConfig } from './training.js';
@@ -151,6 +151,8 @@ export interface NextSummary {
   loginBonusClaimable: boolean;
   /** Each daily mission: units left (0 = done) and whether its reward is still to claim. */
   missions: { left: number; claimable: boolean }[];
+  /** quality/goals-flow (REQ-GOAL-010): beginner steps and season missions ready to claim (optional: older summaries have none). */
+  extraClaimable?: number;
   passClaimable: number;
   /** expiresAt of every unclaimed gift that has one. */
   giftExpiries: number[];
@@ -238,7 +240,11 @@ export function nextActionSummary(m: Master, s: PlayerState, now: number, teamGo
     onboarding: !s.flags.partnerHorseId || races < (c?.onboardingRaces ?? 0),
     unlocked, newFeatures,
     loginBonusClaimable: !sameGameDay(s.loginBonus.lastClaimDate, today),
-    missions, passClaimable, giftExpiries, trainingOpenExpiresAt, trainingSlotsLeft, exchanges, rival, weeklyChallenge,
+    missions, extraClaimable: safe(() => {
+      // REQ-GOAL-010: the beginner step and season missions were never announced; they are claimed from the same sheet
+      const b = beginnerMissionsView(m, s).steps.find((q) => !q.claimed);
+      return (b?.claimable ? 1 : 0) + seasonMissionsView(m, s).missions.filter((q) => q.claimable).length;
+    }, 0), passClaimable, giftExpiries, trainingOpenExpiresAt, trainingSlotsLeft, exchanges, rival, weeklyChallenge,
     teamGoal: tg, horseGoal: safe(() => horseGoalBrief(m, s), null), firstWin: fw ? { remaining: fw.remaining, winsToday: fw.winsToday } : null, scoutTickets: tickets,
   };
 }
@@ -265,7 +271,7 @@ function candidate(r: NextRule, x: NextSummary): Candidate | null {
   switch (r.kind) {
     case 'first_race': return null;
     case 'login_bonus': return x.loginBonusClaimable ? item(r.kind) : null;
-    case 'missions_claim': { const n = x.missions.filter((q) => q.claimable).length; return n > 0 ? item(r.kind, { count: n }) : null; }
+    case 'missions_claim': { const n = x.missions.filter((q) => q.claimable).length + (x.extraClaimable ?? 0); return n > 0 ? item(r.kind, { count: n }) : null; }
     case 'missions_close': {
       const open = x.missions.filter((q) => q.left > 0 && q.left <= th).map((q) => q.left);
       return open.length ? item(r.kind, { count: Math.min(...open) }) : null;

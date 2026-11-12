@@ -106,7 +106,7 @@ export type PlayerMethod =
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
-  | 'nextActions' | 'dismissNextAction'
+  | 'nextActions' | 'dismissNextAction' | 'goals' | 'claimGoals'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
@@ -847,6 +847,9 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ kind: z.string().min(1).max(32) }));
     return c.player(u).invoke('dismissNextAction', u, b.kind, await teamGoalBrief(c, u));
   } },
+  // 目標の階段 (REQ-GOAL-001/009): today → this week → this season, and one claim for everything claimable on it
+  { method: 'GET', path: '/v1/home/goals', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('goals', u, { teamGoal: await teamGoalBrief(c, u) }) },
+  { method: 'POST', path: '/v1/home/goals/claim', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimGoals', u, idem(r), { teamGoal: await teamGoalBrief(c, u) }) },
   { method: 'GET', path: '/v1/whats-new', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('whatsNew', u) },
   { method: 'POST', path: '/v1/whats-new/seen', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ upTo: z.number().int().min(0) }));

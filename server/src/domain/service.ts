@@ -104,6 +104,7 @@ import { blockIds, blockListOf, isBlocking, setBlocked, type BlockOrigin } from 
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { practiceCatalog } from './practice.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
+import { claimAllGoals, goalLadderView, type GoalExtras } from './goals.js';
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
 import {
   countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
@@ -405,6 +406,20 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       if (dismissNextAction(this.d.master, s, kind, now)) emit({ name: 'next_card_dismiss', s1: kind });
       return nextActionsView(this.d.master, s, now, teamGoal);
+    });
+  }
+
+  // ---- 目標の階段 (REQ-GOAL-*, contracts/protocol.md「目標の階段」, goals.ts) ----
+  /** GET /v1/home/goals: today → this week → this season (reads only). `extras`: the team goal / §68 brief from other objects. */
+  goals(id: string, extras: GoalExtras = {}) {
+    return this.tx(id, null, (s, now) => goalLadderView(this.d.master, s, now, extras));
+  }
+  /** POST /v1/home/goals/claim: every claimable mission on the ladder in one transaction (KPI goals_claim_all), then the new ladder. */
+  async claimGoals(id: string, idemKey: string | null, extras: GoalExtras = {}) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = claimAllGoals(this.d.master, s, now);
+      emit({ name: 'goals_claim_all', count: r.claimed.length, value: r.total.freeCoins ?? 0 });
+      return { ...r, ladder: goalLadderView(this.d.master, s, now, extras) };
     });
   }
 

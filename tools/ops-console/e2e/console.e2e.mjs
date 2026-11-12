@@ -219,6 +219,7 @@ try {
   });
 
   await step('operator: support tickets (§73) — the player replies, queue filters and SLA, internal notes kept from the player, assignee, template, status, CSV without text', async () => {
+    await new Promise((r) => setTimeout(r, 61_000)); // the §48 interval since the step above's inquiry (help.config.inquiry.minIntervalSec)
     const t = await asPlayer('POST', '/v1/help/inquiries', { category: 'bug', description: 'レースの結果画面が固まります。秘密の本文 e2e です。', shareDiagnostics: false });
     assert.equal(t.diagnostics.appVersion, null, 'no diagnostics without consent');
     await login('operator');
@@ -241,6 +242,7 @@ try {
     await tid('inq-status-in_progress').click();
     await confirmWith('e2e: checking');
     await page.getByText('状態を変えました').waitFor();
+    await page.locator('[data-testid="inq-status-in_progress"][disabled]').waitFor(); // the detail re-rendered with the new status
     // a reply from a template (filled in the ticket's language, with the ticket id)
     await tid('inq-template').selectOption('received_ack');
     assert.match(await tid('inq-reply').inputValue(), new RegExp(t.ticketId), 'the template carries the ticket id');

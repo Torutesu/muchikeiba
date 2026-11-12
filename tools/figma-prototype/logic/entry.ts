@@ -1509,10 +1509,15 @@ export const MuchiLogic = {
   // challenge and rival; the team goal; the pinned horse goal), the menu (調教), 「レースへ」 (a race, the first race, the
   // first-win bonus) and the automatic login bonus. Mirrors Muchi.Game.NextActionModel.HomeCovered.
   homeCoveredKinds: ['race', 'first_race', 'first_win', 'login_bonus', 'missions_claim', 'missions_close', 'pass_claim', 'rival_week', 'weekly_challenge', 'team_goal_near', 'horse_goal_near', 'training_slots'] as string[],
+  // quality-2 integration: features with their own home element, so 「新しく開きました」 would say them twice — the daily missions
+  // (今日 rung), the season (シーズン rung), the rival and the weekly challenge (今週 rung), training (the menu's 調教 row with its
+  // dot). Mirrors Muchi.Game.NextActionModel.HomeCoveredFeatures.
+  homeCoveredFeatures: ['missions', 'training', 'season', 'rival', 'weekly_challenge'] as string[],
   /** Home's 次にやること: the first server item no other home element says, or null (no line). One link at most: 今日は閉じる. */
-  homeNextLine(v: { enabled?: boolean; primary?: { kind: string; dismissible?: boolean } | null; chips?: { kind: string; dismissible?: boolean }[] } | null) {
+  homeNextLine(v: { enabled?: boolean; primary?: { kind: string; dismissible?: boolean; featureKey?: string | null } | null; chips?: { kind: string; dismissible?: boolean; featureKey?: string | null }[] } | null) {
     if (!v || !v.enabled) return null;
-    const item = [v.primary, ...(v.chips ?? [])].find((i) => i && !this.homeCoveredKinds.includes(i.kind)) ?? null;
+    const covered = (i: { kind: string; featureKey?: string | null }) => this.homeCoveredKinds.includes(i.kind) || (i.kind === 'feature_unlocked' && !!i.featureKey && this.homeCoveredFeatures.includes(i.featureKey));
+    const item = [v.primary, ...(v.chips ?? [])].find((i) => i && !covered(i)) ?? null;
     return item ? { item, links: item.dismissible ? ['dismiss'] : [] } : null;
   },
   /** The ladder's season rung has something to receive: a season mission or a free pass reward (GoalLadderModel season Ready). */

@@ -1100,7 +1100,7 @@
       { "kind": "pass_claim", "priority": 800 },
       { "kind": "gift_expiring", "priority": 750, "threshold": 3 },
       { "kind": "training_open", "priority": 700 },
-      { "kind": "feature_unlocked", "priority": 650, "features": ["missions", "training", "bond", "season", "rival", "breeding", "friends", "teams", "time_attack", "weekly_challenge", "events", "tournaments", "my_stable", "stud"] },
+      { "kind": "feature_unlocked", "priority": 650, "features": ["bond", "breeding", "friends", "teams", "time_attack", "events", "tournaments", "my_stable", "stud", "missions", "training", "season", "rival", "weekly_challenge"] },
       { "kind": "exchange_closing", "priority": 600, "threshold": 2 },
       { "kind": "missions_close", "priority": 550, "threshold": 1 },
       { "kind": "rival_week", "priority": 500 },

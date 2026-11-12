@@ -41,6 +41,14 @@ assert.strictEqual(L.homeNextLine({ enabled: true, primary: { kind: 'missions_cl
 assert.strictEqual(L.homeNextLine({ enabled: false, primary: { kind: 'gift_expiring' }, chips: [] }), null, 'disabled: hidden');
 const nd = L.homeNextLine({ enabled: true, primary: { kind: 'gift_expiring', dismissible: false }, chips: [] });
 assert.deepStrictEqual(nd.links, [], 'not dismissible: no link (the line itself opens it)');
+// quality-2 integration: a feature the ladder / menu already shows is not announced again as 「新しく開きました」 — the daily
+// missions are the 今日 rung, the season the シーズン rung, the rival and the weekly challenge the 今週 rung, training the menu's 調教 row
+assert.ok(Array.isArray(L.homeCoveredFeatures), 'MuchiLogic.homeCoveredFeatures');
+for (const f of ['missions', 'training', 'season', 'rival', 'weekly_challenge']) {
+  assert.ok(L.homeCoveredFeatures.includes(f), `${f} has its own home element`);
+  assert.strictEqual(L.homeNextLine({ enabled: true, primary: { kind: 'missions_claim' }, chips: [{ kind: 'feature_unlocked', featureKey: f, dismissible: true }] }), null, `feature_unlocked ${f}: the ladder already says it`);
+}
+for (const f of ['breeding', 'time_attack', 'friends']) assert.strictEqual(L.homeNextLine({ enabled: true, primary: null, chips: [{ kind: 'feature_unlocked', featureKey: f, dismissible: true }] })?.item.featureKey, f, `feature_unlocked ${f}: nothing else on home says it`);
 console.log(`a) home next line: server [${kinds}] → "${line.item.kind}", links [${line.links}]`);
 
 // e) the ladder's cap = the horse card's ranked cap for the ladder's horse

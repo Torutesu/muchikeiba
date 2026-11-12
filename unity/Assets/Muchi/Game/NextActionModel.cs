@@ -141,13 +141,21 @@ namespace Muchi.Game
             "weekly_challenge", "team_goal_near", "horse_goal_near", "training_slots",
         };
 
+        /// <summary>quality-2 integration: features with their own home element — the daily missions (今日 rung), the season
+        /// (シーズン rung), the rival and the weekly challenge (今週 rung), training (the menu's 調教 row) — so a feature_unlocked
+        /// line would say them twice. The prototype's MuchiLogic.homeCoveredFeatures is the same list.</summary>
+        public static readonly IReadOnlyList<string> HomeCoveredFeatures = new[] { "missions", "training", "season", "rival", "weekly_challenge" };
+
+        private static bool Covered(NextItem i) =>
+            HomeCovered.Contains(i.Kind) || (i.Kind == "feature_unlocked" && i.FeatureKey != null && HomeCoveredFeatures.Contains(i.FeatureKey));
+
         /// <summary>Home's 次にやること: the first item of the server's list (primary, then chips) no other home element says, or
         /// null — then home draws no line at all.</summary>
         public static NextCardRow HomeLine(NextActionsView v)
         {
             if (v == null || !v.Enabled) return null;
-            if (v.Primary != null && !HomeCovered.Contains(v.Primary.Kind)) return Row(v.Primary, "primary");
-            var chip = (v.Chips ?? new List<NextItem>()).FirstOrDefault(c => c != null && !HomeCovered.Contains(c.Kind));
+            if (v.Primary != null && !Covered(v.Primary)) return Row(v.Primary, "primary");
+            var chip = (v.Chips ?? new List<NextItem>()).FirstOrDefault(c => c != null && !Covered(c));
             return chip == null ? null : Row(chip, "chip");
         }
 

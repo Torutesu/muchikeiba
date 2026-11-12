@@ -47,7 +47,7 @@ import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../.
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryPlayerRepo } from '../../../server/src/domain/service.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
-import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { DEFAULT_RULESET, TACTICS_RULESET } from '../../../server/src/domain/ruleset.js';
 import { BASE_RELEASE_NOTES } from '../../../server/src/domain/releaseNotes.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
@@ -1547,7 +1547,7 @@ export const MuchiLogic = {
     }),
     friendName: () => RP_FRIEND_NAME,
     /** Demo: retire the shipped ruleset version (REQ-MYRP-007) so saved replays show 「再生できません」; false restores. */
-    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion)] : []; },
+    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion), String(TACTICS_RULESET.rulesetVersion)] : []; }, // the shipped one and the 1.4 preview
     /** A word on the NG list (test hook for the title moderation). */
     ngSample: () => master.ng.exact[0] ?? '',
     marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),

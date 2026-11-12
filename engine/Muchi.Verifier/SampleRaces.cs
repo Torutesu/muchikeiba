@@ -250,12 +250,65 @@ namespace Muchi.Verifier
             }
         }
 
-        public static List<string> WriteAll(string outDir, string rulesetJson)
+        /// <summary>
+        /// Ruleset 1.4 tactics golden (docs/quality/race-play.md): two humans — one holds the whip on the go line and releases
+        /// it (一閃), whips on the rhythm (会心) and pulls out of a slipstream; the other taps a plain go late and whips off the beat —
+        /// and ten CPUs of every level using the go. Written only from a ruleset with the tactics keys.
+        /// </summary>
+        public static IEnumerable<(string name, ReplayLog log)> BuildTactics(RulesetParams ruleset)
+        {
+            if (!ruleset.HasTacticsKeys) yield break;
+            var rng = new Pcg32(1400, 19);
+            var horses = new List<HorseSpec>();
+            for (int i = 0; i < 12; i++) horses.Add(SampleRaces.RandomHorse(ref rng, "g6_" + i));
+            var cfg = SampleRaces.Config("golden_turf2000_tactics", 1400000000000000014UL, SampleRaces.Turf2000(), ruleset, horses, 2, 3);
+            for (int i = 2; i < 12; i++) cfg.Entrants[i].CpuLevel = 1 + i % 5;
+            // the inputs come from scripted riders on the live state (fixed, then stored as the log)
+            var sim = new RaceSim(cfg);
+            var inputs = new List<InputRecord>();
+            var cmds = new byte[12];
+            int press0 = -1, lastLane0 = -1000;
+            while (!sim.IsFinished)
+            {
+                Array.Clear(cmds, 0, 12);
+                int t = sim.Tick;
+                for (int s = 0; s < 2; s++)
+                {
+                    var h = sim.GetHorse(s);
+                    long rem = (sim.Track.Distance - h.Distance).Raw >> 16;
+                    byte c = 0;
+                    if (!h.Departed) c = t >= ruleset.GateOpenTick + s * 2 ? Cmd.Start : (byte)0;
+                    else if (s == 0)
+                    {
+                        if (!h.InSpurt && !h.Gathering && press0 < 0 && rem <= sim.GoLineM(0) + 25) { press0 = t; c = Cmd.Whip; }
+                        else if (h.Gathering && t - press0 >= ruleset.GatherMaxTicks - 4) c = Cmd.Start;
+                        else if (h.InSpurt)
+                        {
+                            if (h.WhipsLeft > 0 && t - h.RhythmRefTick == 21) c |= Cmd.Whip;
+                            if (h.SlipTicks >= ruleset.SlingshotMinSlipTicks && !h.IsChangingLane && t - lastLane0 > 20) { c |= Cmd.LaneOut; lastLane0 = t; }
+                        }
+                    }
+                    else
+                    {
+                        if (!h.InSpurt && rem <= sim.AutoGoM + 60) c = (byte)(Cmd.Whip | Cmd.Start);
+                        else if (h.InSpurt && h.WhipsLeft > 0 && t - h.RhythmRefTick == 28) c = Cmd.Whip;
+                    }
+                    c = (byte)(c & Cmd.ClientMask);
+                    if (c != 0) { cmds[s] = c; inputs.Add(new InputRecord(t, s, c)); }
+                }
+                sim.Step(cmds);
+            }
+            yield return ("race-turf2000-tactics.json", new ReplayLog { Config = cfg, Inputs = inputs });
+        }
+
+        public static List<string> WriteAll(string outDir, string rulesetJson, string tacticsRulesetJson = null)
         {
             var ruleset = ProtocolCodec.ParseRuleset(rulesetJson);
             Directory.CreateDirectory(outDir);
             var written = new List<string>();
-            foreach (var (name, log) in Build(ruleset))
+            var all = new List<(string name, ReplayLog log)>(Build(ruleset));
+            if (tacticsRulesetJson != null) all.AddRange(BuildTactics(ProtocolCodec.ParseRuleset(tacticsRulesetJson)));
+            foreach (var (name, log) in all)
             {
                 var outp = RaceReplay.Run(log.Config, log.Inputs);
                 log.EndTick = outp.Result.EndTick;

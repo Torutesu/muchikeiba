@@ -1163,6 +1163,11 @@
     "spikeMinCount": 50,
     "spikeWindowHours": 24
   },
+  "raceTactics": {
+    "_note": "Ruleset 1.4.0 (仕掛け with the whip hold, 会心 rhythm whips, slingshot; docs/quality/race-play.md) per mode. Deploy order (docs/ops/deploy.md §7.1): the verifier that knows 1.4, the Worker, the app (engine level 2); practice is on from the start (only for apps sending x-engine-level 2), then friend / cup / career by remote config once most players have the app (raise maintenance.minEngineLevel to 2), then ranked after a week of verified 1.4 races. Time attack, weekly challenges and the tutorial never switch (medals, ghosts, FTUE).",
+    "ruleset": "1.4.0",
+    "modes": { "practice": true, "friend": false, "cup": false, "career": false, "ranked": false, "event": false, "tournament": false }
+  },
   "selfLimits": {
     "_note": "REQ-LIMIT-*（contracts/protocol.md §67）。使いすぎ・遊びすぎの防止。自分で決める月の購入上限（年齢帯の上限以下だけ。下げるのはすぐ、上げる・外すのは coolOffHours 後で、その間は取り消せる。JST の暦月）と、遊ぶ時間のお知らせ（既定オフ、端末が数えて区切りで知らせる）。停止スイッチは無い（区画が無ければ既定値）。コイン・アイテムは動かない。",
     "spendingChoicesYen": [1000, 3000, 5000, 10000, 30000],

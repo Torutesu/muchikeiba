@@ -48,6 +48,11 @@ namespace Muchi.Game
         /// <summary>Cues raised since the last Build with a tracker (haptics, sounds, one-shot subtitles).</summary>
         public RaceFeelCue[] Cues = Array.Empty<RaceFeelCue>();
         /// <summary>
+        /// Ruleset 1.4 (null before): the 仕掛け window and the gold go line on the distance bar, the hold's charge ring on the
+        /// whip button, the rhythm ring (gold = 会心), slingshot and duel (docs/quality/race-play.md §5).
+        /// </summary>
+        public RaceTacticsSnapshot Tactics;
+        /// <summary>
         /// Show SPUR / REIN / lane controls: only when riding a horse (PlayerSlot &gt;= 0). Spectators (and a session that
         /// has not been given its slot yet) get no rider controls.
         /// </summary>
@@ -122,10 +127,11 @@ namespace Muchi.Game
                 var f = feel.Update(sim);
                 s.Stamina = f.Stamina; s.StaminaBlink = f.StaminaBlink; s.WhipChance = f.WhipChance; s.Slipstream = f.Slipstream;
                 s.KakariWarning = f.KakariWarning; s.RunawayWarning = f.RunawayWarning; s.WhipMashed = f.WhipMashed;
-                s.GapAheadMm = f.GapAheadMm; s.GapBehindMm = f.GapBehindMm; s.Hint = f.Hint;
+                s.GapAheadMm = f.GapAheadMm; s.GapBehindMm = f.GapBehindMm; s.Hint = f.Hint; s.Tactics = f.Tactics;
                 s.Cues = feel.NewCues.Count == 0 ? Array.Empty<RaceFeelCue>() : new System.Collections.Generic.List<RaceFeelCue>(feel.NewCues).ToArray();
                 return;
             }
+            if (sim.TacticsEnabled) s.Tactics = RaceTactics.Snapshot(sim, slot);
             var me = sim.GetHorse(slot);
             if (!me.Departed) return;
             s.Stamina = RaceFeel.StaminaLevel(me);

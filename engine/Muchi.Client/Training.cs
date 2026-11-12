@@ -131,6 +131,8 @@ namespace Muchi.Client
         /// <summary>False in the action responses' partial views (the log is only in GET /v1/training; MergeInto keeps the old one).</summary>
         public bool HasLog;
         public Dictionary<string, string> MenuBlocked = new Dictionary<string, string>();
+        /// <summary>Per menu: what it would give this horse now (exact; contracts/protocol.md §25.3 outlook). Empty on older servers.</summary>
+        public Dictionary<string, TrainingMenuOutlook> MenuOutlook = new Dictionary<string, TrainingMenuOutlook>();
         public bool CanTrain(string menuId) => MenuBlocked.TryGetValue(menuId, out var b) ? b == null : Blocked == null;
         internal static TrainingHorse Parse(JsonNode o)
         {
@@ -141,7 +143,12 @@ namespace Muchi.Client
                 Fatigue = J.Int(o, "fatigue"), BondLevel = J.Int(o, "bondLevel", 1), TodayCount = J.Int(o, "todayCount"), Sessions = J.Int(o, "sessions"),
                 Log = J.List(o, "log", TrainingLogEntry.Parse), HasLog = J.Opt(o, "log") != null,
             };
-            foreach (var m in J.List(o, "menus", x => x)) h.MenuBlocked[J.Str(m, "id")] = J.Str(m, "blocked");
+            foreach (var m in J.List(o, "menus", x => x))
+            {
+                h.MenuBlocked[J.Str(m, "id")] = J.Str(m, "blocked");
+                var ol = TrainingMenuOutlook.Parse(J.Opt(m, "outlook"));
+                if (ol != null) h.MenuOutlook[J.Str(m, "id")] = ol;
+            }
             return h;
         }
     }

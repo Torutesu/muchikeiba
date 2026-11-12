@@ -115,9 +115,9 @@ export type PlayerMethod =
   | 'careerView' | 'careerStart' | 'careerPrepare' | 'careerAbort' | 'careerRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
-  | 'nextActions' | 'dismissNextAction'
+  | 'nextActions' | 'dismissNextAction' | 'goals' | 'claimGoals'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
-  | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
+  | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal' | 'horseProfile'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
   | 'promotion' | 'promotionAck'
   | 'surveyOffer' | 'surveyShown' | 'surveySkip' | 'surveyAnswer' | 'surveySynced'
@@ -821,6 +821,8 @@ export const routes: Route[] = [
   } },
   // 馬ごとの目標 (REQ-HGOAL-*, contracts/protocol.md §53)
   { method: 'GET', path: '/v1/horses/:horseId/goals', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseGoals', u, p.horseId!) },
+  // quality pass (docs/quality/raising-breeding.md): 馬カード (read-only)
+  { method: 'GET', path: '/v1/horses/:horseId/profile', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseProfile', u, p.horseId!) },
   { method: 'PUT', path: '/v1/horse-goals/pin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('pinHorseGoal', u, (await body(r, z.object({ horseId: z.string().min(1).max(32).nullable() }).strict())).horseId) },
   { method: 'GET', path: '/v1/horse-goals/pinned', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('pinnedHorseGoal', u) },
   // レビュー依頼のタイミング (REQ-REV-*, contracts/protocol.md §59): no reward path anywhere (Apple 5.6.1 / Google Play)
@@ -986,6 +988,9 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ kind: z.string().min(1).max(32) }));
     return c.player(u).invoke('dismissNextAction', u, b.kind, await teamGoalBrief(c, u));
   } },
+  // 目標の階段 (REQ-GOAL-001/009): today → this week → this season, and one claim for everything claimable on it
+  { method: 'GET', path: '/v1/home/goals', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('goals', u, { teamGoal: await teamGoalBrief(c, u) }) },
+  { method: 'POST', path: '/v1/home/goals/claim', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('claimGoals', u, idem(r), { teamGoal: await teamGoalBrief(c, u) }) },
   { method: 'GET', path: '/v1/whats-new', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('whatsNew', u) },
   { method: 'POST', path: '/v1/whats-new/seen', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ upTo: z.number().int().min(0) }));
@@ -1053,9 +1058,10 @@ export const routes: Route[] = [
   } },
   // 練習レース (REQ-PRAC-002, contracts/protocol.md §50.1): read-only catalog. There is deliberately no route that takes a
   // practice result — practice runs on the device and grants nothing (REQ-PRAC-011).
-  { method: 'GET', path: '/v1/practice/catalog', auth: 'player', handler: async (_r, _p, c, u) => {
+  { method: 'GET', path: '/v1/practice/catalog', auth: 'player', handler: async (r, _p, c, u) => {
     const ruleset = c.activeRuleset ? await c.activeRuleset() : undefined;
-    return c.player(u).invoke('practiceCatalog', u, ruleset);
+    // ruleset 1.4 only for an app whose engine knows it (x-engine-level ≥ 2); older apps keep the active ruleset
+    return c.player(u).invoke('practiceCatalog', u, ruleset, clientHeaders(r.headers).engine);
   } },
   // spectating (REQ-SPEC-*)
   { method: 'GET', path: '/v1/races/live', auth: 'player', handler: async (_r, _p, c, u) => spectate(c).list(u) },

@@ -22,7 +22,7 @@ import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
 import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
-import { breed as breedHorses, createHorseFromTemplate, lineageSnap } from '../../../server/src/domain/horses.js';
+import { BREED, breed as breedHorses, createHorseFromTemplate, lineageSnap } from '../../../server/src/domain/horses.js';
 import { finishBreedingPedigree, finishPedigree } from '../../../server/src/domain/pedigree.js';
 import { seededRng } from '../../../server/src/domain/rng.js';
 import tracksJson from '../../../server/master/tracks.json';
@@ -51,7 +51,7 @@ import { HallService, MemoryHallDirectory, hallConfig, hallSnapshot } from '../.
 import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryPlayerRepo } from '../../../server/src/domain/service.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
-import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { DEFAULT_RULESET, TACTICS_RULESET } from '../../../server/src/domain/ruleset.js';
 import { BASE_RELEASE_NOTES } from '../../../server/src/domain/releaseNotes.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
@@ -107,6 +107,16 @@ class LocalRepo implements PlayerRepo {
 }
 
 const master = loadMaster();
+/**
+ * Quality pass (docs/quality/race-play.md): the prototype previews the ruleset 1.4 rollout in its ranked / friend / cup races as well (the
+ * shipped master turns only practice on until the verifier and the engine-level-2 app are out; docs/ops/deploy.md). `tactics(false)`
+ * puts the prototype's ranked races back on the shipped switch.
+ */
+const SHIPPED_TACTICS = master.progression.raceTactics;
+const previewTactics = (on: boolean) => {
+  master.progression.raceTactics = on && SHIPPED_TACTICS ? { ...SHIPPED_TACTICS, modes: { ...SHIPPED_TACTICS.modes, ranked: true, friend: true, cup: true, career: true } } : SHIPPED_TACTICS;
+};
+previewTactics(true);
 /** Round 20 (§58): the shipped policy versions (a demo may publish a newer privacy policy; reset puts it back). */
 const SHIPPED_CONSENT = master.progression.consent;
 // Demo clock (REQ-UXP-002 home states 初日 / 3日目 / 7日目): the real rules run on Date.now() + whole days, so
@@ -640,6 +650,8 @@ export const MuchiLogic = {
     products: master.products,
     pityCost: (g: string) => master.gacha.pityGroups[g]?.cost ?? 100,
     classes: master.progression.classes,
+    breedRules: { basePermille: BREED.basePermille, perAwakeningPermille: BREED.potentialPermillePerAwakening, inbreedingPenalty: BREED.inbreedingPenalty, variation: BREED.variation },
+    nickBonus: master.nicks.bonus, // quality pass: the breeding screen's 「見込みを上げるには」 (horses.ts baseline)
     dailyMissions: master.progression.dailyMissions,
     loginBonus: master.progression.loginBonus,
     raceFreeCoinsByPlace: master.progression.raceFreeCoinsByPlace,
@@ -690,6 +702,51 @@ export const MuchiLogic = {
   retire: (horseId: string) => wrap(() => svc.retire(ID, horseId)),
   breedingPreview: (sireId: string, damId: string) => wrap(() => svc.breedingPreview(ID, sireId, damId)),
   breed: (sireId: string, damId: string, useMaterial = false) => wrap(() => svc.breed(ID, sireId, damId, key(), useMaterial)),
+  // Quality pass (raising & breeding, docs/quality/raising-breeding.md, protocol Q1): 馬カード on the real horseProfile (read-only)
+  horseProfile: (horseId: string) => wrap(() => svc.horseProfile(ID, horseId)),
+  /**
+   * Demo 「育成」: `days` game days of training on the real rules after a week of play — each day the partner trains twice
+   * (hill / wood / awase, the pool when tired) and the next horse once. The mini-game is skipped (no bonus), so the growth is
+   * what an average player gets without it.
+   */
+  async seedRaising(days = 12) {
+    await this.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]);
+    const s0 = await svc.state(ID);
+    const p = s0.flags.partnerHorseId!;
+    const other = s0.horses.find((h) => h.status === 'active' && h.id !== p)?.id;
+    const order = ['hill', 'wood', 'awase'];
+    let k = 0;
+    for (let d = 0; d < days; d++) {
+      this.setDayOffset(7 + d);
+      for (const [h, n] of [[p, 2], [other, 1]] as const) {
+        if (!h) continue;
+        for (let i = 0; i < n; i++) {
+          const v = await svc.training(ID);
+          const hv = v.enabled ? v.horses.find((x) => x.horseId === h) : null;
+          if (!hv || hv.blocked) break;
+          const menu = hv.fatigue >= 60 ? 'pool' : order[k++ % order.length]!;
+          const st = await svc.trainingStart(ID, h, menu, key());
+          await svc.trainingFinish(ID, st.session.sessionId, { taps: [], skipped: true }, key());
+        }
+      }
+      // and a race a day with the partner (settled through applyRace with the horse, as settleRace does: the §34 career)
+      await svc.applyRace(ID, { raceId: `demo_rs_${d}`, mode: 'ranked', place: [3, 1, 2, 5, 1, 4][d % 6]!, fieldSize: 12, newRating: null, void: false, humans: 1, horseId: p,
+        details: { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, whips: 3, startReactionTicks: null, whipMashed: false, cpuAssisted: false } });
+    }
+    return svc.view(ID);
+  },
+  /** Demo 「配合」: a week of play, then the strongest other stallion retired next to the beginner mare (both from the real rules). */
+  async seedBreeding() {
+    await this.seedDemo(7, [3, 3, 3, 3, 3, 3, 3]);
+    const s = await svc.state(ID);
+    const total = (h: (typeof s.horses)[number]) => Object.values(h.base).reduce((a, b) => a + b, 0);
+    const stallion = s.horses.filter((h) => h.status === 'active' && h.sex === 'male' && h.id !== s.flags.partnerHorseId).sort((a, b) => total(b) - total(a))[0];
+    if (stallion) await svc.retire(ID, stallion.id);
+    // and the strongest active mare, so there are two dams to compare (the beginner gift mare is retired already)
+    const mare = s.horses.filter((h) => h.status === 'active' && h.sex === 'female').sort((a, b) => total(b) - total(a))[0];
+    if (mare) await svc.retire(ID, mare.id);
+    return svc.view(ID);
+  },
   // Friend room conditions (REQ-ROOM-002): validated and stored by the real presets rules.
   presets: () => wrap(() => svc.presets(ID)),
   setRoomConditions: (c: Parameters<PlayerService['setRoomConditions']>[1]) => wrap(() => svc.setRoomConditions(ID, c)),
@@ -860,10 +917,13 @@ export const MuchiLogic = {
   cancelDeletion: () => wrap(() => svc.cancelDeletion(ID)),
   // REQ-UXS-050: unique skills, texts generated from the values the engine uses
   skills: () => skillCatalog(master),
+  /** Quality pass: the ruleset 1.4 preview in the prototype's ranked races (true = on, the default) / the shipped switch. Returns the rollout in force. */
+  tactics: (on?: boolean) => { if (on !== undefined) previewTactics(on); return master.progression.raceTactics ?? null; },
   horseSkill: (h: { skillId?: string; templateId?: string }) => { const d = horseSkill(master, h as never); return d ? skillView(master, d) : null; },
   /**
    * A beginner / ranked race built by the server's own buildRaceConfig (REQ-MM-005, REQ-UXS-003): the partner at the
-   * class stat cap, CPU horses from the master with their skills (ruleset 1.3.0, capped like ranked), the day's going.
+   * class stat cap, CPU horses from the master with their skills (capped like ranked), the day's going, and the ruleset of the
+   * mode's rollout switch (1.4.0 tactics in the prototype preview, else the active 1.3.0).
    * The WASM engine runs it offline (MuchiRace.StartConfig).
    */
   async raceConfig(horseId: string, trackId: string | null) {
@@ -1401,6 +1461,28 @@ export const MuchiLogic = {
   async nextActions() {
     return wrap(async () => svc.nextActions(ID, await nextTeamGoal()));
   },
+  // quality/goals-flow: 目標の階段 (REQ-GOAL-*): the real goals.ts ladder and the one claim, the team goal as GET /v1/home/goals reads it
+  async goals() {
+    return wrap(async () => svc.goals(ID, { teamGoal: await nextTeamGoal() }));
+  },
+  async claimGoals() {
+    return wrap(async () => svc.claimGoals(ID, key(), { teamGoal: await nextTeamGoal() }));
+  },
+  // quality integration (claude/quality-1): home says each thing once. The kinds another home element already says — the goal
+  // ladder (the daily / first-step / season missions and the season pass, its 「受け取れる報酬があります」 line; the week's
+  // challenge and rival; the team goal; the pinned horse goal), the menu (調教), 「レースへ」 (a race, the first race, the
+  // first-win bonus) and the automatic login bonus. Mirrors Muchi.Game.NextActionModel.HomeCovered.
+  homeCoveredKinds: ['race', 'first_race', 'first_win', 'login_bonus', 'missions_claim', 'missions_close', 'pass_claim', 'rival_week', 'weekly_challenge', 'team_goal_near', 'horse_goal_near', 'training_slots'] as string[],
+  /** Home's 次にやること: the first server item no other home element says, or null (no line). One link at most: 今日は閉じる. */
+  homeNextLine(v: { enabled?: boolean; primary?: { kind: string; dismissible?: boolean } | null; chips?: { kind: string; dismissible?: boolean }[] } | null) {
+    if (!v || !v.enabled) return null;
+    const item = [v.primary, ...(v.chips ?? [])].find((i) => i && !this.homeCoveredKinds.includes(i.kind)) ?? null;
+    return item ? { item, links: item.dismissible ? ['dismiss'] : [] } : null;
+  },
+  /** The ladder's season rung has something to receive: a season mission or a free pass reward (GoalLadderModel season Ready). */
+  ladderSeasonReady(g: { season: { missions: { claimable: boolean }[]; pass?: { freeClaimable?: number } | null } }) {
+    return g.season.missions.some((m) => m.claimable) || (g.season.pass?.freeClaimable ?? 0) > 0;
+  },
   async dismissNext(kind: string) {
     return wrap(async () => svc.dismissNextAction(ID, kind, await nextTeamGoal()));
   },
@@ -1764,7 +1846,7 @@ export const MuchiLogic = {
     }),
     friendName: () => RP_FRIEND_NAME,
     /** Demo: retire the shipped ruleset version (REQ-MYRP-007) so saved replays show 「再生できません」; false restores. */
-    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion)] : []; },
+    demoRetired(on: boolean) { master.progression.myReplays!.retiredRulesets = on ? [String(DEFAULT_RULESET.rulesetVersion), String(TACTICS_RULESET.rulesetVersion)] : []; }, // the shipped one and the 1.4 preview
     /** A word on the NG list (test hook for the title moderation). */
     ngSample: () => master.ng.exact[0] ?? '',
     marginTicks: (order: number[], finishTicks: number[], slot: number) => marginTicksOf(order, finishTicks, slot),

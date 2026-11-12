@@ -365,3 +365,23 @@ describe('classification and wiring (REQ-PROMO-014..018)', () => {
     expect(tip).toMatchObject({ topic: 'race', help: 'promotion_series', unlock: 'season' });
   });
 });
+
+describe('quality integration: the goal ladder carries the series (GET /v1/home/goals season.promotion)', () => {
+  it('no series → null; an active series → the brief the ladder shows; passed → passed', async () => {
+    const w = world();
+    await setPoints(w, 'a', 290);
+    expect((await w.svc.goals('a')).season.promotion).toBeNull();
+    await w.svc.applyRace('a', race(1)); // reaches the line → a series starts
+    expect((await w.svc.goals('a')).season.promotion).toEqual({ status: 'active', next: 1, races: 3, needTop: 2, tops: 0, misses: 0 });
+    await w.svc.applyRace('a', race(3));
+    expect((await w.svc.goals('a')).season.promotion).toMatchObject({ status: 'active', next: 2, tops: 1 });
+    await w.svc.applyRace('a', race(2));
+    expect((await w.svc.goals('a')).season.promotion).toMatchObject({ status: 'passed', next: null, tops: 2 });
+  });
+  it('the kill switch: no brief', async () => {
+    const w = world(OFF);
+    await setPoints(w, 'a', 290);
+    await w.svc.applyRace('a', race(1));
+    expect((await w.svc.goals('a')).season.promotion).toBeNull();
+  });
+});

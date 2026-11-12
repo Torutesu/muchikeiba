@@ -1,7 +1,7 @@
 {
  "v": 1,
  "enabled": true,
- "rulesetVersion": "1.3.0",
+ "rulesetVersion": "1.4.0",
  "fieldSize": {
   "min": 2,
   "max": 12,
@@ -977,7 +977,7 @@
   }
  ],
  "ruleset": {
-  "rulesetVersion": "1.3.0",
+  "rulesetVersion": "1.4.0",
   "maxTicks": 4800,
   "gateOpenTick": 60,
   "startReactionWindowTicks": 4,
@@ -1025,7 +1025,7 @@
   "earlyWhipComposurePenalty": 10,
   "whipStaminaCost": 25,
   "cpuDecisionIntervalTicks": 4,
-  "cpuWhipIntervalTicks": 24,
+  "cpuWhipIntervalTicks": 18,
   "cpuWhipStartDistanceM": 400,
   "cpuTargetRankNigePermille": 0,
   "cpuTargetRankSenkoPermille": 400,
@@ -1063,7 +1063,25 @@
   "skillMaxAccelPermille": 400,
   "skillMaxDrainSavePermille": 400,
   "skillMaxRecoverPermille": 80,
-  "skillMaxDurationTicks": 160
+  "skillMaxDurationTicks": 160,
+  "goWindowPermille": 2500,
+  "autoGoPermille": 1000,
+  "gatherSpeedPermille": 950,
+  "gatherDrainPermille": 450,
+  "gatherMaxTicks": 40,
+  "kickSpeedBonusMmPerSec": 2500,
+  "kickAccelBonusMmPerSec2": 3000,
+  "kickTicks": 30,
+  "rhythmFromTicks": 18,
+  "rhythmToTicks": 24,
+  "rhythmBonusPermille": 400,
+  "slingshotMinSlipTicks": 30,
+  "slingshotSpeedBonusMmPerSec": 2000,
+  "slingshotAccelBonusMmPerSec2": 4000,
+  "slingshotTicks": 40,
+  "goLinePermille": 1050,
+  "cpuTacticsMinLevel": 1,
+  "longSpurtBonusPermille": 0
  },
  "net": {
   "tickHz": 20,

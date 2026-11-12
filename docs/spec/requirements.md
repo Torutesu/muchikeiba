@@ -93,6 +93,18 @@
 - REQ-RACE-082 コース上の距離から3D座標への変換は表示側の責任。エンジンはコースの区間（直線／コーナーと半径）を公開する。
 - REQ-RACE-083 実況用のイベント（ゲートが開いた、出遅れ、先頭が変わった、かかった、ムチ、スパート開始、ゴール、着順確定、固有スキルの発動〔ルールセット 1.3〕）をtick付きで出す。
 
+### レース中の駆け引き（ルールセット 1.4、品質パス、docs/quality/race-play.md、contracts/protocol.md §14.1）
+- REQ-RACE-090 仕掛けはプレイヤーの判断：スパートは仕掛けた tick から始まる。仕掛けの窓（残り ≤ スパート区間 × `goWindowPermille`）の中では、ムチのボタンを**押すと溜め、離すと仕掛ける**（ムチの長押しの設計。一閃）。溜めの間は手綱と同じく速度と消耗が下がり、溜めは `gatherMaxTicks` で満タン（満タンで自分で仕掛ける）。溜めた分だけ仕掛けた瞬間に加速（一閃）。仕掛けないと残り ≤ スパート区間 × `autoGoPermille` で自動で仕掛ける（溜めなし）。
+- REQ-RACE-091 入力：新しいビットは使わない。1.4 では発走後の START（bit0）が `WHIP_RELEASE`。1.3 以前では発走後の START は無視のまま（結果は変わらない）。端末は発走後・仕掛けの前にボタンを離すたびに bit0 を送る。
+- REQ-RACE-092 会心：仕掛けの瞬間・前のムチから `rhythmFromTicks`〜`rhythmToTicks` tick 後のムチは効果が `rhythmBonusPermille` 増える（連打の減衰より優先）。HUD はボタンの周りの輪と金の弧で拍を見せる。
+- REQ-RACE-093 抜け出し：窓の中で `slingshotMinSlipTicks` tick 以上風よけにいた馬がレーンを変えると `slingshotTicks` の間 加速と速度が上がる。
+- REQ-RACE-094 持つライン：エンジンは整数の見積もり `GoLineM`（いまのスタミナで足りる仕掛けの位置）を出す。HUD の金の線と CPU が同じ値を使う。早すぎる仕掛け（線より大きく前）も遅すぎる仕掛けも損になること（K2・K2b）。
+- REQ-RACE-095 CPU：レベルごとに持つラインの読みの正確さと溜めの長さだけが違う（レベル5 は線の近く・満タン、低いほど遅く広く・短く、レベル1 は溜めない）。逃げ馬は早めに仕掛ける。馬の能力は変えない。乱数はキー群がある時だけ引く。
+- REQ-RACE-096 公平：ランク戦で買えるものは何も効かない（クラスの能力上限・スキルの上限はそのまま）。かんたん操作（§27）は溜めず自動の仕掛けのまま（上手な手より弱い）。ムチの長押し（§41）は仕掛けの前は溜め／離して仕掛け、仕掛けた後だけ決まった間隔で繰り返す。
+- REQ-RACE-097 互換：キー群は全部あるか全部ないか。無ければ 1.3 以前と同じ結果（ゴールデンは変わらない）。1.4 のレースは `EngineInfo.Level` 2 以上の端末だけ（部屋は `VERSION_MISMATCH`、練習のカタログは `x-engine-level` で出し分け）。モードごとの切り替え `progression.raceTactics`（タイムアタック・週替わりチャレンジ・チュートリアルは切り替えない）。順番は検証サーバー → Worker → アプリ → モードを順に（docs/ops/deploy.md）。
+- REQ-RACE-098 振り返り：結果画面に、同じ乗り方で仕掛けだけを前後にずらしてエンジンで走らせ直した結果（`GoCounterfactual`、約10レース）から1行（「仕掛けがあと0.5秒早ければ2着」「仕掛けのタイミングは最善だった」）と会心の数。作り話は書かない：行はどれも実際に走らせたレース。
+- REQ-RACE-099 バランス目標 K1〜K8（docs/spec/balance-targets.md §2.4、`harness-tactics`、自動テスト `BalanceTests`）と、1.4 でも R1〜R8（R4b を除く：1.4 では窓の中の早押しは溜め）・T1/T2/T7・R9/S2 を満たすこと。
+
 ---
 
 ## 2. ロックステップ通信（C#クライアント＋TSレース部屋）
@@ -1423,6 +1435,20 @@
 - REQ-CAL-018 クライアント：C# `ApiClient.GetCalendarAsync`・`MarkCalendarAsync`、Unity `CalendarModel`（月・週・日ごとの行・JST の表示・印の切り替えとオフラインの貯め置き・行き先）。
 - REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。
+
+## 目標の階段（quality/goals-flow、TS＋C#、`src/domain/goals.ts`・`Muchi.Client/Goals.cs`・`Muchi.Game.GoalLadderModel`、`contracts/protocol.md`「目標の階段」、docs/quality/goals-rewards.md）
+- REQ-GOAL-001 読む：`GET /v1/home/goals` は今日・はじめの10歩・今週・シーズンを既存の仕組みから読む。書き込まない。新しく配らない。
+- REQ-GOAL-002 今日：デイリーと今日の初勝利ボーナスを1つの集合（`done/total`）。初勝利は自動で払われるので受け取りにしない。
+- REQ-GOAL-003 はじめの10歩：初心者ミッションの今の段と最後の段の報酬を、終わるまでホームに出す。
+- REQ-GOAL-004 今週：週替わりチャレンジ・ライバル・支部の共同目標・先週のライバルの結果（未読の間）を1段にまとめる。ホームのライバルの帯・週替わりカードはこの段になる。
+- REQ-GOAL-005 シーズン：クラス・ポイント・ライン・残り・状態。ラインに届いたら「シーズンの締めで次のクラスへ」。
+- REQ-GOAL-006 なぜ上をめざすか：相棒の力の合計と、いまのクラス・次のクラスの上限で出せる分を出す。買える物は上がる道として出さない。
+- REQ-GOAL-007 ペース：自分のこのシーズンの1戦平均から届くまでの戦数。3戦未満は出さない。
+- REQ-GOAL-008 クラスの階段：全クラスの上限・昇級ライン・報酬の帯。
+- REQ-GOAL-009 まとめて受け取る：`POST /v1/home/goals/claim` は受け取れるミッションを1トランザクションで、既存の受け取りと同じ額・同じ記録。冪等キー必須。
+- REQ-GOAL-010 次にやること：`missions_claim` に初心者の段とシーズンミッションを数える。
+- REQ-GOAL-011 明日のログボ：次に受け取るログインボーナスを事実として出す（カウントダウン・煽りなし）。
+- REQ-GOAL-012 クライアント：C# `GetGoalsAsync`・`ClaimGoalsAsync`、Unity `GoalLadderModel`（段・行・報酬の使い道・クラスの階段・受け取りの瞬間・同じゲーム日だけのオフライン）。プロトタイプはホーム左上の階段・目標の画面・クラスの階段。
 
 ## 66. 騎手の道（single-player career、TS＋C#、`src/domain/career.ts`・`src/race/career.ts`・`server/master/career.json`・`Muchi.Client/Career.cs`・`Muchi.Game.CareerModel`、`contracts/protocol.md` §66、balance-targets 4.20・E20）
 

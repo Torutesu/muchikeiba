@@ -57,16 +57,16 @@ assert.ok(/html\[data-reduce-motion="on"\] \.speedlines \{ display: none; \}/.te
 // 4) the app: limiter, haptics, reveal, kick
 assert.ok(/function flash\([^)]*\) \{[\s\S]{0,200}if \(!flashOk\(\)\) return;/.test(app), 'flash() asks the limiter');
 assert.ok(!/navigator\.vibrate\?\.\((?!pattern)/.test(app.replace(/function haptic[^\n]*\n/, '')), 'every vibration goes through haptic()');
-assert.ok(/setTimeout\(face, reduced\(\) \? 0 : 380\)/.test(app), 'the scout reveal skips its glow wait with reduce motion');
+assert.ok(/const wait = reduced\(\) \? 0 : [^;]*380;[\s\S]{0,1500}setTimeout\(face, wait\)/.test(app), 'the scout reveal skips its glow wait (and the SR / SSR charge) with reduce motion');
 // round 19: the RenderProfile may drop the kick / speed lines further (low quality, battery saver), never add them under reduce motion
 assert.ok(/if \(departed && !reduced\(\)\) \{\s*(if \(perfNow\?\.fovKick !== false\) )?view\.kick\(\)/.test(app), 'no FOV kick / speed lines with reduce motion');
 // 5) Round 14 / 15 screens (integration): every one-shot motion of the hall ceremony (.hof-*), photo mode (.ph-*), activity
 //    (.act-*), the advice panel (.adv-*), my replays (.rp-*) and the silks editor (.silk-*) has a reduce-motion rule that
 //    stops it or turns it into a short fade; photo mode never lights the screen (no flash() in the photo code).
-const r15 = /\.(hof|ph|act|adv|rp|silk)-[\w-]+/;
+const r15 = /\.(hof|ph|act|adv|rp|silk|fx)-[\w-]+/; // quality pass: the peaks (.fx-*) too
 const reducedAny = rules.filter((r) => r.sel.includes('html[data-reduce-motion="on"]') && /animation\s*:\s*(none|fade\s+\.1\d?s)/.test(r.body))
   .flatMap((r) => r.sel.split(',').map((x) => x.replace('html[data-reduce-motion="on"]', '').trim()));
-const oneShots = rules.filter((r) => r15.test(r.sel) && !r.sel.includes('data-reduce-motion') && /animation\s*:\s*(?!none)[\w-]+/.test(r.body));
+const oneShots = rules.filter((r) => r15.test(r.sel) && !r.sel.includes('data-reduce-motion') && !r.sel.includes('data-perf-ambient') && /animation\s*:\s*(?!none)[\w-]+/.test(r.body));
 for (const r of oneShots) for (const part of r.sel.split(',').map((y) => y.trim()).filter((y) => r15.test(y))) {
   assert.ok(reducedAny.includes(part), `reduce motion stops the one-shot motion of "${part}"`);
 }

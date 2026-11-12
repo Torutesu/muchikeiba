@@ -146,6 +146,8 @@ static class Program
         await RosterChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 馬ごとの目標 (HorseGoalsModel: goals panel rows, ribbon, pin / unpin, home pinned card, KPI, next-action kind, English; REQ-HGOAL-*)");
         await HorseGoalsChecks.Run(Check, Ruleset());
+        Console.WriteLine("== quality pass: raising & breeding (horse card, training outlook & stage up, breeding intent & foal reveal)");
+        await RaisingQualityChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 22: 昇級戦と降級の猶予 (PromotionModel: start banner, pips, 「昇級戦 2/3」, outcome sheet through the one-prompt gate, ack once, offline copy, grace, kill switch, English; REQ-PROMO-*)");
@@ -168,6 +170,10 @@ static class Program
         await Round23IntegrationChecks.Run(Check);
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
+        Console.WriteLine("== quality/goals-flow: 目標の階段 (GoalLadderModel: today / path / week / season rungs, reward uses, class ladder and the partner's usable strength, one keyed claim, offline today only, English; REQ-GOAL-*)");
+        await GoalLadderChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== quality integration: home says each thing once (NextActionModel.HomeLine, one link), the ladder counts the pass rewards and links its cap to the horse card");
+        await QualityIntegrationChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");

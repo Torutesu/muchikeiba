@@ -31,6 +31,20 @@ namespace Muchi.Engine
         /// (ranks after the previous tick). Presentation only, not part of the checksum or result hash.
         /// </summary>
         Skill = 12,
+        /// <summary>
+        /// Ruleset 1.4: the rider pressed the whip inside the 仕掛け window and is holding it (溜め). Value = metres to go.
+        /// Presentation only, like every event.
+        /// </summary>
+        Gather = 13,
+        /// <summary>
+        /// Ruleset 1.4: the horse went (仕掛け; SpurtStart follows on the same tick). Value = charge in ticks (0 = a plain tap,
+        /// gatherMaxTicks = a full 一閃), or -1 when the rider never went and the horse went by itself at the auto mark.
+        /// </summary>
+        Go = 14,
+        /// <summary>Ruleset 1.4: a 会心 whip — on the rhythm after the go or the previous whip. Value = whips left (after the Whip event).</summary>
+        Rhythm = 15,
+        /// <summary>Ruleset 1.4: pulled out of a slipstream inside the window (slingshot burst). Value = the new lane.</summary>
+        Slingshot = 16,
     }
 
     public struct RaceEvent

@@ -128,6 +128,35 @@ namespace Muchi.Game
             return sent;
         }
 
+        // ---- quality integration (claude/quality-1): home says each thing once. Codex's home draws HomeLine (one slim line)
+        // instead of the primary card and the chips; the goals sheet / menu / race button / automatic login bonus say the rest.
+
+        /// <summary>Kinds another home element already says: the goal ladder (daily / first-step / season missions and the season
+        /// pass, its 「受け取れる報酬があります」 line; the week's challenge and rival; the team goal; the pinned horse goal), the
+        /// menu (調教), 「レースへ」 (a race, the first race, the first-win bonus) and the automatic login bonus.
+        /// The prototype's MuchiLogic.homeCoveredKinds is the same list.</summary>
+        public static readonly IReadOnlyList<string> HomeCovered = new[]
+        {
+            "race", "first_race", "first_win", "login_bonus", "missions_claim", "missions_close", "pass_claim", "rival_week",
+            "weekly_challenge", "team_goal_near", "horse_goal_near", "training_slots",
+        };
+
+        /// <summary>Home's 次にやること: the first item of the server's list (primary, then chips) no other home element says, or
+        /// null — then home draws no line at all.</summary>
+        public static NextCardRow HomeLine(NextActionsView v)
+        {
+            if (v == null || !v.Enabled) return null;
+            if (v.Primary != null && !HomeCovered.Contains(v.Primary.Kind)) return Row(v.Primary, "primary");
+            var chip = (v.Chips ?? new List<NextItem>()).FirstOrDefault(c => c != null && !HomeCovered.Contains(c.Kind));
+            return chip == null ? null : Row(chip, "chip");
+        }
+
+        /// <summary>The line's links: at most one (今日は閉じる when it can be closed for the day). The line itself opens its screen.</summary>
+        public static List<string> HomeLinks(NextCardRow row) => row != null && row.Dismissible ? new List<string> { "今日は閉じる" } : new List<string>();
+
+        /// <summary>The home line for the list this model holds.</summary>
+        public NextCardRow Home => HomeLine(View);
+
         private IEnumerable<NextCardRow> Rows()
         {
             if (Primary != null) yield return Primary;

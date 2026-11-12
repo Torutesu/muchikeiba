@@ -204,7 +204,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .ped-scale, .tkt-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .ped-scale, .tkt-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind, .fx-title .k, .fx-title .m, .fx-cut .k, .fx-finish .k, .fx-moment .k, .fx-moment .s';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -405,7 +405,7 @@ function Wallet(x = 1182, y = 33, w = 346, h = 77) {
   const p = Glass('Wallet', x, y, w, h, undefined, .77);
   const wl = player?.wallet ?? { paid: 0, free: 0 };
   const col = (k, v, sym, cx) => {
-    Txt(k, cx, h / 2 - 27, 140, 13, MUTED, p, { weight: 500, ls: '.18em' });
+    Txt(k, cx, h / 2 - 28, 140, 15, MUTED, p, { weight: 500, ls: '.16em' }); // quality pass: 13 → 15 px (readable on a phone)
     Txt(sym + ' ' + fmt(v), cx, h / 2 - 9, 160, 24, GOLD, p, { weight: 700, nowrap: true, cls: 'num' });
   };
   col('無償', wl.free, '◎', 28); col('有償', wl.paid, '◈', 28 + Math.round((w - 40) / 2));
@@ -417,7 +417,7 @@ function TopBar(title, sub, o = {}) {
   const h = Glass('Header', 36, 31, o.wallet === false ? 1404 : 1062, 88, undefined, .86);
   el('rule', 22, 18, 84, 3, h);
   Txt(title, 22, 30, 1000, 24, WHITE, h, { weight: 700, ls: '.05em', nowrap: true });
-  if (sub) Txt(sub, 22, 60, 1000, 14, MUTED, h, { weight: 400, nowrap: true });
+  if (sub) Txt(sub, 22, 60, 1000, 15, MUTED, h, { weight: 400, nowrap: true }); // quality pass: 14 → 15 px
   if (o.wallet !== false) Wallet(1114, 31, 336, 88);
   EnToggle(1466, 31, 98, 88);
   return h;
@@ -473,6 +473,82 @@ function toast(text, ms = 2600) {
   setTimeout(() => t.classList.add('gone'), ms); setTimeout(() => t.remove(), ms + 400);
 }
 function show(fn, ...args) { currentScreen = () => fn(...args); return fn(...args); }
+
+// ================================================================= quality pass: presentation (docs/quality/presentation.md)
+// Shared pieces for the peaks — every one is presentation only, skippable (a tap on the screen completes it: .fx-skip,
+// never swallowing the tap) and, with reduce motion (§41), shows its end state at once. Durations follow the --dur-*
+// tokens of style.css; docs/handoff-codex-quality-presentation.md carries the same numbers for Unity.
+const MOTION = { tap: 90, fast: 160, base: 280, slow: 480, peak: 900 };
+function fxNode(cls, parent, text) { const d = document.createElement('div'); d.className = cls; if (text != null) d.textContent = text; (parent ?? cur).appendChild(d); return d; }
+/** A tap anywhere on the screen completes its moments (animations jump to their end); the tap still reaches its button. */
+function Skippable(host = cur) {
+  if (host.dataset.skippable) return;
+  host.dataset.skippable = '1';
+  host.addEventListener('pointerdown', () => host.classList.add('fx-skip'), { capture: true, once: true });
+}
+/** Counts a number up in place (「+1,234」); the final text at once with reduce motion, after a skip or off screen. */
+function CountUp(node, to, o = {}) {
+  const pre = o.prefix ?? '', from = o.from ?? 0, ms = o.ms ?? 700, delay = o.delay ?? 0;
+  const end = () => setText(node, pre + fmt(to));
+  node.dataset.value = String(to);
+  if (reduced() || to === from) return end();
+  setText(node, pre + fmt(from));
+  const host = cur, t0 = performance.now() + delay;
+  const tick = (now) => {
+    if (cur !== host || host.classList.contains('fx-skip')) return end();
+    const k = clamp((now - t0) / ms, 0, 1), e = 1 - Math.pow(1 - k, 3);
+    setText(node, pre + fmt(Math.round(from + (to - from) * e)));
+    if (k < 1) requestAnimationFrame(tick); else end();
+  };
+  requestAnimationFrame(tick);
+}
+/** A light over the stage (REQ-A11Y-008: within the flash limit; none with reduce motion). */
+function FxFlash(parent, tint) {
+  if (reduced() || !flashOk()) return;
+  const f = fxNode('fx-flash' + (tint ? ' tint' : ''), parent ?? cur);
+  if (tint) f.style.setProperty('--fx-tint', tint);
+  setTimeout(() => f.remove(), 600);
+}
+/** Slowly turning light rays behind something (a win, a rare card); static with reduce motion. */
+function FxRays(x, y, size, tone = '', parent) {
+  const r = fxNode('fx-rays fx-anim' + (tone ? ' ' + tone : ''), parent ?? cur);
+  Object.assign(r.style, { left: x - size / 2 + 'px', top: y - size / 2 + 'px', width: size + 'px', height: size + 'px' });
+  // behind the panels: right over the key art and its shades
+  const anchor = parent ? null : ([...cur.querySelectorAll(':scope > .shade')].pop() ?? cur.querySelector(':scope > .art'));
+  if (anchor) anchor.after(r);
+  return r;
+}
+/** A few pieces of gold falling once (a win). None with reduce motion or the battery saver. */
+function FxConfetti(n = 26) {
+  if (reduced() || document.documentElement.dataset.perfAmbient === 'off') return;
+  const c = fxNode('fx-confetti fx-anim');
+  for (let i = 0; i < n; i++) {
+    const p = document.createElement('i');
+    p.style.left = (620 + ((i * 397) % 960)) + 'px';
+    p.style.animationDelay = ((i * 113) % 900) / 1000 + .2 + 's';
+    p.style.animationDuration = (2.2 + ((i * 7) % 10) / 10) + 's';
+    c.appendChild(p);
+  }
+  setTimeout(() => c.remove(), 4200);
+}
+/**
+ * A moment (rank up, a line reached, a level gained): a gold-edged band in the middle of the screen, over everything,
+ * that never blocks a tap; it leaves by itself (2.4 s) or on the next tap. For other workstreams' peaks too (the
+ * promotion series, achievements, the bond level).
+ */
+function Moment(title, o = {}) {
+  const host = cur;
+  const m = fxNode('fx-moment fx-anim', host);
+  if (o.kicker) fxNode('k', m, o.kicker);
+  fxNode('t', m, title);
+  if (o.sub) fxNode('s', m, o.sub);
+  if (o.kind) m.dataset.moment = o.kind;
+  const close = () => { if (!m.isConnected || m.classList.contains('gone')) return; m.classList.add('gone'); setTimeout(() => m.remove(), MOTION.base + 40); };
+  setTimeout(() => host.addEventListener('pointerdown', close, { capture: true, once: true }), 250);
+  setTimeout(close, o.ms ?? 2400);
+  haptic(o.haptic ?? [20, 40, 30]);
+  return m;
+}
 
 // ---------------------------------------------------------------- local player (real PlayerService)
 let player = null, lastPulls = null;
@@ -621,12 +697,45 @@ async function StartRace(trackId = null, horseId = null) {
   view.useRig = true; view.start(raceInfo, equippedPartner());
   BuildRaceScreen();
 }
+/**
+ * Demo (review screenshots, claude/quality-1): a real ranked race on the partner, ridden headless in the WASM engine by a
+ * skilled rider (START on the gate, hold at the gold line ~1.5 s, release, whips on the gold ring), repeated on fresh
+ * configs until one is won — then the ordinary result path settles it (the same applyRace, lesson and celebration).
+ */
+async function WinDemo(tries = 40) {
+  await viewReady;
+  const p = partner();
+  engine.SetAssist('off');
+  for (let i = 0; i < tries; i++) {
+    const { config, trackName, beginner } = await L.raceConfig(p.id, null);
+    raceInfo = JSON.parse(engine.StartConfig(JSON.stringify(config), 'local'));
+    let t = performance.now(), f = null, started = false, held = -1, released = false, last = -99;
+    for (let k = 0; k < 60000; k++) {
+      f = JSON.parse(engine.Frame(t)); t += 50;
+      const tac = f.feel?.tactics;
+      if (f.gateOpen && !started) { started = true; engine.Spur(); }
+      if (tac) {
+        if (tac.goNow && held < 0 && !tac.committed) { engine.Spur(); held = f.tick; }
+        else if (held >= 0 && !released && tac.gathering && f.tick - held >= 30) { engine.SpurRelease(); released = true; }
+        else if (tac.committed && tac.rhythm === 'gold' && f.whips > 0 && f.tick - last > 8) { engine.Spur(); last = f.tick; }
+      }
+      if (f.done) break;
+    }
+    if (f?.done && f.result?.place === 1) {
+      raceCtx = { tutorial: false, config, trackName, beginner, ftue: false, trackId: config.track.id, horseId: p.id, advice: null };
+      return RaceResult(f);
+    }
+  }
+  toast('勝てるレースが見つかりませんでした');
+  return Home();
+}
 function BuildRaceScreen() {
   const tut = raceCtx.tutorial;
   currentScreen = BuildRaceScreen; Clear(tut ? 'race-tutorial' : 'race'); cur.classList.add('race', 'hud'); $canvas.hidden = false; raceActive = true;
   applyPerf(); // round 19 (REQ-PERF-004): the race profile — the frame cap of the setting, never the battery saver's menu rate
   lastFrame = null; reinHeld = false; keyRein = false;
   hud = { msgUntil: 0, cutins: [], shownLane: false, lastWhips: null, lastPos: '' };
+  RaceFx(); // quality pass: the start sequence, the final straight and the finish (presentation layers around the HUD)
   // ② remaining distance chip (top left) and ① the place chip (top right, 「—」 until the gate opens, F7)
   hud.distance = el('chip dist num', 33, 31, 250, 78); hud.distance.textContent = '残り — m';
   hud.position = el('chip pos num', 1297, 31, 263, 82); hud.position.textContent = '—';
@@ -652,9 +761,18 @@ function BuildRaceScreen() {
   hud.staminaText = hud.stamina.querySelector('.s'); hud.staminaFill = hud.stamina.querySelector('.fill');
   // the whip: the round 「仕掛ける」 button with the gold ring (right thumb), remaining whips as gold pips above it
   const W = tut ? 200 : 152, wx = tut ? 1338 : 1364, wy = tut ? 632 : 683;
-  hud.whip = Btn('ムチ', wx, wy, W, W, Whip, 'whip' + (tut ? ' big' : ''), undefined, tut ? 'まもなく' : 'スタート');
+  // the whip acts on the press (06 §6.3: on touch began), not on the click; ruleset 1.4 also needs the release (the hold → 仕掛け)
+  hud.whip = Btn('ムチ', wx, wy, W, W, () => {}, 'whip' + (tut ? ' big' : ''), undefined, tut ? 'まもなく' : 'スタート');
   hud.whipText = hud.whip.querySelector('span');
   hud.whips = el('whipdots', wx + W / 2 - 124, wy - 66, 248, 48);
+  // ruleset 1.4: the charge ring of the hold and the rhythm ring after the go (gold arc = 会心), drawn around the button
+  hud.ring = document.createElement('div'); hud.ring.className = 'ring'; hud.ring.innerHTML = '<i class="arc"></i><i class="prog"></i>'; hud.whip.appendChild(hud.ring);
+  if (!holdMode()) {
+    const down = (e) => { e.preventDefault(); if (hud.whip.classList.contains('disabled')) return; hud.whipDown = true; Whip(); };
+    const up = () => { if (!hud.whipDown) return; hud.whipDown = false; if (raceActive && engine) engine.SpurRelease(); };
+    hud.whip.addEventListener('pointerdown', down);
+    for (const k of ['pointerup', 'pointerleave', 'pointercancel']) hud.whip.addEventListener(k, up);
+  }
   // round 15 (REQ-A11Y-012): hold mode — the button reports press / release; the engine's WhipHold turns it into taps
   if (holdMode()) {
     const hw = (v) => (e) => { e.preventDefault(); WhipHoldPress(v); };
@@ -673,6 +791,9 @@ function BuildRaceScreen() {
   }
   // 09: the race banner (course / phase) at the top centre and the course mini-map under the place chip
   hud.banner = el('chip banner', 545, 46, 510, 65); hud.banner.textContent = raceCtx.trackName ?? '';
+  // ruleset 1.4: the 仕掛けバー under the banner — the stretch from the window to the finish, the gold go line, the horse
+  hud.gobar = el('gobar', 545, 116, 510, 50); hud.gobar.hidden = true;
+  hud.gobar.innerHTML = '<div class="lb l">仕掛けどころ</div><div class="lb r">ゴール</div><div class="trk"></div><div class="done"></div><div class="au"></div><div class="ln"></div><div class="me"></div>';
   hud.minimap = el('minimap', 1378, 140, 182, 104);
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 182 104'); svg.setAttribute('width', '182'); svg.setAttribute('height', '104');
@@ -699,7 +820,8 @@ function BuildRaceScreen() {
   const hold = (v) => (e) => { e.preventDefault(); reinHeld = v; rein.classList.toggle('held', v); };
   rein.addEventListener('pointerdown', hold(true)); rein.addEventListener('pointerup', hold(false)); rein.addEventListener('pointerleave', hold(false)); rein.addEventListener('pointercancel', hold(false));
   // skill cut-ins (engine Skill events)
-  hud.skillBox = el('cutins', 540, 560, 520, 230);
+  // skill cut-ins (engine Skill events) — integration: the left column under the chips, clear of the go area (hint, pop, marker)
+  hud.skillBox = el('cutins', 33, 236, 460, 200);
   Btn('中断', 33, 120, 120, 40, () => { raceActive = false; if (raceCtx.lesson) Tips(); else Home(); }, 'quit');
   // round 15 (REQ-PHOTO-001): a solo race (time attack, weekly challenge) pauses for a photo; a race with other people never does
   const pb = Btn('フォト', 163, 120, 120, 40, () => (phShared() ? toast('このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。') : PhotoOpen('paused')), 'quit' + (phShared() ? ' ph-locked' : ''));
@@ -731,7 +853,8 @@ function Lane(dir) { if (!raceActive || raceCtx.tutorial) return; engine.Lane(di
 function Whip() {
   if (!lastFrame || !raceActive) return;
   if (raceCtx.tutorial && !lastFrame.departed) return;
-  if (lastFrame.departed && lastFrame.whips <= 0) return;
+  const holdFirst = lastFrame.feel?.tactics && !lastFrame.feel.tactics.committed; // 1.4: before the go the press is the hold
+  if (lastFrame.departed && lastFrame.whips <= 0 && !holdFirst) return;
   // round 12: with かんたん操作 the whip (and with full auto the start too) is the assistant's; a tap does nothing
   if (!raceCtx.tutorial && lastFrame.assist && lastFrame.assist !== 'off' && (lastFrame.departed || lastFrame.assist === 'full')) return;
   if (holdMode()) return; // round 15: the hold sends the whip itself (pointerdown → engine.WhipHold)
@@ -740,6 +863,9 @@ function Whip() {
 }
 /** Presentation of a whip (06 §6.3): the pop, the button, the FOV kick and speed lines (not with reduce motion), haptics. */
 function whipFeedback(departed) {
+  // ruleset 1.4: before the go the press is the hold (溜め) — the ring fills instead; the go and 会心 pop from the engine's cues
+  const tac = lastFrame?.feel?.tactics;
+  if (departed && tac && !tac.committed) { hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit'); haptic(12); return; }
   // presentation first (06 §6.3: the button and the horse react within a frame; the engine takes the input next tick)
   flash(hud.feedback, departed ? '伸びる！' : 'スタート！');
   hud.whip.classList.remove('hit'); void hud.whip.offsetWidth; hud.whip.classList.add('hit');
@@ -784,6 +910,7 @@ function raceLoop() {
   lastFrame = f;
   view.draw(f);
   paintHud(f);
+  paintFx(f);
   if (f.done) {
     raceActive = false;
     // round 19 (REQ-CHEER-013): one cheer_seen row for the race (only what was on screen; none with the indicator off)
@@ -828,6 +955,10 @@ function paintHud(f) {
   if (tut && f.departed && !hint && f.remainingM <= 300) hint = '仕掛けのタイミング';
   if (tut && feel.whipChance) hint = '今だ、仕掛ける！';
   if (feel.mashed) hint = '連打は効きが落ちる：間をあけて';
+  // integration (1.4 × presentation): the coaching line never repeats the pop that is on screen (「一閃！」 once, not twice)
+  // — the moments the pop owns (the go, 会心, the slingshot, the overtake) and whatever pop is up right now
+  const popNow = performance.now() < hud.msgUntil ? (hud.feedback.textContent ?? '').replace(/[！!]$/, '') : '';
+  if (hint && (POP_OWNS.has(hint) || (popNow && hint.replace(/[！!]$/, '') === popNow))) hint = '';
   setText(hud.hint, hint);
   setProp(hud.hintBox, "className", 'el hintbox' + (hint ? '' : ' empty') + (feel.kakariWarning || feel.level === 'Critical' || feel.level === 'Empty' ? ' warn' : ''));
   for (const c of feel.cues ?? []) {
@@ -848,7 +979,13 @@ function paintHud(f) {
   const p = view.project(raceInfo.playerSlot, 3.1);
   if (p && f.horses[raceInfo.playerSlot]?.[6]) {
     hud.marker.style.display = '';
-    hud.marker.style.transform = `translate(${Math.round(p.x - 110)}px, ${Math.round(Math.max(250, p.y) - 120)}px)`;
+    // integration (quality-1): the name tag and the coaching line get separate slots — while a line is up (hintbox 541–1072 ×
+    // 175–246) a tag under it drops below the plate and shows its name only (the line is the one thing to read)
+    let mx = Math.round(p.x - 110), my = Math.round(Math.max(250, p.y) - 120);
+    const under = !!hint && mx < 1072 && mx + 220 > 541;
+    if (under) my = Math.max(my, 254);
+    hud.marker.classList.toggle('quiet', under);
+    hud.marker.style.transform = `translate(${mx}px, ${my}px)`;
     hud.marker.querySelector('.mini i').style.width = (f.stamina / 10) + '%';
     hud.marker.dataset.level = feel.level ?? 'Ok';
     hud.marker.classList.toggle('kakari', !!f.kakari);
@@ -863,6 +1000,7 @@ function paintHud(f) {
   if (tut) return;
   if (raceCtx.challenge) paintChallengeHud(f);
   if (raceCtx.practice) paintPracticeHud(f); // round 18
+  paintTactics(f, feel.tactics);
   setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.career ? '騎手の道' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
@@ -873,14 +1011,17 @@ function paintHud(f) {
   });
   const ds = f.progress.map((pr) => pr * f.distanceM), lead = Math.max(...ds), spread = Math.max(0, lead - Math.min(...ds));
   setText(hud.spread, `先頭から最後方 ${Math.round(spread)}m`);
-  // skill cut-ins: about 2 s each, the partner's own in gold
+  // skill cut-ins: about 2 s each, the partner's own in gold. Integration (quality-1): one plate at a time, in the left
+  // column clear of the go area — an opponent's plate is dropped while one is up; the partner's own replaces it
   for (const e of f.skillEvents ?? []) {
     const mine = e.slot === raceInfo.playerSlot;
+    const up = [...hud.skillBox.children].find((x) => !x.classList.contains('gone'));
+    if (up && !mine) continue;
+    hud.skillBox.replaceChildren();
     const c = document.createElement('div'); c.className = 'cutin' + (mine ? ' mine' : '');
     c.innerHTML = `<small>${mine ? '相棒の固有スキル' : e.rank + '番手'}</small><b></b><em></em>`;
     c.querySelector('b').textContent = '「' + e.name + '」'; c.querySelector('em').textContent = e.horse;
-    hud.skillBox.prepend(c);
-    while (hud.skillBox.children.length > 2) hud.skillBox.lastChild.remove();
+    hud.skillBox.append(c);
     setTimeout(() => c.classList.add('gone'), 2200); setTimeout(() => c.remove(), 2600);
     if (mine) haptic(30);
   }
@@ -892,8 +1033,146 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'e' || e.key === 'E') { if (holdMode()) WhipHoldPress(true); else Whip(); }
   else if (e.code === 'Space') { keyRein = true; e.preventDefault(); }
 });
-document.addEventListener('keyup', (e) => { if (e.code === 'Space') keyRein = false; if ((e.key === 'e' || e.key === 'E') && holdMode() && raceActive) WhipHoldPress(false); });
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') keyRein = false;
+  if ((e.key === 'e' || e.key === 'E') && raceActive) { if (holdMode()) WhipHoldPress(false); else engine?.SpurRelease(); } // 1.4: the release
+});
 window.addEventListener('blur', () => { reinHeld = false; keyRein = false; });
+
+// ---- quality pass: the race's peaks (docs/quality/presentation.md, the handoff's choreography). Presentation only — it
+// reads the engine frame and never feeds back; the HUD and its inputs (race play) are untouched.
+//   gate: letterbox + the course title card, 3 · 2 · 1 → スタート; the bars open when the horse leaves the gate
+//   final straight (400 m, the tutorial's 300 m): one cut-in, thin bars, a vignette and speed lines that build with the
+//     distance and the spurt, one beat per whip, the HUD steps back to what the player acts on
+//   finish: the place stamp (gold / silver / bronze + the number) and, for a top 3, one light
+const FX_STRAIGHT_M = 400;
+const FX_MODE = { friend: 'フレンドルーム', cup: 'カップ', event: 'イベントレース', tournament: '大会' };
+function RaceFx() {
+  const tut = raceCtx.tutorial;
+  const under = document.createElement('div'); under.className = 'fx-under lb';
+  under.innerHTML = '<div class="fx-vig"></div><div class="fx-lines"></div><div class="fx-bar top"></div><div class="fx-bar bot"></div>';
+  cur.insertBefore(under, cur.firstChild);
+  hud.fx = { under, over: fxNode('fx-over'), count: null, countEl: null, departed: false, straight: false, finished: false, rank: null, whips: null, k: -1, title: null };
+  if (tut) return; // the first race keeps its own one-line intro (「最後の直線。前に7頭。」)
+  cur.classList.add('fx-pre');
+  const mode = raceCtx.config?.mode;
+  const kicker = raceCtx.ta ? 'タイムアタック' : raceCtx.career ? '騎手の道' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.lesson ? 'レッスン'
+    : FX_MODE[mode] ?? (raceCtx.beginner ? '初心者マッチ' : 'ランク戦');
+  const t = fxNode('fx-title', hud.fx.over); t.dataset.fx = 'title';
+  fxNode('k', t, kicker);
+  fxNode('t', t, raceCtx.trackName ?? (raceCtx.trackId ? L.trackName(raceCtx.trackId) : ''));
+  if (raceInfo.names.length > 1) fxNode('m', t, `出走 ${raceInfo.names.length}頭`);
+  hud.fx.title = t;
+}
+function fxCount(fx, text, go) {
+  fx.countEl?.remove();
+  const c = fxNode('fx-count pop' + (go ? ' go' : ''), fx.over, text); c.dataset.fx = 'count';
+  fx.countEl = c; setTimeout(() => c.remove(), 950);
+}
+function paintFx(f) {
+  const fx = hud?.fx; if (!fx) return;
+  const tut = raceCtx.tutorial;
+  // 1. the gate (20 Hz ticks → whole seconds; the tutorial's 1 s gate has no count)
+  if (!fx.departed && !tut) {
+    const n = f.gateOpen ? 0 : Math.ceil(f.gateTicks / 20);
+    if (n !== fx.count && n <= 3) { fx.count = n; fxCount(fx, n ? String(n) : 'スタート', !n); haptic(n ? 8 : 20); }
+  }
+  if (f.departed && !fx.departed) {
+    fx.departed = true;
+    fx.under.classList.remove('lb'); cur.classList.remove('fx-pre');
+    if (fx.title) { const t = fx.title; t.classList.add('gone'); setTimeout(() => t.remove(), MOTION.base + 40); fx.title = null; }
+  }
+  // 2. the final straight
+  const at = tut ? 300 : FX_STRAIGHT_M;
+  if (fx.departed && !fx.straight && !f.finished && f.remainingM <= at && f.distanceM > at) {
+    fx.straight = true;
+    cur.classList.add('fx-straight'); fx.under.classList.add('lb-thin');
+    if (!tut) {
+      const c = fxNode('fx-cut', fx.over); c.dataset.fx = 'straight';
+      fxNode('k', c, `残り ${at} m`); fxNode('t', c, '最後の直線');
+      setTimeout(() => c.remove(), 1800);
+    }
+    haptic(25);
+  }
+  if (fx.straight && !fx.finished) {
+    const k = clamp((at - f.remainingM) / at, 0, 1);
+    const v = Math.round((.35 + .4 * k + (f.spurt ? .25 : 0)) * 20) / 20;
+    if (v !== fx.k) { fx.k = v; fx.under.style.setProperty('--fx-k', String(v)); }
+    if (fx.whips != null && f.whips < fx.whips && !reduced()) { fx.under.classList.remove('beat'); void fx.under.offsetWidth; fx.under.classList.add('beat'); }
+  }
+  fx.whips = f.whips;
+  if (f.rankKnown && f.departed && !f.finished) {
+    if (fx.rank != null && f.rank < fx.rank && !reduced()) { hud.position.classList.remove('gain'); void hud.position.offsetWidth; hud.position.classList.add('gain'); }
+    fx.rank = f.rank;
+  }
+  // 3. the finish (the horse's own line; the result follows when the race is done)
+  if (f.finished && !fx.finished) {
+    fx.finished = true;
+    fx.under.classList.add('calm'); cur.classList.add('fx-finished');
+  }
+  // integration fix: the engine fills finishPlace only when the whole race is done (both 1.3 and 1.4), so the stamp used to
+  // never show at the horse's own line. The place at the line is the frame's rank (everyone ahead has finished); the
+  // engine's finishPlace corrects it once it arrives.
+  if (fx.finished) {
+    const place = f.finishPlace > 0 ? f.finishPlace : f.rankKnown && f.rank > 0 ? f.rank : 0;
+    if (place && !fx.stamp) {
+      const s = fx.stamp = fxNode('fx-finish', fx.over); s.dataset.place = String(place); s.dataset.fx = 'finish';
+      fxNode('k', s, 'ゴール'); fx.stampT = fxNode('t', s, `${place}着`);
+      if (place <= 3) FxFlash(fx.over, place === 1 ? 'rgba(255, 211, 79, .55)' : 'rgba(228, 237, 244, .4)');
+      haptic(place === 1 ? [30, 50, 30, 50, 90] : 30);
+    } else if (place && fx.stamp && fx.stamp.dataset.place !== String(place)) { fx.stamp.dataset.place = String(place); setText(fx.stampT, `${place}着`); }
+  }
+}
+
+/**
+ * Ruleset 1.4 HUD (docs/quality/race-play.md §5): the 仕掛けバー (window → finish, the gold go line from the horse's stamina,
+ * the auto mark), the whip button by phase (仕掛ける → 長押し → 離す/一閃 → ムチ on the rhythm ring), the moments' pops and
+ * haptics (一閃 strong, 会心 light ×2, 溜めきり medium). Presentation only; nothing here reaches the engine.
+ */
+const POP_OWNS = new Set(['一閃！', '仕掛けた！', '会心！', '抜け出した！', '抜いた！']); // integration: said by the pop, not the coaching line
+function paintTactics(f, t) {
+  if (!hud.gobar) return;
+  const on = !!t && f.departed && !f.done && !(f.assist && f.assist !== 'off');
+  hud.whip.classList.toggle('tac', !!t);
+  if (!on) {
+    setProp(hud.gobar, 'hidden', true);
+    hud.whip.classList.remove('gonow', 'gather', 'full', 'gold', 'beat');
+    return;
+  }
+  const win = Math.max(1, t.windowM), frac = (m) => clamp(1 - m / win, 0, 1);
+  const show = f.remainingM <= win + 150;
+  setProp(hud.gobar, 'hidden', !show);
+  if (show) {
+    const px = (m) => (16 + 478 * frac(m)).toFixed(1) + 'px';
+    hud.gobar.querySelector('.me').style.left = px(f.remainingM);
+    hud.gobar.querySelector('.done').style.width = (478 * frac(f.remainingM)).toFixed(1) + 'px';
+    hud.gobar.querySelector('.au').style.left = px(t.autoGoM);
+    const ln = hud.gobar.querySelector('.ln'); ln.style.left = px(t.goLineM); ln.hidden = t.committed;
+    hud.gobar.dataset.phase = t.phase;
+    setText(hud.gobar.querySelector('.l'), t.committed ? (t.perfect ? `会心 ${t.perfect}` : '仕掛けた') : t.goNow ? '今：長押し' : '仕掛けどころ');
+  }
+  // the button by phase (before the go the hold needs no whip left)
+  const w = hud.whip;
+  if (!t.committed) w.classList.remove('disabled');
+  w.classList.toggle('gonow', t.goNow && !t.gathering);
+  w.classList.toggle('gather', t.gathering);
+  w.classList.toggle('full', t.gathering && t.charge >= 1000);
+  w.classList.toggle('beat', t.committed && f.whips > 0);
+  w.classList.toggle('gold', t.rhythm === 'gold');
+  w.style.setProperty('--p', t.gathering ? (t.charge / 1000).toFixed(3) : t.committed ? (t.beat / 1000).toFixed(3) : '0');
+  w.style.setProperty('--g0', (t.goldFrom / 1000).toFixed(3)); w.style.setProperty('--g1', (t.goldTo / 1000).toFixed(3));
+  setText(hud.whipText, t.gathering ? (t.charge >= 1000 ? '一閃' : '離す') : t.committed ? (f.whips > 0 ? 'ムチ' : '—') : t.goNow ? '長押し' : '仕掛ける');
+  for (const c of f.feel.cues ?? []) {
+    if (c.kind === 'Go') { flash(hud.feedback, t.lastGoCharge >= t.maxCharge / 2 ? '一閃！' : '仕掛けた！', 1200); haptic(t.lastGoCharge >= t.maxCharge / 2 ? [60] : [35]); if (!reduced() && perfNow?.fovKick !== false) view.kick(); }
+    if (c.kind === 'PerfectWhip') { flash(hud.feedback, '会心！', 900); haptic([15, 40, 15]); hud.feedback.classList.add('gold'); setTimeout(() => hud.feedback.classList.remove('gold'), 900); }
+    if (c.kind === 'GatherFull') haptic([25]);
+    if (c.kind === 'Slingshot') { flash(hud.feedback, '抜け出した！', 1000); haptic([20, 30, 20]); }
+    if (c.kind === 'GoNow') haptic([10, 60, 10]);
+    if (c.kind === 'Duel') haptic([15]);
+  }
+  hud.marker.classList.toggle('duel', t.duel >= 0);
+  if (t.duel >= 0) setText(hud.marker.querySelector('.wind'), `競り合い　${t.duelName}`);
+}
 
 // ---- results (REQ-UXP-005 debrief line, 06 §6.4) — 10-race-result
 async function RaceResult(f) {
@@ -917,7 +1196,8 @@ async function RaceResult(f) {
   await refresh();
   const rewards = applied.ok ? applied.value : { coins: 0, seasonPoints: 0, firstWinBonus: 0 };
   const promoAfter = await L.promotion.view();
-  raceCtx.promo = promoAfter.ok ? { view: promoAfter.value, beforeId: promoBefore.ok ? promoBefore.value.series?.id ?? null : null } : null;
+  const pb = promoBefore.ok ? promoBefore.value.series : null;
+  raceCtx.promo = promoAfter.ok ? { view: promoAfter.value, beforeId: pb?.id ?? null, beforeN: pb ? pb.results.length : -1, beforeStatus: pb?.status ?? null } : null;
   show(ResultScreen, f, rewards, passAfter.xp - passBefore.xp, passAfter, missions.ok ? missions.value : []);
 }
 /** The left result panel of 10-race-result (kicker, big place, stats, one CTA); x/y are the panel's corner. */
@@ -929,23 +1209,39 @@ function ResultPanel(kicker) {
 function ResultScreen(f, rewards, passXp, pass, missions) {
   const r = f.result, first = raceCtx.ftue;
   Clear('result'); SetArt(r.place >= 1 && r.place <= 3 ? 'Art/race-result' : 'Art/first-ride'); // the celebration art only for a top 3
+  ResultCelebrate(r.place); // quality pass: rays + gold for a win, the place colour for 2nd / 3rd, calm otherwise
   const p = ResultPanel(`レース結果　/　${raceCtx.trackName}`);
   // ① place (big)
-  Txt(r.place > 0 ? `${r.place}着` : '—', 40, 118, 540, 100, r.place === 1 ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2, cls: 'num' });
+  Txt(r.place > 0 ? `${r.place}着` : '—', 40, 118, 540, 100, r.place === 1 ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2, cls: 'num' + (r.place > 0 ? ` place-num p${r.place}` : '') });
   Txt(r.won ? '勝利' : `${r.runners}頭中`, 44, 248, 300, 32, WHITE, p, { ls: '.08em' });
   Txt(`${partner()?.name ?? horseName}　/　${raceCtx.beginner ? '初心者マッチ' : 'ランク戦'}`, 44, 300, 520, 19, WHITE, p, { weight: 500, ls: '.06em', nowrap: true });
   Hair(44, 352, 478, p);
   // stats: time, coins, season points (Codex: TIME / RANK POINTS)
-  const stat = (k, v, x, gold) => { Kicker(k, x, 378, p, { rule: false, size: 15 }); Txt(v, x, 402, 200, 30, gold ? GOLD : WHITE, p, { cls: 'num', nowrap: true }); };
-  stat('タイム', r.time, 44);
-  stat('無償コイン', '+' + fmt(rewards.coins + (rewards.firstWinBonus ?? 0)), 222, true);
-  stat('シーズンpt', '+' + fmt(rewards.seasonPoints), 398, true);
+  // quality pass: the numbers arrive one after another and count up (the final value at once with reduce motion / a tap)
+  const stat = (k, v, x, gold, i) => {
+    const kk = Kicker(k, x, 378, p, { rule: false, size: 16 }), n = Txt(v, x, 402, 200, 30, gold ? GOLD : WHITE, p, { cls: 'num fx-stat fx-anim', nowrap: true });
+    kk.classList.add('fx-stat', 'fx-anim'); kk.style.animationDelay = n.style.animationDelay = (.45 + i * .12) + 's';
+    return n;
+  };
+  stat('タイム', r.time, 44, false, 0);
+  const coins = rewards.coins + (rewards.firstWinBonus ?? 0);
+  CountUp(stat('無償コイン', '+' + fmt(coins), 222, true, 1), coins, { prefix: '+', delay: 600 });
+  CountUp(stat('シーズンpt', '+' + fmt(rewards.seasonPoints), 398, true, 2), rewards.seasonPoints, { prefix: '+', delay: 720 });
   // ② the reason in one line + one tip (RaceDebrief)
   Kicker(r.won ? '勝因' : '敗因', 44, 476, p, { rule: false, size: 15, color: r.won ? GOLD : CYAN });
   Txt(r.line || '—', 44, 500, 520, 23, WHITE, p, { weight: 700 }).dataset.debrief = r.code;
-  Txt(r.tip ? 'ヒント：' + r.tip : (r.margin ? (r.place > 1 ? '勝ち馬から ' : '2着に ') + r.margin : ''), 44, 542, 520, 16, MUTED, p, { lh: 1.5 });
+  const tipEl = Txt(r.tip ? 'ヒント：' + r.tip : (r.margin ? (r.place > 1 ? '勝ち馬から ' : '2着に ') + r.margin : ''), 44, 542, 520, 16, MUTED, p, { lh: 1.5 });
+  // integration (race play × presentation): the lines under the reason flow (a two-line tip pushes them down, never under the
+  // CTA) and arrive after the numbers' count-up, in the same stagger; the keepsakes stay one quiet row at the bottom
+  let ly = Math.max(580, 542 + (tipEl.textContent ? tipEl.offsetHeight : 0) + 10);
+  const stagger = (n, i) => { n.classList.add('fx-stat', 'fx-anim', 'res-after'); n.style.animationDelay = (.45 + (3 + i) * .12) + 's'; return n; };
+  // ruleset 1.4: the 仕掛け lesson from re-simulated races (GoCounterfactual: the same ride with the go moved) and the 会心 count
+  const lesson = r.lesson && (r.lesson.line || r.lesson.perfect) ? [r.lesson.line, r.lesson.perfect].filter(Boolean).join('　·　') : '';
+  // (the lesson wraps inside the panel — a long line with the 会心 count used to run past the panel into the art)
+  if (lesson) { const ls = stagger(Txt('振り返り：' + lesson, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); ls.dataset.shift = String(r.lesson.shiftTicks); ly += ls.offsetHeight + 8; }
   // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
-  if (raceCtx.advice) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) Txt('アドバイス：' + wl, 44, 584, 520, 15, CYAN, p, { weight: 500, nowrap: true }).classList.add('adv-debrief'); }
+  // — only when it still fits above the CTA (the lesson, when there is one, says the more specific thing)
+  if (raceCtx.advice && ly <= 612) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) stagger(Txt('アドバイス：' + wl, 44, ly, 520, 16, CYAN, p, { weight: 500, nowrap: true }), 1).classList.add('adv-debrief'); }
   // primary: もう一度 (F13) — in the first session it continues the onboarding instead
   if (first) {
     Cta('つづける', 44, 640, 478, () => AfterFirstRace(r), p);
@@ -959,17 +1255,34 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
   // replay share (REQ-UXS-070): the last 200 m re-simulated on the device
-  if (!first) Ghost('リプレイを共有', 1286, 800, 274, 60, () => ShareCard(currentScreen)).classList.add('share');
+  // quality pass: the three keepsakes (photo, keep, share) are one quiet row along the bottom — the CTA stays the one loud thing
+  if (!first) Ghost('リプレイを共有', 1347, 800, 213, 60, () => ShareCard(currentScreen), undefined, 'quiet').classList.add('share');
   // round 14: keep this race in マイリプレイ (REQ-MYRP-003)
-  if (!first && raceCtx.config?.raceId) Ghost('マイリプレイに残す', 996, 800, 274, 60, async () => {
+  if (!first && raceCtx.config?.raceId) Ghost('マイリプレイに残す', 1118, 800, 213, 60, async () => {
     const k = await L.replays.save(raceCtx.config.raceId);
     toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
-  }).classList.add('rp-keep-result');
-  if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
+  }, undefined, 'quiet').classList.add('rp-keep-result');
+  if (!first) Ghost('写真を撮る', 889, 800, 213, 60, () => PhotoOpen('result', currentScreen), undefined, 'quiet').dataset.action = 'photo-result'; // round 15
   if (!first && raceCtx.promo) PromoResultCard(raceCtx.promo); // round 22 (§68)
   // round 23 (REQ-HL-011): the race's best moments, re-simulated from its own log (offline too)
-  if (!first) { const back = () => show(ResultScreen, f, rewards, passXp, pass, missions); Ghost('見どころ', 996, 724, 274, 60, () => HighlightReel({ kind: 'result' }, back)).dataset.action = 'hl-result'; }
+  // integration (R23 §72): 見どころ joins the one quiet keepsake row (four along the bottom; the CTA stays the one loud thing)
+  if (!first) { const back = () => show(ResultScreen, f, rewards, passXp, pass, missions); Ghost('見どころ', 660, 800, 213, 60, () => HighlightReel({ kind: 'result' }, back), undefined, 'quiet').dataset.action = 'hl-result'; }
   EnToggle();
+  // quality pass: the class's promotion line crossed in this race — the rank-up moment (presentation of the server's numbers)
+  const cls = L.master.classes.find((c) => c.id === player.season.classId), after = player.season.points, before = after - (rewards.seasonPoints ?? 0);
+  if (cls?.promotePoints && before < cls.promotePoints && after >= cls.promotePoints && unlock('season').unlocked) {
+    const host = cur;
+    // integration (R22 §68): with the promotion series on, reaching the line starts the series — the moment says that (the card stays)
+    const ps = raceCtx.promo?.view?.enabled ? raceCtx.promo.view.series : null;
+    setTimeout(() => { if (cur !== host) return; if (ps && ps.status === 'active') Moment('昇級戦 開始', { kicker: `クラス ${player.season.classId}`, sub: promoRuleLine(ps), kind: 'promotion_series' }); else Moment('昇級ラインに到達', { kicker: `クラス ${player.season.classId}`, sub: 'シーズンの終わりに昇級します', kind: 'promotion_line' }); }, reduced() ? 300 : 1500);
+  }
+}
+/** The result's celebration by place: a win gets rays and a little gold, 2nd / 3rd a quiet light in their colour, the rest nothing. */
+function ResultCelebrate(place) {
+  cur.dataset.place = String(place); cur.dataset.tier = place === 1 ? 'win' : place >= 2 && place <= 3 ? 'podium' : 'rest';
+  Skippable();
+  if (place === 1) { FxRays(1110, 430, 1300); FxConfetti(); FxFlash(undefined, 'rgba(255, 211, 79, .45)'); haptic([30, 50, 60]); }
+  else if (place === 2 || place === 3) FxRays(1110, 430, 1100, 'silver');
 }
 // ================================================================= round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
 // The ranked result shows the promotion series on the real promotion.ts rules: the start banner on the race that reached the
@@ -997,6 +1310,13 @@ function PromoResultCard(ctx) {
   const v = ctx.view, x = v?.series;
   if (!v?.enabled || !x) return null;
   const started = x.status === 'active' && x.results.length === 0 && x.id !== ctx.beforeId;
+  // quality integration: the card speaks only for a series this race started, counted or decided — a series settled in an
+  // earlier race no longer sits next to an unrelated 11着 (its unseen outcome sheet still shows once, below)
+  const touched = ctx.beforeN === undefined || x.id !== ctx.beforeId || x.results.length !== ctx.beforeN || x.status !== ctx.beforeStatus;
+  if (!touched) {
+    if (promoPending(v)) { if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {}); else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); } }
+    return null;
+  }
   const c = Glass('Promotion series', 900, 180, 520, started ? 340 : 300, undefined, .86); c.classList.add('pp-card', 'rise');
   c.dataset.status = started ? 'start' : x.status;
   Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
@@ -1095,8 +1415,9 @@ function TutorialResult(f) {
 }
 function Victory(r) {
   Clear('victory'); SetArt('Art/race-result');
+  ResultCelebrate(1); // quality pass: the first win is the game's first peak
   const p = ResultPanel('はじめてのレース　/　チュートリアル');
-  Txt(r.headline || '差し切った！', 40, 120, 560, 86, GOLD, p, { weight: 700, lh: 1.2, cls: 'flash' });
+  Txt(r.headline || '差し切った！', 40, 120, 560, 86, GOLD, p, { weight: 700, lh: 1.2, cls: 'place-num p1' });
   Txt(r.line, 44, 248, 520, 26, WHITE, p, { weight: 700 });
   Txt('この馬が、あなたの相棒になります。', 44, 300, 520, 19, WHITE, p, { weight: 500 });
   Hair(44, 352, 478, p);
@@ -1240,12 +1561,28 @@ function Reveal(draw, first, bannerId, pity) {
     Kicker(first ? '入厩祝い　/　スカウト' : 'スカウト', 0, 40, undefined, { rule: false, w: 1600 }).style.textAlign = 'center';
     Txt(`${i + 1}　/　${plan.order.length}`, 0, 68, 1600, 26, WHITE, undefined, { align: 'center', weight: 700, cls: 'num tshadow' });
     const c = plan.order[i];
+    // quality pass: an SR or SSR card charges before it turns (light rays in its colour, the back brightening, an SSR
+    // shakes), then bursts; a tap on the card turns it at once. The order and the results are the plan's either way.
+    const rare = c.rarity === 'SSR' ? 2 : c.rarity === 'SR' ? 1 : 0;
+    if (rare) FxRays(800, 390, rare === 2 ? 1250 : 1000, rare === 2 ? '' : 'cyan');
     const holder = el('cardholder', 590, 120, 420, 540);
     // the back glows first (rarity light), then the face flips in
     const back = cardBack(c); holder.appendChild(back);
+    const wait = reduced() ? 0 : rare === 2 ? 1500 : rare === 1 ? 1000 : 380; // REQ-A11Y-007: no wait with reduce motion
+    if (rare && wait) { holder.classList.add('charge', 'r-' + c.rarity); holder.style.setProperty('--charge', wait / 1000 + 's'); haptic(rare === 2 ? [10, 80, 10, 80, 10] : [10, 80, 10]); }
     const me = cur;
-    const face = () => { if (cur !== me || !holder.contains(back)) return; holder.innerHTML = ''; const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f); };
-    setTimeout(face, reduced() ? 0 : 380); // REQ-A11Y-007: the order and the results come from the same plan either way
+    const face = () => {
+      if (cur !== me || !holder.contains(back)) return;
+      holder.innerHTML = ''; holder.classList.remove('charge');
+      const f = rarityCard(c, true); f.classList.add('flip'); holder.appendChild(f);
+      if (rare) {
+        const b = fxNode('fx-burst', me); b.style.setProperty('--rc', rare === 2 ? 'var(--gold)' : 'var(--cyan)');
+        Object.assign(b.style, { left: '600px', top: '200px', width: '400px', height: '400px' }); setTimeout(() => b.remove(), 800);
+        FxFlash(me, rare === 2 ? 'rgba(255, 211, 79, .6)' : 'rgba(0, 210, 237, .45)');
+        haptic(rare === 2 ? [40, 40, 80] : 40);
+      }
+    };
+    setTimeout(face, wait);
     back.addEventListener('click', face);
     const t = L.master.templates.find((x) => x.id === c.templateId);
     Txt(templateLine(t, L.horseSkill({ templateId: c.templateId })), 0, 678, 1600, 19, WHITE, undefined, { align: 'center', weight: 500, cls: 'tshadow' });
@@ -1267,6 +1604,7 @@ function Reveal(draw, first, bannerId, pity) {
       Txt(t ? `${surfaceJa(t.surface)}　/　${fmt(t.distMinM)}〜${fmt(t.distMaxM)}m` : '', 42, y + size * 1.3 + 38, 480, 17, MUTED, p, { weight: 500 });
     };
     if (best) hero(best, 118, 46);
+    if (best && rarityRank(best.rarity) >= 2) FxRays(1094, 520, 1000, best.rarity === 'SSR' ? '' : 'cyan'); // quality pass: the pull's best still glows
     Hair(42, 300, 470, p);
     if (second) hero(second, 326, 34);
     const sub = Txt(plan.summaryLine + (plan.spentLine ? '\n' + plan.spentLine : ''), 42, 494, 480, 18, WHITE, p, { weight: 500, lh: 1.6 });
@@ -1326,27 +1664,20 @@ async function Home() {
   const firstPrompt = sessionPrompt.pick([...(comeback.active && comeback.window.showWelcome ? ['comeback_welcome'] : []), ...(cnsDue ? ['consent_pre_prompt'] : [])]);
   if (firstPrompt === 'consent_pre_prompt') return ConsentPrompt(Home, cnsDue);
   if (firstPrompt === 'comeback_welcome') return ComebackWelcome(comeback);
-  const [missions, fw, bond, training, promoR] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null, L.promotion.view()]);
+  if (unlock('rival').unlocked) await L.rival.view(); // pairs this week's rival (the home strip used to do it); the ladder reads it
+  const [missions, fw, bond, training, goals, promoR] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null, L.goals(), L.promotion.view()]);
   const promo = promoR.ok ? promoR.value : null; // round 22 (§68)
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
-  // top left: season / class (④)
-  const season = Glass('Season', 32, 32, 469, 100, undefined, .78);
-  Kicker(`シーズン ${SEASON_LABEL()}　/　${u.day}日目`, 24, 20, season, { rule: false, size: 18 });
-  const cls = L.master.classes.find((c) => c.id === player.season.classId);
-  if (unlock('season').unlocked) {
-    Txt(`クラス ${player.season.classId}`, 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
-    Txt(promoHomeLabel(promo) ? `${fmt(player.season.points)}pt　·　${promoHomeLabel(promo)}` : cls?.promotePoints ? (player.season.points >= cls.promotePoints ? `${fmt(player.season.points)}pt　·　昇級ラインに到達` : `${fmt(player.season.points)}pt　·　昇級まで あと${fmt(cls.promotePoints - player.season.points)}pt`) : `${fmt(player.season.points)}pt　·　最上位クラス`, 150, 59, 300, 15, MUTED, season, { weight: 500, nowrap: true });
-  } else {
-    Txt('ルーキー', 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
-    Txt('シーズン・クラスは' + unlockText('season'), 150, 59, 300, 14, SOFT, season, { nowrap: true });
-  }
+  // top left (quality/goals-flow): the goal ladder — today / this week (or the first steps) / the season — in place of the season box
+  if (goals.ok) GoalLadderPanel(goals.value);
   Wallet();
   EnToggle();
   GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
   ActivityBell(); // round 15 (REQ-ACT-009): the bell with the unread count
-  // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
-  const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
+  // right: the thin-divider menu (厩舎 / 調教 / スカウト / 機能). Quality pass (home): 目標 is not repeated here — the ladder
+  // at the top left is the one goals surface and opens 目標.
+  const menu = Glass('Menu', 1139, 190, 388, 320, undefined, .72);
   const ms = missions.ok ? missions.value : [];
   const done = ms.filter((m) => m.progress >= m.target).length;
   const claimable = ms.filter((x) => x.progress >= x.target && !x.claimed);
@@ -1355,7 +1686,6 @@ async function Home() {
     // round 11 (REQ-TRAIN-*): 調教 — today's slots left, opens with the unlock table
     unlock('training').unlocked ? ['調教', training?.ok && training.value.enabled ? `今日あと${training.value.slotsLeft}回` : '', () => Training(), training?.ok && training.value.slotsLeft > 0] : ['調教', unlockText('training'), () => toast('調教は' + unlockText('training')), false, true],
     ['スカウト', unlock('gacha').unlocked === false ? '' : `${L.bannerList().banners.filter((b) => b.status !== 'upcoming').length}件 開催中`, () => Scout()],
-    unlock('missions').unlocked ? ['ミッション', `${done} / ${ms.length}`, () => Missions(ms, fw, bonus), claimable.length > 0] : ['ミッション', unlockText('missions'), () => toast('デイリーミッションは' + unlockText('missions')), false, true],
     ['機能・イベント', `${(player.unlocks.features ?? []).filter((f) => f.unlocked).length}件 開放`, () => Features()],
   ];
   rows.forEach(([name, meta, go, dot, locked], i) => {
@@ -1363,16 +1693,15 @@ async function Home() {
     const em = document.createElement('em'); em.textContent = meta; if (dot) em.className = 'gold'; b.appendChild(em);
     if (dot) { const d = document.createElement('i'); d.className = 'dot'; b.appendChild(d); }
   });
-  // ① partner (name, style, bond) — bottom left
-  const pc = Glass('Partner', 33, 576, 450, 207, undefined, .79);
-  Kicker('あなたの相棒', 29, 24, pc, { rule: false, size: 17 });
-  Txt(p ? p.name : '—', 29, 50, 400, 45, WHITE, pc, { ls: '.08em', nowrap: true });
+  // ① partner — the hero: the horse in the art, and its nameplate at the bottom left (name large, one line under it).
+  // Quality pass (home): a lighter plate with the gold rule, no second caption row; the details live in 厩舎.
+  const pc = Glass('Partner', 33, 598, 470, 192, undefined, .62);
+  pc.classList.add('partner-plate');
+  Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
+  Txt(p ? p.name : '—', 29, 82, 420, 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
   if (p) {
-    Txt(`${STYLE_JA[p.style] ?? p.style}　/　${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 124, 400, 18, WHITE, pc, { weight: 700, ls: '.04em', nowrap: true });
-    const sk = L.horseSkill(p);
-    const bondLine = unlock('bond').unlocked && bond?.ok ? `絆 Lv${bond.value.level}　·　調子 ${['ふつう', '上向き', '好調'][Math.min(2, bond.value.todayActions)]}` : '絆・お世話は' + unlockText('bond');
-    Txt(`${p.rarity}${sk ? '　·　「' + sk.name + '」' : ''}　·　${bondLine}`, 29, 160, 400, 14, MUTED, pc, { nowrap: true });
-  } else Txt('無料スカウトで相棒を迎えよう', 29, 124, 400, 18, WHITE, pc);
+    Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 150, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
+  } else Txt('無料スカウトで相棒を迎えよう', 29, 150, 420, 16, WHITE, pc);
   pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
   // ② race: the largest, bottom right
   // round 22 (§68, REQ-PROMO-017): over the race button 「昇級戦 2/3」 with the pips, or the grace window, in place of the caption
@@ -1382,11 +1711,9 @@ async function Home() {
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
-  if (unlock('rival').unlocked) await RivalStrip(); // round 12: this week's rival, top centre (its own slot, not the card slot)
-  await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
-  await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
-  await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
-  await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
+  await GoalPinStrip(); // round 18: the pinned horse goal — quality pass: a rung of the ladder, not its own panel
+  await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer — the ad is a small top-bar entry)
+  await NextCard(); // round 16: 次にやること — quality pass: one slim line, only for what no other home element already says
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion_outcome')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
@@ -2080,6 +2407,16 @@ async function AdOfferSlot(surface, x, y, w, h, back, parent) {
   const v = await L.ads();
   const p = v.eligible ? v.placements.find((q) => q.surface === surface) : null;
   if (!p || (surface === 'home' && cur?.dataset.screen !== 'home')) return null;
+  if (surface === 'home') {
+    // quality pass (home): the rewarded ad is a small optional entry in the top bar, never a big card — it is a choice,
+    // not the screen's second-biggest thing. Same placement, same consent / player / verdict path.
+    const live = p.left > 0;
+    const chip = Btn(live ? '動画を見る' : '動画の報酬', x, y, w, h, () => (live ? ConsentBeforeAd(() => AdPlayer(p, back)) : toast('今日の分は受け取りました（4:00 にリセット）')),
+      'ghost quiet small ad-card ad-chip' + (live ? '' : ' done'), parent, live ? `▶ 動画で${p.rewardLabel}` : '動画の報酬：今日は受け取り済み');
+    chip.dataset.homeCard = 'ad'; chip.dataset.placement = p.id; chip.dataset.state = live ? 'offer' : 'done';
+    globalThis.__muchi && (globalThis.__muchi.lastKpi = live ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
+    return chip;
+  }
   const card = Glass('Ad offer', x, y, w, h, parent, .84);
   card.classList.add('ad-card');
   card.dataset.homeCard = 'ad'; card.dataset.placement = p.id; card.dataset.state = p.left > 0 ? 'offer' : 'done';
@@ -3735,10 +4072,286 @@ async function Demo(kind) {
     return HighlightsDemo();
   }
   if (kind === 'calendar') { await L.seedDemo(7, [4, 4, 4, 4, 4, 4, 4]); ftue = false; await refresh(); calState.mode = 'month'; calState.weekStart = null; return Calendar(); }
+  // quality pass (raising & breeding): 12 days of training on the partner → its 馬カード; a retired pair → the breeding screen
+  if (kind === 'raising') { await L.seedRaising(12); await refresh(); return HorseCard(player.flags.partnerHorseId, () => Stable()); }
+  if (kind === 'breeding') { await L.seedBreeding(); await refresh(); qrSire = null; qrDam = null; return Breeding(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
   return Home();
+}
+
+// ================================================================= quality/goals-flow: 目標の階段 (REQ-GOAL-*, server goals.ts)
+// Home answers three questions with one panel (top left, where the season box was): what to do today, what this week is
+// for (or, for a new player, the next of the first ten steps), and where the season is going. The rival strip and the
+// weekly challenge card were folded into the 今週 rung. Tapping it opens 目標: three columns read left to right (今日 →
+// 今週 → シーズン), each reward says what it does for the player's horses, the season column says why to climb (how much
+// of the partner the class lets race), and one 「まとめて受け取る」 claims every claimable mission with a short moment.
+// The figures are the server's (MuchiLogic.goals = GET /v1/home/goals); nothing here invents a pace or a deadline.
+const GL_BOX = { x: 32, y: 32, w: 469 };
+const GL_KIND = { races: 'レースに出る', wins: '1着になる', top3: '3着以内に入る', training: '調教をする', first_win: '今日の初勝利（ランク戦）', gacha: 'スカウトを1回', silks: '勝負服を変える', care: '飼い葉をあげる', ranked_top3: 'ランク戦で3着以内', breed: '配合を1回', friends: 'フレンドを追加', team: '支部に入る', ta_finish: 'タイムアタックを完走', ranked_races: 'ランク戦に出る', points: 'シーズンptを集める', promotion_line: '昇級ラインに届く', collect: '図鑑の馬を迎える' };
+const glTitle = (k) => GL_KIND[k] ?? k;
+const glItemName = (id) => ({ breeding_material: '配合素材', training_apple: 'りんごのおやつ' })[id] ?? L.master.itemLabels[id] ?? id;
+/** A reward in one line (coins, items, pass XP). */
+function glReward(r) {
+  if (!r) return '';
+  const out = [];
+  if (r.freeCoins) out.push(`無償コイン${fmt(r.freeCoins)}枚`);
+  for (const it of r.items ?? []) out.push(`${glItemName(it.itemId)}×${it.qty}`);
+  if (r.broodmare) out.push('繁殖牝馬1頭');
+  if (r.passXp) out.push(`パスXP ${fmt(r.passXp)}`);
+  return out.join('・');
+}
+/** What a reward does for the player's horses (the Unity GoalLadderModel.ItemPurpose). */
+function glPurpose(r) {
+  const id = r?.items?.[0]?.itemId;
+  const by = { breeding_material: '配合で良い仔を狙う・馬の覚醒に使う', training_apple: '次の調教の伸びが少し良くなる', gacha_ticket: '新しい馬をスカウト（1回）', gacha_ticket_10: '新しい馬をスカウト（10回）', ticket_sr_plus: 'SR以上の馬をスカウト（1回）' }[id];
+  if (by) return by;
+  if (r?.broodmare) return '繁殖牝馬が厩舎に来る（配合ができる）';
+  if (r?.passXp) return 'シーズンパスのレベルが上がる';
+  if (r?.freeCoins) return 'スカウト・覚醒に使える無償コイン';
+  return '';
+}
+/** The rungs of home, the same rules as GoalLadderModel.Rebuild. */
+function glRungs(v) {
+  const out = [];
+  const t = v.today;
+  if (t.open) {
+    const next = t.items.find((i) => i.progress < i.target);
+    out.push({ key: 'today', label: '今日', main: t.complete ? '今日の目標は完了' : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
+      figure: `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
+  }
+  if (v.path) out.push({ key: 'path', label: `はじめの${v.path.steps}歩`, main: v.path.current.claimable ? '受け取れる報酬があります' : glTitle(v.path.current.kind), figure: `${v.path.done}/${v.path.steps}`, fill: v.path.done / Math.max(1, v.path.steps), ready: v.path.current.claimable });
+  if (v.week) {
+    const w = v.week, parts = [];
+    if (w.challenge) parts.push(`チャレンジ ${w.challenge.cleared}/${w.challenge.total}`);
+    if (w.rivalResult) parts.push('ライバル 結果発表');
+    else if (w.rival) parts.push(`ライバル ${w.rival.me}-${w.rival.them}`);
+    if (w.teamGoal) parts.push(`支部 ${w.teamGoal.reached}/${w.teamGoal.tiers}段`);
+    out.push({ key: 'week', label: '今週', main: parts.join('　·　'), figure: null, fill: w.challenge ? w.challenge.cleared / Math.max(1, w.challenge.total) : 0, ready: !!w.rivalResult });
+  }
+  const s = v.season, cls = `${s.classId}級`;
+  const r = { key: 'season', label: 'シーズン', ready: L.ladderSeasonReady(v), fill: 0, figure: null }; // integration: the free pass rewards too
+  if (s.status === 'rookie') r.main = 'ルーキー　·　ランク戦でクラスが決まります';
+  else if (s.status === 'top') Object.assign(r, { main: `${cls}　·　最上位クラス`, figure: `${fmt(s.points)}pt`, fill: 1 });
+  else if (s.status === 'line_reached') Object.assign(r, { main: `${cls}　·　昇級ラインに到達`, figure: `${fmt(s.points)}pt`, fill: 1 });
+  else Object.assign(r, { main: `${cls}　·　昇級まで あと${fmt(s.left)}pt`, figure: `${fmt(s.points)}/${fmt(s.line)}`, fill: s.line ? Math.min(1, s.points / s.line) : 0 });
+  out.push(r);
+  return out;
+}
+/** Home, top left: the three rungs (tap → 目標). Replaces the season box; the week rung holds the rival and the challenges. */
+function GoalLadderPanel(v) {
+  const rungs = glRungs(v);
+  // quality pass (home): say 「受け取れる報酬があります」 once — the rungs keep their own line and their gold dot, and one claim
+  // line at the bottom of the ladder opens 目標, where everything is received at once
+  const READY = '受け取れる報酬があります', anyReady = rungs.some((x) => x.ready);
+  for (const x of rungs) if (x.main === READY) {
+    x.main = x.key === 'today' ? (v.today.complete ? '今日の目標は完了' : `今日の目標 ${v.today.done}/${v.today.total}`) : x.key === 'path' ? glTitle(v.path.current.kind) : x.main;
+  }
+  const p = Glass('Goals', GL_BOX.x, GL_BOX.y, GL_BOX.w, 16 + rungs.length * 50 + (anyReady ? 50 : 0), undefined, .8);
+  p.classList.add('gl-panel'); p.dataset.rungs = rungs.map((x) => x.key).join(',');
+  rungs.forEach((x, i) => {
+    const row = el('gl-rung', 0, 8 + i * 50, GL_BOX.w, 50, p); row.dataset.rung = x.key;
+    Txt(x.label, 24, 12, 92, 12, CYAN, row, { weight: 700, ls: '.16em', nowrap: true });
+    Txt(x.main, 118, 6, x.figure ? 226 : 326, 16, WHITE, row, { weight: 700, nowrap: true }).classList.add('gl-main');
+    if (x.figure) Txt(x.figure, 344, 6, 100, 17, GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+    const g = Gauge(118, 36, 326, x.fill, row, { gold: x.ready }); g.style.height = '3px';
+    if (x.ready) { el('gl-dot', 10, 16, 6, 6, row); row.dataset.ready = '1'; }
+  });
+  if (anyReady) {
+    const c = el('gl-rung gl-home-claim', 0, 8 + rungs.length * 50, GL_BOX.w, 50, p); c.dataset.rung = 'claim';
+    Txt(READY, 24, 13, GL_BOX.w - 80, 17, GOLD, c, { weight: 700, nowrap: true });
+    Txt('›', GL_BOX.w - 48, 8, 24, 24, GOLD, c, { weight: 700, align: 'right' });
+  }
+  p.style.cursor = 'pointer'; p.setAttribute('role', 'button');
+  p.addEventListener('click', () => Goals());
+  return p;
+}
+
+/** 目標: 今日 → 今週 (or the first steps) → シーズン, one claim. */
+async function Goals() {
+  currentScreen = Goals;
+  const r = await L.goals();
+  await refresh();
+  if (!r.ok) { toast('目標を読み込めませんでした'); return Home(); }
+  const v = r.value;
+  Clear('goals'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('目標　/　今日 → 今週 → シーズン', `今日の分は ${jstDate(v.today.resetAt).slice(-5)} に更新　·　報酬は1回でまとめて受け取れます`);
+  const COL = [{ x: 36 }, { x: 555 }, { x: 1074 }], W = 490, Y = 134, H = 600;
+  // ① 今日
+  const c1 = Glass('Goals today', COL[0].x, Y, W, H, undefined, .88); c1.dataset.col = 'today'; c1.classList.add('gl-col');
+  Kicker('今日', 32, 24, c1, { size: 16 });
+  const lb = v.today.loginBonus;
+  if (lb?.open && lb.next) {
+    const line = `${lb.claimedToday ? '明日' : '今日'}のログインボーナス：${glReward(lb.next.reward) || (lb.next.reward.broodmare ? '繁殖牝馬1頭' : '')}`;
+    Txt(line, 32, 92, 300, 13, MUTED, c1, { weight: 500, nowrap: true }).classList.add('gl-login');
+  }
+  if (v.today.open) {
+    Txt(`${v.today.done}/${v.today.total}`, 330, 56, 128, 34, GOLD, c1, { align: 'right', cls: 'num' });
+    v.today.items.forEach((it, i) => GlRow(c1, it, 32, 118 + i * 94, W - 64));
+  } else Txt('デイリーミッションは' + unlockText('missions') + '。まずは「はじめの10歩」から。', 32, 120, W - 64, 16, MUTED, c1, { lh: 1.7 });
+  // ② 今週 / はじめの10歩
+  const c2 = Glass('Goals week', COL[1].x, Y, W, H, undefined, .88); c2.dataset.col = v.path && v.week ? 'path,week' : v.path ? 'path' : 'week'; c2.classList.add('gl-col');
+  let wy = 118;
+  if (v.path && v.week) {
+    // compact: the next step, the pips and the last reward, then the week
+    Kicker(`はじめの${v.path.steps}歩　/　今週`, 32, 24, c2, { size: 16, w: W - 64 });
+    GlPath(c2, v.path, 104, true);
+    wy = 236;
+  } else if (v.path) {
+    Kicker(`はじめの${v.path.steps}歩`, 32, 24, c2, { size: 16 });
+    Txt(`${v.path.done}/${v.path.steps}`, 330, 56, 128, 34, GOLD, c2, { align: 'right', cls: 'num' });
+    GlPath(c2, v.path, 120, false);
+    Txt('1歩ずつ順に受け取ります。週替わりチャレンジ・ライバルが開くと、ここに「今週」の目標も並びます。', 32, 520, W - 64, 13, SOFT, c2, { lh: 1.6 });
+  } else Kicker('今週', 32, 24, c2, { size: 16 });
+  const w = v.week;
+  if (!v.path && !w) Txt('週替わりチャレンジ・ライバルが開くと、ここに並びます。', 32, 120, W - 64, 16, MUTED, c2, { lh: 1.7 });
+  if (w) {
+    Txt(`${jstDate(w.endsAt - 60_000)}まで`, 230, v.path ? wy - 30 : 66, 228, 13, MUTED, c2, { align: 'right', nowrap: true });
+    const step = v.path ? 112 : 132;
+    if (w.challenge) {
+      const ch = w.challenge;
+      GlWeekRow(c2, wy, '週替わりチャレンジ', `${ch.cleared}/${ch.total}`, ch.cleared / Math.max(1, ch.total), `${glReward(ch.reward)}　·　3つで「${ch.badgeName}」`, v.path ? '' : glPurpose(ch.reward), () => WeeklyChallenge(), 'challenge');
+      wy += step;
+    }
+    if (w.rivalResult) {
+      const rr = w.rivalResult;
+      GlWeekRow(c2, wy, '先週のライバル', `${rr.me} - ${rr.them}`, null, `${{ win: '勝ち越し', lose: '負け越し', draw: '引き分け', no_contest: '勝負なし', not_enough: 'レース数が足りませんでした' }[rr.outcome] ?? ''}${rr.freeCoins ? `　·　無償コイン${fmt(rr.freeCoins)}枚` : ''}`, '', () => Rival(), 'rival-result');
+      wy += v.path ? 112 : 132;
+    }
+    if (w.rival && !(v.path && w.rivalResult && w.challenge)) {
+      const rv = w.rival;
+      const sub = rv.rankedRaces < rv.minRaces ? `ランク戦 ${rv.rankedRaces}/${rv.minRaces}戦で結果が出ます` : '同じランク戦で先着すれば1点';
+      GlWeekRow(c2, wy, 'ライバル', `${rv.me} - ${rv.them}`, null, `勝ち越すと 無償コイン${fmt(rv.winReward.freeCoins)}枚　·　${sub}`, '', () => Rival(), 'rival');
+      wy += step;
+    }
+    if (w.teamGoal) {
+      const tg = w.teamGoal;
+      GlWeekRow(c2, wy, '支部の共同目標', `${tg.reached}/${tg.tiers}段`, tg.reached / Math.max(1, tg.tiers), tg.nextTarget ? `次の段まで ${fmt(tg.nextTarget - tg.progress)}` : 'すべての段に届きました', '', () => TeamGoal(), 'team');
+    }
+  }
+  // ③ シーズン: the class line, the own pace, why climb, the season missions
+  const s = v.season;
+  const c3 = Glass('Goals season', COL[2].x, Y, W, H, undefined, .88); c3.dataset.col = 'season'; c3.classList.add('gl-col');
+  Kicker('シーズン', 32, 24, c3, { size: 16 });
+  Txt(`${seasonEnd(s.endsAt)}まで`, 230, 66, 228, 13, MUTED, c3, { align: 'right', nowrap: true });
+  if (s.status === 'rookie') {
+    Txt('ルーキー', 32, 86, 300, 30, WHITE, c3);
+    Txt('シーズン・クラスは' + unlockText('season'), 32, 136, W - 64, 15, MUTED, c3);
+  } else {
+    Txt(`${s.classId}級`, 32, 86, 160, 34, WHITE, c3, { ls: '.06em' });
+    Txt(s.line == null ? `${fmt(s.points)}pt` : `${fmt(s.points)} / ${fmt(s.line)}pt`, 200, 96, 258, 22, GOLD, c3, { weight: 700, align: 'right', cls: 'num' });
+    Gauge(32, 136, W - 64, s.line ? Math.min(1, s.points / s.line) : 1, c3, { gold: s.status !== 'climbing' });
+    // integration (R22 §68): on the line the series decides — 「昇級戦 1/3」 while it runs, the season close only once passed
+    const pr = s.promotion;
+    const line = s.status === 'line_reached' ? (pr?.status === 'active' && pr.next ? `昇級ラインに到達　·　昇級戦 ${pr.next}/${pr.races}` : `昇級ラインに到達　·　シーズンの締めで ${s.nextClassId}級へ`) : s.status === 'top' ? '最上位クラス' : `昇級まで あと${fmt(s.left)}pt` + (s.pace.racesToLine ? `　·　いまのペースで あと約${s.pace.racesToLine}戦` : '');
+    Txt(line, 32, 150, W - 64, 14, WHITE, c3, { weight: 500, lh: 1.45 }).classList.add('gl-season-line');
+  }
+  if (s.power && s.status !== 'rookie') {
+    const pw = s.power;
+    const why = el('gl-why', 32, 200, W - 64, 100, c3); why.dataset.held = String(pw.held);
+    Txt('なぜ上をめざす？', 0, 0, 300, 12, CYAN, why, { weight: 700, ls: '.16em' });
+    Txt(`相棒の力 ${fmt(pw.usable)} / ${fmt(pw.total)}（${s.classId}級の上限 ${fmt(pw.cap)}）`, 0, 24, W - 64, 16, WHITE, why, { weight: 700, nowrap: true });
+    const bar = el('gl-power', 0, 54, W - 64, 8, why);
+    const fillTo = (n) => `${Math.round(100 * Math.min(1, n / Math.max(1, pw.total)))}%`;
+    bar.innerHTML = `<i class="next" style="width:${fillTo(pw.nextUsable ?? pw.usable)}"></i><i class="now" style="width:${fillTo(pw.usable)}"></i>`;
+    Txt(pw.held === 0 ? 'いまのクラスで相棒の力をすべて出せています' : pw.nextUsable != null ? `${s.nextClassId}級なら ${fmt(pw.nextUsable)} まで出せます` : '', 0, 72, W - 64, 14, pw.held === 0 ? OK : GOLD, why, { weight: 500 });
+  }
+  TextLink('クラスの階段', 32, s.status === 'rookie' ? 180 : 300, 220, () => ClassLadder(v), c3, 'クラスの階段 ›').dataset.action = 'class-ladder';
+  // integration (claude/quality-1): the cap is the horse's story — the 馬カード shows each stat's training layer and the ranked
+  // line (training past the cap shows in the 配分 but not in the ranked total), so the ladder links there where it talks about the cap
+  if (s.power?.horseId) TextLink('馬カードで見る', 258, s.status === 'rookie' ? 180 : 300, 200, () => HorseCard(s.power.horseId, () => Goals()), c3, '馬カードで見る ›').dataset.action = 'cap-horse-card';
+  Txt('シーズンミッション', 32, 344, 300, 12, CYAN, c3, { weight: 700, ls: '.16em' });
+  // integration: the season pass rewards the home ladder now says (次にやること no longer repeats them) — received on the pass
+  if (s.pass?.freeClaimable > 0) TextLink('パスの報酬', 258, 332, 200, () => SeasonPass(), c3, `パス報酬 ${s.pass.freeClaimable}段 ›`).dataset.action = 'goals-pass';
+  s.missions.slice(0, 5).forEach((it, i) => GlMini(c3, it, 32, 368 + i * 44, W - 64));
+  // the one claim (the only filled CTA on the screen); otherwise a quiet back
+  if (v.claimable > 0) Cta(`まとめて受け取る（${v.claimable}件）`, 1074, 748, 490, () => GlClaim(), undefined).classList.add('gl-claim');
+  else Txt(v.today.complete ? `今日の目標は完了　·　${jstDate(v.today.resetAt).slice(-5)} に更新` : '受け取れる報酬はありません', 1074, 770, 490, 15, MUTED, undefined, { align: 'right' });
+  Back(Home, 'BACK', 40, 834);
+}
+/** The first steps: pips, the current step (a goal row) and the last step's reward. compact = above the week. */
+function GlPath(parent, path, y, compact) {
+  const W = 426;
+  const pips = el('gl-pips', 32, y, W, 10, parent); pips.dataset.path = `${path.done}/${path.steps}`;
+  for (let i = 0; i < path.steps; i++) { const d = document.createElement('i'); if (i < path.done) d.className = 'on'; else if (i === path.done) d.className = 'now'; pips.appendChild(d); }
+  if (compact) {
+    const it = path.current;
+    const row = el('gl-row', 32, y + 20, W, 80, parent); row.dataset.goal = it.id; row.dataset.state = it.claimable ? 'claimable' : 'open';
+    Txt(`${path.step}. ${glTitle(it.kind)}`, 0, 0, 300, 16, WHITE, row, { weight: 700, nowrap: true });
+    Txt(`${Math.min(it.progress, it.target)}/${it.target}`, 300, 0, 126, 16, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
+    Txt(`${glReward(it.reward)}　·　最後に ${glReward(path.finalReward)}`, 0, 28, W, 13, GOLD, row, { weight: 700, nowrap: true });
+    Hair(0, 70, W, row);
+    return;
+  }
+  GlRow(parent, path.current, 32, y + 36, W, `${path.step}. `);
+  Hair(32, y + 142, W, parent);
+  Txt('最後の歩の報酬', 32, y + 164, 300, 13, CYAN, parent, { weight: 700, ls: '.16em' });
+  Txt(glReward(path.finalReward), 32, y + 188, W, 20, GOLD, parent, { weight: 700 });
+  Txt(glPurpose(path.finalReward), 32, y + 220, W, 14, SOFT, parent);
+}
+/** A goal row: title and progress, the gauge, the reward and what it does. */
+function GlRow(parent, it, x, y, w, prefix = '') {
+  const row = el('gl-row', x, y, w, 86, parent); row.dataset.goal = it.id; row.dataset.state = it.claimed ? 'claimed' : it.claimable ? 'claimable' : it.progress >= it.target ? 'done' : 'open';
+  const done = it.progress >= it.target;
+  Txt((it.claimed || (done && it.table === 'first_win') ? '✓ ' : '') + prefix + glTitle(it.kind), 0, 0, w - 120, 17, it.claimed ? OK : WHITE, row, { weight: 700, nowrap: true });
+  Txt(`${Math.min(it.progress, it.target)}/${it.target}`, w - 120, 0, 120, 17, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
+  const g = Gauge(0, 30, w, it.target ? it.progress / it.target : 1, row, { gold: it.claimable }); g.style.height = '3px';
+  Txt(glReward(it.reward) + (it.table === 'first_win' ? '（1着で自動）' : ''), 0, 42, w, 14, GOLD, row, { weight: 700, nowrap: true });
+  Txt(glPurpose(it.reward), 0, 62, w, 12, SOFT, row, { nowrap: true });
+  return row;
+}
+function GlWeekRow(parent, y, title, figure, fill, sub, purpose, go, key) {
+  const row = el('gl-row gl-week', 32, y, 426, purpose ? 120 : 100, parent); row.dataset.week = key; row.setAttribute('role', 'button'); row.style.cursor = 'pointer';
+  row.addEventListener('click', (e) => { e.stopPropagation(); go(); });
+  Txt(title + ' ›', 0, 0, 300, 18, WHITE, row, { weight: 700, nowrap: true });
+  Txt(figure, 300, -4, 126, 22, GOLD, row, { weight: 700, align: 'right', cls: 'num', nowrap: true });
+  if (fill != null) { const g = Gauge(0, 34, 426, fill, row); g.style.height = '3px'; }
+  Txt(sub, 0, 48, 426, 13, MUTED, row, { lh: 1.5 });
+  if (purpose) Txt(purpose, 0, 92, 426, 12, SOFT, row, { nowrap: true });
+}
+function GlMini(parent, it, x, y, w) {
+  const row = el('gl-row gl-mini', x, y, w, 40, parent); row.dataset.goal = it.id; row.dataset.state = it.claimed ? 'claimed' : it.claimable ? 'claimable' : 'open';
+  Txt((it.claimed ? '✓ ' : '') + glTitle(it.kind), 0, 0, 230, 14, it.claimed ? OK : WHITE, row, { weight: 500, nowrap: true });
+  Txt(`${fmt(Math.min(it.progress, it.target))}/${fmt(it.target)}`, 230, 0, 92, 14, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
+  Txt(glReward(it.reward), 326, 0, w - 326, 14, GOLD, row, { weight: 700, align: 'right', nowrap: true });
+  const g = Gauge(0, 24, w, it.target ? it.progress / it.target : 1, row, { gold: it.claimable }); g.style.height = '2px';
+}
+/** The claim moment: what arrived, line by line, then back to the ladder (already updated by the server). */
+async function GlClaim() {
+  const r = await L.claimGoals();
+  if (!r.ok) { toast(r.error?.message ?? '受け取れませんでした'); return Goals(); }
+  const t = r.value.total;
+  const lines = [...(t.freeCoins ? [['無償コイン', `◎ ${fmt(t.freeCoins)}`]] : []), ...(t.items ?? []).map((it) => [glItemName(it.itemId), `×${it.qty}`]), ...(t.passXp ? [['パスXP', `+${fmt(t.passXp)}`]] : [])];
+  const d = Dialog('Goals claimed', 640, 200 + lines.length * 56);
+  d.classList.add('gl-moment'); d.dataset.claimed = String(r.value.claimed.length);
+  Kicker(`${r.value.claimed.length}件受け取りました`, 48, 40, d, { size: 16 });
+  lines.forEach(([k, val], i) => {
+    const row = el('gl-line', 48, 106 + i * 56, 544, 48, d); row.style.animationDelay = `${120 + i * 110}ms`;
+    Txt(k, 0, 10, 300, 20, WHITE, row, { weight: 700 });
+    Txt(val, 300, 4, 244, 28, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
+  });
+  await refresh();
+  Ghost('OK', 640 - 48 - 200, 200 + lines.length * 56 - 84, 200, 56, () => Goals(), d).dataset.action = 'gl-ok';
+}
+/** クラスの階段: every class with its cap (how much of a horse ranked uses), its line and its top reward. */
+function ClassLadder(v) {
+  const s = v.season;
+  Sheet('クラスの階段', 'ランク戦', (sh, close, y) => {
+    Txt('クラスごとに、ランク戦で使える能力の合計に上限があります。上のクラスほど、育てた力をそのまま出せます。買える物で上限は変わりません。', 48, y, 564, 14, MUTED, sh, { lh: 1.7 });
+    [...s.ladder].reverse().forEach((c, i) => {
+      const yy = y + 86 + i * 120;
+      const row = el('gl-class', 48, yy, 564, 108, sh); row.dataset.class = c.classId; if (c.current) row.classList.add('current');
+      Txt(`${c.classId}級`, 16, 14, 120, 30, c.current ? CYAN : c.reached ? WHITE : MUTED, row);
+      if (c.current) Txt('いまのクラス', 16, 62, 140, 12, CYAN, row, { weight: 700, ls: '.12em' });
+      Txt(`能力の上限 ${fmt(c.statCap)}`, 150, 16, 220, 16, WHITE, row, { weight: 700, nowrap: true });
+      Txt(c.promotePoints != null ? `昇級 ${fmt(c.promotePoints)}pt` : '最上位', 380, 16, 168, 16, MUTED, row, { weight: 500, align: 'right', nowrap: true });
+      if (c.rewards.top) Txt(`${c.rewards.top.maxRank === 1 ? '1位' : `上位${c.rewards.top.maxRank}位`} ${glReward(c.rewards.top.reward)}`, 150, 48, 398, 13, GOLD, row, { weight: 700, nowrap: true });
+      if (c.rewards.floor) Txt(`出走した人みんな ${glReward(c.rewards.floor)}`, 150, 72, 398, 12, SOFT, row, { nowrap: true });
+    });
+    // integration: where the cap meets the horse — its 馬カード (training layers and the ranked line)
+    if (s.power?.horseId) TextLink('馬カードで見る', 48, 818, 260, () => { close(); HorseCard(s.power.horseId, () => Goals()); }, sh, '相棒の馬カード ›').dataset.action = 'ladder-horse-card';
+  }, 660, { solo: true }); // solo: the goals columns step aside while the ladder is open (largest text)
 }
 
 // ================================================================= round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)
@@ -3746,7 +4359,7 @@ async function Demo(kind) {
 // under it. The server chooses (MuchiLogic.nextActions = GET /v1/home/next on the real nextAction.ts); this only draws it.
 // The top bar is left alone (season · rival strip · gift envelope · wallet; §40's bell will sit there later). Deadlines are
 // real times shown as a date and time, never a countdown; no card leads to the shop. 「今日は閉じる」 holds for the game day.
-const NEXT_BOX = { x: 520, y: 560, w: 560 };
+const NEXT_BOX = { x: 540, y: 714, w: 540 }; // quality pass: one slim line under the horse, left of 「レースへ」
 const NEXT_VIEWED = 'muchi.next.viewed';
 const nxDeadline = (ms) => { const d = new Date(ms - 60_000 + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}まで`; };
 const NX_FEATURE = { missions: 'ミッション', training: '調教', bond: '絆・飼い葉', season: 'シーズン・ランキング', rival: 'ライバル', breeding: '配合', friends: 'フレンド', teams: '支部', time_attack: 'タイムアタック', weekly_challenge: '週替わりチャレンジ', events: 'イベント', tournaments: '大会', my_stable: 'マイ厩舎', stud: '種牡馬の貸し借り' };
@@ -3775,7 +4388,7 @@ function nxText(i) {
   }[i.kind] ?? ['次の1レースへ', 'ランク戦・約90秒', 'レースへ', 'レースへ'];
   return { title: T[0], detail: T[1], cta: T[2], chip: T[3], deadline: i.deadlineAt ? nxDeadline(i.deadlineAt) : null };
 }
-async function nxOpenMissions() { const [ms, fw] = await Promise.all([L.missions(), L.firstWinBonus()]); Missions(ms.ok ? ms.value : [], fw, null); }
+async function nxOpenMissions() { return Goals(); } // quality/goals-flow: the daily, first-step and season missions are claimed on 目標
 /** Where a card leads (the screen ids of §45.1). Never the shop. */
 function nxGo(i) {
   const feature = { missions: nxOpenMissions, training: Training, rival: Rival, weekly_challenge: () => WeeklyChallenge(), time_attack: () => TimeAttack(), events: () => EventTop(), teams: TeamGoal };
@@ -3796,40 +4409,46 @@ function nxViews(v) {
   for (const [i, slot] of shown) if (!seen.kinds.includes(i.kind)) { seen.kinds.push(i.kind); nxKpi('next_card_view', i, slot); }
   try { localStorage.setItem(NEXT_VIEWED, JSON.stringify(seen)); } catch { /* */ }
 }
+// Quality pass (home): kinds another home element already says — the ladder (today's / the first steps' / the season's
+// rewards, the week's challenge and rival, the team goal, the pinned horse goal), the menu (調教), 「レースへ」 (the first
+// race, the first-win bonus) and the automatic login bonus. Home never says a thing twice; 次にやること keeps the rest.
+// Integration: the season pass's rewards are on the ladder's season rung too (pass_claim), and the list lives in the logic layer.
+const NX_HOME_DUP = L.homeCoveredKinds;
 async function NextCard() {
   if (cur?.dataset.screen !== 'home') return null;
   cur.querySelectorAll('[data-next]').forEach((n) => n.remove());
   const r = await L.nextActions();
   if (!r.ok || !r.value.enabled || cur?.dataset.screen !== 'home') return null;
   const v = r.value;
-  const p = v.primary;
-  // the race card alone repeats the big 「レースへ」: nothing to add, so nothing is drawn
-  if (!p || (p.kind === 'race' && v.chips.length === 0)) return null;
-  const t = nxText(p);
-  const card = Glass('Next', NEXT_BOX.x, NEXT_BOX.y, NEXT_BOX.w, 142, undefined, .84);
-  card.dataset.next = p.kind; card.classList.add('next-card', 'rise');
+  // integration (claude/quality-1): the one rule (MuchiLogic.homeNextLine = NextActionModel.HomeLine) — nothing home does not
+  // already say → no line at all
+  const line = L.homeNextLine(v);
+  if (!line) return null;
+  const p = line.item, t = nxText(p);
+  // one slim line under the horse, left of 「レースへ」: kicker, what (and until when); the line itself opens it (›). At most
+  // one link: 今日は閉じる, when the server lets it be closed for the game day.
+  const card = Glass('Next', NEXT_BOX.x, NEXT_BOX.y, NEXT_BOX.w, 72, undefined, .74);
+  card.dataset.next = p.kind; card.dataset.links = String(line.links.length); card.classList.add('next-card', 'next-line', 'rise');
   if (p.featureKey) card.dataset.feature = p.featureKey;
   if (p.deadlineAt) card.dataset.deadline = String(p.deadlineAt);
-  Kicker('次にやること', 24, 18, card, { rule: false, size: 14 });
-  if (p.dismissible) {
-    TextLink('今日は閉じる', 404, 8, 136, async () => {
+  Kicker('次にやること', 22, 10, card, { rule: false, size: 13, w: 130 });
+  // the deadline (a date, never a countdown) sits on the kicker row, so the line itself stays one readable phrase
+  if (t.deadline) Txt(t.deadline, 160, 7, NEXT_BOX.w - 160 - (line.links.length ? 180 : 24), 16, GOLD, card, { weight: 700, nowrap: true }).classList.add('next-deadline');
+  const what = p.kind === 'feature_unlocked' ? t.title + '　·　' + t.detail : t.title;
+  // the phrase gets the whole width (› at the end); the one link sits on the kicker row, top right
+  Txt(what, 22, 36, NEXT_BOX.w - 22 - 52, 16, WHITE, card, { weight: 700, nowrap: true }).dataset.nextGo = p.kind;
+  Txt('›', NEXT_BOX.w - 40, 30, 20, 22, CYAN, card, { weight: 700 });
+  if (line.links.includes('dismiss')) {
+    const dm = TextLink('今日は閉じる', NEXT_BOX.w - 168, 0, 150, async () => {
       const d = await L.dismissNext(p.kind);
       if (!d.ok) return toast(d.message);
       toast('今日はこのお知らせを閉じました');
       NextCard();
-    }, card).dataset.nextDismiss = p.kind;
+    }, card);
+    dm.dataset.nextDismiss = p.kind;
   }
-  Txt(t.title, 24, 44, 512, 21, WHITE, card, { weight: 700, nowrap: true });
-  Txt(t.deadline ? `${t.detail}　·　${t.deadline}` : t.detail, 24, 84, 330, 14, MUTED, card, { weight: 500, nowrap: true });
-  const go = Ghost(t.cta, 370, 78, 166, 46, () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); }, card, 'small');
-  go.dataset.nextGo = p.kind;
-  v.chips.forEach((c, k) => {
-    const ct = nxText(c);
-    const chip = Ghost(ct.chip, NEXT_BOX.x + k * 214, NEXT_BOX.y + 152, 204, 42, () => { nxKpi('next_card_tap', c, 'chip'); nxGo(c); }, undefined, 'small');
-    chip.dataset.next = c.kind; chip.dataset.nextChip = c.kind; chip.classList.add('next-chip');
-    if (c.deadlineAt) chip.dataset.deadline = String(c.deadlineAt);
-  });
-  nxViews(v);
+  card.style.cursor = 'pointer'; card.addEventListener('click', () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); });
+  nxViews({ ...v, primary: p, chips: [] });
   return card;
 }
 
@@ -3950,25 +4569,26 @@ async function cbView() { const r = await L.comeback(); return r.ok ? r.value : 
 // ---- the home card slot (round 10): home shows at most ONE card, in the left column between the season panel and the
 // partner. Priority: the comeback welcome (a full screen before home, once per window) > what's new (once) > the comeback
 // campaign card (while a window runs) > the rewarded-ad offer. Closing a card draws the next one in the same place.
-const HOME_CARD = { x: 33, y: 152, w: 450 };
+// quality/goals-flow: under the goal ladder; quality pass: right under however many rungs it has (the pinned goal, the claim line)
+const HOME_CARD = { x: 33, w: 450, get y() { const g = cur?.querySelector(':scope > .gl-panel'); return g ? Math.max(260, g.offsetTop + g.offsetHeight + 14) : 260; } };
 async function HomeCard(cb) {
   if (cur?.dataset.screen !== 'home') return null;
   cur.querySelectorAll('[data-home-card]').forEach((n) => n.remove());
   const wn = await L.whatsNew();
   if (wn.ok && wn.value.showCard && !globalThis.__cbWhatsNewClosed) return WhatsNewCard(wn.value, cb);
   if (cb?.active) return ComebackCard(cb);
-  if (typeof AdOfferSlot === 'function') return AdOfferSlot('home', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, Home);
+  if (typeof AdOfferSlot === 'function') return AdOfferSlot('home', 560, 40, 340, 52, Home); // quality pass: a small entry in the top bar
   return null;
 }
 /** REQ-CB-008: the one-time card: what went live since the player last looked. Closing marks it seen. */
 function WhatsNewCard(data, cb) {
   const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整', maintenance: 'メンテナンス' };
-  const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 404, undefined, .86);
+  const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 316, undefined, .86);
   card.dataset.homeCard = 'whatsnew'; card.dataset.whatsnew = String(data.items.length); card.classList.add('rise');
   Kicker('前回からのお知らせ', 28, 24, card, { size: 16 });
-  const shown = data.items.slice(0, 3);
+  const shown = data.items.slice(0, 2);
   shown.forEach((it, i) => {
-    const row = el('cb-item', 28, 92 + i * 84, 394, 84, card); row.dataset.item = it.id;
+    const row = el('cb-item', 28, 80 + i * 80, 394, 80, card); row.dataset.item = it.id;
     // round 17 (REQ-MNT-005): an announced maintenance links to its notice
     if (it.kind === 'maintenance') { row.dataset.action = 'mnt-notice'; row.setAttribute('role', 'button'); row.style.cursor = 'pointer'; row.addEventListener('click', (e) => { e.stopPropagation(); MaintenanceNotice(); }); }
     Txt(KIND[it.kind] ?? 'お知らせ', 0, 12, 90, 12, CYAN, row, { weight: 700, ls: '.18em' });
@@ -3977,8 +4597,8 @@ function WhatsNewCard(data, cb) {
     Txt(it.body, 0, 58, 394, 12, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
   });
   const more = Math.max(0, data.items.length - shown.length) + (data.more ?? 0);
-  if (more > 0) Txt(`ほか${more}件`, 28, 352, 200, 14, SOFT, card);
-  Ghost('閉じる', 282, 336, 140, 48, async () => {
+  if (more > 0) Txt(`ほか${more}件`, 28, 264, 200, 14, SOFT, card);
+  Ghost('閉じる', 282, 248, 140, 48, async () => {
     globalThis.__cbWhatsNewClosed = true; card.remove(); await L.whatsNewSeen(data.upTo); HomeCard(cb);
   }, card, 'small').dataset.whatsnewClose = '1';
   return card;
@@ -4233,24 +4853,33 @@ function Stable() {
   Kicker(`厩舎　/　${horses.length}頭中 1頭`, 43, 49, d);
   Txt(p?.name ?? horseName, 43, 120, 500, 44, WHITE, d, { ls: '.06em', nowrap: true });
   Txt(p ? `${p.rarity}　/　${STYLE_JA[p.style] ?? p.style}` : '—', 43, 186, 500, 19, GOLD, d, { weight: 700, ls: '.12em' });
-  const st = p?.base ?? { speed: 560, stamina: 540, burst: 580 };
-  [['スピード', stat100(st.speed)], ['スタミナ', stat100(st.stamina)], ['瞬発', stat100(st.burst)]].forEach(([k, v], i) => {
-    const y = 258 + i * 89;
-    Txt(k, 43, y, 300, 17, WHITE, d, { weight: 700, ls: '.06em' });
-    Txt(String(v), 430, y - 3, 76, 20, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
-    Gauge(43, y + 34, 463, v / 100, d);
-  });
+  // quality pass: the five stats as the horse races with them (base → awakening → training, gold), from the 馬カード
+  const statsAt = (prof) => {
+    if (!d.isConnected) return;
+    TR_STAT_ORDER.forEach((k, i) => {
+      const s = prof?.stats.find((x) => x.key === k) ?? { base: p?.base?.[k] ?? 0, awakening: 0, trained: 0, race: p?.base?.[k] ?? 0 };
+      const y = 240 + i * 54;
+      Txt(TR_STAT[k], 43, y, 200, 16, prof?.leaning?.stat === k ? GOLD : WHITE, d, { weight: 700, ls: '.06em' });
+      if (s.trained > 0) Txt(`+${s.trained}`, 330, y, 90, 14, GOLD, d, { weight: 700, align: 'right', cls: 'num' }).classList.add('st-trained');
+      Txt(fmt(s.race), 430, y - 3, 76, 19, WHITE, d, { weight: 700, align: 'right', cls: 'num' });
+      qrLayerBar(43, y + 26, 463, s, d);
+    });
+    if (prof?.growth) { const g = qrStage(prof.growth.trainedTotal, prof.growth.potential); Txt(QR_STAGES[g.index], 300, 189, 120, 16, GOLD, d, { weight: 700, align: 'right' }).classList.add('st-stage'); }
+  };
+  if (p) L.horseProfile(p.id).then((r) => statsAt(r.ok ? r.value : null)); else statsAt(null);
+  if (p) Ghost('馬カード', 430, 180, 150, 42, () => HorseCard(p.id), d, 'small').classList.add('st-card');
   Kicker('適性', 43, 528, d, { rule: false, size: 17 });
   Txt(p ? `${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${L.horseSkill(p) ? '　/　「' + L.horseSkill(p).name + '」' : ''}` : '—', 43, 562, 500, 18, WHITE, d, { weight: 700 });
   Cta('この馬で出走', 43, 640, 464, RaceLobby, d);
   TextLink('所属馬の一覧', 43, 734, 240, () => Roster(), d, `所属馬の一覧（${horses.length}頭）`); // round 16: 厩舎の整理 (REQ-ORG-*)
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
-  // round 19 (REQ-TUT-008): the breeding card (the prototype has no breeding screen; the stable is where breeding starts)
+  // round 19 (REQ-TUT-008): the breeding card (the breeding screen opens from the stable's 「配合」)
   TipQ('breeding', 517, 516, d, () => Stable()); // beside 適性, clear of the language toggle at the largest text size
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
+  if (unlock('breeding').unlocked) Ghost('配合', 714, 36, 150, 46, () => Breeding(), undefined, 'quiet small').classList.add('br-entry'); // quality pass: the breeding screen
   Ghost('血統', 548, 36, 150, 46, () => Pedigree(p?.id ?? null, () => Stable(), 'horse'), undefined, 'quiet small').classList.add('ped-entry'); // round 23 (REQ-PED-*)
   EnToggle();
   GoalsPanel(p); // round 18 (REQ-HGOAL-*): the horse's goals, bottom left over the art
@@ -4358,14 +4987,28 @@ async function GoalPinStrip() {
   const r = await L.horseGoals.pinned();
   if (!r.ok || !r.value.pinned || cur?.dataset.screen !== 'home') return null;
   const pin = r.value.pinned;
-  const s = Glass('Goal pin', NEXT_BOX.x, 470, NEXT_BOX.w, 76, undefined, .82);
-  s.dataset.hgPin = pin.horseId; s.classList.add('hg-pin-strip', 'rise');
-  Kicker('ピン留めした目標', 22, 12, s, { rule: false, size: 12, w: 260 });
-  Txt(pin.horseName, 290, 10, 248, 13, MUTED, s, { weight: 700, nowrap: true, align: 'right' }).classList.add('hg-pin-name');
-  Txt(pin.goal.text, 22, 38, 400, 18, WHITE, s, { weight: 700, nowrap: true });
-  Txt(`${pin.goal.have} / ${pin.goal.need}`, 430, 38, 108, 18, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  // quality pass (home): the pinned horse goal is one more rung of the goal ladder (one goals surface), above its claim line
+  const ladder = cur.querySelector(':scope > .gl-panel');
+  let s;
+  if (ladder) {
+    const claim = ladder.querySelector('.gl-home-claim');
+    const y = claim ? parseFloat(claim.style.top) : ladder.offsetHeight - 8;
+    s = el('gl-rung hg-pin-strip', 0, y, GL_BOX.w, 50, ladder); s.dataset.rung = 'pin';
+    if (claim) claim.style.top = (y + 50) + 'px';
+    ladder.style.height = (ladder.offsetHeight + 50) + 'px';
+    Txt('ピン留め', 24, 12, 92, 12, CYAN, s, { weight: 700, ls: '.16em', nowrap: true });
+    Txt(pin.goal.text, 118, 6, 226, 16, WHITE, s, { weight: 700, nowrap: true }).classList.add('gl-main');
+    Txt(pin.horseName, 118, 28, 226, 12, MUTED, s, { weight: 500, nowrap: true }).classList.add('hg-pin-name');
+    Txt(`${pin.goal.have} / ${pin.goal.need}`, 344, 6, 100, 17, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  } else {
+    s = Glass('Goal pin', 32, 470, 469, 76, undefined, .82); s.classList.add('hg-pin-strip');
+    Txt(pin.goal.text, 22, 14, 330, 18, WHITE, s, { weight: 700, nowrap: true });
+    Txt(`${pin.goal.have} / ${pin.goal.need}`, 350, 14, 100, 18, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+    Txt(pin.horseName, 22, 44, 330, 13, MUTED, s, { weight: 700, nowrap: true }).classList.add('hg-pin-name');
+  }
+  s.dataset.hgPin = pin.horseId;
   s.style.cursor = 'pointer'; s.setAttribute('role', 'button');
-  s.addEventListener('click', () => HorseGoals(pin.horseId));
+  s.addEventListener('click', (e) => { e.stopPropagation(); HorseGoals(pin.horseId); });
   const day = new Date(L.now() + 5 * 3600e3).toISOString().slice(0, 10); // the game day (04:00 JST)
   let seen = null; try { seen = localStorage.getItem(HG_HOME_VIEWED); } catch { /* */ }
   if (seen !== day) { try { localStorage.setItem(HG_HOME_VIEWED, day); } catch { /* */ } hgKpi('home', pin.doneCount); }
@@ -5471,17 +6114,20 @@ async function Training() {
   Txt('疲れ', 36, 214, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
   Txt(`${h.fatigue} / ${v.fatigue.max}`, 344, 212, 180, 18, h.fatigue >= v.fatigue.restAt ? WARN : GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-fatigue');
   const fg = Gauge(36, 246, 488, h.fatigue / v.fatigue.max, hp); if (h.fatigue >= v.fatigue.restAt) fg.classList.add('warn');
-  Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 13, SOFT, hp);
-  Txt('素質', 36, 306, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
+  Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 16, SOFT, hp);
+  const stg = qrStage(h.trainedTotal, h.potential);
+  Txt(`素質　·　${QR_STAGES[stg.index]}`, 36, 306, 300, 16, WHITE, hp, { weight: 700, ls: '.06em' }).classList.add('tr-stage');
   Txt(`${h.trainedTotal} / ${h.potential}`, 344, 304, 180, 18, GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-potential');
   Gauge(36, 338, 488, h.potential ? h.trainedTotal / h.potential : 0, hp, { gold: true });
+  if (stg.nextAt !== null) Txt(`${QR_STAGES[stg.index + 1]}まで あと${Math.max(0, stg.nextAt - h.trainedTotal)}`, 324, 350, 200, 16, SOFT, hp, { align: 'right' });
+  TextLink('馬カード', 36, 346, 160, () => HorseCard(h.horseId, () => Training()), hp, '馬カード ›');
   TR_STAT_ORDER.forEach((k, j) => {
-    const x = 36 + (j % 3) * 168, y = 380 + Math.floor(j / 3) * 52;
-    Txt(TR_STAT[k], x, y, 100, 14, MUTED, hp, { weight: 500 });
+    const x = 36 + (j % 3) * 168, y = 396 + Math.floor(j / 3) * 46;
+    Txt(TR_STAT[k], x, y, 100, 16, MUTED, hp, { weight: 500 });
     Txt(`+${h.trained[k]}`, x + 92, y - 3, 60, 18, h.trained[k] > 0 ? WHITE : DIM, hp, { weight: 700, cls: 'num' });
   });
   const rs = L.trainingRaceStats(h.horseId);
-  if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 13, SOFT, hp).classList.add('tr-ranked');
+  if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 16, SOFT, hp).classList.add('tr-ranked');
   const apple = v.items.find((x) => x.owned > 0);
   if (apple && h.fatigue > 0) {
     const ab = Ghost(`${apple.name}（${apple.owned}）`, 36, 530, 300, 54, async () => {
@@ -5490,8 +6136,8 @@ async function Training() {
       Training();
     }, hp, 'small');
     ab.classList.add('tr-item');
-  } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 13, DIM, hp);
-  Txt(TR_RULES, 36, 600, 488, 12, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
+  } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 16, DIM, hp);
+  Txt(TR_RULES, 36, 600, 488, 14, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
   // ② the menus (2 × 2), one is chosen; then one CTA
   const mp = Glass('Training menus', 620, 134, 944, 676, undefined, .86);
   Kicker('メニュー', 36, 30, mp);
@@ -5504,17 +6150,25 @@ async function Training() {
     c.classList.add('tr-menu'); c.dataset.menu = m.id; c.dataset.state = why ? 'blocked' : m.id === trMenu ? 'sel' : 'ok';
     if (m.id === trMenu) c.classList.add('sel');
     Txt(m.name, 24, 24, 300, 30, why ? DIM : WHITE, c, { weight: 700, ls: '.06em' });
-    Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 14, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
+    Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 16, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
     Txt(trFocus(m), 24, 80, 380, 18, why ? DIM : GOLD, c, { weight: 700 });
-    Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 14, MUTED, c);
-    if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 14, WARN, c, { weight: 500 });
+    Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 16, MUTED, c);
+    const ol = h.menus.find((x) => x.id === m.id)?.outlook;
+    if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 16, WARN, c, { weight: 500 });
+    else if (ol) {
+      // quality pass: what this menu gives this horse now (server computeGain, the same as the finish) and what moved it
+      const range = ol.min === ol.max ? `+${ol.min}` : `+${ol.min}〜+${ol.max}`;
+      Txt(`この馬なら ${range}`, 24, 146, 380, 20, WHITE, c, { weight: 700, cls: 'num' }).classList.add('tr-outlook');
+      const why2 = [ol.efficiencyPermille < 1000 ? `疲れ −${(1000 - ol.efficiencyPermille) / 10}%` : null, ol.bondPermille > 0 ? `絆 +${ol.bondPermille / 10}%` : null, ol.softPermille < 1000 ? `伸びしろ ${ol.softPermille / 10}%` : null].filter(Boolean);
+      if (why2.length) Txt(why2.join('・'), 24, 180, 380, 16, ol.efficiencyPermille < 1000 ? WARN : MUTED, c, { weight: 500 });
+    }
     c.style.cursor = why ? 'not-allowed' : 'pointer';
     c.addEventListener('click', () => { if (why) { toast(TR_BLOCKED[why] ?? '選べません'); return; } trMenu = m.id; Training(); });
   });
   const go = Cta(trMenu ? `${v.menus.find((m) => m.id === trMenu).name}で調教` : 'メニューを選ぶ', 36, 576, 428, () => TrainingPlay(trHorse, trMenu), mp);
   go.classList.add('tr-go');
   if (!trMenu) disable(go);
-  Txt(`今日 ${v.usedToday} / ${v.slotsPerDay} 回　·　1頭 1日 ${v.perHorsePerDay} 回まで　·　4:00 に戻ります`, 490, 600, 420, 14, SOFT, mp);
+  Txt(`今日 ${v.usedToday} / ${v.slotsPerDay} 回　·　1頭 1日 ${v.perHorsePerDay} 回まで　·　4:00 に戻ります`, 490, 600, 420, 16, SOFT, mp);
   Back(Home, 'BACK', 40, 834);
 }
 /** The timing mini-game: the server's beats slide to the line; tap 「追う」 (or Space) as each one arrives. */
@@ -5529,7 +6183,7 @@ async function TrainingPlay(horseId, menuId) {
   Kicker(`調教　/　${menu.name}`, 22, 18, head, { rule: false, size: 17 });
   Txt('光る印が線に重なった瞬間に「追う」', 22, 52, 720, 26, WHITE, head, { weight: 700 });
   const pv = st.value.preview;
-  Txt(`見込み +${(pv.minMilli / 1000).toFixed(1)}〜+${(pv.maxMilli / 1000).toFixed(1)}　·　ミニゲームの上乗せは最大 +${t.maxScore * t.permillePerPoint / 10}%`, 22, 84, 720, 14, MUTED, head);
+  Txt(`見込み +${(pv.minMilli / 1000).toFixed(1)}〜+${(pv.maxMilli / 1000).toFixed(1)}　·　ミニゲームの上乗せは最大 +${t.maxScore * t.permillePerPoint / 10}%`, 22, 84, 720, 16, MUTED, head);
   // the beat lane: markers move right → left onto the hit line
   const lane = Glass('Beat lane', 36, 610, 1100, 120, undefined, .8);
   lane.classList.add('tr-lane');
@@ -5607,27 +6261,379 @@ function trScore(t, beats, taps) {
 }
 async function TrainingResult(res) {
   await refresh();
+  const tv = await L.training();
+  const th = tv.ok && tv.value.enabled ? tv.value.horses.find((x) => x.horseId === res.horseId) : null;
+  const cap = th?.perStatCap ?? Math.floor((res.potential ?? 0) * 0.4);
   currentScreen = Training; Clear('training-result'); SetArt('Art/home-paddock'); Shade('left');
-  const d = Glass('Training result', 36, 134, 760, 676, undefined, .88);
+  const d = Glass('Training result', 36, 110, 800, 720, undefined, .9);
   d.classList.add('rise', 'tr-result'); d.dataset.grade = res.grade; d.dataset.total = String(res.total);
-  Kicker(`調教　/　${res.settled === 'done' ? '結果' : 'ミニゲームなし'}`, 40, 34, d);
-  Txt(TR_GRADE[res.grade] ?? res.grade, 40, 100, 680, 30, WHITE, d, { weight: 700, ls: '.06em' });
-  Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 150, 300, 96, GOLD, d, { weight: 700, cls: 'num' }).classList.add('tr-total');
-  Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 40, 270, 680, 22, WHITE, d, { weight: 700 });
-  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 40, 318, 680, 17, MUTED, d).classList.add('tr-timing');
-  Txt('素質', 40, 384, 200, 16, WHITE, d, { weight: 700, ls: '.06em' });
-  Txt(`${res.trainedTotal} / ${res.potential}`, 520, 382, 200, 18, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
-  Gauge(40, 416, 680, res.potential ? res.trainedTotal / res.potential : 0, d, { gold: true });
-  Txt(`疲れ ${res.fatigue}${res.capped ? '　·　素質いっぱいまで伸びました' : ''}`, 40, 446, 680, 15, SOFT, d);
+  Kicker(`調教　/　${res.settled === 'done' ? '結果' : 'ミニゲームなし'}`, 40, 30, d);
+  Txt(TR_GRADE[res.grade] ?? res.grade, 40, 92, 700, 28, WHITE, d, { weight: 700, ls: '.06em' });
+  const big = Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 132, 240, 88, GOLD, d, { weight: 700, cls: 'num' }); big.classList.add('tr-total');
+  if (res.total > 0) qrCount(big, res.total);
+  Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 270, 150, 490, 20, WHITE, d, { weight: 700 });
+  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 270, 186, 490, 16, MUTED, d).classList.add('tr-timing');
+  // the growth stage: before → after; a stage up is the moment
+  const before = res.trainedTotal - res.total;
+  const s0 = qrStage(before, res.potential), s1 = qrStage(res.trainedTotal, res.potential);
+  if (s1.index > s0.index) {
+    const up = el('qr-stageup', 40, 236, 720, 56, d); up.dataset.stage = String(s1.index);
+    Txt('成長段階が上がりました', 22, 8, 340, 16, GOLD, up, { weight: 700, ls: '.14em' });
+    Txt(`${QR_STAGES[s0.index]}　→　${QR_STAGES[s1.index]}`, 22, 26, 500, 20, WHITE, up, { weight: 700 });
+    qrPips(560, 22, s1.index, up);
+    // integration: a stage up is a peak — presentation's shared Moment (leaves by itself or on a tap; reduce motion: no motion)
+    const host = cur;
+    setTimeout(() => { if (cur === host) Moment(QR_STAGES[s1.index], { kicker: '成長段階', sub: `${QR_STAGES[s0.index]}　→　${QR_STAGES[s1.index]}`, kind: 'stage_up' }); }, reduced() ? 0 : 900);
+  } else Txt(`成長段階　${QR_STAGES[s1.index]}${s1.nextAt !== null ? `　·　${QR_STAGES[s1.index + 1]}まで あと${Math.max(0, s1.nextAt - res.trainedTotal)}` : ''}`, 40, 252, 720, 16, MUTED, d, { weight: 500 }).classList.add('tr-stage-line');
+  // each stat's training growth against its cap, growing from before to after
+  Txt('調教の伸び', 40, 306, 200, 16, MUTED, d, { weight: 500, ls: '.14em' });
+  TR_STAT_ORDER.forEach((k, i) => {
+    const y = 334 + i * 38, after = res.trained?.[k] ?? 0, gain = res.gain?.[k] ?? 0;
+    Txt(TR_STAT[k], 40, y, 120, 16, gain > 0 ? WHITE : MUTED, d, { weight: 700 });
+    qrMeter(170, y + 6, 420, after, cap, d, after - gain);
+    Txt(`${after} / ${cap}`, 600, y - 2, 90, 16, MUTED, d, { align: 'right', cls: 'num' });
+    if (gain > 0) Txt(`+${gain}`, 700, y - 3, 60, 17, GOLD, d, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-gain');
+  });
+  Txt('素質', 40, 536, 200, 16, WHITE, d, { weight: 700, ls: '.06em' });
+  Txt(`${res.trainedTotal} / ${res.potential}`, 560, 534, 200, 17, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
+  const pg = Gauge(40, 562, 720, res.potential ? before / res.potential : 0, d, { gold: true });
+  if (res.potential) setTimeout(() => { const i = pg.querySelector('i'); if (i) { i.style.transition = reduced() ? 'none' : 'width .9s cubic-bezier(.2,.7,.2,1)'; i.style.width = Math.round(100 * clamp(res.trainedTotal / res.potential, 0, 1)) + '%'; } }, reduced() ? 0 : 450);
   const bd = res.breakdown;
-  if (bd) Txt(`内訳：調子 ${bd.efficiencyPermille / 10}%　·　絆 +${bd.bondPermille / 10}%　·　ミニゲーム +${bd.timingPermille / 10}%　·　伸びしろ ${bd.softPermille / 10}%`, 40, 486, 680, 13, DIM, d);
-  Cta('つづける', 40, 560, 360, Training, d);
+  Txt(`疲れ ${res.fatigue}${res.capped ? '　·　素質いっぱいまで伸びました' : ''}${bd ? `　·　調子 ${bd.efficiencyPermille / 10}%　·　絆 +${bd.bondPermille / 10}%　·　ミニゲーム +${bd.timingPermille / 10}%　·　伸びしろ ${bd.softPermille / 10}%` : ''}`, 40, 578, 720, 14, DIM, d);
+  Cta('つづける', 40, 616, 360, Training, d);
   const ms = await L.missions();
   const m = ms.ok ? ms.value.find((x) => x.kind === 'training' && x.progress >= x.target && !x.claimed) : null;
-  if (m) Ghost('ミッション報酬を受け取る', 420, 570, 300, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
+  if (m) Ghost('ミッション報酬を受け取る', 430, 626, 330, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
+  else TextLink('馬カード', 430, 636, 200, () => HorseCard(res.horseId, () => Training()), d, '馬カード ›');
   EnToggle();
   // round 20 (REQ-LNOTIF-010): after the first training, the reminders pre-permission card (inline, at most maxAsks times)
   await LnotifPrePromptCard(() => TrainingResult(res));
+}
+
+// ================================================================= quality pass: raising & breeding (docs/quality/raising-breeding.md)
+// 馬カード (GET /v1/horses/:id/profile on the real horseProfile), the training outlook / growth bars, the breeding screen
+// (choose → outlook → reveal) on the real breedingPreview / breed. Mirrors unity/Assets/Muchi/Game/HorseProfileModel.cs and
+// BreedingModel (ParentGifts, RarityLine, Reveal). Read-only except the breeding itself; every chance shown is the server's.
+const QR_STAGES = ['新馬', '成長期', '充実期', '本格化', '完成'];
+const QR_STAGE_TH = [0, 100, 350, 650, 1000];
+/** growthStage (server horseProfile.ts / C# GrowthStages.Of, contracts/horse-profile.vectors.json). */
+function qrStage(trained, potential) {
+  if (!(potential > 0)) return { index: 0, nextAt: null };
+  const t = clamp(Math.trunc(trained), 0, potential);
+  let index = 0;
+  for (let i = 1; i < QR_STAGE_TH.length; i++) if (t * 1000 >= QR_STAGE_TH[i] * potential) index = i;
+  const next = QR_STAGE_TH[index + 1];
+  return { index, nextAt: next === undefined ? null : Math.ceil((next * potential) / 1000) };
+}
+const QR_FROM = { own: '生まれつき', sire: '父から', dam: '母から', both: '父と母から' };
+const QR_COAT = { bay: 0, brown: 0, chestnut: 1, grey: 2, dapple_grey: 2, gray: 2, black: 3, dark_bay: 3, palomino: 4 };
+const qrArt = (h) => partnerPreview(QR_COAT[h?.appearance?.coat] ?? ([...(h?.id ?? 'x')].reduce((a, c) => a + c.charCodeAt(0), 0) % 5));
+const qrPct = (ppm) => (ppm <= 0 ? '0%' : ppm < 500 ? '<0.1%' : `${(Math.round(ppm / 1000) / 10).toFixed(1)}%`);
+const qrPermille = (p) => `${(p / 10).toFixed(1)}%`;
+const qrTrait = (t) => (t.trait === 'style' ? STYLE_JA[t.value] ?? t.value : t.value === 'heavy' ? '重馬場巧者' : t.value === 'fast' ? '良馬場巧者' : '馬場不問');
+const qrSex = (s) => (s === 'female' ? '牝馬' : '牡馬');
+const RAR_COLOR = (r) => (r === 'SSR' ? GOLD : r === 'SR' ? CYAN : MUTED);
+
+/** The growth pips: five steps, the reached ones gold, the current one ringed. */
+function qrPips(x, y, stage, parent) {
+  const row = el('qr-pips', x, y, 5 * 30, 14, parent);
+  for (let i = 0; i < 5; i++) { const p = document.createElement('i'); if (i <= stage) p.className = 'on'; if (i === stage) p.classList.add('cur'); row.appendChild(p); }
+  row.dataset.stage = String(stage);
+  return row;
+}
+/**
+ * One stat on the engine's 0..1000 scale: base (cyan) → +awakening (light cyan) → +training (gold). `from` (a smaller trained value)
+ * draws the gold segment growing from there to `trained` (the result screen); reduce motion shows the end at once.
+ */
+function qrLayerBar(x, y, w, s, parent, from = null) {
+  const bar = el('qr-bar', x, y, w, 10, parent);
+  const seg = (cls, left, width) => { const i = document.createElement('i'); i.className = cls; i.style.left = (left / 10) + '%'; i.style.width = (width / 10) + '%'; bar.appendChild(i); return i; };
+  seg('b', 0, s.base); if (s.awakening > 0) seg('a', s.base, s.awakening);
+  const g = seg('t', s.base + s.awakening, from ?? s.trained);
+  if (from !== null && from !== s.trained) {
+    if (reduced()) g.style.width = (s.trained / 10) + '%';
+    else setTimeout(() => { g.style.width = (s.trained / 10) + '%'; }, 450);
+  }
+  return bar;
+}
+/** A thin meter of a stat's training growth against its own cap (moves visibly every session). */
+function qrMeter(x, y, w, have, cap, parent, from = null) {
+  const b = Gauge(x, y, w, cap ? (from ?? have) / cap : 0, parent, { gold: true });
+  b.classList.add('qr-meter');
+  if (from !== null && from !== have) {
+    const i = b.querySelector('i');
+    if (reduced()) i.style.width = Math.round(100 * clamp(have / cap, 0, 1)) + '%';
+    else setTimeout(() => { i.style.transition = 'width .9s cubic-bezier(.2,.7,.2,1)'; i.style.width = Math.round(100 * clamp(have / cap, 0, 1)) + '%'; }, 450);
+  }
+  return b;
+}
+/** Counts a number up (reduce motion: the end at once). */
+function qrCount(node, to, prefix = '+') {
+  if (reduced() || to <= 0) { node.textContent = to > 0 ? prefix + to : node.textContent; return; }
+  const t0 = performance.now(), dur = 650;
+  const step = (t) => { const k = clamp((t - t0) / dur, 0, 1); node.textContent = prefix + Math.round(to * (1 - (1 - k) ** 3)); if (k < 1 && document.body.contains(node)) requestAnimationFrame(step); };
+  node.textContent = prefix + '0'; requestAnimationFrame(step);
+}
+
+// ---------------------------------------------------------------- 馬カード
+async function HorseCard(horseId, back = () => Stable()) {
+  const r = await L.horseProfile(horseId);
+  if (!r.ok) { toast(r.message); return back(); }
+  const p = r.value;
+  currentScreen = () => HorseCard(horseId, back);
+  Clear('horse-card'); SetArt('Art/partner-naming', false); Shade('left');
+  // ① growth: stage, potential, the five stats in layers
+  const g = Glass('Horse card growth', 36, 110, 800, 700, undefined, .9);
+  g.classList.add('rise', 'qr-card'); g.dataset.horse = p.horseId;
+  Kicker(`馬カード　/　第${p.lineage.generation}世代`, 36, 26, g);
+  Txt(p.name, 36, 92, 560, 42, WHITE, g, { ls: '.06em', nowrap: true });
+  Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 36, 148, 560, 16, RAR_COLOR(p.rarity), g, { weight: 700, ls: '.06em', nowrap: true });
+  if (p.growth) {
+    const st = qrStage(p.growth.trainedTotal, p.growth.potential);
+    Txt('成長段階', 560, 34, 200, 16, MUTED, g, { weight: 500, ls: '.14em', align: 'right' });
+    const sn = Txt(QR_STAGES[st.index], 560, 56, 204, 30, GOLD, g, { weight: 700, align: 'right' }); sn.classList.add('qr-stage'); sn.dataset.stage = String(st.index);
+    qrPips(614, 106, st.index, g);
+    Txt(st.nextAt === null ? '素質いっぱいまで伸びました' : `${QR_STAGES[st.index + 1]}まで あと${Math.max(0, st.nextAt - p.growth.trainedTotal)}`, 460, 130, 304, 16, SOFT, g, { align: 'right' });
+  }
+  Hair(36, 190, 728, g);
+  Txt('能力', 36, 206, 120, 16, MUTED, g, { weight: 500, ls: '.14em' });
+  Txt('調教の伸び', 560, 206, 204, 16, MUTED, g, { weight: 500, ls: '.14em', align: 'right' });
+  const cap = p.growth?.perStatCap ?? 0;
+  TR_STAT_ORDER.forEach((k, i) => {
+    const s = p.stats.find((x) => x.key === k); if (!s) return;
+    const y = 238 + i * 58;
+    const lean = p.leaning?.stat === k;
+    Txt(TR_STAT[k] + (lean ? '　·　得意' : ''), 36, y, 240, 16, lean ? GOLD : WHITE, g, { weight: 700, ls: '.04em', nowrap: true });
+    Txt(fmt(s.race), 300, y - 4, 90, 22, WHITE, g, { weight: 700, align: 'right', cls: 'num' }).dataset.stat = k;
+    qrLayerBar(36, y + 28, 354, s, g);
+    if (cap) {
+      qrMeter(430, y + 30, 230, s.trained, cap, g);
+      Txt(s.trained > 0 ? `+${s.trained}` : '+0', 670, y + 18, 94, 18, s.trained > 0 ? GOLD : DIM, g, { weight: 700, align: 'right', cls: 'num' });
+    }
+  });
+  const t = p.totals;
+  Txt(`能力合計 ${fmt(t.race)}`, 36, 540, 300, 18, WHITE, g, { weight: 700, cls: 'num' });
+  if (p.growth) Txt(`素質 ${p.growth.trainedTotal} / ${p.growth.potential}`, 430, 540, 334, 18, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
+  const rk = Txt(t.capped ? `ランク戦（${t.classId}級 上限 ${fmt(t.cap)}）：合計は上限にそろえ、配分はそのまま` : `ランク戦（${t.classId}級 上限 ${fmt(t.cap)}）まで あと ${fmt(t.toCap)}`, 36, 566, 728, 16, MUTED, g, { weight: 500 });
+  rk.classList.add('qr-ranked');
+  if (p.leaning) Txt(`得意：${TR_STAT[p.leaning.stat]}（${qrPermille(p.leaning.sharePermilleBefore)} → ${qrPermille(p.leaning.sharePermilleNow)}）`, 36, 594, 728, 16, GOLD, g, { weight: 500 }).classList.add('qr-leaning');
+  Txt('調教の伸びはレースで使われます。ランク戦は能力の合計をクラスの上限にそろえますが、能力の配分（得意）はそのまま残ります。伸びは課金で増えず、仔には受け継がれません。成長段階は表示だけです。', 36, 626, 728, 14, SOFT, g, { lh: 1.5 }).classList.add('qr-rules');
+  // ② the story: career, lineage, recent training; one CTA
+  const s = Glass('Horse card story', 860, 110, 704, 700, undefined, .88);
+  s.classList.add('rise', 'd1');
+  Kicker('戦績', 36, 26, s);
+  const c = p.career;
+  Txt(c.races === 0 ? 'まだ走っていません' : `${c.races}戦${c.wins}勝`, 36, 92, 400, 30, WHITE, s, { weight: 700, cls: 'num' });
+  const extra = [c.rivalWins > 0 ? `ライバルに${c.rivalWins}回先着` : null, c.tournamentWins > 0 ? `大会優勝${c.tournamentWins}回` : null, c.places > 0 ? `3着以内${c.places}回` : null].filter(Boolean);
+  if (extra.length) Txt(extra.join('・'), 36, 138, 632, 16, GOLD, s, { weight: 700 });
+  Kicker('血統', 36, 182, s, { rule: false, size: 16 });
+  TextLink('血統', 470, 176, 200, () => Pedigree(p.horseId, () => HorseCard(horseId, back), 'horse'), s, '血統 ›').dataset.action = 'qr-pedigree'; // integration (R23 §71)
+  const lin = p.lineage;
+  Txt(`第${lin.generation}世代${lin.bred ? '' : '（スカウト・配布の馬）'}`, 36, 212, 632, 17, WHITE, s, { weight: 700 }).classList.add('qr-gen');
+  Txt(`父 ${lin.sireName ?? '—'}${lin.studSire ? '（借りた種牡馬）' : ''}　·　母 ${lin.damName ?? '—'}`, 36, 244, 632, 16, MUTED, s, { nowrap: true });
+  let ly = 274;
+  if (lin.skill) { Txt(`固有スキル「${lin.skill.name}」${lin.skillFrom ? '：' + QR_FROM[lin.skillFrom] : ''}`, 36, ly, 632, 16, CYAN, s, { weight: 700 }); ly += 28; }
+  if (lin.atavism) { Txt(`隔世遺伝：${qrTrait(lin.atavism)}（${lin.atavism.from}）`, 36, ly, 632, 16, GOLD, s, { weight: 700 }); ly += 28; }
+  Kicker('最近の調教', 36, 352, s, { rule: false, size: 16 });
+  const tvw = await L.training();
+  const menus = tvw.ok && tvw.value.enabled ? tvw.value.menus : [];
+  if (!p.recentTraining.length) Txt('まだ調教していません', 36, 384, 632, 16, DIM, s);
+  p.recentTraining.slice(0, 4).forEach((e, i) => {
+    const y = 384 + i * 36;
+    Txt(menus.find((m) => m.id === e.menuId)?.name ?? e.menuId, 36, y, 200, 16, WHITE, s, { weight: 700 });
+    Txt(TR_GRADE[e.grade] ?? e.grade, 220, y, 300, 16, MUTED, s, { nowrap: true });
+    Txt(e.gain > 0 ? `+${e.gain}` : '±0', 560, y - 2, 108, 17, e.gain > 0 ? GOLD : DIM, s, { weight: 700, align: 'right', cls: 'num' });
+  });
+  if (p.status === 'active') Cta('調教する', 36, 560, 400, () => { trHorse = p.horseId; trMenu = null; Training(); }, s).classList.add('qr-go');
+  else Cta('配合へ', 36, 560, 400, () => Breeding(), s).classList.add('qr-go');
+  TextLink('目標', 470, 578, 100, () => HorseGoals(p.horseId), s, '目標 ›');
+  Back(back, 'BACK', 40, 834);
+  EnToggle(1435, 40);
+}
+
+// ---------------------------------------------------------------- 配合: choose → outlook → reveal
+let qrSire = null, qrDam = null;
+async function Breeding() {
+  currentScreen = Breeding;
+  await refresh();
+  Clear('breeding'); SetArt('Art/home-paddock', false); Shade('left');
+  const retired = (player?.horses ?? []).filter((h) => h.status === 'retired');
+  const sires = retired.filter((h) => h.sex === 'male'), dams = retired.filter((h) => h.sex === 'female');
+  if (!sires.some((h) => h.id === qrSire)) qrSire = sires[0]?.id ?? null;
+  if (!dams.some((h) => h.id === qrDam)) qrDam = dams[0]?.id ?? null;
+  const pv = qrSire && qrDam ? await L.breedingPreview(qrSire, qrDam) : null;
+  const v = pv?.ok ? pv.value : null;
+  const left = v ? Math.max(0, v.today.perDay - v.today.used) : 0;
+  TopBar(v ? `配合　/　今日あと${left}回` : '配合', '父と母を選ぶ　→　見込みを確かめる　→　仔を迎える');
+  // ① parents
+  const lp = Glass('Breeding parents', 36, 134, 440, 676, undefined, .88);
+  TipQ('breeding', 364, 24, lp, () => Breeding());
+  // each candidate against the other chosen parent: the same preview (nick, SR-or-better chance) so the player can aim
+  const against = async (sireId, damId) => { if (!sireId || !damId) return null; const r = await L.breedingPreview(sireId, damId); return r.ok ? r.value : null; };
+  const pick = async (title, list, sel, y0, first, set, pair) => {
+    Kicker(title, 36, y0, lp, { rule: first, size: 16 });
+    const top = y0 + (first ? 72 : 36);
+    if (!list.length) { Txt('引退した馬がいません', 36, top, 368, 16, DIM, lp); return; }
+    for (const [i, h] of list.slice(0, 3).entries()) {
+      const y = top + i * 80;
+      const c = Card('Parent ' + h.id, 36, y, 368, 70, lp, h.id === sel ? CYAN : 'var(--text-4)');
+      c.classList.add('qr-parent'); c.dataset.horse = h.id; if (h.id === sel) c.classList.add('sel');
+      Txt(h.name, 18, 14, 210, 18, WHITE, c, { weight: 700, nowrap: true });
+      Txt(`${h.rarity}　${STYLE_JA[h.style] ?? ''}`, 200, 16, 150, 16, RAR_COLOR(h.rarity), c, { weight: 700, align: 'right' });
+      const o = await pair(h.id);
+      if (o?.rarity) {
+        const up = o.rarity.SR + o.rarity.SSR;
+        Txt(`SR以上 ${qrPct(up)}${o.nick ? '　·　◎ ニックス' : ''}${o.inbreedingCount > 0 ? '　·　近親' : ''}`, 18, 42, 332, 16, up > 0 || o.nick ? GOLD : MUTED, c, { weight: 500, nowrap: true }).classList.add('qr-aim');
+      }
+      c.style.cursor = 'pointer';
+      c.addEventListener('click', () => { set(h.id); Breeding(); });
+    }
+  };
+  await pick('父（引退した牡馬）', sires, qrSire, 26, true, (id) => { qrSire = id; }, (id) => against(id, qrDam));
+  await pick('母（引退した牝馬）', dams, qrDam, 344, false, (id) => { qrDam = id; }, (id) => against(qrSire, id));
+  if (!sires.length || !dams.length) {
+    Txt('牡馬と牝馬を1頭ずつ引退させると配合できます。引退は所属馬の一覧から。', 36, 540, 368, 16, MUTED, lp, { lh: 1.5 });
+    TextLink('所属馬の一覧', 36, 636, 240, () => Roster(), lp, '所属馬の一覧 ›');
+  }
+  // ② the outlook: stat ranges, rarity odds, compatibility
+  const mp = Glass('Breeding outlook', 496, 134, 560, 676, undefined, .88);
+  mp.classList.add('qr-outlook');
+  Kicker('仔の見込み', 36, 26, mp);
+  if (!v) { Txt(pv && !pv.ok ? pv.message : '父と母を選ぶと、生まれる仔の見込みが出ます', 36, 100, 488, 16, MUTED, mp, { lh: 1.5 }); }
+  else {
+    Txt((v.nick ? '◎ ニックス（相性がよい）' : '○ 通常の相性') + (v.inbreedingCount > 0 ? `　·　近親 ${v.inbreedingCount}（能力 −${v.inbreedingCount * 50}）` : ''), 36, 92, 488, 16, v.nick ? GOLD : WHITE, mp, { weight: 700 });
+    const LO = 400, HI = 1000, W = 300, X = 150;
+    const at = (n) => X + Math.round((clamp(n, LO, HI) - LO) / (HI - LO) * W);
+    TR_STAT_ORDER.forEach((k, i) => {
+      const r = v.stats[k], y = 136 + i * 40;
+      Txt(TR_STAT[k], 36, y, 110, 16, WHITE, mp, { weight: 700 });
+      el('qr-track', X, y + 6, W, 8, mp);
+      const band = el('qr-band', at(r.min), y + 3, Math.max(4, at(r.max) - at(r.min)), 14, mp); band.dataset.stat = k;
+      Txt(`${r.min}〜${r.max}`, X + W + 14, y, 110, 16, MUTED, mp, { cls: 'num', nowrap: true });
+    });
+    Txt(`能力は幅の中で決まります（各能力 ±${L.master.breedRules.variation}）`, 36, 340, 488, 14, SOFT, mp).classList.add('qr-legal');
+    // the rarity odds: one stacked bar, exact from the breeding rules
+    Kicker('仔のレア度の見込み', 36, 374, mp, { rule: false, size: 16 });
+    const ro = v.rarity;
+    if (ro) {
+      const bar = el('qr-rar', 36, 410, 488, 22, mp); bar.dataset.ssr = String(ro.SSR); bar.dataset.sr = String(ro.SR);
+      [['R', ro.R], ['SR', ro.SR], ['SSR', ro.SSR]].forEach(([k, n]) => { if (n <= 0) return; const i = document.createElement('i'); i.className = k.toLowerCase(); i.style.width = (n / 10000) + '%'; bar.appendChild(i); });
+      Txt(`SSR ${qrPct(ro.SSR)}　·　SR ${qrPct(ro.SR)}　·　R ${qrPct(ro.R)}`, 36, 444, 488, 18, WHITE, mp, { weight: 700, cls: 'num' }).classList.add('qr-rarity-line');
+      Txt('能力の合計 3,200 以上で SR、3,700 以上で SSR。実際の配合と同じ計算で出しています', 36, 474, 488, 14, SOFT, mp, { lh: 1.5 }).classList.add('qr-legal');
+    }
+    Txt(`距離 ${fmt(v.distance.minM)}〜${fmt(v.distance.maxM)}m　·　${v.surface === 'turf' ? '芝' : v.surface === 'dirt' ? 'ダート' : '芝・ダートのどちらか'}`, 36, 512, 488, 16, MUTED, mp);
+    // how to aim higher, from the breeding rules themselves (horses.ts BREED and nicks.json)
+    Kicker('見込みを上げるには', 36, 552, mp, { rule: false, size: 16 });
+    const br = L.master.breedRules;
+    Txt(`仔の能力の基準は父母の平均の${br.basePermille / 10}%。父母の覚醒1段ごとに +${br.perAwakeningPermille / 10}%、ニックスの血統なら全能力 +${L.master.nickBonus}、近親は1つごとに −${br.inbreedingPenalty}。`, 36, 580, 488, 16, MUTED, mp, { lh: 1.6 }).classList.add('qr-aim-rules');
+  }
+  // ③ what each parent can pass on; the one CTA
+  const rp = Glass('Breeding gifts', 1076, 134, 488, 676, undefined, .88);
+  Kicker('受け継げるもの', 36, 26, rp);
+  // integration (R23 §71): the pair's family tree, shared ancestors and hints live on the pedigree screen — one quiet link
+  if (qrSire && qrDam) TextLink('配合の血統', 296, 22, 170, () => BreedingPair(() => Breeding(), qrSire, qrDam), rp, '配合の血統 ›').dataset.action = 'qr-pair-pedigree';
+  if (v) {
+    const sire = sires.find((h) => h.id === qrSire), dam = dams.find((h) => h.id === qrDam);
+    let y = 92;
+    for (const [who, h] of [['sire', sire], ['dam', dam]]) {
+      Txt(`${who === 'sire' ? '父' : '母'}　${h.name}`, 36, y, 416, 16, WHITE, rp, { weight: 700, nowrap: true }); y += 30;
+      const sp = v.styles[h.style];
+      if (sp != null) { Txt(`脚質 ${STYLE_JA[h.style]} ${sp}%`, 52, y, 400, 16, MUTED, rp).classList.add('qr-gift'); y += 24; }
+      for (const c of v.skill.candidates.filter((x) => x.from.includes(who))) { Txt(`固有スキル「${c.name}」 ${qrPermille(c.permille / c.from.length)}`, 52, y, 400, 16, CYAN, rp, { weight: 700 }).classList.add('qr-gift'); y += 24; }
+      y += 10;
+    }
+    for (const a of v.atavism.candidates.slice(0, 3)) { Txt(`隔世遺伝 ${qrPermille(a.permille)}　${qrTrait(a)} ← ${a.from}`, 36, y, 416, 16, GOLD, rp); y += 22; }
+    const apt = Object.entries(v.goingAptitude).filter(([k, n]) => k !== 'any' && n > 0);
+    if (apt.length) Txt(apt.map(([k, n]) => `${k === 'heavy' ? '重馬場巧者' : '良馬場巧者'} ${qrPermille(n)}`).join('・'), 36, y + 4, 416, 16, MUTED, rp);
+    const go = Cta('配合する', 36, 506, 416, async () => {
+      const b = await L.breed(qrSire, qrDam, left <= 0);
+      if (!b.ok) { toast(b.code === 'BREEDING_DAILY_LIMIT' ? '今日の配合はおしまい。4:00に戻ります' : b.message); return; }
+      FoalReveal(b.value, v, sire, dam);
+    }, rp);
+    go.classList.add('qr-breed');
+    const mat = v.today.materialOwned >= v.today.materialCost && v.today.extraUsed < v.today.extraPerDay;
+    if (left <= 0 && !mat) disable(go);
+    Txt(left > 0 ? `今日あと${left}回` : mat ? `配合素材を${v.today.materialCost}個使って、もう1回` : '今日の配合はおしまい。4:00に戻ります', 36, 588, 416, 16, SOFT, rp);
+  }
+  Txt('見込みの確率はすべて実際の配合と同じ計算です。調教の伸びは受け継がれません。', 36, 614, 416, 14, SOFT, rp, { lh: 1.5 }).classList.add('qr-legal');
+  Back(Stable, 'BACK', 40, 834);
+}
+
+/** The foal reveal: sex and style → the five stats landing in their ranges → rarity against its chance → skill, 隔世遺伝, generation. */
+async function FoalReveal(res, pv, sire, dam) {
+  await refresh();
+  const foal = res.foal;
+  const prof = await L.horseProfile(foal.id);
+  const gen = prof.ok ? prof.value.lineage.generation : null;
+  currentScreen = Breeding;
+  Clear('breeding-reveal'); SetArt('Art/scout-reveal', false); Shade('left');
+  const d = Glass('Foal reveal', 36, 80, 1060, 740, undefined, .9);
+  d.classList.add('qr-reveal'); d.dataset.foal = foal.id; d.dataset.rarity = foal.rarity;
+  Kicker('新しい命', 40, 30, d);
+  Txt('仔馬が生まれました', 40, 92, 700, 34, WHITE, d, { weight: 700 });
+  const steps = [];
+  const step = (nodes) => { nodes.forEach((n) => n.classList.add('qr-hide')); steps.push(nodes); };
+  // 1: sex and style (where it came from)
+  const styleFrom = foal.atavism?.trait === 'style' ? '隔世遺伝' : foal.style === sire.style && foal.style === dam.style ? '父と母から' : foal.style === sire.style ? '父から' : foal.style === dam.style ? '母から' : '新しい脚質';
+  step([Txt(`${qrSex(foal.sex)}　·　脚質 ${STYLE_JA[foal.style]}：${styleFrom}`, 40, 150, 700, 20, WHITE, d, { weight: 700 })]);
+  // 2: the five stats against the preview ranges
+  const statNodes = [];
+  let high = 0;
+  const LO = 400, HI = 1000, W = 420, X = 150;
+  const at = (n) => X + Math.round((clamp(n, LO, HI) - LO) / (HI - LO) * W);
+  TR_STAT_ORDER.forEach((k, i) => {
+    const r = pv.stats[k], val = foal.base[k], y = 210 + i * 44;
+    const pos = r.max > r.min ? (val - r.min) / (r.max - r.min) : .5;
+    const mark = pos >= .75 ? 'high' : pos <= .25 ? 'low' : 'mid';
+    if (mark === 'high') high++;
+    statNodes.push(Txt(TR_STAT[k], 40, y, 110, 16, WHITE, d, { weight: 700 }));
+    const tr = el('qr-track', X, y + 6, W, 8, d); statNodes.push(tr);
+    const band = el('qr-band dim', at(r.min), y + 3, Math.max(4, at(r.max) - at(r.min)), 14, d); statNodes.push(band);
+    const pin = el('qr-pin', at(r.min) - 2, y - 1, 4, 22, d); pin.dataset.stat = k; statNodes.push(pin);
+    pin.dataset.to = String(at(val) - 2);
+    const num = Txt(String(val), X + W + 16, y - 3, 70, 19, mark === 'high' ? GOLD : WHITE, d, { weight: 700, cls: 'num' }); statNodes.push(num);
+    if (mark === 'high') statNodes.push(Txt('期待以上', X + W + 90, y, 110, 16, GOLD, d, { weight: 700 }));
+  });
+  step(statNodes);
+  // 3: rarity against the chance the preview gave it
+  const chance = pv.rarity ? pv.rarity[foal.rarity] : null;
+  const rar = Txt(foal.rarity, 40, 446, 200, 64, RAR_COLOR(foal.rarity), d, { weight: 700, cls: 'num' }); rar.classList.add('qr-rar-big');
+  step([rar, Txt(`${high > 0 ? `期待以上が${high}つ` : '見込みどおり'}　·　能力合計 ${fmt(TR_STAT_ORDER.reduce((a, k) => a + foal.base[k], 0))}${chance != null ? `　·　見込み ${qrPct(chance)}` : ''}`, 150, 474, 860, 17, WHITE, d, { weight: 700 })]);
+  // 4: gifts and the line
+  const gifts = [];
+  const sk = foal.skillId ? pv.skill.candidates.find((c) => c.id === foal.skillId) : null;
+  if (sk) gifts.push(Txt(`固有スキル「${sk.name}」を${sk.from.length > 1 ? '父と母から' : sk.from[0] === 'sire' ? '父から' : '母から'}受け継ぎました`, 40, 548, 980, 17, CYAN, d, { weight: 700 }));
+  if (foal.atavism) gifts.push(Txt(`隔世遺伝：${qrTrait(foal.atavism)}（${foal.atavism.from}）`, 40, sk ? 580 : 548, 980, 17, GOLD, d, { weight: 700 }));
+  gifts.push(Txt(`${gen ? `第${gen}世代　·　` : ''}父 ${sire.name}　·　母 ${dam.name}`, 40, 620, 980, 16, MUTED, d));
+  step(gifts);
+  let shown = 0;
+  const host = cur;
+  const show = () => {
+    if (shown >= steps.length) return;
+    host.classList.remove('fx-skip'); // each めくる plays its own motion; a tap on the panel (not a button) completes it
+    for (const n of steps[shown]) n.classList.add('qr-show');
+    if (shown === 1) for (const pin of d.querySelectorAll('.qr-pin')) setTimeout(() => { pin.style.left = pin.dataset.to + 'px'; }, reduced() ? 0 : 120);
+    // integration: the rarity is the peak — the shared rays (static with reduce motion) and a haptic for SR / SSR, like a scout
+    if (shown === 2 && rarityRank(foal.rarity) >= 2) { FxRays(176, 560, foal.rarity === 'SSR' ? 760 : 620, foal.rarity === 'SSR' ? '' : 'cyan'); haptic(foal.rarity === 'SSR' ? [30, 50, 60] : [20, 40, 20]); }
+    shown++;
+    d.dataset.step = String(shown);
+    if (shown >= steps.length) { nextBtn.remove(); allBtn.remove(); done(); }
+  };
+  const nextBtn = Cta('めくる', 40, 650, 360, show, d); nextBtn.classList.add('qr-next');
+  const allBtn = Ghost('すべて見る', 430, 660, 220, 56, () => { while (shown < steps.length) show(); }, d, 'quiet');
+  const done = () => {
+    Cta('馬カードを見る', 40, 650, 360, () => HorseCard(foal.id, () => Breeding()), d).classList.add('qr-to-card');
+    Ghost('配合へ戻る', 430, 660, 220, 56, () => Breeding(), d, 'quiet');
+  };
+  if (globalThis.__muchi) globalThis.__muchi.lastFoal = { foal, rarity: pv.rarity, high };
+  // integration (presentation's shared helpers): a tap anywhere completes the step's motion (Skippable → .fx-skip); with reduce
+  // motion the reveal shows its end state at once (every step, the card / back buttons)
+  // (per step: the next めくる plays its motion again, so the skip is taken off when a step is shown)
+  d.querySelectorAll('.qr-hide, .qr-pin').forEach((n) => n.classList.add('fx-anim'));
+  host.addEventListener('pointerdown', (e) => { if (!e.target.closest('.btn')) host.classList.add('fx-skip'); }, { capture: true });
+  if (reduced()) { while (shown < steps.length) show(); d.dataset.reduced = '1'; }
+  else show(); // the first step at once: the birth is the moment
+  EnToggle(1435, 40);
 }
 
 // ================================================================= round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
@@ -10170,13 +11176,25 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ WinDemo: (n) => WinDemo(n ?? 40), PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),
       // R21 integration (§58.11 = §64.6): the one table and the pick among prompts due at one moment
       priority: () => [...PROMPT_PRIORITY], pick: (due) => sessionPrompt.pick(due), can: (k) => sessionPrompt.can(k), ftue: (on) => { ftue = !!on; } },
     offer: () => OfferThen(Home),
+    // quality pass (home): the next-list kinds home leaves out because another home element already says them
+    nextHomeDup: () => [...NX_HOME_DUP],
+    // quality pass (docs/quality/presentation.md): the result's celebration for a given place and a moment, on demo data
+    // (nothing applied), so every peak can be looked at without riding a race to that place
+    fx: {
+      result: (place = 1) => {
+        raceCtx = { tutorial: false, ftue: false, trackName: '青葉競馬場 芝1600m', beginner: false };
+        return show(ResultScreen, { result: { place, runners: 12, won: place === 1, time: '1:35.2', line: place === 1 ? '残り200mのムチで差し切った' : '直線で前が詰まった', tip: '', margin: '', rows: [], code: 'demo' } },
+          { coins: place === 1 ? 120 : 40, seasonPoints: place === 1 ? 30 : 10, firstWinBonus: 0 }, 40, { level: 3, xpToNextLevel: 20 }, []);
+      },
+      moment: () => Moment('昇級ラインに到達', { kicker: `クラス ${player.season.classId}`, sub: 'シーズンの終わりに昇級します', kind: 'promotion_line' }),
+    },
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,
     // REQ-L10N-013 (test/en-flow.cjs): texts with no English seen so far, and the fit state of the current screen

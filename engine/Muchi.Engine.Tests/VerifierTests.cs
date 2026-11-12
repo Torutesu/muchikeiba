@@ -40,7 +40,9 @@ namespace Muchi.Engine.Tests
             var tmp = Path.Combine(Path.GetTempPath(), "muchi-golden-" + Guid.NewGuid().ToString("N"));
             try
             {
-                var written = GoldenGenerator.WriteAll(tmp, File.ReadAllText(TestUtil.DefaultRulesetPath));
+                var written = GoldenGenerator.WriteAll(tmp, File.ReadAllText(TestUtil.DefaultRulesetPath),
+                    File.ReadAllText(Path.Combine(TestUtil.RepoRoot, "contracts", "ruleset-params.1.4.0.json")));
+                Assert.Contains(written, p => Path.GetFileName(p) == "race-turf2000-tactics.json");
                 foreach (var p in written)
                 {
                     var committed = Path.Combine(GoldenDir, Path.GetFileName(p));

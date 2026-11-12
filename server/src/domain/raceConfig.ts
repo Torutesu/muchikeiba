@@ -2,7 +2,7 @@ import { STAT_KEYS, trackById, type Master, type Stats } from './master.js';
 import type { HorseInstance } from './player.js';
 import { raceStats } from './training.js';
 import { normalizeStats } from './season.js';
-import { buildRuleset } from './ruleset.js';
+import { buildRuleset, rulesetForMode } from './ruleset.js';
 import { randInt, randU64Decimal, type Rng } from './rng.js';
 import { raceStartConfigSchema, type Entrant, type GoingAptitude, type NetParams, type RaceHorse, type RaceMode, type RaceStartConfig } from './schemas.js';
 import type { Ground } from './ground.js';
@@ -107,7 +107,8 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
     for (const k of STAT_KEYS) out[k] = Math.floor((h[k] * cpuPm) / 1000);
     return out;
   };
-  const ruleset = buildRuleset(input.rulesetOverrides);
+  // ruleset 1.4 rollout (progression.raceTactics): the tactics group for the modes switched on (time attack / challenge / tutorial never)
+  const ruleset = rulesetForMode(buildRuleset(input.rulesetOverrides), input.mode, m.progression.raceTactics);
   const entrants: Entrant[] = raw.map((e, slot) => {
     const horse = fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap));
     // REQ-UXS-003: weaker CPUs in the beginner match (stats only; skills are capped like every runner's, REQ-UXS-050)

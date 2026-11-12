@@ -6,7 +6,8 @@
 //   3. round 11 (REQ-L10N-013): a short pass in English (en-flow.cjs; en-<nn>-<name>.png): no Japanese left, no overflow
 //   4. round 15 (REQ-A11Y-*): the アクセシビリティ settings applied across the prototype, and the overflow check of key
 //      screens at the largest text size in Japanese and English (a11y-flow.cjs; a11y-<nn>-<name>.png)
-//   E2E_ONLY=club | unity | en | a11y runs one part.
+//   5. the quality integration (quality-flow.cjs; q-<name>.png): the four quality passes working together
+//   E2E_ONLY=club | unity | en | a11y | quality runs one part.
 // Fails on any console error / page error. Screenshots go to <outDir> (default: tools/figma-prototype/.screens), plus
 // contact-sheet.png of every ムチ一閃 screen (contact-sheet.py).
 // usage: node tools/figma-prototype/test/e2e.cjs [outDir]
@@ -18,6 +19,7 @@ const clubFlow = require('./club-flow.cjs');
 const unityFlow = require('./unity-flow.cjs');
 const enFlow = require('./en-flow.cjs');
 const a11yFlow = require('./a11y-flow.cjs');
+const qualityFlow = require('./quality-flow.cjs'); // quality integration (claude/quality-1)
 
 const SITE = path.join(__dirname, '..', 'site');
 const OUT = path.resolve(process.argv[2] || path.join(__dirname, '..', '.screens'));
@@ -54,6 +56,13 @@ function serve() {
     if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
     console.log('E2E OK (a11y)'); return;
   }
+  if (process.env.E2E_ONLY === 'quality') {
+    const q = await qualityFlow(browser, base, OUT, errors);
+    console.log(`Quality integration: place ${q.res.place}, lesson "${q.res.lesson}", peaks ${[...new Set(q.race.fx)].join('/')}`);
+    await browser.close(); server.close();
+    if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
+    console.log('E2E OK (quality)'); return;
+  }
   if (process.env.E2E_ONLY === 'en') {
     const en = await enFlow(browser, base, OUT, errors);
     console.log(`English: ${en.shots.length} screenshots, ${en.report.reduce((a, r) => a + r.shrunk, 0)} texts shrunk to fit, ${en.misses.length} texts without English`);
@@ -71,6 +80,8 @@ function serve() {
   console.log(`  taps to home ${ftue.taps} (navigation ${ftue.navTaps} + race ${ftue.raceTaps}); targets: aha ≤ 30 s, gacha ≤ 100 s, home ≤ 240 s, ≤ 15 taps; ${ftue.thinkMs} ms think time before each navigation tap`);
   console.log('  2nd race debrief: ' + ftue.resultLine);
   const n = shots.length;
+  const q = await qualityFlow(browser, base, OUT, errors);
+  console.log(`Quality integration: place ${q.res.place}, lesson "${q.res.lesson}", peaks ${[...new Set(q.race.fx)].join('/')}`);
   const en = await enFlow(browser, base, OUT, errors);
   console.log(`English (REQ-L10N-013): ${en.shots.length} screenshots, ${en.report.reduce((a, r) => a + r.shrunk, 0)} texts shrunk to fit, ${en.misses.length} texts without English`);
   const a11y = await a11yFlow(browser, base, OUT, errors);

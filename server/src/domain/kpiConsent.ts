@@ -85,6 +85,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'link_create', 'link_resolve', 'link_revoke', 'rematch', 'deep_link_open',
   'release_notes_view', 'release_notes_target', 'release_notes_history',
   'calendar_view', 'calendar_entry_open', 'calendar_mark',
+  // quality/goals-flow: 目標の階段 — the one claim for everything on the ladder (server; counts and coins only)
+  'goals_claim_all',
   // Round 22 (§67): a purchase confirmation refused by the own limit, play-time settings (server) and the reminder sheet (client)
   'self_limit_block', 'playtime_setting_change', 'playtime_reminder_shown',
   // R22 §69 ゲーム内アンケート (server rows; the answers themselves are never in KPI)

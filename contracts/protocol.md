@@ -84,6 +84,7 @@ C#（端末・検証サーバー）とTypeScript（Cloudflareサーバー）の�
 
 - 端末が bit6/bit7 を送ってきたら部屋はその2bitを落とす。
 - 同じtick・同じスロットに複数の入力が来たら部屋はビットORで合成する。
+- **ルールセット 1.4（駆け引きのキー群、§14.1）では、発走後の bit0 は `WHIP_RELEASE`**（ムチのボタンを離した）。1.3 以前では発走後の START は何もしない（今までどおり無視）ので、1.3 のレースの結果は変わらない。1.4 では仕掛けの前に `WHIP` が来ると「溜め」が始まり、`WHIP_RELEASE` で仕掛ける（同じtickに両方なら溜めなしで仕掛ける）。端末は 1.4 のレースで、発走後・仕掛けの前にボタンを離すたびに bit0 を送る（溜めがまだ計算されていなくても送る。溜めの無い bit0 は無視される）。
 
 ## 4. ロックステップのメッセージ（WebSocket、JSON、1メッセージ1オブジェクト）
 
@@ -381,6 +382,20 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - イベント `Skill`（値12）：Slot = 発動した馬、Value = 発動した時の順位（前のtickの順位、0 = 先頭）。表示・実況用で、チェックサムと結果ハッシュには入らない（スキルの影響は速度・スタミナとしてチェックサムに現れる）。
 - **サーバーが送る値**：`server/master/skills.json` の値を、ステータスを正規化するレース（ランク戦・大会・クラス上限のあるイベント）では `rankedCaps` で頭打ちにして送る。タイムアタック・チュートリアル・能力固定のイベントでは送らない。CPU の馬はテンプレートのスキルを持つ（乱数なし）。
 - ゴールデン：`contracts/golden/race-turf2000-skills.json`（8種類の条件すべてが発動する）。1.2.0 のゴールデンは `contracts/golden/legacy/*.ruleset-1.2.0.json` に残し、今も同じ結果で検証できることをテストしている。
+
+## 14.1 ルールセット 1.4 の駆け引き（品質パス、docs/quality/race-play.md、REQ-RACE-090〜099）
+- 追加キー（**全部あるか全部ないか**、他のキー群とは独立。C# `RulesetParams.TacticsIntKeys` と TS `TACTICS_RULESET_KEYS` は一致させる）：`goWindowPermille`・`autoGoPermille`・`gatherSpeedPermille`・`gatherDrainPermille`・`gatherMaxTicks`・`kickSpeedBonusMmPerSec`・`kickAccelBonusMmPerSec2`・`kickTicks`・`rhythmFromTicks`・`rhythmToTicks`・`rhythmBonusPermille`・`slingshotMinSlipTicks`・`slingshotSpeedBonusMmPerSec`・`slingshotAccelBonusMmPerSec2`・`slingshotTicks`・`goLinePermille`・`cpuTacticsMinLevel`・`longSpurtBonusPermille`。**ない場合は 1.3 以前と同じ計算**（スパートはスパート区間に入った瞬間に自動で始まる）。1.4.0 の値は `contracts/ruleset-params.1.4.0.json`（1.3.0 ＋ このキー群 ＋ `cpuWhipIntervalTicks` 18）。既定のルールセット（`ruleset-params.default.json`）は 1.3.0 のまま。
+- **仕掛け（スパートはプレイヤーの判断）**：スパートは「仕掛けた」tickから始まる（`InSpurt`）。仕掛けの窓 ＝ 残り ≤ スパート区間 × `goWindowPermille`。窓の中・仕掛けの前の `WHIP` は**溜め**（`Gathering`、ムチは減らない）：目標速度 × `gatherSpeedPermille`、消耗 × `gatherDrainPermille`（手綱と同じ扱い、重ねない）、溜めの tick が `gatherMaxTicks` まで増える。`WHIP_RELEASE` で仕掛け、溜めが満タンなら自分で仕掛ける（溜めきり）。溜めずに窓を過ぎた馬は残り ≤ スパート区間 × `autoGoPermille` で自動で仕掛ける（溜め 0、一閃なし）。窓より前の `WHIP` は今までどおりの早打ち。
+- **一閃**：仕掛けた瞬間から `kickTicks` の間、目標速度 ＋ `kickSpeedBonusMmPerSec` × 溜め/最大、加速 ＋ `kickAccelBonusMmPerSec2` × 溜め/最大。
+- **ロングスパート**：スパート区間より前に仕掛けた馬は、スパート区間に入るまでスパートの上乗せの `longSpurtBonusPermille`‰ だけ（1.4.0 は 0 ＝ 最高速）。スパート区間より前は仕掛けた後でも掛かる（掛かりの抽選はスパート区間の距離で判定）。
+- **会心**：仕掛けた tick または前のムチから `rhythmFromTicks`〜`rhythmToTicks` tick 後のムチは効果 1000 ＋ `rhythmBonusPermille`‰（連打の減衰より優先）。
+- **抜け出し**：窓の中で、`slingshotMinSlipTicks` tick 以上続けて風よけにいた馬がレーンを変える（受け付けられた時）と、`slingshotTicks` の間 目標速度 ＋ `slingshotSpeedBonusMmPerSec`、加速 ＋ `slingshotAccelBonusMmPerSec2`。
+- **持つライン**（HUD の金の線・CPU）：`RaceSim.GoLineM(slot)` ＝ いまのスタミナで仕掛けて足りる残り距離（スパート区間の分 ＋ その前のロングスパートの分、整数の見積もり）× `goLinePermille`、窓で頭打ち。CPU はレベルごとのずれ（レベル5 は線の近く、低いレベルほど遅く広く）で線から溜めて仕掛け、逃げ馬は早めに仕掛ける。レベル ≥ `cpuTacticsMinLevel` だけ（1.4.0 は全レベル）。
+- イベント（表示・実況用、チェックサムと結果ハッシュの外）：`Gather`（13、値＝残りm）、`Go`（14、値＝溜めの tick、自動は −1）、`Rhythm`（15、会心、値＝残りムチ）、`Slingshot`（16、値＝新しいレーン）。`SpurtStart` は 1.4 でもスパート区間の距離に入った時（最後の直線の実況）で、仕掛けとは別。
+- チェックサム：1.4 のレースだけ、各馬に (仕掛け済み|溜め中)・溜めの tick・一閃の残り・抜け出しの残り を足す（1.3 以前のチェックサムは同じ）。
+- **エンジンの水準**（§46.4）：1.4 を計算できるのは `EngineInfo.Level` 2 以上。部屋は 1.4 のレースに 2 未満の `hello.engine` を `VERSION_MISMATCH`（4026）で断る（`raceEngineLevel`）。練習のカタログ（§50.1）は `x-engine-level` が 2 以上の要求にだけ 1.4 を渡す（無い・1 なら有効なルールセットのまま）。
+- **モードごとの切り替え**（`progression.raceTactics`、リモート設定で変更可・検査あり）：`{ "ruleset": "1.4.0", "modes": { "practice": true, "friend": false, … } }`。`buildRaceConfig`・練習のカタログが `rulesetForMode` で 1.3.0 にキー群を足す（同梱の 1.3.0 なら版は "1.4.0"、それ以外の有効なルールセットなら `<版>+t1.4`）。タイムアタック・週替わりチャレンジ・チュートリアルは切り替えられない（メダル・ゴースト・FTUE）。
+- ゴールデン：`contracts/golden/race-turf2000-tactics.json`（溜め→一閃・会心・抜け出し・タップの仕掛け・全レベルの CPU）、`contracts/golden/ts-config-friend-tactics.json`（TS の 1.4 のフレンド戦の設定）。1.3.0 以前のゴールデンは変わらない。
 
 ## 15. ゲーム日（REQ-DAY-001〜006、`server/src/domain/time.ts`）
 - **ゲーム日**＝ JST の切り替え時刻からの24時間。キーは `YYYY-MM-DD`＝「JST の時刻から切り替え時刻を引いた日付」（例：4:00 切り替えなら 12月5日 03:59 JST は `2026-12-04`、04:00 は `2026-12-05`）。JST に夏時間は無い。
@@ -889,6 +904,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
   "open": null,
   "rules": { "rankedNormalized": true, "fatigueAffectsRaces": false, "inherited": false, "paidBoosts": false } }
 ```
+- 品質パス（`docs/quality/raising-breeding.md`）：`horses[].menus[]` に `outlook`（任意・古いサーバーは無い）：`{ "min", "max", "efficiencyPermille", "bondPermille", "softPermille" }`。今この馬がこのメニューを始めたときの伸び（整数部分）をミニゲームなし／満点で、finish と同じ `computeGain`（今の疲れ・絆・端数）から出す。合計は seed に依らないので幅は正確（能力の分け方だけ seed で決まる）。start の `preview` と同じ値。差分（`partial`）の馬にも入る。
 - `horses` は現役の馬だけ。`blocked`（馬）・`menus[].blocked`（メニュー）：`null` / `no_slots` / `horse_daily_limit` / `potential_full` / `tired`（疲れを足すメニューだけ）/ `retired`。`condition`：`fresh`（疲れ < 40）/ `normal` / `tired`（≥ `restAt`）。
 - `open`：仕上げていないセッション（`sessionId`・`horseId`・`menuId`・`startedAt`・`expiresAt`・`beats`・`durationMs`）。期限を過ぎたものはこの GET で**ミニゲームなしとして記録**される（その時だけ取引で書き込む。普段は読み取りだけ）。
 - `rules` は画面に「ランク戦はクラスの上限にそろえる」「疲れはレースに影響しない」と書くための値（いつも上の値）。
@@ -4161,6 +4177,65 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 目標の階段（goal ladder、quality/goals-flow、REQ-GOAL-001〜012、`server/src/domain/goals.ts`、C# `Goals.cs`・`Muchi.Game.GoalLadderModel`、docs/quality/goals-rewards.md）
+番号は統合で付ける（Round 22・23 の後）。ホームの「なぜ今日・今週・今月遊ぶか」を、既にある仕組みだけから1回で読む。**何も新しく配らない**（E 番号なし）。
+
+| メソッド | パス | 内容 |
+|---|---|---|
+| GET | `/v1/home/goals` | 階段（読むだけ）。支部にいれば共同目標も（`/v1/home/next` と同じ読み方） |
+| POST | `/v1/home/goals/claim` | Idempotency-Key 必須。受け取れるデイリー・初心者の段（届いている分を順に）・シーズンミッションを1つのトランザクションで。応答 `{ claimed: [{id, table, reward}], total, ladder }`。無ければ 409 `NOT_ELIGIBLE`。KPI `goals_claim_all`（`count`・`value` = 無償コイン、`optional`） |
+
+```json
+{ "day": "2026-12-08", "now": 1796698800000, "claimable": 4,
+  "today": { "open": true, "done": 4, "total": 5, "claimable": 3, "complete": false, "resetAt": 1796756400000,
+             "items": [{ "id": "race3", "table": "daily", "kind": "races", "progress": 3, "target": 3, "reward": { "freeCoins": 15 }, "claimed": false, "claimable": true },
+                       { "id": "first_win", "table": "first_win", "kind": "first_win", "progress": 1, "target": 1, "reward": { "freeCoins": 30 }, "claimed": true, "claimable": false }],
+             "loginBonus": { "open": true, "claimedToday": true, "next": { "track": "beginner", "day": 2, "days": 7, "reward": { "broodmare": "t_broodmare" } } } },
+  "path": { "step": 1, "steps": 10, "done": 0, "current": { "id": "bm_scout", "table": "beginner", "...": "..." }, "finalReward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } },
+  "week": { "endsAt": 0, "challenge": { "cleared": 1, "total": 3, "reward": {}, "badgeName": "…", "badgeEarned": false }, "rival": { "kind": "cpu", "me": 2, "them": 1, "rankedRaces": 3, "minRaces": 3, "winReward": { "freeCoins": 20 } },
+            "teamGoal": null, "rivalResult": null },
+  "season": { "open": true, "seasonId": "2026-12", "endsAt": 0, "classId": "C", "nextClassId": "B", "points": 165, "races": 10, "line": 300, "left": 135, "demoteBelow": null, "status": "climbing",
+              "pace": { "races": 10, "pace10": 165, "racesToLine": 9, "minRaces": 3 },
+              "power": { "horseId": "h1", "partner": true, "total": 3320, "cap": 2800, "usable": 2800, "nextCap": 3200, "nextUsable": 3200, "held": 520 },
+              "ladder": [{ "classId": "C", "statCap": 2800, "promotePoints": 300, "demoteBelowPoints": null, "current": true, "reached": true, "rewards": { "top": { "maxRank": 10, "reward": {} }, "floor": {} } }],
+              "missions": [], "pass": { "level": 2, "maxLevel": 30, "freeClaimable": 2 }, "promotion": null } }
+```
+- `today.items`：デイリー（`missions` の開放後）＋今日の初勝利ボーナス（勝った時に自動で払われる。`claimable` は常に false）。`loginBonus.next` は次に受け取るログボ（今日まだなら今日の分、受け取ったら明日の分。初心者の7日→7日周期の順、`claimLoginBonus` と同じ）。期限は実時刻（`resetAt`・週の終わり・月の終わり）で、端末は日時として出す（カウントダウンにしない）。
+- `path`：初心者ミッション（REQ-UXS-015）が終わるまで。`week`：週替わり・ライバル・共同目標・先週のライバルの結果（未読の間）のどれかがある時。
+- `season.pace`：このシーズンの自分の1戦平均×10（整数）。ランク戦が `minRaces` 未満なら null（数字を作らない）。`power`：相棒（いなければ一番強い馬）の `raceStats` の合計と、いまのクラス・次のクラスの上限で出せる分（REQ-RATE-003 の正規化そのもの。買える物で変わらない）。`promotion`：§68（Round 22）の昇級戦を統合で渡す（`status`・`next`・`races`・`needTop`・`tops`・`misses`）。
+- 次にやること（§45）の `missions_claim` の件数は、初心者の段とシーズンミッションの受け取れる数も含む（開く画面は同じ）。
+- 品質の統合（claude/quality-1）：`season.promotion` はサーバーが同じプレイヤーの状態の §68 から埋める（`status`・`next`・`races`・`needTop`・`tops`・`misses`、昇級戦が無ければ null）。ホームの「次にやること」は、ホームの他の要素が言っていない項目だけを1行で出す（`missions_claim`・`missions_close`・`pass_claim`・`login_bonus`・`race`・`first_race`・`first_win`・`rival_week`・`weekly_challenge`・`team_goal_near`・`horse_goal_near`・`training_slots` は出さない。無ければ行ごと出さない。リンクは「今日は閉じる」の1つまで）。シーズンの段の受け取りの印は、シーズンミッションに加えてパスの無料の報酬（`pass.freeClaimable`）でも付く。端末：`Muchi.Game.NextActionModel.HomeLine`／`HomeLinks`、`GoalLadderModel.PassLine`・`CapCardHorseId`（クラスの上限の行から馬カードへ）。
+- メンテナンスの区分は `core`。データのダウンロード・削除：新しい状態は無い（読むだけ）。
+
+## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
+番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。
+
+### Q1.1 `GET /v1/horses/:horseId/profile`（要認証）
+```json
+{ "horseId": "h1", "name": "アカツキ", "rarity": "SR", "sex": "male", "style": "sashi", "status": "active", "surface": "turf", "distMinM": 1600, "distMaxM": 2400, "goingAptitude": "any", "partner": true,
+  "stats": [ { "key": "speed", "base": 700, "awakening": 0, "trained": 4, "race": 704, "ranked": 593 } ],
+  "totals": { "base": 3320, "effective": 3320, "race": 3332, "ranked": 2799, "classId": "C", "cap": 2800, "capped": true, "toCap": 0 },
+  "growth": { "trainedTotal": 12, "potential": 240, "perStatCap": 96, "stage": 0, "stageKey": "debut", "nextStageAt": 24, "sessions": 2 },
+  "leaning": { "stat": "burst", "trained": 6, "sharePermilleBefore": 216, "sharePermilleNow": 217 },
+  "lineage": { "generation": 1, "line": "…", "sireName": "…", "damName": "…", "studSire": false, "bred": false, "skill": { "id": "…", "name": "末脚一閃", "…": "…" }, "skillFrom": "own", "atavism": null },
+  "career": { "races": 12, "wins": 3, "places": 6, "rivalWins": 1, "tournamentWins": 0, "biggestWin": null, "firstRaceAt": 1796871607000 },
+  "recentTraining": [ { "at": 1796871607000, "menuId": "hill", "grade": "great", "gain": 6, "score": 10 } ] }
+```
+- `stats[]`：5能力を `base`（基礎）＋`awakening`（覚醒）＋`trained`（調教。1000 の天井の後）＝`race`（レースで使う値、`raceStats`）。`ranked` は今のクラスの上限で `normalizeStats` した値。**正規化は合計だけを上限にそろえ、比率はそのまま**なので、調教で伸ばした能力の配分はランク戦にも残る（課金で伸びは増えない：§25）。
+- `growth`（調教が無効なら `null`）：成長段階 `stage` 0〜4（`debut` 新馬・`growing` 成長期・`prime` 充実期・`peak` 本格化・`complete` 完成）は素質の使った割合（0・100・350・650・1000‰）。`complete` は素質いっぱいの時だけ。`nextStageAt` は次の段階が始まる伸びの合計（最後は `null`）。**表示だけで報酬は付かない**。TS `growthStage` と C# `GrowthStages.Of` は `contracts/horse-profile.vectors.json` で一致を確認。
+- `leaning`：調教で一番伸ばした能力と、その能力が馬の中で占める割合（‰）の前後。伸びが無ければ `null`。
+- `lineage.generation`：この厩舎での世代（スカウト・配布の馬は1、仔は厩舎にいる親の世代の大きい方 +1。厩舎にいない親は1とみなす）。`skillFrom`：`own`（テンプレートの固有スキル）／`sire`／`dam`（同じスキルを持つ親）／`null`。`atavism` は §8.5 の隔世遺伝の記録。
+- `career` は §34 の戦績（確定したレースだけ）、`recentTraining` は §25 の調教日誌の新しい5件。
+- エラー：`HORSE_NOT_FOUND`。
+
+### Q1.2 配合の見込みの `rarity`（`POST /v1/breeding/preview`・`/v1/stud/preview` に追加、任意）
+`"rarity": { "R": 912345, "SR": 80000, "SSR": 7655 }`（百万分率、3つの和はちょうど 1,000,000。R が端数を持つ）。仔のレア度は `rarityForTotal`（合計 3,200 で SR・3,700 で SSR）。各能力 = 基準値（`baseline`：親の平均 × 覚醒・ニックス・近親を含む）＋ −60〜+60 の一様な整数（`randRange`）を 0〜1000 に収めたもの、なので**合計の分布を畳み込みで厳密に**出す（`foalRarityOdds`）。新しい乱数・新しい確率は無い（実際の抽選と同じ規則。`server/test/horse-profile.test.ts` で同じ規則を4万回引いた頻度と一致）。
+
+### Q1.3 クライアント
+- C# `HorseProfile.Parse`、`ApiClient.GetHorseProfileAsync(horseId)`、`TrainingMenuOutlook`（`TrainingHorse.MenuOutlook`）、`BreedingPreview.Rarity`。`FoalReveal.Build(preview, foal)`：生まれた仔を順にめくる手順（性別と脚質 → 5能力が見込みの幅のどこに着地したか → レア度 → 固有スキル・隔世遺伝）。着地の位置は見込みの幅（`stats[].min/max`）に対する割合だけで、新しい判定は無い。
+- `Muchi.Game.HorseProfileModel`（馬カード）、`TrainingModel.Outlook(menuId)`・`TrainingModel.StageUp`（結果で段階が上がったか）、`BreedingModel.Reveal`／`RevealStep`／`ParentGifts`（親ごとに渡せるもの）。
+
 
 ## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
 マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。

@@ -109,6 +109,7 @@ import { blockIds, blockListOf, isBlocking, setBlocked, type BlockOrigin } from 
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { practiceCatalog } from './practice.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
+import { claimAllGoals, goalLadderView, type GoalExtras } from './goals.js';
 import { attachRecapRank, noteRecapRace, noteRecapReplaySaved, noteRecapTeamGoal, recapProgress, recapView, recapsList, rollRecaps, type RecapStepName } from './seasonRecap.js';
 import {
   countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
@@ -121,6 +122,7 @@ import {
   setHallVisibility, type HallRelation, type HallSnapshot,
 } from './hallOfFame.js';
 import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
+import { horseProfile } from './horseProfile.js';
 import { answerReviewPrompt, checkReviewPrompt, reviewPromptStatus, type ReviewCheckInput, type ReviewStep } from './reviewPrompt.js';
 import { ackPromotion, notePromotionRace, promotionEnabled, promotionView } from './promotion.js';
 import { localRemindersView } from './localNotify.js';
@@ -436,6 +438,26 @@ export class PlayerService {
     });
   }
 
+  // ---- 目標の階段 (REQ-GOAL-*, contracts/protocol.md「目標の階段」, goals.ts) ----
+  /** GET /v1/home/goals: today → this week → this season (reads only). `extras`: the team goal / §68 brief from other objects. */
+  goals(id: string, extras: GoalExtras = {}) {
+    return this.tx(id, null, (s, now) => goalLadderView(this.d.master, s, now, this.goalExtras(s, extras)));
+  }
+  /** POST /v1/home/goals/claim: every claimable mission on the ladder in one transaction (KPI goals_claim_all), then the new ladder. */
+  async claimGoals(id: string, idemKey: string | null, extras: GoalExtras = {}) {
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = claimAllGoals(this.d.master, s, now);
+      emit({ name: 'goals_claim_all', count: r.claimed.length, value: r.total.freeCoins ?? 0 });
+      return { ...r, ladder: goalLadderView(this.d.master, s, now, this.goalExtras(s, extras)) };
+    });
+  }
+  /** Quality integration: the §68 brief comes from the same player state (the ladder's 「昇級戦 n/m」), unless the caller passed one. */
+  private goalExtras(s: PlayerState, extras: GoalExtras): GoalExtras {
+    if (extras.promotion !== undefined) return extras;
+    const x = promotionView(this.d.master, s).series;
+    return { ...extras, promotion: x ? { status: x.status, next: x.next, races: x.races, needTop: x.needTop, tops: x.tops, misses: x.misses } : null };
+  }
+
   // ---- onboarding (REQ-UXS-001/002) ----
   recordConsent(id: string, termsVersion: string, privacyVersion: string) {
     return this.tx(id, null, (s, now, emit) => {
@@ -647,6 +669,8 @@ export class PlayerService {
   // ---- 馬ごとの目標 (REQ-HGOAL-*, horseGoals.ts) ----
   /** REQ-HGOAL-010: a horse's goal chain (a read: completion is recorded where results are counted, never here). */
   async horseGoals(id: string, horseId: string) { return horseGoalsView(this.d.master, await this.load(id), horseId); }
+  /** Quality pass (docs/quality/raising-breeding.md): 馬カード — the horse growing, read-only. */
+  async horseProfile(id: string, horseId: string) { return horseProfile(this.d.master, await this.load(id), horseId); }
   /** REQ-HGOAL-007: pin one horse's goal to the home (null = unpin). Idempotent; hgoal_pin only when the pin changes. */
   pinHorseGoal(id: string, horseId: string | null) { return this.tx(id, null, (s, _now, emit) => pinHorseGoal(this.d.master, s, horseId, emit)); }
   async pinnedHorseGoal(id: string) { return { pinned: pinnedGoalView(this.d.master, await this.load(id)) }; }
@@ -2230,7 +2254,7 @@ export class PlayerService {
   // ---- 出走前アドバイス pre-race coach (REQ-ADV-*, contracts/protocol.md §39): read-only, free, the same for everyone ----
   async raceAdvice(id: string, q: AdviceQuery, ruleset?: Ruleset) { return raceAdviceFor(this.d.master, await this.load(id), q, this.d.clock(), ruleset); }
   /** REQ-PRAC-002 (§50.1): the practice catalog — read-only, never saves; practice results have no server path at all. */
-  async practiceCatalog(id: string, ruleset?: Ruleset) { return practiceCatalog(this.d.master, await this.load(id), this.d.clock(), ruleset); }
+  async practiceCatalog(id: string, ruleset?: Ruleset, engineLevel: number | null = null) { return practiceCatalog(this.d.master, await this.load(id), this.d.clock(), ruleset, engineLevel); }
   async wchView(id: string) { return weeklyChallengeView(this.d.master, await this.load(id), this.d.clock()); }
   /** Keyed (a retry returns the same session). `ruleset` = the active remote-config ruleset (the day's form is switched off). */
   wchStart(id: string, challengeId: string, input: WchStartInput, idemKey: string | null = null, ruleset?: Ruleset) {

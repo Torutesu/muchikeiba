@@ -1,4 +1,5 @@
-import { engineMismatch } from '../domain/maintenance.js';
+import { ENGINE_LEVEL, engineMismatch } from '../domain/maintenance.js';
+import { raceEngineLevel } from '../domain/ruleset.js';
 import { DurableObject } from 'cloudflare:workers';
 import type { StartVisuals } from '../domain/visuals.js';
 import type { Env } from '../env.js';
@@ -229,7 +230,8 @@ export class RaceRoomDO extends DurableObject<Env> {
       try {
         const t = await verifyTicket(msg.token, this.env.TICKET_SECRET, core.config.raceId, now);
         // REQ-MNT-008 (§46): an app whose engine cannot run this race is refused before it takes a seat (no reconnect loop)
-        if (engineMismatch(msg.engine)) {
+        // a 1.4 tactics race needs an engine that knows it (raceEngineLevel)
+        if (engineMismatch(msg.engine, raceEngineLevel(core.config.ruleset as Record<string, unknown>, ENGINE_LEVEL))) {
           ws.send(JSON.stringify({ t: 'err', code: 'VERSION_MISMATCH' }));
           ws.close(4026, 'version mismatch');
           return;

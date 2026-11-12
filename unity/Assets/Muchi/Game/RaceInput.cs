@@ -41,10 +41,26 @@ namespace Muchi.Game
         public byte Collect(RaceSim sim, int slot)
         {
             if (sim == null || slot < 0 || slot >= sim.EntrantCount) return 0;
-            byte c = Collect(sim.GetHorse(slot));
+            var me = sim.GetHorse(slot);
+            byte c = Collect(me);
             if (WhipMode == WhipInput.Hold) c |= _hold.Next(sim, slot, _whipHeld);
+            else if (_spurReleased && sim.TacticsEnabled && me.Departed && !me.InSpurt)
+            {
+                // ruleset 1.4 (tap mode): letting go of the whip button before the go is the release of the hold (START =
+                // WHIP_RELEASE after departure). Sent whenever the horse has not gone: with the input delay the hold may
+                // not be simulated yet, and the engine ignores a release with no hold.
+                c |= Cmd.Start;
+            }
+            _spurReleased = false;
             return c;
         }
+
+        /// <summary>
+        /// Ruleset 1.4: the whip button was let go (pointer up / cancel). Before the go this releases the hold (溜め → 仕掛け);
+        /// afterwards it does nothing. Call it from the button's release in tap mode (hold mode reports through SetWhipHeld).
+        /// </summary>
+        public void SpurRelease() => _spurReleased = true;
+        private bool _spurReleased;
 
         /// <summary>-1 = screen left, +1 = screen right. Taps accumulate until the next Collect (one lane per frame).</summary>
         public void Lane(int screenDirection) { if (screenDirection != 0) _lane = Math.Sign(screenDirection); }
@@ -79,7 +95,7 @@ namespace Muchi.Game
 
         public void Reset()
         {
-            _lane = 0; _spur = false; _reinHeld = false; _reinSent = false; _whipHeld = false; _hold.Reset();
+            _lane = 0; _spur = false; _reinHeld = false; _reinSent = false; _whipHeld = false; _spurReleased = false; _hold.Reset();
         }
     }
 }

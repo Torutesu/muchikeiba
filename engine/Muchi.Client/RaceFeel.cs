@@ -33,6 +33,23 @@ namespace Muchi.Client
         SlipstreamOff = 8,
         /// <summary>Haptic "light ×1": the player passed a horse.</summary>
         Overtake = 9,
+        // ---- ruleset 1.4 tactics (never raised without the tactics keys) ----
+        /// <summary>"仕掛けどころ：長押しで溜めて、離して仕掛ける" — once, when it is time to start the hold for the go line.</summary>
+        GoNow = 10,
+        /// <summary>Haptic "medium ×1": the hold reached a full charge (溜めきった).</summary>
+        GatherFull = 11,
+        /// <summary>Haptic "strong ×1": the horse went (一閃 when charged).</summary>
+        Go = 12,
+        /// <summary>Haptic "light ×2": a 会心 whip on the rhythm.</summary>
+        PerfectWhip = 13,
+        /// <summary>"外が空いた：抜け出せ" — once, a slingshot is ready and a lane beside is clear.</summary>
+        SlingshotReady = 14,
+        /// <summary>Pulled out of the slipstream: the slingshot burst.</summary>
+        Slingshot = 15,
+        /// <summary>"競り合い！" — once, a rival is level with the player in the final stretch.</summary>
+        Duel = 16,
+        /// <summary>"前が壁：外へ出してから仕掛けよう" — once, boxed in inside the window before the go.</summary>
+        Boxed = 17,
     }
 
     /// <summary>One presentation cue (subtitle / haptic / sound trigger) for the player's horse.</summary>
@@ -68,6 +85,8 @@ namespace Muchi.Client
         public long GapAheadMm = -1, GapBehindMm = -1;
         /// <summary>The single most important line to show now (null = none). Same order as the cue priorities.</summary>
         public string Hint;
+        /// <summary>Ruleset 1.4: the 仕掛け / rhythm / slingshot state for the HUD (null without the tactics keys).</summary>
+        public RaceTacticsSnapshot Tactics;
     }
 
     /// <summary>Stateless race-feel helpers (shared by the HUD tracker, the debrief and tests).</summary>
@@ -92,6 +111,19 @@ namespace Muchi.Client
         public const string TextRunaway = "飛ばしすぎ：手綱で脚をためよう";
         public const string TextWhipMash = "連打は効きが落ちる：間をあけて";
         public const string TextSlipstream = "脚をためている";
+        // ruleset 1.4 tactics
+        public const string TextGoNow = "仕掛けどころ：長押しで溜めて、離して仕掛ける";
+        public const string TextGathering = "溜めて…離して仕掛ける";
+        public const string TextGatherFull = "溜めきった！";
+        public const string TextGo = "仕掛けた！";
+        public const string TextIssen = "一閃！";
+        public const string TextPerfect = "会心！";
+        public const string TextBeat = "金の輪でムチ：会心";
+        public const string TextSlingReady = "外が空いた：抜け出せ";
+        public const string TextSling = "抜け出した！";
+        public const string TextDuel = "競り合い！拍に合わせてムチ";
+        public const string TextBoxed = "前が壁：外へ出してから仕掛けよう";
+        public const string TextBlocked = "前が詰まっている：外へ";
 
         public static StaminaWarning StaminaLevel(int staminaPermille, long staminaRaw)
         {
@@ -203,6 +235,11 @@ namespace Muchi.Client
         private StaminaWarning _stamina;
         private bool _slip, _chanceShown, _chanceOver, _kakariShown, _runawayShown, _mashShown;
         private int _chanceOpenTick = -1;
+        // ruleset 1.4
+        private bool _goNowShown, _fullShown, _slingReadyShown, _duelShown, _boxedShown;
+        private int _perfectTick = -100000, _goTick = -100000, _slingTick = -100000, _goCharge;
+        /// <summary>Show the 会心 / 一閃 / 抜け出した pop for this many ticks.</summary>
+        public int PopTicks { get; set; } = 24;
 
         public int Slot => _slot;
         public RaceFeelSnapshot Current { get; private set; } = new RaceFeelSnapshot();
@@ -229,6 +266,13 @@ namespace Muchi.Client
             for (; _eventIndex < events.Count; _eventIndex++)
             {
                 var e = events[_eventIndex];
+                if (e.Slot == _slot && e.Type == RaceEventType.Go)
+                {
+                    _goTick = e.Tick; _goCharge = e.Value;
+                    Raise(e.Tick, RaceFeelCueKind.Go, e.Value >= p.GatherMaxTicks / 2 ? RaceFeel.TextIssen : RaceFeel.TextGo);
+                }
+                if (e.Slot == _slot && e.Type == RaceEventType.Rhythm) { _perfectTick = e.Tick; Raise(e.Tick, RaceFeelCueKind.PerfectWhip, RaceFeel.TextPerfect); }
+                if (e.Slot == _slot && e.Type == RaceEventType.Slingshot) { _slingTick = e.Tick; Raise(e.Tick, RaceFeelCueKind.Slingshot, RaceFeel.TextSling); }
                 if (e.Slot != _slot || e.Type != RaceEventType.Whip) continue;
                 if (e.Tick - _lastWhipTick < p.WhipDiminishWindowTicks)
                 {
@@ -253,7 +297,8 @@ namespace Muchi.Client
             }
 
             // whip cue: once, when the window opens; off after a whip or once the window has passed
-            bool inWindow = RaceFeel.InWhipWindow(sim, _slot);
+            // (ruleset 1.4: the 仕掛け cue below takes its place — the whips come after the go, on the rhythm)
+            bool inWindow = !sim.TacticsEnabled && RaceFeel.InWhipWindow(sim, _slot);
             if (inWindow && !_chanceShown)
             {
                 _chanceShown = true;
@@ -276,6 +321,20 @@ namespace Muchi.Client
 
             var gaps = RaceFeel.Gaps(sim, _slot);
             bool mashed = t - _mashTick < MashHintTicks;
+            RaceTacticsSnapshot tac = null;
+            if (sim.TacticsEnabled)
+            {
+                tac = RaceTactics.Snapshot(sim, _slot);
+                tac.PerfectPop = t - _perfectTick < PopTicks;
+                tac.GoPop = t - _goTick < PopTicks;
+                tac.SlingPop = t - _slingTick < PopTicks;
+                tac.LastGoCharge = _goCharge;
+                if (tac.GoNow && !_goNowShown) { _goNowShown = true; Raise(t, RaceFeelCueKind.GoNow, RaceFeel.TextGoNow); }
+                if (tac.Gathering && tac.ChargePermille >= 1000 && !_fullShown) { _fullShown = true; Raise(t, RaceFeelCueKind.GatherFull, RaceFeel.TextGatherFull); }
+                if (tac.SlingReady && !_slingReadyShown) { _slingReadyShown = true; Raise(t, RaceFeelCueKind.SlingshotReady, RaceFeel.TextSlingReady); }
+                if (tac.DuelSlot >= 0 && !_duelShown) { _duelShown = true; Raise(t, RaceFeelCueKind.Duel, RaceFeel.TextDuel); }
+                if (tac.Boxed && !_boxedShown) { _boxedShown = true; Raise(t, RaceFeelCueKind.Boxed, RaceFeel.TextBoxed); }
+            }
             var s = new RaceFeelSnapshot
             {
                 Tick = sim.Tick,
@@ -289,15 +348,26 @@ namespace Muchi.Client
                 WhipMashed = mashed,
                 GapAheadMm = gaps.aheadMm,
                 GapBehindMm = gaps.behindMm,
+                Tactics = tac,
             };
+            if (tac != null) s.WhipChance = tac.GoNow || tac.Beat;
             s.Hint = h.Finished ? null
                 : kakari ? RaceFeel.TextKakari
+                : tac != null && tac.Gathering ? (tac.ChargePermille >= 1000 ? RaceFeel.TextGatherFull : RaceFeel.TextGathering)
+                : tac != null && tac.SlingPop ? RaceFeel.TextSling
+                : tac != null && tac.PerfectPop ? RaceFeel.TextPerfect
+                : tac != null && tac.GoPop ? (tac.LastGoCharge >= p.GatherMaxTicks / 2 ? RaceFeel.TextIssen : RaceFeel.TextGo)
+                : tac != null && tac.Boxed ? RaceFeel.TextBoxed
+                : tac != null && tac.GoNow ? RaceFeel.TextGoNow
+                : tac != null && tac.SlingReady ? RaceFeel.TextSlingReady
+                : tac != null && tac.DuelSlot >= 0 ? RaceFeel.TextDuel
                 : s.Stamina == StaminaWarning.Empty ? RaceFeel.TextStaminaEmpty
                 : chance ? RaceFeel.TextWhipChance
                 : mashed ? RaceFeel.TextWhipMash
                 : s.Stamina == StaminaWarning.Critical ? RaceFeel.TextStaminaCritical
                 : runaway ? RaceFeel.TextRunaway
-                : slip ? RaceFeel.TextSlipstream
+                : tac != null && tac.Committed && h.Blocked ? RaceFeel.TextBlocked
+                : slip && !(tac != null && h.Blocked) ? RaceFeel.TextSlipstream
                 : null;
             Current = s;
             _lastTick = sim.Tick;

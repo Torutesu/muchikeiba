@@ -124,7 +124,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .btn { cursor: pointer; display: flex; align-items: center; justify-content: center; text-align: center; padding: 0 14px;
   transition: filter .1s ease, transform .1s ease; font-weight: 700; color: var(--white); }
 .btn:hover { filter: brightness(1.1); }
-.btn:active { filter: brightness(.85); transform: translateY(1px); }
+.btn:active { filter: brightness(.88); transform: scale(.97); }
 .btn.disabled { cursor: default; filter: none; transform: none; opacity: .45; }
 .btn .bg { position: absolute; inset: 0; border-radius: var(--radius); }
 .btn span { position: relative; line-height: 1.15; white-space: pre-wrap; }
@@ -277,6 +277,35 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .whipdots b { display: none; }
 .whipdots i { width: 21px; height: 21px; border-radius: 50%; background: #435368; }
 .whipdots i.on { background: var(--gold); }
+/* ruleset 1.4 (docs/quality/race-play.md §5): the hold's charge ring and the rhythm ring around the whip button, the 仕掛けバー */
+.btn.whip .ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .15s; /* inside the button: never widens it (the overflow audit) */
+  -webkit-mask: radial-gradient(circle closest-side, transparent 82%, #000 83%, #000 99%, transparent 100%); mask: radial-gradient(circle closest-side, transparent 82%, #000 83%, #000 99%, transparent 100%); }
+.btn.whip .ring i { position: absolute; inset: 0; border-radius: 50%; }
+.btn.whip .ring .arc { background: conic-gradient(transparent 0 calc(var(--g0, .7) * 1turn), rgba(255, 211, 79, .95) calc(var(--g0, .7) * 1turn) calc(var(--g1, .9) * 1turn), transparent calc(var(--g1, .9) * 1turn)); opacity: 0; }
+.btn.whip .ring .prog { background: conic-gradient(var(--cyan) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .85) calc(var(--p, 0) * 1turn)); }
+.btn.whip.gather .ring, .btn.whip.beat .ring { opacity: 1; }
+.btn.whip.beat .ring .arc { opacity: 1; }
+.btn.whip.beat .ring .prog { background: conic-gradient(rgba(255, 255, 255, .9) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .6) calc(var(--p, 0) * 1turn)); }
+.btn.whip.gather .ring .prog { background: conic-gradient(var(--gold) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .85) calc(var(--p, 0) * 1turn)); }
+.btn.whip.gather span { color: var(--white); }
+.btn.whip.full .bg { box-shadow: inset 0 0 0 10px #fff4b0, 0 0 36px 10px rgba(255, 214, 60, .7); }
+.btn.whip.gonow .bg { animation: chance .45s ease-in-out infinite alternate; }
+.btn.whip.gold .bg { box-shadow: inset 0 0 0 10px #fff4b0, 0 0 30px 8px rgba(255, 214, 60, .65); }
+.btn.whip.gold span { color: var(--white); }
+.hud .gobar { pointer-events: none; background: rgba(var(--navy-rgb), .78); border-radius: var(--radius); }
+.gobar .trk, .gobar .done { position: absolute; left: 16px; top: 30px; height: 6px; border-radius: 3px; }
+.gobar .trk { right: 16px; background: #19364b; }
+.gobar .done { background: rgba(var(--cyan-rgb), .9); }
+.gobar[data-phase="go"] .done { background: var(--gold); }
+.gobar .ln { position: absolute; top: 20px; width: 5px; height: 26px; margin-left: -2px; background: var(--gold); border-radius: 2px; box-shadow: 0 0 10px rgba(255, 211, 79, .85); }
+.gobar .au { position: absolute; top: 24px; width: 2px; height: 18px; background: #96adbb; }
+.gobar .me { position: absolute; top: 25px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--a11y-position-self); box-shadow: 0 0 0 2px #fff; }
+.gobar .lb { position: absolute; top: 4px; font-size: 13px; font-weight: 700; letter-spacing: .2em; color: var(--cyan); white-space: nowrap; }
+.gobar .lb.l { left: 16px; } .gobar .lb.r { right: 16px; color: var(--soft, #b9c8d3); }
+.gobar[data-phase="gonow"] .lb.l, .gobar[data-phase="gather"] .lb.l, .gobar[data-phase="full"] .lb.l { color: var(--gold); }
+.hud .pop.gold { color: var(--gold) !important; }
+.marker.duel .wind { color: var(--gold); font-weight: 700; }
+html[data-reduce-motion="on"] .btn.whip.gonow .bg { animation: none; box-shadow: inset 0 0 0 10px #fff4b0, 0 0 40px 12px rgba(255, 214, 60, .8); }
 /* left-thumb lanes and the rein: quiet round controls */
 .btn.pad { border-radius: 50%; padding: 0; font-size: 20px; letter-spacing: .06em; font-weight: 700; }
 .btn.pad .bg { border-radius: 50%; background: rgba(7, 24, 43, .72); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .75); }
@@ -305,6 +334,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .marker[data-level="Low"] .mini i { background: var(--a11y-gauge-low); }
 .marker[data-level="Critical"] .mini i, .marker[data-level="Empty"] .mini i { background: var(--a11y-gauge-critical); animation: blink .4s steps(2) infinite; }
 .marker.kakari .nm::after { content: " 掛"; color: var(--gold); }
+.marker.quiet .gap, .marker.quiet .wind { display: none; } /* integration: a coaching line is up — the tag says the name only */
 .marker .gap, .marker .wind { order: 3; font-size: 16px; color: var(--white); text-shadow: 0 2px 6px rgba(0, 0, 0, .9); white-space: nowrap; font-weight: 500; }
 .marker.slip::before { content: ""; position: absolute; left: -40px; right: -40px; top: 40px; height: 80px; pointer-events: none;
   background: repeating-linear-gradient(100deg, transparent 0 22px, rgba(255, 255, 255, .55) 22px 25px, transparent 25px 48px); animation: wind .35s linear infinite;
@@ -319,7 +349,12 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .cutin b { font-size: 34px; color: var(--white); }
 .cutin.mine b { color: var(--gold); }
 .cutin em { font-style: normal; font-size: 18px; color: var(--text-2); }
-.cutin.gone { opacity: 0; transform: translateX(40px); }
+.cutin.gone { opacity: 0; transform: translateX(-40px); }
+/* integration (quality-1): one plate, in the left column (460 px), never over the go area */
+.cutins { align-items: stretch; }
+.cutins .cutin { min-width: 0; padding: 10px 22px; }
+.cutins .cutin b { font-size: 28px; overflow-wrap: anywhere; }
+.cutins .cutin em { font-size: 16px; }
 @keyframes cutin { from { opacity: 0; transform: translateX(-80px) skewX(-8deg); } to { opacity: 1; transform: none; } }
 
 /* ---------------------------------------------------------------- scout */
@@ -758,6 +793,254 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
   background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .7); transform: skewX(-10deg); white-space: nowrap; }
 .cal-mark.on { color: var(--navy); background: var(--cyan); box-shadow: none; }
 .cal-go { font-size: 26px; color: var(--cyan); line-height: 1; }
+
+/* ================================================================ quality pass: the design system, tightened (docs/quality/presentation.md)
+   One layer over the Codex tokens above: a type scale with a phone floor, an 8 px spacing scale, radii, elevation and
+   motion tokens, and the shared components (panel, CTA, chips, stat bars, rows, tabs, sheets) refined so every screen
+   inherits them. The race / result / scout peaks (fx-*) live here too. Mirrored for Unity in
+   docs/handoff-codex-quality-presentation.md. The stage is 1600×900; on a 390 pt-tall phone 1 stage px ≈ 0.43 pt, so the
+   floor for anything a player has to read is 16 px and body copy is 20 px or more. */
+:root {
+  /* type scale (stage px) — display → legal; numbers are 700 + tabular */
+  --fs-display: 112px;  /* the place on the result */
+  --fs-hero: 64px;      /* peak headlines (差し切った！, rare names) */
+  --fs-title: 44px;     /* screen titles, the horse's name */
+  --fs-heading: 32px;   /* panel headings, big numbers */
+  --fs-subhead: 24px;   /* list titles, CTA */
+  --fs-body: 20px;      /* body copy */
+  --fs-label: 18px;     /* kickers, tabs, chips */
+  --fs-caption: 16px;   /* the floor for anything a player has to read */
+  --fs-legal: 14px;     /* legal notes and footnotes only */
+  /* spacing: 4 / 8 grid */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px; --sp-7: 44px; --sp-8: 64px;
+  /* radii */
+  --r-sm: 3px; --r-md: 4px; --r-lg: 6px; --r-pill: 999px;
+  /* elevation: a 1 px top light and a soft drop; level 3 for sheets */
+  --elev-1: inset 0 1px 0 rgba(255, 255, 255, .06), 0 10px 28px rgba(0, 0, 0, .26);
+  --elev-2: inset 0 1px 0 rgba(255, 255, 255, .08), 0 16px 40px rgba(0, 0, 0, .36);
+  --elev-3: inset 0 1px 0 rgba(255, 255, 255, .08), -24px 0 64px rgba(0, 0, 0, .45);
+  /* motion */
+  --dur-tap: 90ms; --dur-fast: 160ms; --dur-base: 280ms; --dur-slow: 480ms; --dur-peak: 900ms;
+  --ease-out: cubic-bezier(.2, .7, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1); --ease-inout: cubic-bezier(.65, 0, .35, 1);
+  --ease-spring: cubic-bezier(.2, .9, .3, 1.25);
+  /* places (result, finish stamp): gold / silver / bronze — never colour alone, the number is always there */
+  --place-1: #ffd34f; --place-2: #e4edf4; --place-3: #f0b07a;
+}
+
+/* ---- panels: one elevation, a quiet top light; nested (flat) panels stay flat */
+:where(.glass) { box-shadow: var(--elev-1); }
+:where(.glass.flat) { box-shadow: none; }
+:where(.card) { box-shadow: var(--elev-1); }
+.screen { transition: opacity var(--dur-base) var(--ease-out); }
+.screen .rise { animation-duration: var(--dur-slow); animation-timing-function: var(--ease-out); }
+
+/* ---- tap feedback: every button answers within a frame (press = a slight sink) */
+.btn { transition: filter var(--dur-tap) ease, transform var(--dur-tap) var(--ease-out); }
+.btn.row:active, .btn.tab:active, .btn.link:active, .btn.tabtext:active { transform: translateY(1px); }
+.btn.disabled:active { transform: none; }
+/* the CTA: a light sweep when it arrives (and every few seconds on the hero CTA) — the one thing on a screen that moves */
+.btn.cta .bg { overflow: hidden; }
+.btn.cta .bg::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; pointer-events: none;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, .5) 50%, rgba(255, 255, 255, 0) 100%);
+  transform: translateX(-120%) skewX(-18deg); animation: ctashine 1s var(--dur-slow) var(--ease-out) 1 both; }
+.btn.cta.hero .bg::after { animation: ctashine-loop 6s 1.2s var(--ease-inout) 2 both; } /* twice, then still: no endless motion on a menu (battery, and blurred panels repaint) */
+.btn.cta.disabled .bg::after { display: none; }
+@keyframes ctashine { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(320%) skewX(-18deg); } }
+@keyframes ctashine-loop { 0% { transform: translateX(-120%) skewX(-18deg); } 16%, 100% { transform: translateX(320%) skewX(-18deg); } }
+.btn.cta:active .bg { filter: brightness(.9); }
+
+/* ---- bottom tabs: readable on a phone (were 15 px ≈ 6.5 pt), a thicker active bar */
+.btn.tab { font-size: var(--fs-label); letter-spacing: .16em; height: 48px; }
+.btn.tab.on::after { height: 3px; bottom: 5px; border-radius: 2px; }
+.crumbs i { margin: 0 12px; font-size: var(--fs-label); }
+
+/* ---- stat bars: the fill grows in when the screen arrives; a light cap on the thick bar */
+.bar i { position: relative; transform-origin: left center; animation: bargrow var(--dur-slow) 120ms var(--ease-out) both; }
+.bar.thick i::after { content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 10px; border-radius: inherit; background: rgba(255, 255, 255, .45); }
+@keyframes bargrow { from { transform: scaleX(0); } to { transform: none; } }
+
+/* ---- sheets: level 3 and a cyan edge that fades down */
+.sheet { box-shadow: var(--elev-3); animation-duration: var(--dur-base); animation-timing-function: var(--ease-out); }
+.sheet::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 2px; background: linear-gradient(180deg, var(--cyan), rgba(var(--cyan-rgb), 0) 70%); pointer-events: none; }
+.toast { box-shadow: inset 4px 0 0 var(--cyan), var(--elev-2); }
+
+/* ================================================================ peaks (fx-*): race start, final straight, finish, celebration, reveal
+   Presentation only: nothing here reads back into the race. A tap completes a moment (.fx-skip); reduce motion (§41)
+   shows the end state without movement, shake, particles or flashes. */
+.fx-skip .fx-anim, .fx-skip .fx-anim * { animation-duration: 1ms !important; animation-delay: 0s !important; transition-duration: 1ms !important; }
+.fx-skip .fx-confetti { display: none; }
+
+/* -- race: layers under the HUD (letterbox, vignette, speed lines) and over it (title card, countdown, cut-in, finish) */
+.fx-under { position: absolute; inset: 0; pointer-events: none; --fx-k: 0; }
+.fx-over { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.fx-bar { position: absolute; left: 0; right: 0; height: 0; background: #02060b; transition: height var(--dur-slow) var(--ease-inout); }
+.fx-bar.top { top: 0; } .fx-bar.bot { bottom: 0; }
+.fx-under.lb .fx-bar { height: 72px; }
+.fx-under.lb-thin .fx-bar { height: 30px; }
+.fx-vig { position: absolute; inset: 0; opacity: calc(var(--fx-k) * 1.1); transition: opacity var(--dur-base) linear;
+  background: radial-gradient(ellipse 70% 64% at 50% 52%, rgba(0, 0, 0, 0) 52%, rgba(2, 6, 12, .62) 100%); }
+.fx-under.beat .fx-vig { animation: fxbeat .34s var(--ease-out); }
+@keyframes fxbeat { 0% { opacity: 1; } 100% { opacity: calc(var(--fx-k) * 1.1); } }
+.fx-lines { position: absolute; inset: 0; opacity: calc(var(--fx-k) * .7); transition: opacity var(--dur-base) linear;
+  background: repeating-conic-gradient(from 0deg at 50% 48%, rgba(255, 255, 255, 0) 0deg 2.6deg, rgba(255, 255, 255, .5) 2.8deg 3deg, rgba(255, 255, 255, 0) 3.2deg 6.1deg);
+  -webkit-mask: radial-gradient(ellipse 66% 60% at 50% 48%, transparent 62%, #000 100%); mask: radial-gradient(ellipse 66% 60% at 50% 48%, transparent 62%, #000 100%); }
+.fx-straight .fx-lines { animation: fxlines .5s linear infinite; }
+.fx-under.calm .fx-lines { animation: none; }
+@keyframes fxlines { from { transform: scale(1.05) rotate(.6deg); } to { transform: scale(1) rotate(0deg); } }
+.fx-under.calm .fx-lines, .fx-under.calm .fx-vig { opacity: 0; }
+/* pre-gate title card: a skewed navy band from the left with the course */
+.fx-title { position: absolute; left: 0; top: 318px; padding: 22px 90px 24px 64px; background: linear-gradient(90deg, rgba(var(--navy-rgb), .94) 72%, rgba(var(--navy-rgb), 0));
+  box-shadow: inset 0 3px 0 var(--cyan); clip-path: polygon(0 0, 100% 0, calc(100% - 40px) 100%, 0 100%); animation: fxtitle var(--dur-slow) var(--ease-out) both; }
+.fx-title .k { font-size: var(--fs-label); font-weight: 700; letter-spacing: var(--ls-kicker); color: var(--cyan); white-space: nowrap; }
+.fx-title .t { font-size: var(--fs-title); font-weight: 700; letter-spacing: .05em; margin-top: 6px; white-space: nowrap; }
+.fx-title .m { font-size: var(--fs-subhead); font-weight: 700; color: var(--gold); letter-spacing: .06em; margin-top: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fx-title.gone { animation: fxtitle-out var(--dur-base) var(--ease-in) both; }
+@keyframes fxtitle { from { transform: translateX(-60px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fxtitle-out { to { transform: translateX(-80px); opacity: 0; } }
+/* the gate countdown: 3 · 2 · 1, then スタート */
+.fx-count { position: absolute; left: 0; right: 0; top: 290px; text-align: center; font-size: 180px; font-weight: 700; line-height: 1; color: var(--white);
+  font-variant-numeric: tabular-nums; text-shadow: 0 6px 30px rgba(0, 0, 0, .7); }
+.fx-count.go { font-size: var(--fs-hero); top: 350px; color: var(--cyan); letter-spacing: .2em; }
+.fx-count.pop { animation: fxcount .9s var(--ease-out) both; }
+@keyframes fxcount { 0% { transform: scale(1.5); opacity: 0; } 18% { transform: scale(1); opacity: 1; } 70% { opacity: 1; } 100% { transform: scale(.92); opacity: 0; } }
+/* final straight cut-in: a cyan-edged band sweeps across, holds, leaves */
+.fx-cut { position: absolute; left: 0; right: 0; top: 268px; height: 116px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: linear-gradient(90deg, rgba(var(--navy-rgb), 0), rgba(var(--navy-rgb), .9) 22%, rgba(var(--navy-rgb), .9) 78%, rgba(var(--navy-rgb), 0));
+  box-shadow: inset 0 2px 0 rgba(var(--cyan-rgb), .9), inset 0 -2px 0 rgba(var(--cyan-rgb), .9); animation: fxsweep 1.7s var(--ease-inout) both; }
+.fx-cut .k { font-size: var(--fs-label); letter-spacing: .3em; color: var(--cyan); font-weight: 700; font-variant-numeric: tabular-nums; }
+.fx-cut .t { font-size: 56px; font-weight: 700; letter-spacing: .24em; font-style: italic; color: var(--white); text-shadow: 0 4px 20px rgba(0, 0, 0, .6); white-space: nowrap; }
+@keyframes fxsweep { 0% { transform: translateX(110%) skewX(-12deg); opacity: 0; } 16% { transform: none; opacity: 1; } 78% { transform: none; opacity: 1; } 100% { transform: translateX(-110%) skewX(-12deg); opacity: 0; } }
+/* the finish: a light and the place stamp (gold / silver / bronze; the number always) */
+.fx-flash { position: absolute; inset: 0; background: #fff; animation: fxflash .5s ease-out both; pointer-events: none; }
+.fx-flash.tint { background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, .9), var(--fx-tint, rgba(255, 211, 79, .55)) 55%, rgba(0, 0, 0, 0) 100%); }
+@keyframes fxflash { from { opacity: .85; } to { opacity: 0; } }
+.fx-finished .marker, .fx-finished .label.pop, .fx-finished .hintbox { opacity: 0; transition: opacity var(--dur-fast) ease; } /* the stamp is the one thing at the finish */
+.fx-finish { position: absolute; left: 0; right: 0; top: 270px; text-align: center; --pc: var(--white); animation: fxstamp .6s var(--ease-spring) both; }
+.fx-finish[data-place="1"] { --pc: var(--place-1); } .fx-finish[data-place="2"] { --pc: var(--place-2); } .fx-finish[data-place="3"] { --pc: var(--place-3); }
+.fx-finish .k { font-size: var(--fs-subhead); font-weight: 700; letter-spacing: .4em; color: var(--white); text-shadow: 0 3px 14px rgba(0, 0, 0, .8); }
+.fx-finish .t { font-size: 150px; font-weight: 700; line-height: 1.05; color: var(--pc); letter-spacing: .04em; font-variant-numeric: tabular-nums; text-shadow: 0 6px 34px rgba(0, 0, 0, .65); }
+@keyframes fxstamp { 0% { transform: scale(1.8); opacity: 0; } 100% { transform: none; opacity: 1; } }
+/* the HUD steps back in the final straight: only what the player acts on stays at full strength */
+.hud .minimap, .hud .chip.banner, .hud .chip.cheer, .hud .caption, .hud .btn.quit, .hud .chip.assist { transition: opacity var(--dur-slow) ease; }
+.fx-straight .minimap, .fx-straight .chip.banner, .fx-straight .chip.cheer, .fx-straight .caption { opacity: 0; }
+.fx-straight .btn.quit, .fx-straight .chip.assist { opacity: .4; }
+/* integration (1.4 × the final straight, claude/quality-1): the 仕掛けバー has done its job once the go is made (until then it
+   stays, gold line and all) and the marker's gap / slipstream words step back with the rest; the whip button, its rings,
+   the one coaching line (which also calls a duel) and the place stay. The hint never repeats the pop (app.js paint). */
+.hud .gobar, .marker .gap, .marker .wind { transition: opacity var(--dur-slow) ease; }
+.fx-straight .gobar:not([data-phase="window"]):not([data-phase="gonow"]):not([data-phase="gather"]):not([data-phase="full"]), .fx-finished .gobar, .fx-straight .marker .gap, .fx-straight .marker .wind { opacity: 0; }
+.fx-pre .chip.banner { opacity: 0; }
+/* the place chip answers a gained place */
+.hud .chip.pos.gain { animation: fxgain .6s var(--ease-out); }
+@keyframes fxgain { 0% { transform: scale(1.14); box-shadow: 0 0 0 2px var(--gold), 0 0 36px rgba(255, 211, 79, .7); } 100% { transform: none; box-shadow: none; } }
+
+/* -- result celebration (win: rays + a few pieces of gold; 2nd / 3rd: the place colour; the rest: calm) */
+.fx-rays { position: absolute; pointer-events: none; border-radius: 50%; --ray: rgba(255, 211, 79, .34);
+  background: repeating-conic-gradient(from 0deg, var(--ray) 0deg 5deg, rgba(0, 0, 0, 0) 5deg 15deg);
+  -webkit-mask: radial-gradient(circle, #000 0%, rgba(0, 0, 0, .6) 34%, transparent 70%); mask: radial-gradient(circle, #000 0%, rgba(0, 0, 0, .6) 34%, transparent 70%);
+  animation: fxrays-in var(--dur-peak) var(--ease-out) both, fxspin 9s var(--ease-out) 1 both; }
+.fx-rays.cyan { --ray: rgba(0, 210, 237, .3); }
+.fx-rays.silver { --ray: rgba(228, 237, 244, .22); }
+@keyframes fxrays-in { from { opacity: 0; scale: .6; } to { opacity: 1; scale: 1; } }
+@keyframes fxspin { from { rotate: -24deg; } to { rotate: 0deg; } }
+.fx-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.fx-confetti i { position: absolute; top: -30px; width: 10px; height: 18px; background: var(--gold); opacity: 0; animation: fxfall 2.6s var(--ease-in) both; }
+.fx-confetti i:nth-child(3n) { background: var(--cyan); width: 8px; height: 14px; }
+.fx-confetti i:nth-child(4n) { background: var(--gold-soft); }
+@keyframes fxfall { 0% { opacity: 0; transform: translateY(0) rotate(0); } 10% { opacity: 1; } 100% { opacity: 0; transform: translateY(980px) rotate(540deg); } }
+.label.place-num { animation: fxplace .7s var(--ease-spring) both; }
+.label.place-num.p1 { color: transparent !important; -webkit-background-clip: text; background-clip: text;
+  background-image: linear-gradient(100deg, var(--place-1) 38%, #fff8d6 50%, var(--place-1) 62%); background-size: 260% 100%; background-position: 100% 0;
+  animation: fxplace .7s var(--ease-spring) both, fxtextshine 1.6s .7s var(--ease-inout) both; }
+.label.place-num.p2 { color: var(--place-2) !important; } .label.place-num.p3 { color: var(--place-3) !important; }
+@keyframes fxplace { 0% { transform: scale(1.6); opacity: 0; filter: blur(6px); } 100% { transform: none; opacity: 1; filter: none; } }
+@keyframes fxtextshine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+.screen[data-tier="win"] .glass > .rule { background: var(--gold); }
+.fx-stat { animation: fxrise var(--dur-slow) var(--ease-out) both; }
+@keyframes fxrise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+/* a moment (rank up, a line reached): a band in the middle, over everything, never blocking a tap */
+.fx-moment { position: absolute; left: 50%; top: 50%; z-index: 60; min-width: 620px; max-width: 1100px; transform: translate(-50%, -50%); pointer-events: none;
+  padding: 30px 72px 34px; text-align: center; background: linear-gradient(90deg, rgba(var(--navy-rgb), 0), rgba(var(--navy-rgb), .95) 18%, rgba(var(--navy-rgb), .95) 82%, rgba(var(--navy-rgb), 0));
+  box-shadow: inset 0 3px 0 var(--gold), inset 0 -1px 0 rgba(255, 211, 79, .5); animation: fxmoment .6s var(--ease-spring) both; }
+.fx-moment .k { font-size: var(--fs-label); font-weight: 700; letter-spacing: .3em; color: var(--gold); }
+.fx-moment .t { font-size: 52px; font-weight: 700; letter-spacing: .1em; color: var(--white); margin-top: 8px; line-height: 1.2; }
+.fx-moment .s { font-size: var(--fs-body); font-weight: 500; color: var(--text-2); margin-top: 10px; letter-spacing: .04em; }
+.fx-moment.gone { animation: fxmoment-out var(--dur-base) var(--ease-in) both; }
+@keyframes fxmoment { from { opacity: 0; transform: translate(-50%, -50%) scale(1.25); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes fxmoment-out { to { opacity: 0; transform: translate(-50%, -50%) scale(.96); } }
+
+/* -- scout reveal: rays in the rarity's colour behind the card; SR+ charge before the flip, then a burst */
+.cardholder.charge .rcard.back { animation: fxcharge var(--charge, 1s) var(--ease-in) both; }
+.cardholder.charge.r-SSR .rcard.back { animation: fxcharge var(--charge, 1.5s) var(--ease-in) both, fxshake .12s calc(var(--charge, 1.5s) - .5s) linear 4; }
+@keyframes fxcharge { 0% { filter: brightness(.5); transform: scale(.96); } 70% { filter: brightness(1.2); transform: scale(1); } 100% { filter: brightness(1.8) saturate(1.3); transform: scale(1.04); } }
+@keyframes fxshake { 0%, 100% { translate: 0 0; } 25% { translate: -5px 2px; } 75% { translate: 5px -2px; } }
+.fx-burst { position: absolute; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 6px var(--rc, var(--cyan)), 0 0 60px 10px var(--rc, var(--cyan)); animation: fxburst .7s var(--ease-out) both; }
+@keyframes fxburst { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.9); opacity: 0; } }
+
+/* reduce motion (§41): end states only — no turning rays, particles, shake, flash or sweep */
+html[data-reduce-motion="on"] .fx-lines, html[data-reduce-motion="on"] .fx-confetti, html[data-reduce-motion="on"] .fx-flash, html[data-reduce-motion="on"] .fx-burst { display: none; }
+html[data-reduce-motion="on"] .fx-rays { animation: none; }
+html[data-reduce-motion="on"] .fx-under.beat .fx-vig, html[data-reduce-motion="on"] .hud .chip.pos.gain { animation: none; }
+html[data-reduce-motion="on"] .fx-title, html[data-reduce-motion="on"] .fx-count.pop, html[data-reduce-motion="on"] .fx-cut, html[data-reduce-motion="on"] .fx-finish,
+html[data-reduce-motion="on"] .fx-moment, html[data-reduce-motion="on"] .label.place-num, html[data-reduce-motion="on"] .fx-stat { animation: fade .12s ease both; }
+html[data-reduce-motion="on"] .label.place-num.p1 { animation: fade .12s ease both; background-position: 50% 0; }
+html[data-reduce-motion="on"] .fx-bar { transition: none; }
+html[data-reduce-motion="on"] .btn.cta .bg::after { display: none; }
+html[data-reduce-motion="on"] .bar i { animation: none; }
+html[data-reduce-motion="on"] .cardholder.charge .rcard.back { animation: none; }
+html[data-reduce-motion="on"] .fx-straight .fx-lines, html[data-reduce-motion="on"] .fx-confetti i, html[data-reduce-motion="on"] .fx-flash,
+html[data-reduce-motion="on"] .fx-burst, html[data-reduce-motion="on"] .cardholder.charge.r-SSR .rcard.back { animation: none; }
+html[data-reduce-motion="on"] .fx-title.gone, html[data-reduce-motion="on"] .fx-moment.gone { animation: fade .12s ease reverse both; }
+/* battery saver: the hero CTA's loop, the speed lines and the turning rays stop (RenderProfile.AmbientMotion) */
+html[data-perf-ambient="off"] .btn.cta.hero .bg::after, html[data-perf-ambient="off"] .fx-lines { animation: none; }
+html[data-perf-ambient="off"]:not([data-reduce-motion="on"]) .fx-rays { animation: fxrays-in var(--dur-peak) var(--ease-out) both; }
+/* quality/goals-flow: 目標の階段 — the home ladder, the goals screen, the claim moment (structure only; colours from the tokens) */
+.gl-rung { cursor: pointer; }
+.gl-rung + .gl-rung::before { content: ''; position: absolute; left: 24px; right: 24px; top: 0; height: 1px; background: rgba(150, 173, 187, .22); }
+.gl-dot { border-radius: 50%; background: var(--gold); }
+.gl-pips { display: flex; gap: 6px; }
+.gl-pips i { flex: 1; height: 6px; border-radius: 3px; background: #23394a; }
+.gl-pips i.on { background: var(--cyan); }
+.gl-pips i.now { background: rgba(var(--cyan-rgb), .45); }
+.gl-power { position: absolute; height: 8px; border-radius: 4px; background: #23394a; overflow: hidden; }
+.gl-power i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
+.gl-power i.next { background: rgba(255, 211, 79, .35); }
+.gl-power i.now { background: var(--cyan); }
+.gl-week { border-radius: 4px; }
+.gl-week:hover { background: rgba(var(--cyan-rgb), .06); }
+.gl-class { border-radius: 4px; background: rgba(var(--navy-rgb), .55); }
+.gl-class.current { box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .8); }
+.gl-line { animation: rise .32s ease both; }
+html[data-reduce-motion="on"] .gl-line { animation: fade .15s ease both; }
+
+/* quality pass: raising & breeding (docs/quality/raising-breeding.md) — 馬カード, growth bars, the breeding outlook and the foal reveal.
+   Scoped to these screens (qr-*); the shared tokens only. */
+.qr-pips { position: absolute; display: flex; gap: 8px; }
+.qr-pips i { width: 22px; height: 6px; border-radius: 3px; background: var(--track); }
+.qr-pips i.on { background: var(--gold); }
+.qr-pips i.cur { box-shadow: 0 0 0 2px rgba(255, 211, 79, .35), 0 0 12px rgba(255, 211, 79, .55); }
+.qr-bar { position: absolute; border-radius: 5px; background: var(--track); overflow: hidden; pointer-events: none; }
+.qr-bar i { position: absolute; top: 0; bottom: 0; }
+.qr-bar i.b { background: var(--cyan); }
+.qr-bar i.a { background: #8beaf6; }
+.qr-bar i.t { background: var(--gold); box-shadow: 0 0 8px rgba(255, 211, 79, .7); transition: width .9s cubic-bezier(.2, .7, .2, 1); }
+.bar.qr-meter { height: 6px; border-radius: 3px; }
+.qr-track { position: absolute; border-radius: 4px; background: var(--track); }
+.qr-band { position: absolute; border-radius: 7px; background: rgba(0, 210, 237, .35); box-shadow: inset 0 0 0 2px var(--cyan); }
+.qr-band.dim { background: rgba(0, 210, 237, .14); box-shadow: inset 0 0 0 1px rgba(0, 210, 237, .6); }
+.qr-pin { position: absolute; border-radius: 2px; background: var(--gold); box-shadow: 0 0 10px rgba(255, 211, 79, .9); transition: left .8s cubic-bezier(.2, .7, .2, 1); }
+.qr-rar { position: absolute; display: flex; border-radius: 4px; overflow: hidden; background: var(--track); }
+.qr-rar i { display: block; height: 100%; min-width: 3px; }
+.qr-rar i.r { background: #5b7488; } .qr-rar i.sr { background: var(--cyan); } .qr-rar i.ssr { background: var(--gold); }
+.qr-stageup { position: absolute; border-radius: var(--radius); background: linear-gradient(90deg, rgba(255, 211, 79, .22), rgba(255, 211, 79, .04)); box-shadow: inset 3px 0 0 var(--gold); animation: rise .6s cubic-bezier(.2, .7, .2, 1) .5s both; }
+.card.qr-parent { transition: box-shadow .15s ease; }
+.card.qr-parent.sel { box-shadow: inset 0 0 0 2px var(--cyan), var(--elev-1); } /* integration: one panel shadow (the token), the selection is the cyan edge */
+.qr-hide { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s cubic-bezier(.2, .7, .2, 1); }
+.qr-hide.qr-show { opacity: 1; transform: none; }
+.qr-rar-big.qr-show { text-shadow: 0 0 24px currentColor; }
+.img.qr-foal-art { object-fit: contain; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, .5)); }
+html[data-reduce-motion="on"] .qr-hide, html[data-reduce-motion="on"] .qr-pin, html[data-reduce-motion="on"] .qr-bar i.t { transition: none; }
+html[data-reduce-motion="on"] .qr-stageup { animation: fade .15s ease both; }
 
 /* round 22 (§68): 昇級戦 — the pips (○ top, ● miss, · to run, – not run), the result card and the outcome sheet */
 .pp-pip { border-radius: 50%; border: 2px solid var(--cyan); box-sizing: border-box; }

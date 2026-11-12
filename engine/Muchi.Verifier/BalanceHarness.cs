@@ -173,7 +173,7 @@ namespace Muchi.Verifier
     {
         public bool PerfectStart, DriftToRail, GoodWhips;
         private Pcg32 _rng;
-        private int _startDelay, _whipFromM, _nextWhip;
+        private int _startDelay, _whipFromM, _nextWhip, _goBias, _goCharge, _goPress;
 
         public void Reset(RaceSim sim, int slot, ulong seed)
         {
@@ -181,6 +181,13 @@ namespace Muchi.Verifier
             _startDelay = _rng.Range(0, 9);          // window is 0..3 → ~45% get the boost
             _whipFromM = 250 + _rng.Range(0, 350);    // 250..600m out
             _nextWhip = -1;
+            // ruleset 1.4 only (drawn after the 1.3 draws, so 1.3 rides are unchanged): where around the go line, how long a hold
+            _goPress = -1;
+            if (sim.TacticsEnabled)
+            {
+                _goBias = -450 + _rng.Range(0, 700);   // −45 % .. +25 % of the go line
+                _goCharge = _rng.Range(0, 21);         // 0..1 s
+            }
         }
 
         public byte Decide(RaceSim sim, int slot, int t)
@@ -192,7 +199,18 @@ namespace Muchi.Verifier
             byte c = 0;
             long rem = RiderUtil.RemainingM(sim, me);
             if (DriftToRail && rem > sim.SpurtZoneM && !me.IsChangingLane && me.LaneTarget > 0 && t % 4 == 0 && RiderUtil.LaneLooksClear(sim, slot, me.LaneTarget - 1)) c |= Cmd.LaneIn;
-            if (GoodWhips)
+            if (sim.TacticsEnabled && !me.InSpurt)
+            {
+                // ruleset 1.4: the button glows on the go line; a beginner presses somewhere around it (often late), with a
+                // short or no hold. Before that it rides like the 1.3 beginner, minus the whips (a press would be the hold).
+                if (me.Gathering) return t - _goPress >= _goCharge ? Cmd.Start : (byte)0;
+                if (rem <= sim.GoWindowM)
+                {
+                    long at = Math.Min((long)sim.SustainableSpurtM(slot) * p.GoLinePermille / 1000 * (1000 + _goBias) / 1000, sim.GoWindowM);
+                    if (rem <= at) { _goPress = t; return _goCharge == 0 ? (byte)(Cmd.Whip | Cmd.Start) : Cmd.Whip; }
+                }
+            }
+            else if (GoodWhips)
             {
                 if (me.WhipsLeft > 0 && rem <= 150 && t - _nextWhip >= 20) { c |= Cmd.Whip; _nextWhip = t; }
             }
@@ -286,7 +304,7 @@ namespace Muchi.Verifier
             return (long)(h.FinishTick - sim.P.GateOpenTick) * 50 + (long)h.FinishFracRaw * 50 / 65536;
         }
 
-        private static List<HorseSpec> Field(ref Pcg32 rng, string prefix, int center, int spread, Surface surface)
+        internal static List<HorseSpec> Field(ref Pcg32 rng, string prefix, int center, int spread, Surface surface)
         {
             var list = new List<HorseSpec>();
             for (int i = 0; i < 12; i++)
@@ -298,7 +316,7 @@ namespace Muchi.Verifier
             return list;
         }
 
-        private static HorseSpec Even(string id, int stat, RunningStyle style, Surface surface)
+        internal static HorseSpec Even(string id, int stat, RunningStyle style, Surface surface)
         {
             var h = SampleRaces.Horse(id, stat, style, 500);
             h.Surface = surface;

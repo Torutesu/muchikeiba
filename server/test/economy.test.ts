@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { m } from './helpers.js';
-import { simulateAll, type EconomyResult } from '../src/sim/economy.js';
+import { harnessPlaceWeights, PERSONAS, simulate, simulateAll, type EconomyResult, type RankedPlaceVectors } from '../src/sim/economy.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { oddsDisclosure } from '../src/domain/gacha.js';
 import { CAREER_HARD_LIMITS, careerOf, careerTotals } from '../src/domain/career.js';
 
@@ -296,5 +298,20 @@ describe('economy targets (90 days, 3 seeds)', () => {
     const r = (await run()).f2p!;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);
     expect(maxFriendPerDay).toBeLessThanOrEqual(0.3 * r.freeCoinsPerActiveDay);
+  }, 3_600_000);
+
+  it('W8 (quality pass 2, docs/quality/ranked.md §3.3): E1 at the places the ranked field really gives an average rider', async () => {
+    // contracts/ranked-places.vectors.json is written by the C# ranked harness (RankedBalanceTests keep it current): the
+    // average rider's place counts in the beginner matches, the ramp and each class. The E1 above assumes uniform places
+    // (64.2); the field has never given an average rider exactly that. Before quality pass 2 these places gave E1 73.1 (the
+    // off-aptitude courses lowered C, the weak CPU fields above C raised B and A); after it 76.4. This guards the number (it
+    // moves only with the ranked card or the coin tables) — whether E1 should be re-based on it is an owner decision.
+    const v = JSON.parse(readFileSync(join(import.meta.dirname, '../../contracts/ranked-places.vectors.json'), 'utf8')) as RankedPlaceVectors;
+    const f2p = PERSONAS.find((p) => p.id === 'f2p')!;
+    const persona = { ...f2p, id: 'f2p_ranked_average', placeWeights: harnessPlaceWeights(v, 'average', '1.3.0', m.progression.beginnerRaces, 10) };
+    const runs = await Promise.all([1, 2, 3].map((seed) => simulate(m, persona, 90, seed)));
+    const e1 = runs.reduce((a, r) => a + r.pullsPerMonth, 0) / runs.length;
+    expect(e1).toBeGreaterThanOrEqual(40);
+    expect(e1).toBeLessThanOrEqual(77);
   }, 3_600_000);
 });

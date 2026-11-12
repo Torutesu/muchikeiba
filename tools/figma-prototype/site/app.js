@@ -1236,9 +1236,12 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   let ly = Math.max(580, 542 + (tipEl.textContent ? tipEl.offsetHeight : 0) + 10);
   const stagger = (n, i) => { n.classList.add('fx-stat', 'fx-anim', 'res-after'); n.style.animationDelay = (.45 + (3 + i) * .12) + 's'; return n; };
   // ruleset 1.4: the 仕掛け lesson from re-simulated races (GoCounterfactual: the same ride with the go moved) and the 会心 count
-  const lesson = r.lesson && (r.lesson.line || r.lesson.perfect) ? [r.lesson.line, r.lesson.perfect].filter(Boolean).join('　·　') : '';
+  // quality pass 2 (docs/quality/ranked.md §4): after a ranked loss the row first says which side to work on — the horse
+  // (「能力の差：相棒 3320 ／ この場のCPU 3600。調教で伸ばすと勝ちやすい」) or the riding (「能力は互角以上…：差は乗り方」), then the 1.4 lesson
+  const fieldLine = !raceCtx.beginner && r.field?.line ? r.field.line : '';
+  const lesson = [fieldLine, r.lesson?.line, r.lesson?.perfect].filter(Boolean).join('　·　');
   // (the lesson wraps inside the panel — a long line with the 会心 count used to run past the panel into the art)
-  if (lesson) { const ls = stagger(Txt('振り返り：' + lesson, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); ls.dataset.shift = String(r.lesson.shiftTicks); ly += ls.offsetHeight + 8; }
+  if (lesson) { const ls = stagger(Txt('振り返り：' + lesson, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); if (r.lesson) ls.dataset.shift = String(r.lesson.shiftTicks); if (fieldLine) ls.dataset.field = r.field.weaker ? 'horse' : 'riding'; ly += ls.offsetHeight + 8; }
   // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
   // — only when it still fits above the CTA (the lesson, when there is one, says the more specific thing)
   if (raceCtx.advice && ly <= 612) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) stagger(Txt('アドバイス：' + wl, 44, ly, 520, 16, CYAN, p, { weight: 500, nowrap: true }), 1).classList.add('adv-debrief'); }

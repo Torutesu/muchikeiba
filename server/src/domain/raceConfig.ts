@@ -55,6 +55,12 @@ export interface BuildRaceInput {
    */
   cpuStatPermille?: number;
   /**
+   * REQ-MM-011 (ranked, progression.rankedField.cpuStatTotalByClass): every CPU horse is scaled (up or down) to this stat
+   * total after the class normalization, keeping its balance between stats (each ≤ 1000); cpuStatPermille applies after.
+   * Absent = the template's stats (capped), as before.
+   */
+  cpuStatTotal?: number | null;
+  /**
    * REQ-CAREER-004 (§66): the CPU field is drawn only from templates of these running styles (a 騎手の道 race such as
    * 「前が速い」). Absent = every eligible template (the draw and every existing config are unchanged).
    */
@@ -78,6 +84,14 @@ function raceSkill(m: Master, input: BuildRaceInput, ruleset: Record<string, unk
 function withSkill(h: RaceHorse, s: RaceHorse['skill'] | undefined): RaceHorse {
   const { skill: _drop, ...rest } = h;
   return s ? { ...rest, skill: s } : rest;
+}
+
+/** REQ-MM-011: `h`'s stats scaled to `total` (floor per stat, each ≤ 1000; the balance between stats kept). */
+export function scaleToTotal(h: Stats, total: number): Stats {
+  const cur = STAT_KEYS.reduce((a, k) => a + h[k], 0);
+  const out = {} as Stats;
+  for (const k of STAT_KEYS) out[k] = cur > 0 ? Math.min(1000, Math.floor((h[k] * total) / cur)) : 0;
+  return out;
 }
 
 /** REQ-MM-005: builds a validated RaceStartConfig. Seed comes from `rng` (crypto in production). */
@@ -112,7 +126,8 @@ export function buildRaceConfig(m: Master, input: BuildRaceInput): RaceStartConf
   const entrants: Entrant[] = raw.map((e, slot) => {
     const horse = fixed ? withStats(e.horse, fixed) : input.statCap === null ? e.horse : withStats(e.horse, normalizeStats(e.horse, input.statCap));
     // REQ-UXS-003: weaker CPUs in the beginner match (stats only; skills are capped like every runner's, REQ-UXS-050)
-    const scaled = e.kind === 'cpu' && cpuPm !== 1000 && !fixed ? scale(horse) : horse;
+    const sized = e.kind === 'cpu' && input.cpuStatTotal && !fixed ? withStats(horse, scaleToTotal(horse, input.cpuStatTotal)) : horse;
+    const scaled = e.kind === 'cpu' && cpuPm !== 1000 && !fixed ? scale(sized) : sized;
     return { slot, ...e, horse: withSkill(scaled, raceSkill(m, input, ruleset, e.horse.skill)) };
   });
   const config: RaceStartConfig = {

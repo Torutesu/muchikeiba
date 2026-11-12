@@ -76,6 +76,26 @@ if (args.Length >= 3 && args[0] == "harness-tracks")
     Console.WriteLine(rep.Markdown());
     return rep.AllPass ? 0 : 1;
 }
+if (args.Length >= 2 && args[0] == "harness-ranked")
+{
+    // harness-ranked <contracts/ranked-fields.sample.json> [<ruleset.json> to ride the fields on another ruleset] [races per set]
+    // → win / top-3 rates per class × horse × rider on the fields the server issues (docs/spec/balance-targets.md §2.5)
+    var rsOverride = args.Length >= 3 && args[2] != "-" ? Muchi.Net.ProtocolCodec.ParseRuleset(File.ReadAllText(args[2])) : null;
+    int maxRaces = args.Length >= 4 ? int.Parse(args[3]) : int.MaxValue;
+    var sets = RankedHarness.Load(args[1], rsOverride);
+    Console.Write(RankedHarness.Markdown(RankedHarness.RunAll(sets, maxRaces)));
+    return 0;
+}
+if (args.Length >= 4 && args[0] == "harness-ranked-vectors")
+{
+    // harness-ranked-vectors <contracts/ranked-fields.sample.json> <contracts/ruleset-params.1.4.0.json> <out.json>
+    // → contracts/ranked-places.vectors.json (every cell's place counts on 1.3 and 1.4; the economy test reads them)
+    var cells = RankedHarness.RunAll(RankedHarness.Load(args[1]));
+    cells.AddRange(RankedHarness.RunAll(RankedHarness.Load(args[1], Muchi.Net.ProtocolCodec.ParseRuleset(File.ReadAllText(args[2])))));
+    File.WriteAllText(args[3], RankedHarness.Vectors(cells));
+    Console.WriteLine("wrote " + args[3]);
+    return 0;
+}
 if (args.Length >= 2 && args[0] == "harness-audit")
 {
     // harness-audit <ruleset.json> [races] → what each riding decision is worth (docs/quality/race-play.md §2)

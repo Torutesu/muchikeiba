@@ -39,6 +39,13 @@ export interface Persona {
   /** Average finishing place is uniform over 1..12 ("average rider"); a skilled rider shifts it. */
   placeBias: number;
   /**
+   * Quality pass 2 (docs/quality/ranked.md, W8): ranked places drawn from these weights (places 1..12) instead of the
+   * uniform draw — the place distribution the ranked harness measures for a rider (contracts/ranked-places.vectors.json).
+   * A function picks them by the player's class and ranked-race count at the time of the race (beginner matches, the ramp,
+   * each class). Absent = uniform with `placeBias` (every existing persona; their draws are unchanged).
+   */
+  placeWeights?: number[] | ((at: { classId: string; rankedRaces: number }) => number[] | undefined);
+  /**
    * REQ-INV-*: `invited` redeems a friend's code on day 1 after the FTUE (welcome gift, the friend for bm_friend);
    * `inviter` is the upper bound of the invite program: a new invitee every INVITER_EVERY_DAYS days until the counted
    * cap, each finishing the beginner missions INVITEE_GRADUATE_DAYS later and reaching class B at the next season.
@@ -173,7 +180,13 @@ const SIM_TEAM = 'tsimteam00';
 
 const unit = (rng: Rng) => rng.nextU32() / 4294967296;
 
-function place(rng: Rng, bias: number): number {
+function place(rng: Rng, bias: number, weights?: number[]): number {
+  if (weights?.length) {
+    // one draw, like the uniform draw: the place whose cumulative weight covers it
+    let x = unit(rng) * weights.reduce((a, w) => a + w, 0);
+    for (let i = 0; i < weights.length; i++) if ((x -= weights[i]!) < 0) return i + 1;
+    return weights.length;
+  }
   // uniform 1..12, shifted toward the front by `bias` places for skilled riders
   const p = 1 + Math.floor(unit(rng) * 12) - bias;
   return Math.max(1, Math.min(12, p));
@@ -455,7 +468,7 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
         if (horse) {
           const entered = await svc.eventEnter(id, liveEvent.id, horse.id, k()).catch((e: unknown) => { if (e instanceof AppError) return null; throw e; });
           if (entered) {
-            const er = await svc.applyRace(id, { raceId: `sim_ev_${persona.id}_${d}_${i}`, mode: 'event', eventId: liveEvent.id, place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4 });
+            const er = await svc.applyRace(id, { raceId: `sim_ev_${persona.id}_${d}_${i}`, mode: 'event', eventId: liveEvent.id, place: place(rng, persona.placeBias, Array.isArray(persona.placeWeights) ? persona.placeWeights : undefined), fieldSize: 12, newRating: null, void: false, humans: 4 });
             r.eventRaces++;
             r.eventPoints += (er as { event?: { exchange?: { gained: number } | null } | null }).event?.exchange?.gained ?? 0;
             continue;
@@ -466,7 +479,10 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       // the achievements (REQ-ACH-*) count from these, so the sim pays them like a real player earns them
       const trackId = master.tracks[(d * persona.racesPerDay + i) % master.tracks.length]!.id;
       const details = { trackId, style: 'senko' as const, finishTick: null, startReactionTicks: null, whips: 0, whipMashed: false, cpuAssisted: false, skillFired: i % 2 === 0 };
-      const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias), fieldSize: 12, newRating: null, void: false, humans: 4, details });
+      const pw = typeof persona.placeWeights === 'function'
+        ? await svc.state(id).then((st) => (persona.placeWeights as (at: { classId: string; rankedRaces: number }) => number[] | undefined)({ classId: st.season.classId, rankedRaces: st.rating.rankedRaces }))
+        : persona.placeWeights;
+      const ar = await svc.applyRace(id, { raceId: `sim_${persona.id}_${d}_${i}`, mode: 'ranked', place: place(rng, persona.placeBias, pw), fieldSize: 12, newRating: null, void: false, humans: 4, details });
       if ('firstWinBonus' in ar && typeof ar.firstWinBonus === 'number') r.firstWinCoins += ar.firstWinBonus;
       if ('comebackXp' in ar && typeof ar.comebackXp === 'number') r.comebackXp += ar.comebackXp;
     }
@@ -642,4 +658,24 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
     };
   }
   return out;
+}
+
+/** contracts/ranked-places.vectors.json (written by the C# ranked harness): place counts per class × horse × stage × rider × ruleset. */
+export interface RankedPlaceVectors { cells: { set: string; ruleset: string; rider: string; races: number; places: number[] }[] }
+
+/**
+ * Quality pass 2 (docs/quality/ranked.md, W8): the ranked places the field really gives a rider, by where the player is —
+ * the beginner matches, the ramp after them (class C), then the regular field of the player's class (the partner as given
+ * for the first `day30AfterRaces` ranked races, then the typical day-30 horse). Feeds Persona.placeWeights.
+ */
+export function harnessPlaceWeights(v: RankedPlaceVectors, rider: string, ruleset: string, beginnerRaces: number, rampRaces: number, day30AfterRaces = 90) {
+  const cell = (set: string) => {
+    const c = v.cells.find((x) => x.set === set && x.rider === rider && x.ruleset === ruleset);
+    if (!c) throw new Error(`ranked-places vectors: no ${set} ${rider} ${ruleset}`);
+    return c.places;
+  };
+  return (at: { classId: string; rankedRaces: number }) =>
+    at.rankedRaces < beginnerRaces ? cell('C/starter/beginner')
+      : at.rankedRaces < beginnerRaces + rampRaces && at.classId === 'C' ? cell('C/starter/ramp')
+        : cell(`${at.classId}/${at.rankedRaces < day30AfterRaces ? 'starter' : 'day30'}/regular`);
 }

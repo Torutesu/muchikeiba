@@ -17,6 +17,7 @@ import { roomGround, roomScene, type RoomConditions } from '../domain/presets.js
 import { friendRoomBondPermille } from '../domain/bond.js';
 import { STAT_KEYS } from '../domain/master.js';
 import type { Match } from '../domain/matchmaker.js';
+import { rankedCourse, rankedCpuLevel, rankedCpuStatTotal, rankedRampPermille } from '../domain/rankedField.js';
 
 export const START_DELAY_MS = 6000; // time for clients to connect + countdown before tick 0
 export const TICKET_TTL_MS = 10 * 60_000;
@@ -44,6 +45,8 @@ export interface CreateRaceOptions {
   raceId?: string;
   /** REQ-UXS-003: beginner matches race against weaker CPU horses (permille of their normalized stats). */
   cpuStatPermille?: number;
+  /** REQ-MM-011: ranked CPU horses race at this stat total (rankedMatchRules; progression.rankedField). */
+  cpuStatTotal?: number | null;
 }
 
 /** Tickets for every human slot of a race (HMAC of raceId/slot/player/expiry: the same inputs give the same ticket). */
@@ -64,7 +67,10 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
   const room = o.mode === 'friend' || o.mode === 'cup' ? o.roomPreset ?? null : null;
   const trackId = o.trackId
     ?? (room?.trackId && m.tracks.some((t) => t.id === room.trackId) ? room.trackId : undefined)
-    ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600' : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
+    ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600'
+      // REQ-MM-008: a ranked course fits the riders' horses (one draw, like the plain draw)
+      : o.mode === 'ranked' && m.progression.rankedField?.courseFitsHorses ? rankedCourse(m, o.humans.map((h) => h.horse), o.rng)
+      : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
   const statCap = o.statCap !== undefined ? o.statCap : ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
   const ruleset = ev ? eventRuleset(o.ruleset ?? DEFAULT_RULESET, ev) : o.ruleset;
   const config = buildRaceConfig(m, {
@@ -77,6 +83,7 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
     ...(ruleset ? { rulesetOverrides: ruleset } : {}),
     ...(ev?.rules.fixedStats ? { fixedStats: ev.rules.fixedStats } : {}),
     ...(o.cpuStatPermille !== undefined && !ev ? { cpuStatPermille: o.cpuStatPermille } : {}),
+    ...(o.cpuStatTotal && o.mode === 'ranked' && !ev ? { cpuStatTotal: o.cpuStatTotal } : {}),
   });
   const startAtMs = Math.max(o.startAtMs ?? 0, o.now + START_DELAY_MS);
   const assignments = await assignmentsFor(config, startAtMs, o.ticketSecret);
@@ -166,15 +173,26 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
 /**
  * REQ-UXS-003 / REQ-MM-003: beginner matches race weaker CPUs (level and stats from progression.beginnerMatch,
  * balance target R10); a match of players who are all on their first ranked race may use a fixed course.
+ * REQ-MM-009/010 (progression.rankedField): a regular match's CPU level is clamped to the class band (the class of the
+ * match's stat cap), and while every rider is still in the ramp after the beginner matches the CPU horses are not yet
+ * at full strength (an entry queued by an older build has no race count: full strength).
  */
 export function rankedMatchRules(m: Master, match: Match<RaceEntry>) {
   const bm = match.beginner && !match.quarantined ? m.progression.beginnerMatch : undefined;
   const firsts = match.players.map((p) => p.payload.firstRace?.trackId ?? null);
   const trackId = firsts.length > 0 && firsts.every((t) => t !== null && t === firsts[0]) ? firsts[0]! : null;
+  const rf = m.progression.rankedField;
+  const capped = match.players.length ? match.players.reduce((a, p) => (p.payload.statCap < a.payload.statCap ? p : a)) : null;
+  const ramp = bm || match.quarantined || !match.players.length ? 1000
+    : Math.max(...match.players.map((p) => {
+      const n = (p.payload as { rankedRaces?: number }).rankedRaces;
+      return n === undefined ? 1000 : rankedRampPermille(rf, n, m.progression.beginnerRaces);
+    }));
   return {
     cpuCount: match.cpuCount,
-    cpuLevel: bm ? bm.cpuLevel : match.cpuLevel,
-    ...(bm ? { cpuStatPermille: bm.cpuStatPermille } : {}),
+    cpuLevel: bm ? bm.cpuLevel : match.quarantined ? match.cpuLevel : rankedCpuLevel(rf, capped?.payload.classId ?? null, match.cpuLevel),
+    ...(bm ? { cpuStatPermille: bm.cpuStatPermille } : ramp !== 1000 ? { cpuStatPermille: ramp } : {}),
     ...(trackId ? { trackId } : {}),
+    ...(!match.quarantined && rankedCpuStatTotal(rf, capped?.payload.classId ?? null) ? { cpuStatTotal: rankedCpuStatTotal(rf, capped?.payload.classId ?? null) } : {}),
   };
 }

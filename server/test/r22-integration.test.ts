@@ -6,6 +6,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { clientEventSchema } from '../src/domain/kpi.js';
 import { KPI_ESSENTIAL, KPI_EVENT_CLASS, kpiClassOf } from '../src/domain/kpiConsent.js';
+import { DEFAULT_MAINTENANCE, EXEMPT_ROUTES, endpointGroup, gateRequest, jstToMs, type MaintenanceConfig } from '../src/domain/maintenance.js';
+import { routes } from '../src/http/app.js';
 import { m } from './helpers.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { seededRng } from '../src/domain/rng.js';
@@ -236,5 +238,88 @@ describe('§54 AccountChangeReset × Round 22: the per-account device state of a
     const i = app.indexOf('function deviceAccountChanged(');
     const body = app.slice(i, app.indexOf('\n}\n', i));
     for (const s of ['svSession = null', 'promoDeferred = null', 'PT_KEY']) expect(body, s).toContain(s);
+  });
+});
+
+describe('§46 gates × Round 22 routes (§46.2)', () => {
+  const START = jstToMs('2026-11-12T02:00')!;
+  const win = (scope: MaintenanceConfig['windows'][number]['scope']): MaintenanceConfig => ({
+    ...structuredClone(DEFAULT_MAINTENANCE),
+    windows: [{ id: 'm1', startAtMs: START, endAtMs: START + 4 * 3600_000, scope, message: { ja: '点検中', en: 'Checks' } }],
+    clientVersions: { ios: { min: '9.0.0', recommended: '9.0.0', storeUrl: 'https://apps.apple.com/jp/app/id1234567890' }, android: DEFAULT_MAINTENANCE.clientVersions.android },
+  });
+  const none = { platform: null, version: null, engine: null };
+  const old = { platform: 'ios', version: '1.0.0', engine: null };
+  const GROUPS: Record<string, string> = {
+    'GET /v1/career': 'time_attack', 'POST /v1/career/races/:raceId/start': 'time_attack',
+    'GET /v1/promotion': 'core', 'POST /v1/promotion/ack': 'core',
+    'GET /v1/surveys/current': 'core', 'POST /v1/surveys/:surveyId/shown': 'core', 'POST /v1/surveys/:surveyId/skip': 'core', 'POST /v1/surveys/:surveyId/answers': 'core',
+  };
+  /** §66 submit (a verified run is never lost) and §67 (lowering a limit must work whenever a purchase can). */
+  const EXEMPT = ['POST /v1/career/submit', 'GET /v1/self-limits', 'PUT /v1/self-limits/spending', 'DELETE /v1/self-limits/spending/pending', 'PUT /v1/self-limits/playtime'];
+  const fill = (path: string) => path.replace(':raceId', 'car_c1_r1').replace(':surveyId', 'sv_whip_feel');
+  it('every Round 22 route exists and sits in its group or is exempt on purpose; none is left unplaced', () => {
+    const have = new Set(routes.map((r) => `${r.method} ${r.path}`));
+    for (const [r, g] of Object.entries(GROUPS)) {
+      expect(have.has(r), r).toBe(true);
+      expect(endpointGroup(r.split(' ')[1]!), r).toBe(g);
+      expect((EXEMPT_ROUTES as readonly string[]).includes(r), r).toBe(false);
+    }
+    for (const r of EXEMPT) { expect(have.has(r), r).toBe(true); expect(EXEMPT_ROUTES, r).toContain(r); }
+    const r22 = [...have].filter((r) => /^[A-Z]+ \/v1\/(career|self-limits|promotion|surveys)/.test(r));
+    expect(r22.filter((r) => !(r in GROUPS) && !EXEMPT.includes(r))).toEqual([]);
+  });
+  it('a window on the group closes it (core under `all`); the exempt routes answer in any window and from an outdated app', () => {
+    for (const [r, g] of Object.entries(GROUPS)) {
+      const [method, path] = r.split(' ');
+      expect(gateRequest(win(g === 'core' ? 'all' : [g as never]), method!, fill(path!), none, START)?.code, r).toBe('MAINTENANCE');
+      if (g !== 'core') expect(gateRequest(win(['gacha']), method!, fill(path!), none, START), r).toBeNull();
+    }
+    for (const r of EXEMPT) {
+      const [method, path] = r.split(' ');
+      expect(gateRequest(win('all'), method!, path!, none, START), r).toBeNull();
+      expect(gateRequest(win('all'), method!, path!, old, START), r).toBeNull();
+    }
+    // a shop window never closes the own-limit settings (they are not under /v1/shop)
+    expect(gateRequest(win(['shop' as never]), 'PUT', '/v1/self-limits/spending', none, START)).toBeNull();
+  });
+  it('§46.2 names every Round 22 route family', () => {
+    const p = read('contracts/protocol.md');
+    const s46 = section(p, '### 46.2', '### 46.3');
+    for (const r of ['/v1/career', '/v1/career/submit', '/v1/self-limits', '/v1/promotion', '/v1/surveys']) expect(s46, r).toContain(r);
+  });
+});
+
+describe('その他 stays at eight rows per page; Round 22 entries live on their hubs (06 「その他 のページ」)', () => {
+  const app = read('tools/figma-prototype/site/app.js');
+  const body = (fn: string) => { const i = app.search(new RegExp(`(async )?function ${fn}\\(`)); return app.slice(i, app.indexOf('\n}\n', i)); };
+  it('no Round 22 row on either その他 page; career in the race lobby, self-limits under the purchase history, surveys in お知らせ', () => {
+    const block = app.slice(app.indexOf('const morePages = {'), app.indexOf("Kicker('その他', 36, 30, m);"));
+    for (const r of ['騎手の道', '上限', 'アンケート', '昇級戦']) expect(block, r).not.toContain(r);
+    expect(body('RaceLobby')).toMatch(/Ghost\('騎手の道'[^\n]*Career\(\)/);
+    expect(body('History')).toMatch(/TextLink\('上限の設定'[^\n]*SelfLimits\(/);
+    expect(body('Activity')).toContain("dataset.action = 'survey'");
+    const ux = read('docs/planning/06-ux-experience-spec.md');
+    const tbl = ux.slice(ux.indexOf('### その他 のページ'));
+    expect(tbl).toContain('Round 22 の入口');
+    for (const w of ['騎手の道（§66）', '使いすぎ・遊びすぎの防止（§67）', '昇級戦（§68）', 'ゲーム内アンケート（§69）']) expect(tbl, w).toContain(w);
+  });
+});
+
+describe('§48 help / §57 tips × Round 22', () => {
+  const help = JSON.parse(read('server/master/help.json')) as { articles: { id: string; body: { ja: string; en: string } }[] };
+  const tips = JSON.parse(read('server/master/tips.json')) as { tips: { id: string; topic: string; help: string; unlock: string | null }[] };
+  it('every Round 22 feature has a help article; career, limits and promotion a tip in a fitting topic; surveys none (kept quiet)', () => {
+    for (const id of ['career_mode', 'self_limits', 'promotion_series', 'surveys']) expect(help.articles.map((a) => a.id), id).toContain(id);
+    const tip = (h: string) => tips.tips.filter((t) => t.help === h);
+    expect(tip('career_mode').map((t) => t.topic)).toEqual(['race']);
+    expect(tip('promotion_series').map((t) => t.topic)).toEqual(['race']);
+    expect(tip('self_limits').map((t) => t.topic)).toEqual(['shop']);
+    // R22 integration (the user's change to §69): no tip card advertises surveys; the article says where the quiet row is
+    expect(tip('surveys')).toEqual([]);
+    const sv = help.articles.find((a) => a.id === 'surveys')!;
+    expect(sv.body.ja).toContain('お知らせ');
+    expect(sv.body.ja).not.toMatch(/ホームのカード|結果を閉じた後に出ます/);
+    expect(sv.body.en).toContain('News screen');
   });
 });

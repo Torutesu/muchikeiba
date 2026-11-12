@@ -1854,9 +1854,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="ticket-reply"]').click(); await page.waitForTimeout(700);
   assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the reply reopens the ticket (受付済み)');
   assert.equal(await page.locator('.screen.in .inq-detail [data-reply="player"]').count(), 2, 'the inquiry and the reply are in the thread');
-  const tk = await page.evaluate(() => globalThis.__muchi.logic.ticketKpi());
-  assert.ok(tk.some((k) => k.name === 'ticket_reopen' && k.s2 === 'resolved') && tk.some((k) => k.name === 'ticket_player_reply'), 'ticket_reopen / ticket_player_reply from the server');
-  assert.ok(!JSON.stringify(tk).includes('届いていません'), 'KPI rows never carry the text');
+  const tkt = await page.evaluate(() => globalThis.__muchi.logic.ticketKpi());
+  assert.ok(tkt.some((k) => k.name === 'ticket_reopen' && k.s2 === 'resolved') && tkt.some((k) => k.name === 'ticket_player_reply'), 'ticket_reopen / ticket_player_reply from the server');
+  assert.ok(!JSON.stringify(tkt).includes('届いていません'), 'KPI rows never carry the text');
   await shot('ticket-thread-reply', 300);
   await page.locator('.screen.in [data-action="ticket-gift"]').click(); await waitScreen('gift-box'); await page.waitForTimeout(300);
   // ------------------------------------------------------------------ 6. round 19: 画質・通信量 / ストレージ (REQ-PERF-*)

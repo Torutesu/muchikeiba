@@ -181,6 +181,7 @@
   "初心者マッチ　あと{n}戦　·　12頭": "Beginner match  {n} more  ·  12 runners",
   "ランク戦　·　12頭　·　約90秒": "Ranked  ·  12 runners  ·  about 90 s",
   "ログインボーナス {s}{n}日目：{r}": "Login bonus {s}day {n}: {r}",
+  "ログインボーナス {n}日目：{r}": "Login bonus day {n}: {r}",
   "今日やること": "Today",
   "初心者 {n}/7日": "Beginner {n}/7 days",
   "受け取りました：{r}": "Received: {r}",

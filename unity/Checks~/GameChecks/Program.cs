@@ -90,6 +90,8 @@ static class Program
         await TipsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 21: イベントカレンダー (CalendarModel: month / week lists, JST lines, paid rows dates only, marks with offline queue and rollback, KPI; REQ-CAL-*)");
         await CalendarChecks.Run(Check, Root);
+        Console.WriteLine("== round 23: 血統図と系統 (PedigreeModel: 15 slots, shared ancestors and the inbreeding line from the server, 記録なし, owner line, rev cache / 304 / offline, hidden horse, pair, bloodlines, reset, KPI; REQ-PED-*)");
+        await PedigreeChecks.Run(Check, Root);
         Console.WriteLine("== round 17: おすすめフレンド (cards, request / dismiss with rollback, fsug_view once, offline, setting; REQ-FSUG-*)");
         await FriendSuggestionsChecks.Run(Check, Root);
         Console.WriteLine("== round 19: 画質・省電力・通信量 (auto by device class, battery saver, data saver downloads, storage / clear cache; REQ-PERF-*)");
@@ -100,6 +102,8 @@ static class Program
         await ReleaseNotesChecks.Run(Check);
         Console.WriteLine("== round 19: 引き継ぎコード (issue checklist, generated once, redeem with one key, confirm, custom-token sign-in, SESSION_REPLACED; REQ-TRF-*)");
         await TransferCodeChecks.Run(Check);
+        Console.WriteLine("== round 23: ログイン中の端末 (DeviceSessionsModel: list, confirm sheets, refusals, the log, KPI; SESSION_REVOKED screen; AccountChangeReset; REQ-DEV-*)");
+        await DevicesChecks.Run(Check, Root);
         Console.WriteLine("== round 21: ディープリンク・再戦 (DeepLinkModel: parse, FTUE queue, offline, one neutral notice, never auto-spend, referrer once, KPI without the token; RematchModel; REQ-LINK-*)");
         await DeepLinkChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
@@ -160,6 +164,8 @@ static class Program
         await Round21IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 22 integration: an account change drops the play-time clock, the waiting outcome sheet, the career map / keyed start and the survey row; the gate starts over (AccountChangeReset)");
         Round22IntegrationChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 23 integration: one AccountChangeReset drops the device list and the pedigree trees; SESSION_REPLACED > SESSION_REVOKED > update > maintenance > offline");
+        await Round23IntegrationChecks.Run(Check);
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
@@ -178,6 +184,8 @@ static class Program
         await ShowcaseChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 22: 騎手の道 (CareerModel: map, stars as text and shapes, detail, locked race, keyed start, HUD objective, device stars, server verdict, rewards once, English; REQ-CAREER-*)");
         await CareerChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 23: レースの見どころ (HighlightsModel: vectors = verifier, result gate, reel / next / skip, captions JA/EN, commentary windows, card and link share, KPI; REQ-HL-*)");
+        await HighlightsChecks.Run(Check, Root);
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

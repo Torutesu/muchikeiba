@@ -38,6 +38,7 @@ import type { StableService } from '../domain/stable.js';
 import type { HallService } from '../domain/hallOfFame.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
+import { PedigreeService } from '../domain/pedigree.js';
 import { ShowcaseService, SHOWCASE_HARD_LIMITS, SHOWCASE_ID_RE, SHOWCASE_PIN_KINDS, SHOWCASE_REF_RE, type ShowcaseInput } from '../domain/showcase.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
@@ -60,15 +61,17 @@ import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
 import { CALENDAR_ENTRY_ID_RE, type CalendarExternal } from '../domain/calendar.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
+import { ticketsOf } from '../domain/supportTickets.js';
 import type { TransferService } from '../domain/transferService.js';
 import type { LinkService, LinkTargets } from '../domain/linkService.js';
-import { androidAssetLinks, appleAssociation, fallbackPage, LINK_TYPES, linksConfig } from '../domain/deepLinks.js';
+import { androidAssetLinks, appleAssociation, fallbackPage, LINK_TYPES, linksConfig, replayLinkExtra, replayLinkRow, replayStartTick } from '../domain/deepLinks.js';
 import type { RematchView } from '../domain/rematch.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
 import { SURVEY_ID_RE, SURVEY_PLACEMENTS, surveysConfig, validateSurveyAnswers, type LiveSurvey, type PendingSurveyAnswer, type SurveyFacts } from '../domain/surveys.js';
 import { liveSurveysCached } from '../ops/surveys.js';
+import { buildCheckinInput, checkinBodySchema, type CheckinInput } from '../domain/devices.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -127,7 +130,9 @@ export type PlayerMethod =
   | 'showcaseMine' | 'showcaseSave' | 'showcaseViewer' | 'showcaseForget'
   | 'releaseNotesCheck' | 'releaseNotesSeen' | 'releaseNotes'
   | 'calendar' | 'calendarMark'
+  | 'pedigreeMine' | 'pedigreePublic' | 'pedigreePair' | 'bloodlines'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
+  | 'helpInquiryMessage' | 'adminInquiryStatus' | 'adminInquiryCompensation'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
   | 'dataExportDownloaded' | 'dataExportExpiring' | 'dataExportDeleted' | 'dataExportAdmin'
@@ -135,7 +140,8 @@ export type PlayerMethod =
   | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide'
   | 'transferView' | 'transferCheckIssue' | 'transferIssued' | 'transferRevoke' | 'transferProgress' | 'transferRedeemed' | 'transferFailed' | 'transferCutoff' | 'adminTransfer'
   | 'transferRedeemReplay' | 'transferRedeemRemember'
-  | 'linkParty' | 'linkCheckCreate' | 'linkNote';
+  | 'linkParty' | 'linkCheckCreate' | 'linkNote'
+  | 'sessionState' | 'devicesCheckin' | 'devicesView' | 'securityLog' | 'devicesSignOut' | 'devicesSignOutOthers' | 'adminDevices' | 'adminDevicesRevoke';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -253,8 +259,10 @@ export interface AppContext {
    * REQ-TRF-010: when present, player routes authenticate through this (the account and its Firebase `auth_time`) and
    * `sessionGuard` refuses a session signed in before the account moved to another device (401 SESSION_REPLACED).
    */
-  authenticateSession?(req: Request): Promise<{ uid: string; authTime: number | null }>;
+  authenticateSession?(req: Request): Promise<{ uid: string; authTime: number | null; identities?: Record<string, unknown> }>;
   sessionGuard?(uid: string, authTime: number | null): Promise<void>;
+  /** REQ-DEV-008 (§70): a sign-out in this isolate — the guard reads the account's sign-outs again on the next request. */
+  sessionForget?(uid: string): void;
 }
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
@@ -422,6 +430,23 @@ const calendarEntryParam = (s: string) => { if (!CALENDAR_ENTRY_ID_RE.test(s)) t
 
 const id = z.string().min(1).max(64);
 
+/**
+ * REQ-DEV-001 (§70): the session of a request (Firebase `auth_time` and the `firebase.identities` claim), kept by `handle`
+ * after authentication for the device routes. Absent (a context without authenticateSession) = auth_time unknown.
+ */
+const requestSessions = new WeakMap<Request, { authTime: number | null; identities?: Record<string, unknown> }>();
+const authTimeOf = (r: Request) => requestSessions.get(r)?.authTime ?? null;
+async function checkinInput(r: Request, uid: string): Promise<CheckinInput> {
+  const b = await body(r, checkinBodySchema);
+  const raw = r.headers.get('x-install-id');
+  if (raw !== null && !installIdSchema.safeParse(raw).success) throw new AppError('BAD_REQUEST', 'bad x-install-id');
+  const sess = requestSessions.get(r);
+  return buildCheckinInput(uid, sess?.authTime ?? null, raw, b, r.headers.get('cf-ipcountry'), sess?.identities);
+}
+const SESSION_ID_RE = /^s_[0-9a-f]{16}$/;
+const sessionParam = (x: string) => { if (!SESSION_ID_RE.test(x)) throw new AppError('NOT_FOUND', 'no such device'); return x; };
+const confirmSchema = z.object({ confirm: z.literal(true) }).strict();
+
 const weekly = (c: AppContext) => {
   if (!c.weeklyChallenge) throw new AppError('NOT_FOUND', 'weekly challenges are not available');
   return c.weeklyChallenge;
@@ -551,6 +576,26 @@ const playerIdParam = (s: string) => {
   if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
   return s;
 };
+/** REQ-PED-003: a horse id in a path or query (the stable's own ids, h<n>). */
+const horseParam = (s: string) => {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad horse id');
+  return s;
+};
+/** REQ-PED-008: a localized JSON body with an ETag; 304 when If-None-Match matches (private: per player). */
+const etagged = (r: Request, body: unknown, etag: string, lang: Locale) => {
+  const headers = { etag, 'cache-control': 'private, no-cache', 'content-language': lang, vary: 'accept-language' };
+  if (etagMatches(r.headers.get('if-none-match'), etag)) return new Response(null, { status: 304, headers });
+  return new Response(JSON.stringify(body), { status: 200, headers: { ...headers, 'content-type': 'application/json; charset=utf-8' } });
+};
+/** REQ-PED-*: the pedigree orchestration (owner names of borrowed stallions, block checks for others' horses). */
+const pedigreeService = (c: AppContext) => new PedigreeService({
+  mine: (u, h, l) => c.player(u).invoke('pedigreeMine', u, h, l),
+  publicOf: (o, h, l, rel) => c.player(o).invoke('pedigreePublic', o, h, l, rel),
+  pair: (u, a, b, l) => c.player(u).invoke('pedigreePair', u, a, b, l),
+  viewer: (u) => c.player(u).invoke('showcaseViewer', u),
+  blocks: (u) => c.player(u).invoke('blockIds', u),
+  profiles: (ids) => c.friends.profilesOf(ids),
+}, () => c.master);
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
   return s;
@@ -833,7 +878,14 @@ export const routes: Route[] = [
   } },
   { method: 'POST', path: '/v1/hall/ceremonies/:horseId/ack', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('hallAck', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall/:playerId', auth: 'player', handler: async (r, p, c, u) => { const q = hallPage(r); return hall(c).visit(u, playerIdParam(p.playerId!), q.cursor, q.limit); } },
-  { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('pedigree', u, p.horseId!) },
+  // 血統図 (REQ-HORSE-007 + REQ-PED-003..008, §71; gate group `core`): my horse, or another player's horse while it is shown
+  // publicly (?playerId=). The answer is built from the stored lineage, so it carries an ETag (304 on If-None-Match).
+  { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (r, p, c, u) => {
+    const q = new URL(r.url).searchParams.get('playerId');
+    const lang = resolveLocale(r);
+    const v = await pedigreeService(c).horse(u, horseParam(p.horseId!), q ? playerIdParam(q) : null, lang);
+    return etagged(r, localize(v, lang, catalogFor(c.master)), `"${v.rev}-${lang}"`, lang);
+  } },
   // stable care / bond (REQ-BOND-*): never affects ranked, event or time attack stats
   { method: 'GET', path: '/v1/bond', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bondLevels', u) },
   { method: 'GET', path: '/v1/horses/:horseId/bond', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('bond', u, p.horseId!) },
@@ -863,6 +915,15 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ sireId: id, damId: id, useMaterial: z.boolean().optional() }));
     return c.player(u).invoke('breed', u, b.sireId, b.damId, idem(r), b.useMaterial ?? false);
   } },
+  // REQ-PED-009/010 (§71): the pair's trees, shared ancestors (= the inbreeding count) and the inheritance hints. Read only.
+  { method: 'GET', path: '/v1/breeding/pedigree', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const sireId = q.get('sireId'), damId = q.get('damId');
+    if (!sireId || !damId) throw new AppError('BAD_REQUEST', 'sireId and damId are required');
+    return pedigreeService(c).pair(u, horseParam(sireId), horseParam(damId), resolveLocale(r));
+  } },
+  // REQ-PED-011..013 (§71): the bloodline (sire line) list of my stable. No reward for holding lines.
+  { method: 'GET', path: '/v1/bloodlines', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('bloodlines', u, resolveLocale(r)) },
   // stud lending (REQ-BREED-010..016): fees in free coins only
   { method: 'GET', path: '/v1/stud/mine', auth: 'player', handler: async (_r, _p, c, u) => stud(c).mine(u) },
   { method: 'PUT', path: '/v1/stud/listings/:horseId', auth: 'player', handler: async (r, p, c, u) => {
@@ -1444,10 +1505,21 @@ export const routes: Route[] = [
       category: z.enum(INQUIRY_CATEGORIES),
       description: z.string().max(m.descriptionMax * 2),
       refs: z.array(z.string().regex(REF_RE)).max(m.attachMax).optional(),
-      diagnostics: z.object({ appVersion: z.string().regex(/^[0-9A-Za-z.+-]{1,32}$/), platform: z.enum(PLATFORMS) }).strict(),
+      // §73.3 (REQ-TKT-003): diagnostics only with consent — optional, and shareDiagnostics: false attaches none
+      diagnostics: z.object({ appVersion: z.string().regex(/^[0-9A-Za-z.+-]{1,32}$/), platform: z.enum(PLATFORMS) }).strict().optional(),
+      shareDiagnostics: z.boolean().optional(),
     }).strict());
-    const t = await c.player(u).invoke('helpInquirySubmit', u, { category: b.category, description: b.description, refs: b.refs ?? [], diagnostics: b.diagnostics }, key, resolveLocale(r));
-    await indexInquiries(c, u, [{ ticketId: t.ticketId, playerId: u, category: t.category, status: t.status, lang: t.lang, attachments: t.attachments.length, createdAt: t.createdAt, updatedAt: t.updatedAt }]);
+    const { summary, ...t } = await c.player(u).invoke('helpInquirySubmit', u, { category: b.category, description: b.description, refs: b.refs ?? [], diagnostics: b.diagnostics ?? null, ...(b.shareDiagnostics !== undefined ? { shareDiagnostics: b.shareDiagnostics } : {}) }, key, resolveLocale(r)) as Awaited<ReturnType<PlayerService['helpInquirySubmit']>> & { summary?: InquirySummary };
+    await indexInquiries(c, u, [summary ?? { ticketId: t.ticketId, playerId: u, category: t.category, status: t.status, lang: t.lang, attachments: t.attachments.length, createdAt: t.createdAt, updatedAt: t.updatedAt }]);
+    return t;
+  } },
+  // §73.4 (REQ-TKT-004): the player's reply in a thread (keyed; never gated — the support route, §73.9)
+  { method: 'POST', path: '/v1/help/inquiries/:ticketId/messages', auth: 'player', handler: async (r, p, c, u) => {
+    const key = idem(r);
+    const max = ticketsOf(helpOf(c.master)).playerReplyMax;
+    const b = await body(r, z.object({ content: z.string().max(max * 2) }).strict());
+    const { summary, ...t } = await c.player(u).invoke('helpInquiryMessage', u, ticketParam(p.ticketId!), b.content, key, resolveLocale(r));
+    await indexInquiries(c, u, [summary]);
     return t;
   } },
   // admin
@@ -1528,6 +1600,24 @@ export const routes: Route[] = [
     return rival(c).challenge(u, b.passphrase, key);
   } },
   { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
+  // ログイン中の端末とセキュリティ (REQ-DEV-*, contracts/protocol.md §70). Never gated by maintenance or the version gate (§46
+  // EXEMPT_ROUTES): signing out a device is the response to a takeover. Off switch: progression.devices.enabled.
+  { method: 'POST', path: '/v1/account/devices/checkin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('devicesCheckin', u, await checkinInput(r, u)) },
+  { method: 'GET', path: '/v1/account/devices', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('devicesView', u, authTimeOf(r)) },
+  { method: 'POST', path: '/v1/account/devices/signout-others', auth: 'player', handler: async (r, _p, c, u) => {
+    await body(r, confirmSchema);
+    const out = await c.player(u).invoke('devicesSignOutOthers', u, authTimeOf(r));
+    c.sessionForget?.(u); // also when nobody was listed: unlisted older sessions may have been cut (REQ-DEV-005)
+    return out;
+  } },
+  { method: 'POST', path: '/v1/account/devices/:sessionId/signout', auth: 'player', handler: async (r, p, c, u) => {
+    const sid = sessionParam(p.sessionId!);
+    await body(r, confirmSchema);
+    const out = await c.player(u).invoke('devicesSignOut', u, sid, authTimeOf(r));
+    if (out.signedOut > 0) c.sessionForget?.(u);
+    return out;
+  } },
+  { method: 'GET', path: '/v1/account/security-log', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('securityLog', u) },
   // 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54). Never gated by maintenance or the version gate (§46 EXEMPT_ROUTES).
   { method: 'GET', path: '/v1/transfer/code', auth: 'player', handler: async (_r, _p, c, u) => (c.transfer ? c.transfer.view(u) : { enabled: false }) },
   { method: 'POST', path: '/v1/transfer/code', auth: 'player', handler: async (r, _p, c, u) => {
@@ -1606,6 +1696,7 @@ export const handle: Handler = async (req, _p, ctx) => {
           // REQ-TRF-010: a session from before the account moved to another device is refused on its next request
           const s = await ctx.authenticateSession(req);
           uid = s.uid;
+          requestSessions.set(req, { authTime: s.authTime, ...(s.identities ? { identities: s.identities } : {}) }); // REQ-DEV-001
           if (ctx.sessionGuard) await ctx.sessionGuard(uid, s.authTime);
         } else uid = await ctx.authenticate(req);
       }
@@ -1654,9 +1745,11 @@ export function linkTargetsFrom(c: AppContext): LinkTargets {
         }
         case 'replay': {
           const raceId = str(t, 'raceId', /^[\w-]{1,64}$/);
+          // REQ-HL-013 (§72.4): an optional start tick (the sharer's top highlight); a different tick is a different target
+          const st = replayStartTick(t);
           const v = (await myReplays(c).view(uid)) as unknown as { saved?: SavedRow[] };
           if (!v.saved?.some((x) => x.raceId === raceId && x.public)) throw gone();
-          return { targetKey: raceId, data: { raceId } };
+          return replayLinkRow(raceId, st);
         }
         case 'invite': {
           const v = await invite(c).view(uid, null);
@@ -1694,7 +1787,8 @@ export function linkTargetsFrom(c: AppContext): LinkTargets {
             rows = (await myReplays(c).friendList(viewer, rec.ownerId)).replays as { raceId: string; replayTitle: string | null }[];
           }
           const r = rows.find((x) => x.raceId === d.raceId);
-          return r ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle } } : null;
+          // REQ-HL-013: `startTick` = where the shared highlight starts (only for a link that carries one)
+          return r ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle, ...replayLinkExtra(d) } } : null;
         }
         case 'invite':
           return { state: 'ok', target: { code: d.code } };

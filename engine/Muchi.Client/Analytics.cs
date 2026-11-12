@@ -339,6 +339,17 @@ namespace Muchi.Client
             return new AnalyticsEvent("calendar_entry_open", atMs, JsonNode.Obj().Set("kind", kind));
         }
 
+        // ---- REQ-DEV-016 ログイン中の端末 (§70.9; sign-outs and new-device notices are the server's essential rows)
+        public static readonly string[] DeviceListScreens = { "devices", "log" };
+
+        /// <summary>The device list or the security log was shown, with how many rows (0..200). No ids.</summary>
+        public static AnalyticsEvent DeviceListView(long atMs, string screen, int count)
+        {
+            if (IndexIn(DeviceListScreens, screen) < 0) throw new ArgumentException("unknown device list screen " + screen);
+            if (count < 0 || count > 200) throw new ArgumentOutOfRangeException(nameof(count));
+            return new AnalyticsEvent("device_list_view", atMs, JsonNode.Obj().Set("screen", screen).Set("count", count));
+        }
+
         // ---- REQ-FSUG-014 おすすめフレンド (the request / dismiss rows are server events; the view is the client's)
         /// <summary>The suggestions section was on screen (once per friends-screen visit); shown = suggestions in it (0..30). No player ids.</summary>
         public static AnalyticsEvent FsugView(long atMs, int shown)

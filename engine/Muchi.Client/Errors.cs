@@ -157,6 +157,12 @@ namespace Muchi.Client
         CareerResultMismatch,
         /// <summary>REQ-SURVEY-009 (§69): 409 — the survey has ended; close the sheet quietly (a neutral message, no retry).</summary>
         SurveyClosed,
+        /// <summary>REQ-DEV-008: 401 — this session was signed out from another device or by support. Never retried; see <see cref="SessionRevokedException"/>.</summary>
+        SessionRevoked,
+        /// <summary>REQ-DEV-006: 403 — a device signed in before this one can be signed out once this one has been signed in for a while (<see cref="DeviceSignOutException.AvailableAt"/>).</summary>
+        DeviceSignoutTooSoon,
+        /// <summary>REQ-DEV-004: 409 — this device is not one of the "other devices".</summary>
+        DeviceIsCurrent,
     }
 
     public static class ApiErrorCodes
@@ -286,6 +292,9 @@ namespace Muchi.Client
             ["CAREER_SESSION_USED"] = ApiErrorCode.CareerSessionUsed,
             ["CAREER_RESULT_MISMATCH"] = ApiErrorCode.CareerResultMismatch,
             ["SURVEY_CLOSED"] = ApiErrorCode.SurveyClosed,
+            ["SESSION_REVOKED"] = ApiErrorCode.SessionRevoked,
+            ["DEVICE_SIGNOUT_TOO_SOON"] = ApiErrorCode.DeviceSignoutTooSoon,
+            ["DEVICE_IS_CURRENT"] = ApiErrorCode.DeviceIsCurrent,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;
@@ -346,6 +355,11 @@ namespace Muchi.Client
                     return new TransferException(code, wire, message, status, details);
                 case ApiErrorCode.SessionReplaced:
                     return new SessionReplacedException(wire, message, status);
+                case ApiErrorCode.SessionRevoked:
+                    return new SessionRevokedException(wire, message, status);
+                case ApiErrorCode.DeviceSignoutTooSoon:
+                case ApiErrorCode.DeviceIsCurrent:
+                    return new DeviceSignOutException(code, wire, message, status, details);
                 case ApiErrorCode.Maintenance:
                     return new MaintenanceException(wire, message, status, details != null ? MaintenanceInfo.Parse(details) : null);
                 case ApiErrorCode.UpgradeRequired:

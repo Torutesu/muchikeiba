@@ -58,9 +58,34 @@ namespace Muchi.Client
         public static readonly string[] All = { PurchaseMissing, Refund, Coins, Gacha, Race, Account, Deletion, Accessibility, Bug, Other };
     }
 
+    /// <summary>§73.1 (REQ-TKT-001): 受付済み / 確認中 / 返信あり / 解決 / クローズ.</summary>
     public static class InquiryStatuses
     {
-        public const string Received = "received", Answered = "answered", Closed = "closed";
+        public const string Received = "received", InProgress = "in_progress", Answered = "answered", Resolved = "resolved", Closed = "closed";
+        public static readonly string[] All = { Received, InProgress, Answered, Resolved, Closed };
+        /// <summary>The status words (the server sends statusText in the request's language; this is for offline copies).</summary>
+        public static string TextOf(string status, bool english = false)
+        {
+            switch (status)
+            {
+                case Received: return english ? "Received" : "受付済み";
+                case InProgress: return english ? "Checking" : "確認中";
+                case Answered: return english ? "Replied" : "返信あり";
+                case Resolved: return english ? "Resolved" : "解決";
+                case Closed: return english ? "Closed" : "クローズ";
+                default: return english ? "Received" : "受付済み";
+            }
+        }
+        /// <summary>Waiting for support (received or in progress).</summary>
+        public static bool IsOpen(string status) => status == Received || status == InProgress;
+    }
+
+    /// <summary>§73.5: a compensation linked to a ticket (its contents are in the gift box).</summary>
+    public sealed class InquiryCompensation
+    {
+        public string Ref, Screen;
+        public long At;
+        internal static InquiryCompensation Parse(JsonNode o) => new InquiryCompensation { Ref = J.Str(o, "ref"), At = J.Long(o, "at"), Screen = J.Str(o, "screen") };
     }
 
     public sealed class HelpCategoryInfo
@@ -193,22 +218,35 @@ namespace Muchi.Client
         public List<InquiryAttachment> Attachments = new List<InquiryAttachment>();
         public InquiryDiagnostics Diagnostics;
         public List<InquiryMessage> Messages = new List<InquiryMessage>();
+        // §73.5 (REQ-TKT-005)
+        /// <summary>The reply box is open (false when closed past the reopen window, or the thread is full).</summary>
+        public bool CanReply;
+        /// <summary>A closed ticket can be reopened by a reply until then (null otherwise).</summary>
+        public long? ReplyUntil;
+        /// <summary>A replied / resolved ticket closes by itself then (null otherwise).</summary>
+        public long? AutoCloseAt;
+        public bool ShareDiagnostics = true;
+        public List<InquiryCompensation> Compensation = new List<InquiryCompensation>();
         internal static Inquiry Parse(JsonNode o) => new Inquiry
         {
             TicketId = J.Str(o, "ticketId"), Category = J.Str(o, "category"), CategoryTitle = J.Str(o, "categoryTitle"), Status = J.Str(o, "status"), StatusText = J.Str(o, "statusText"),
             Lang = J.Str(o, "lang"), CreatedAt = J.Long(o, "createdAt"), UpdatedAt = J.Long(o, "updatedAt"), Unread = J.Bool(o, "unread"),
             InquiryText = J.Str(o, "inquiryText"), Redacted = J.Int(o, "redacted"), Attachments = J.List(o, "attachments", InquiryAttachment.Parse),
             Diagnostics = J.Opt(o, "diagnostics") == null ? null : InquiryDiagnostics.Parse(J.Opt(o, "diagnostics")), Messages = J.List(o, "messages", InquiryMessage.Parse),
+            CanReply = J.Bool(o, "canReply"), ReplyUntil = J.LongN(o, "replyUntil"), AutoCloseAt = J.LongN(o, "autoCloseAt"),
+            ShareDiagnostics = J.Opt(o, "shareDiagnostics") == null || J.Bool(o, "shareDiagnostics"), Compensation = J.List(o, "compensation", InquiryCompensation.Parse),
         };
     }
 
     public sealed class InquiryLimits
     {
         public int OpenMax, Open, PerDay, Today;
+        /// <summary>§73.4: player replies per game day (all tickets).</summary>
+        public int RepliesPerDay, RepliesToday;
         /// <summary>When the next inquiry can be sent (null = now, or after an answer when OpenMax is reached).</summary>
         public long? RetryAt;
         public bool CanSend => Open < OpenMax && Today < PerDay;
-        internal static InquiryLimits Parse(JsonNode o) => new InquiryLimits { OpenMax = J.Int(o, "openMax"), Open = J.Int(o, "open"), PerDay = J.Int(o, "perDay"), Today = J.Int(o, "today"), RetryAt = J.LongN(o, "retryAt") };
+        internal static InquiryLimits Parse(JsonNode o) => new InquiryLimits { OpenMax = J.Int(o, "openMax"), Open = J.Int(o, "open"), PerDay = J.Int(o, "perDay"), Today = J.Int(o, "today"), RetryAt = J.LongN(o, "retryAt"), RepliesPerDay = J.Int(o, "repliesPerDay"), RepliesToday = J.Int(o, "repliesToday") };
     }
 
     public sealed class InquiryList
@@ -233,13 +271,16 @@ namespace Muchi.Client
         public string Description = "";
         public List<string> Refs = new List<string>();
         public string AppVersion, Platform;
+        /// <summary>§73.3 (REQ-TKT-003): the form's 「診断情報を添える」 switch. Off = no app version, platform or race ids are sent or kept.</summary>
+        public bool ShareDiagnostics = true;
 
         internal JsonNode ToJson()
         {
             var refs = JsonNode.Arr();
             foreach (var r in Refs) refs.Add(JsonNode.Str(r));
-            return JsonNode.Obj().Set("category", Category).Set("description", Description ?? "").Set("refs", refs)
-                .Set("diagnostics", JsonNode.Obj().Set("appVersion", AppVersion ?? "0").Set("platform", Platform ?? "editor"));
+            var o = JsonNode.Obj().Set("category", Category).Set("description", Description ?? "").Set("refs", refs);
+            if (!ShareDiagnostics) return o.Set("shareDiagnostics", false);
+            return o.Set("diagnostics", JsonNode.Obj().Set("appVersion", AppVersion ?? "0").Set("platform", Platform ?? "editor"));
         }
     }
 
@@ -365,6 +406,17 @@ namespace Muchi.Client
             if (draft == null) throw new ArgumentNullException(nameof(draft));
             if (Array.IndexOf(InquiryCategories.All, draft.Category) < 0) throw new ArgumentException("unknown category " + draft.Category);
             return Call("POST", "/v1/help/inquiries", draft.ToJson(), true, idempotencyKey ?? NewIdempotencyKey(), true, Inquiry.Parse, ct);
+        }
+
+        /// <summary>
+        /// §73.4 (REQ-TKT-004): the player's reply in a thread. Pass the same key when retrying the same reply (the server
+        /// returns the first answer); a new reply gets a new key (null = one is made here). Returns the thread.
+        /// </summary>
+        public Task<Inquiry> SendInquiryMessageAsync(string ticketId, string content, string idempotencyKey = null, CancellationToken ct = default)
+        {
+            if (!IsInquiryId(ticketId)) throw new ArgumentException("bad ticket id", nameof(ticketId));
+            if (string.IsNullOrWhiteSpace(content)) throw new ArgumentException("content required", nameof(content));
+            return Call("POST", "/v1/help/inquiries/" + ticketId + "/messages", JsonNode.Obj().Set("content", content), true, idempotencyKey ?? NewIdempotencyKey(), true, Inquiry.Parse, ct);
         }
 
         /// <summary>REQ-HELP-014: mark a ticket's replies read (idempotent).</summary>

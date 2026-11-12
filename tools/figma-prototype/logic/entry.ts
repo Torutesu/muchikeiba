@@ -9,7 +9,7 @@ import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
 import { clientBatchSchema, clientToKpi, type ClientBatch } from '../../../server/src/domain/kpi.js';
 import type { AccessibilityBody } from '../../../server/src/domain/accessibility.js';
-import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
+import { newPlayer, playerView, type HorseInstance, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { exchangeClosesAt } from '../../../server/src/domain/exchange.js';
@@ -22,7 +22,9 @@ import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
 import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
-import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
+import { breed as breedHorses, createHorseFromTemplate, lineageSnap } from '../../../server/src/domain/horses.js';
+import { finishBreedingPedigree, finishPedigree } from '../../../server/src/domain/pedigree.js';
+import { seededRng } from '../../../server/src/domain/rng.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
 import { raceFieldSeen } from '../../../server/src/domain/collection.js';
@@ -69,8 +71,10 @@ import {
 } from '../../../server/src/domain/cheer.js';
 import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
 import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
+import { buildCheckinInput, type CheckinBody } from '../../../server/src/domain/devices.js';
+import { sessionRevoked } from '../../../server/src/domain/sessionRevocation.js';
 import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
-import { formatToken, linksConfig, parseLink, LINK_SCREENS, type LinkType } from '../../../server/src/domain/deepLinks.js';
+import { formatToken, linksConfig, parseLink, LINK_SCREENS, replayLinkExtra, replayLinkRow, replayStartTick, type LinkType } from '../../../server/src/domain/deepLinks.js';
 import { Rematches } from '../../../server/src/domain/rematch.js';
 import { FriendRooms } from '../../../server/src/domain/matchmaker.js';
 import { maintenanceOf } from '../../../server/src/domain/maintenance.js';
@@ -453,6 +457,20 @@ const trfSvc = new TransferService({
   redeemReplay: (u, k) => svc.transferRedeemReplay(u, k), redeemRemember: (u, k, pid, name) => svc.transferRedeemRemember(u, k, pid, name),
 }, trfDir, () => transferConfig(master), { sign: async (uid, t) => `proto-custom-token.${uid}.${Math.floor(t / 1000)}` }, { clock: now });
 
+// round 23 (REQ-DEV-*, contracts/protocol.md §70): ログイン中の端末 on the real PlayerService steps. The Worker's part (the install
+// id hash, the session id, auth_time from the ID token) is the real buildCheckinInput; this device signed in 3 days before the
+// first visit (kept in localStorage), the demo devices are an older tablet and, on demand, a new phone signing in now.
+const DEV_KEY = 'muchi.proto.devices.auth';
+const devThisAuth = (): number => {
+  try { const v = Number(localStorage.getItem(DEV_KEY)); if (Number.isInteger(v) && v > 0) return v; } catch { /* private mode */ }
+  const v = Math.floor((now() - 3 * DAY_MS) / 1000);
+  try { localStorage.setItem(DEV_KEY, String(v)); } catch { /* private mode */ }
+  return v;
+};
+const DEV_BODY: CheckinBody = { platform: 'ios', osMajor: 18, model: 'iPhone15,2', appVersion: '1.4.0' };
+const devCheckin = async (authTime: number, installId: string, b: CheckinBody, country = 'JP') => svc.devicesCheckin(ID, await buildCheckinInput(ID, authTime, installId, b, country, {}));
+let devDemoAuth: Record<string, number> = {};
+
 // round 21 (REQ-LINK-*, contracts/protocol.md §63): ディープリンク on the real LinkService (directory in memory: a reload forgets the
 // links, like a fresh demo) and 再戦 on the real Rematches + FriendRooms (the matchmaker's logic). The demo friend ミドリカワ owns
 // the incoming links; three demo racers ran the friend-room race with the local player.
@@ -490,7 +508,7 @@ const linkTargets: LinkTargets = {
       case 'friend': return { targetKey: 'me', data: { friendCode: await fsugProfiles.codeOf(uid) } };
       case 'invite': return { targetKey: 'me', data: { code: (await inviteSvc.view(uid, null)).code } };
       case 'cup': { const cupId = str('cupId'); const v = await cupsSvc.get(uid, cupId); if (!v.code) throw new AppError('NOT_FOUND'); return { targetKey: cupId, data: { cupId, code: v.code }, endsAt: v.closesAt }; }
-      case 'replay': { const raceId = str('raceId'); const v = await myReplaysSvc.view(uid) as unknown as { saved: { raceId: string; public: boolean }[] }; if (!v.saved.some((x) => x.raceId === raceId && x.public)) throw new AppError('NOT_FOUND'); return { targetKey: raceId, data: { raceId } }; }
+      case 'replay': { const raceId = str('raceId'); const st = replayStartTick(t); const v = await myReplaysSvc.view(uid) as unknown as { saved: { raceId: string; public: boolean }[] }; if (!v.saved.some((x) => x.raceId === raceId && x.public)) throw new AppError('NOT_FOUND'); return replayLinkRow(raceId, st); } // R23 §72.4: the optional start tick
       case 'team': { const me = await teamsSvc.me(uid); if (!me.team) throw new AppError('NOT_FOUND'); return { targetKey: me.team.teamId, data: { teamId: me.team.teamId } }; }
     }
   },
@@ -502,13 +520,50 @@ const linkTargets: LinkTargets = {
       case 'friend': return { state: 'ok', target: { friendCode: d.friendCode, displayName: (await svc.linkParty(rec.ownerId)).displayName, self: viewer === rec.ownerId } };
       case 'invite': return { state: 'ok', target: { code: d.code } };
       case 'cup': return { state: 'ok', target: { code: d.code, preview: await cupsSvc.lookup(viewer, d.code!) } };
-      case 'replay': return viewer === rec.ownerId || (await svc.friendsState(viewer)).ids.includes(rec.ownerId) ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: d.raceId, replayTitle: null } } : { state: 'friends_only' };
+      case 'replay': return viewer === rec.ownerId || (await svc.friendsState(viewer)).ids.includes(rec.ownerId) ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: d.raceId, replayTitle: null, ...replayLinkExtra(d) } } : { state: 'friends_only' };
       case 'team': { const v = await teamsSvc.view(d.teamId!, viewer); return v.disbanded ? null : { state: 'ok', target: { teamId: v.teamId, teamName: v.name } }; }
     }
   },
 };
 async function linkFriend() {
   if (!(await repo.get(LINK_FRIEND))) { await svc.bootstrap(LINK_FRIEND); await svc.setDisplayName(LINK_FRIEND, LINK_FRIEND_NAME); }
+}
+
+// round 23 (REQ-PED-*): the demo family for the pedigree screens, bred by the real breedWith on the local player (once).
+const PED_DEMO = { sire: 'アカツキボーイ', stud: 'ホシカゲ', owner: 'demo_ped_owner' };
+async function pedigreeDemo() {
+  return svc.tx(ID, null, (s, t) => {
+    const named = (n: string) => s.horses.find((h) => h.name === n);
+    if (!named(PED_DEMO.sire)) {
+      const ret = (id: string) => { const h = createHorseFromTemplate(s, master.templateById.get(id)!, t); h.status = 'retired'; return h; };
+      const sire = ret('t_akatsuki'), dam = ret('t_kohaku');
+      const keep = s.breeding;
+      let bro: HorseInstance | undefined, sis: HorseInstance | undefined;
+      for (let i = 0; i < 40 && (!bro || !sis); i++) {
+        s.breeding = { date: null, count: 0 };
+        const f = breedHorses(master, s, sire.id, dam.id, seededRng(2300 + i), t).foal;
+        if (f.sex === 'male' && !bro) bro = f; else if (f.sex === 'female' && !sis) sis = f;
+        else s.horses = s.horses.filter((h) => h.id !== f.id);
+      }
+      s.breeding = keep; // the demo does not use today's breedings
+      bro!.name = PED_DEMO.sire; bro!.named = true; bro!.status = 'retired';
+      sis!.name = 'アカツキヒメ'; sis!.named = true; sis!.status = 'retired';
+      // another trainer's stallion (REQ-BREED-014) with its birth snapshot (REQ-PED-001): the owner is not a friend
+      const st = createHorseFromTemplate(newPlayer(PED_DEMO.owner, t, '2026-11'), master.templateById.get('t_ginga')!, t); // never stored
+      st.status = 'retired';
+      s.counters.horseSeq += 1;
+      const foal: HorseInstance = {
+        id: `h${s.counters.horseSeq}`, templateId: null, name: PED_DEMO.stud, rarity: 'SR', sex: 'female', style: 'senko', distMinM: 1600, distMaxM: 2400, surface: 'turf',
+        line: st.line, base: { speed: 720, stamina: 760, burst: 700, guts: 680, temper: 600 }, awakening: 0, bornAt: t, status: 'retired',
+        sireId: null, damId: sis!.id, sireName: st.name, damName: sis!.name, named: true,
+        studSire: { ownerId: PED_DEMO.owner, horseId: 'h1', sireName: st.sireName, damName: st.damName },
+        lineage: { v: 1, sire: lineageSnap(master, st, PED_DEMO.owner), dam: lineageSnap(master, sis!, s.id) },
+      };
+      s.horses.push(foal);
+    }
+    const id = (n: string) => named(n)!.id;
+    return { sireId: id(PED_DEMO.sire), damId: id('アカツキヒメ'), studFoalId: id(PED_DEMO.stud) };
+  });
 }
 
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
@@ -996,8 +1051,23 @@ export const MuchiLogic = {
   inquiry: (ticketId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.helpInquiry(ID, ticketId, lang)),
   inquiryRead: (ticketId: string) => wrap(() => svc.helpInquiryRead(ID, ticketId)),
   /** POST /v1/help/inquiries with the form's key (the same key on a retry returns the same ticket). */
-  submitInquiry: (input: { category: string; description: string; refs: string[] }, formKey: string, lang: 'ja' | 'en' = 'ja') =>
-    wrap(() => svc.helpInquirySubmit(ID, { category: input.category as never, description: input.description, refs: input.refs, diagnostics: { appVersion: 'proto', platform: 'editor' } }, 'c:/v1/help/inquiries:' + formKey, lang)),
+  submitInquiry: (input: { category: string; description: string; refs: string[]; shareDiagnostics?: boolean }, formKey: string, lang: 'ja' | 'en' = 'ja') =>
+    wrap(async () => {
+      // §73.3: diagnostics only with consent (the form's 診断情報を添える switch)
+      const share = input.shareDiagnostics !== false;
+      const { summary: _s, ...t } = await svc.helpInquirySubmit(ID, { category: input.category as never, description: input.description, refs: input.refs, diagnostics: share ? { appVersion: 'proto', platform: 'editor' } : null, shareDiagnostics: share }, 'c:/v1/help/inquiries:' + formKey, lang) as Awaited<ReturnType<typeof svc.helpInquirySubmit>> & { summary?: unknown };
+      return t;
+    }),
+  /** §73.4 (REQ-TKT-004): POST /v1/help/inquiries/:id/messages with one key per reply (a retry returns the same thread). */
+  inquiryReply: (ticketId: string, content: string, replyKey: string, lang: 'ja' | 'en' = 'ja') =>
+    wrap(async () => { const { summary: _s, ...t } = await svc.helpInquiryMessage(ID, ticketId, content, 'c:/v1/help/inquiries/' + ticketId + '/messages:' + replyKey, lang); return t; }),
+  /** §73 demo: the ops side of a thread (status, reply) on the real rules. */
+  inquiryOps: {
+    reply: (ticketId: string, text: string, close = false) => wrap(() => svc.adminInquiryReply(ID, ticketId, text, close, 'ops-demo', `demo-${ticketId}-${n++}`)),
+    status: (ticketId: string, status: 'in_progress' | 'resolved' | 'closed') => wrap(() => svc.adminInquiryStatus(ID, ticketId, status, `demo-st-${ticketId}-${n++}`)),
+  },
+  /** §73 KPI rows the server wrote (ticket_*), for the checks. */
+  ticketKpi: () => serverKpi.filter((k) => k.name.startsWith('ticket_') || k.name.startsWith('inquiry_')).map((k) => ({ name: k.name, s1: k.s1, s2: k.s2 })),
   /** KPI rows the client would send (help_search / help_article_view), checked against the server's client-event schema. */
   helpKpi: (name: 'help_search' | 'help_article_view', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
   /** REQ-HELP-008: the article a screen's ? link opens (master/help.json contexts). */
@@ -1009,7 +1079,18 @@ export const MuchiLogic = {
     const a = await wrap(() => svc.helpInquirySubmit(ID, { category: 'purchase_missing', description: 'コイン1,020を購入しましたが、残高に反映されていません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
     if (a.ok) await wrap(() => svc.adminInquiryReply(ID, a.value.ticketId, 'お問い合わせありがとうございます。ストアの支払いを確認し、コインの付与が完了しました。ご不便をおかけしました。', false, 'ops-demo', `demo-${a.value.ticketId}`));
     clockShift += 61_000;
-    await wrap(() => svc.helpInquirySubmit(ID, { category: 'bug', description: 'タイムアタックの結果画面で、まれに記録が表示されません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    const b = await wrap(() => svc.helpInquirySubmit(ID, { category: 'bug', description: 'タイムアタックの結果画面で、まれに記録が表示されません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    // §73: support is checking this one (確認中)
+    if (b.ok) await wrap(() => svc.adminInquiryStatus(ID, b.value.ticketId, 'in_progress', `demo-st-${b.value.ticketId}`));
+    clockShift += 61_000;
+    // §73: a resolved one with an apology gift linked (the gift itself went through the compensation path)
+    const c = await wrap(() => svc.helpInquirySubmit(ID, { category: 'coins', description: 'イベントの報酬の無償コインが受け取れませんでした。', refs: [], diagnostics: null, shareDiagnostics: false }, key(), 'ja'));
+    if (c.ok) {
+      await wrap(() => svc.adminInquiryReply(ID, c.value.ticketId, 'ご不便をおかけしました。お詫びの品をプレゼントボックスに入れました。', false, 'ops-demo', `demo-${c.value.ticketId}`));
+      await wrap(() => svc.adminInquiryCompensation(ID, c.value.ticketId, 'comp_demo_1'));
+      await wrap(() => svc.adminInquiryStatus(ID, c.value.ticketId, 'resolved', `demo-st-${c.value.ticketId}`));
+      await wrap(() => svc.helpInquiryRead(ID, c.value.ticketId));
+    }
     clockShift += 61_000;
     return svc.view(ID);
   },
@@ -1378,6 +1459,18 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 23: 血統図と系統 (REQ-PED-*, contracts/protocol.md §71)
+  // GET /v1/horses/:id/pedigree, GET /v1/breeding/pedigree and GET /v1/bloodlines on the real pedigree.ts, in the screen's
+  // language (bloodline names and pair hints are picked from their JA + EN pair; other texts are the server's Japanese,
+  // translated by the prototype's catalog like an HTTP answer at the boundary). Read only: nothing is granted.
+  pedigree: {
+    view: (horseId: string, lang: 'ja' | 'en' = 'ja') => wrap(async () => finishPedigree(master, await svc.pedigreeMine(ID, horseId, lang), {}, lang)),
+    pair: (sireId: string, damId: string, lang: 'ja' | 'en' = 'ja') => wrap(async () => finishBreedingPedigree(await svc.pedigreePair(ID, sireId, damId, lang), {})),
+    bloodlines: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.bloodlines(ID, lang)),
+    /** A demo family: a brother and a sister bred from two retired template horses (an inbred pair), and a foal by another trainer's stallion. */
+    demo: () => wrap(() => pedigreeDemo()),
+    kpi: (name: 'pedigree_view' | 'bloodline_view', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  },
   // ---------------------------------------------------------------- round 21: トレーナーカード (REQ-SHOW-*, contracts/protocol.md §62)
   showcase: {
     /** GET /v1/showcase in the screen's language (phrases and background names are picked from their JA + EN pair). */
@@ -1704,6 +1797,36 @@ export const MuchiLogic = {
     kpi: () => serverKpi.filter((k) => k.name.startsWith('transfer_')),
     audit: () => trfDir.rows.map((r) => ({ ...r })),
     storedRecords: () => JSON.stringify([...trfDir.codes.values()]),
+  },
+  // ---------------------------------------------------------------- round 23: ログイン中の端末 (REQ-DEV-*, contracts/protocol.md §70)
+  // What POST /v1/account/devices/checkin, GET /v1/account/devices, the sign-outs and GET /v1/account/security-log answer.
+  devices: {
+    /** This device's check-in (launch / the screen opening); the first time also the demo tablet (signed in before this feature). */
+    checkin: () => wrap(async () => {
+      await devCheckin(devThisAuth(), 'proto-install-0001', DEV_BODY);
+      if (!devDemoAuth.tablet) {
+        devDemoAuth.tablet = devThisAuth() - 40 * 86_400;
+        await devCheckin(devDemoAuth.tablet, 'proto-install-tablet', { platform: 'ios', osMajor: 17, model: 'iPad13,1', appVersion: '1.3.2' });
+      }
+      return svc.devicesView(ID, devThisAuth());
+    }),
+    view: () => wrap(() => svc.devicesView(ID, devThisAuth())),
+    signOut: (sessionId: string) => wrap(() => svc.devicesSignOut(ID, sessionId, devThisAuth())),
+    signOutOthers: () => wrap(() => svc.devicesSignOutOthers(ID, devThisAuth())),
+    log: () => wrap(() => svc.securityLog(ID)),
+    /** Demo: a new phone signs in to this account now (the new-device notice in the activity list and the log). */
+    demoNewDevice: () => wrap(async () => {
+      devDemoAuth.phone = Math.floor(now() / 1000);
+      return devCheckin(devDemoAuth.phone, `proto-install-phone-${devDemoAuth.phone}`, { platform: 'android', osMajor: 15, model: 'Pixel 9', appVersion: '1.4.0' }, 'JP');
+    }),
+    /** The next request of a demo device: true = 401 SESSION_REVOKED (the check the Worker's session guard runs). */
+    revoked: (which: 'tablet' | 'phone') => wrap(async () => {
+      const at = devDemoAuth[which];
+      return at !== undefined && sessionRevoked((await svc.sessionState(ID)).revoked, at);
+    }),
+    kpi: () => serverKpi.filter((k) => k.name === 'device_signout' || k.name === 'new_device_notice'),
+    /** Test hook: forget the demo devices' sign-in times (a fresh demo). */
+    resetDemo: () => { devDemoAuth = {}; },
   },
   // ---------------------------------------------------------------- round 21: ディープリンク・再戦 (REQ-LINK-*, contracts/protocol.md §63)
   // What POST/GET/DELETE /v1/links and POST /v1/links/resolve answer, on the real LinkService.

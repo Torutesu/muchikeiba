@@ -27,9 +27,11 @@ export const ACTIVITY_KINDS = [
   'data_export_ready',
   // Round 22: a promotion at the season close (§68.10, after a promotion series or the line)
   'class_promoted',
+  // Round 23: a new device signed in to the account (§70.4; no push)
+  'new_device',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
-export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
+export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy', 'devices'] as const;
 export type ActivityScreen = typeof ACTIVITY_SCREENS[number];
 
 /**
@@ -64,6 +66,8 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   data_export_ready: { category: 'account', screen: 'privacy', collapse: false },
   // §68 × §40: the class went up at the close; links to that month's recap (linkId season:YYYY-MM)
   class_promoted: { category: 'season', screen: 'recap', collapse: false },
+  // §70.4 (REQ-DEV-009): about the account itself, like the data export — not a push category; links to ログイン中の端末
+  new_device: { category: 'account', screen: 'devices', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -297,6 +301,7 @@ export const ACTIVITY_TEXT = {
   data_export_ready: 'データのダウンロードの準備ができました',
   class_promoted_series: '昇級戦を突破して{to}級に昇級しました',
   class_promoted_line: '{from}級から{to}級に昇級しました',
+  new_device: '新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -329,6 +334,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'qchat_mention': return count > 1 ? fill(T.qchat_mention_many, { n: String(count) }) : fill(T.qchat_mention_one, v);
     case 'data_export_ready': return T.data_export_ready;
     case 'class_promoted': return fill(vars.via === 'series' ? T.class_promoted_series : T.class_promoted_line, v);
+    case 'new_device': return T.new_device;
   }
 }
 

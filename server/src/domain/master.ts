@@ -31,6 +31,7 @@ import careerJson from '../../master/career.json';
 import tipsJson from '../../master/tips.json';
 import showcaseJson from '../../master/showcase.json';
 import releaseNotesJson from '../../master/release-notes.json';
+import bloodlinesJson from '../../master/bloodlines.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -212,6 +213,8 @@ export interface Progression {
   nextActions?: import('./nextAction.js').NextActionConfig;
   /** REQ-TRF-018: 引き継ぎコード (transferCode.ts, validated by transferProblems). Absent = defaults. */
   transfer?: import('./transferCode.js').TransferConfig;
+  /** REQ-DEV-*: ログイン中の端末とセキュリティ (devices.ts, validated by devicesProblems). Absent = defaults. */
+  devices?: Partial<import('./devices.js').DevicesConfig>;
   /** REQ-LINK-022: ディープリンク・再戦 (deepLinks.ts, validated by linksProblems). Absent = defaults. */
   links?: Partial<import('./deepLinks.js').LinksConfig>;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
@@ -450,6 +453,8 @@ export interface Master {
   releaseNotes?: import('./releaseNotes.js').ReleaseNotesMaster;
   /** REQ-CAREER-*: 騎手の道 — chapters of CPU races with story, objectives and once-ever rewards (master/career.json; career.ts careerOf falls back to it when absent). Texts carry their own English. */
   career?: import('./career.js').CareerMaster;
+  /** REQ-PED-011 (§71): 系統 names and notes (master/bloodlines.json; pedigree.ts bloodlinesOf falls back to it when absent). */
+  bloodlines?: import('./pedigree.js').BloodlinesMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -609,6 +614,7 @@ export function loadMaster(): Master {
     showcase: showcaseJson as unknown as import('./showcase.js').ShowcaseMaster,
     releaseNotes: releaseNotesJson as unknown as import('./releaseNotes.js').ReleaseNotesMaster,
     career: careerJson as unknown as import('./career.js').CareerMaster,
+    bloodlines: bloodlinesJson as unknown as import('./pedigree.js').BloodlinesMaster,
   };
   cached = m;
   return m;

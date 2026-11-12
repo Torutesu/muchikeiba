@@ -1527,6 +1527,18 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(!(await page.locator('.screen.in [data-card]').innerText()).includes('local'), 'no player id on the card');
   await shot('share-card', 200);
   await click('戻る'); await waitScreen('result');
+  // round 23 (REQ-HL-008/011): 見どころ of the race just run — the reel on the 3D view (offline: from the device's own log)
+  await page.locator('.screen.in [data-action="hl-result"]').click(); await waitScreen('highlights', 30000);
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 })
+    .catch(async (e) => { throw new Error(`highlights did not play on ${await screen()}: ${errors.slice(-5).join(' | ')}\n${e.message}`); });
+  const hlR = await page.evaluate(() => globalThis.__muchi.highlight);
+  assert.ok(hlR.set.moments.length >= 1 && hlR.totalMs >= 15000 && hlR.totalMs <= 30000, 'highlights: 1–3 moments, 15–30 s: ' + JSON.stringify(hlR.set.moments.map((m) => m.kind)));
+  assert.ok((await page.locator('.screen.in .hl-caption').textContent()).length > 0, 'highlights: a caption');
+  await shot('highlights-result', 700);
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  await shot('highlights-end', 400);
+  assert.ok(await page.evaluate(() => globalThis.__muchi.logic.kpiLog().some((e) => e.name === 'highlight_view' && e.props.surface === 'result')), 'KPI: highlight_view from the result screen');
+  await page.locator('.screen.in .hl-back').click(); await waitScreen('result');
   // time attack ghost picker: friends first, the top list without friend ghosts, a run beside the friend's ghost
   await page.evaluate(() => globalThis.__muchi.show('TimeAttack')); await waitScreen('time-attack', 30000); await page.waitForTimeout(400);
   const picker = page.locator('.screen.in [data-name="Ghost picker"]');
@@ -1697,6 +1709,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await shot('invite-deeplink', 300);
   await page.evaluate(() => localStorage.removeItem('muchi.invite.linkCode'));
   await page.goto(url); await ready();
+  // R23 integration: the reload brought the bundled config back (the §68 series is on again) and Round 23 adds ranked races
+  // to the later steps — a real series would end with its outcome sheet over a later home; switch it off again (as above)
+  await page.evaluate(() => globalThis.__muchi.logic.promotion.setEnabled(false));
 
   // the tutorial screens: the whip-only HUD, the whip cue, and the close-2nd retry when the player never whips
   await page.evaluate(() => globalThis.__muchi.demo('new')); await waitScreen('title', 20000);
@@ -2058,6 +2073,25 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-action="inquiry-send"]').click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
   assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the new inquiry is received');
   await shot('help-inquiry-sent', 300);
+  // ------------------------------------------------------------------ 6. round 23: お問い合わせ履歴 (REQ-TKT-*)
+  // status chips on the list (確認中 / 解決 / 受付済み), the resolved ticket's thread with its apology gift, a reply that
+  // reopens it (one key; the server's ticket_reopen / ticket_player_reply rows carry no text), and the gift box link
+  assert.ok(await page.locator('.screen.in .inq-list [data-chip="in_progress"]').count() >= 1, 'the list shows a 確認中 chip');
+  await page.locator('.screen.in .inq-list [data-status="resolved"]').first().click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'resolved');
+  assert.equal(await page.locator('.screen.in .inq-detail [data-chip="resolved"]').innerText(), '解決');
+  assert.equal(await page.locator('.screen.in [data-action="ticket-gift"]').count(), 1, 'the linked apology gift opens the gift box');
+  assert.equal(await page.locator('.screen.in [data-auto-close]').count(), 1, 'a resolved ticket says when it closes by itself');
+  await shot('ticket-thread-resolved', 300);
+  await page.locator('.screen.in .inq-detail textarea.field').fill('まだ1件だけ届いていません。もう一度確認してください。');
+  await page.locator('.screen.in [data-action="ticket-reply"]').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .inq-detail').getAttribute('data-status'), 'received', 'the reply reopens the ticket (受付済み)');
+  assert.equal(await page.locator('.screen.in .inq-detail [data-reply="player"]').count(), 2, 'the inquiry and the reply are in the thread');
+  const tkt = await page.evaluate(() => globalThis.__muchi.logic.ticketKpi());
+  assert.ok(tkt.some((k) => k.name === 'ticket_reopen' && k.s2 === 'resolved') && tkt.some((k) => k.name === 'ticket_player_reply'), 'ticket_reopen / ticket_player_reply from the server');
+  assert.ok(!JSON.stringify(tkt).includes('届いていません'), 'KPI rows never carry the text');
+  await shot('ticket-thread-reply', 300);
+  await page.locator('.screen.in [data-action="ticket-gift"]').click(); await waitScreen('gift-box'); await page.waitForTimeout(300);
   // ------------------------------------------------------------------ 6. round 19: 画質・通信量 / ストレージ (REQ-PERF-*)
   // the settings row → four rows with what auto means here; a choice applies at once (the 3D view's pixel ratio and
   // shadows, the frame cap, the home art's drift) and is stored on this device only; perf_setting_change only for a real
@@ -2331,6 +2365,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // the help article from the side panel
   await page.locator('.screen.in [data-action="cal-help"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'calendar', 'calendar: its help article');
+  // ------------------------------------------------------------------ 6. round 23: 血統図と系統 (REQ-PED-*)
+  // 厩舎 › 血統 (the partner's tree: template parents 記録なし, a founder), the demo family (the breeding pair's 「血統を見る」 with
+  // the shared ancestors in cyan and the server's hints), another trainer's stallion (「他のトレーナーの馬」), the bloodline list
+  // (every line, no reward), the help article, and the KPI rows
+  await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .ped-entry').click(); await waitScreen('pedigree'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ped-panel').getAttribute('data-flow'), 'columns', 'pedigree: columns at the standard text size');
+  assert.equal(await page.locator('.screen.in .ped-box').count() + await page.locator('.screen.in .el.ped-empty').count(), 15, 'pedigree: 15 slots (3 generations)');
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /記録なし/, 'pedigree: template parents have no record');
+  await shot('pedigree-partner', 300);
+  const pd = await page.evaluate(async () => (await globalThis.__muchi.logic.pedigree.demo()).value);
+  await page.evaluate((x) => globalThis.__muchi.show('BreedingPair', x.sireId, x.damId), pd); await waitScreen('pedigree-pair'); await page.waitForTimeout(500);
+  const pairShared = Number(await page.locator('.screen.in .ped-pair-shared').getAttribute('data-count'));
+  assert.ok(pairShared > 0, 'pair: brother × sister share ancestors');
+  assert.ok(await page.locator('.screen.in .ped-pair-trees .ped-box.shared').count() >= 2, 'pair: the shared ancestors are framed in both trees');
+  const pv = await page.evaluate(async (x) => (await globalThis.__muchi.logic.breedingPreview(x.sireId, x.damId)).value, pd);
+  assert.equal(pv.inbreedingCount, pairShared, 'pair: the same count as the breeding preview');
+  assert.ok(await page.locator('.screen.in .ped-hint[data-kind="style"]').count() >= 1, 'pair: the style chances from the preview');
+  const pairText = await page.locator('.screen.in').innerText();
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ/.test(pairText), 'pair: no urgency, shop or betting wording');
+  await shot('pedigree-pair', 300);
+  await page.locator('.screen.in [data-action="ped-open-sire"]').click(); await waitScreen('pedigree'); await page.waitForTimeout(400);
+  assert.ok(Number(await page.locator('.screen.in .ped-panel').getAttribute('data-shared')) === 0, 'the brother himself is not inbred');
+  await page.evaluate((id) => globalThis.__muchi.show('Pedigree', id, 'horse'), pd.studFoalId); await waitScreen('pedigree'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /他のトレーナーの馬/, 'pedigree: another trainer\'s stallion has no owner name');
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /系統の祖/, 'pedigree: the stallion\'s sire is the founder of its line');
+  await shot('pedigree-stud', 300);
+  await page.locator('.screen.in [data-action="ped-lines"]').click(); await waitScreen('bloodlines'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ped-line-row').count(), 7, 'bloodlines: every line');
+  assert.ok(await page.locator('.screen.in .ped-line-row.none').count() >= 1, 'bloodlines: empty lines listed');
+  assert.match(await page.locator('.screen.in').innerText(), /系統の数で報酬はありません/, 'bloodlines: no reward for lines');
+  await shot('bloodlines', 300);
+  await page.locator('.screen.in [data-action="ped-help"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'pedigree', 'bloodlines: the pedigree help article');
+  const pk = await page.evaluate(() => globalThis.__muchiPedKpi ?? []);
+  assert.ok(pk.some((e) => e.name === 'pedigree_view' && e.source === 'breeding' && e.shared > 0), 'pedigree_view from the pair');
+  assert.ok(pk.some((e) => e.name === 'bloodline_view' && e.lines === 7), 'bloodline_view');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch
@@ -2669,6 +2740,49 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in').innerText(), /別の端末に引き継がれました/);
   await shot('transfer-replaced', 300);
 
+  // ------------------------------------------------------------------ round 23: ログイン中の端末 (REQ-DEV-*)
+  // その他 › 設定 (the account panel) › ログイン中の端末: this device first, the demo tablet; a new phone signs in (the activity
+  // entry links back here); the confirm sheet (やめる sends nothing), sign it out (its next request is SESSION_REVOKED), all the
+  // others, the security log, and the signed-out device's neutral screen (the device state is reset once). No 9th row on その他.
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-name="More"] > .btn.row').count() <= 8, true, 'その他 keeps at most eight rows');
+  await page.locator('.screen.in .btn[data-action="devices"]').click(); await waitScreen('devices'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .dev-current').count(), 1, 'this device is listed first');
+  assert.match(await page.locator('.screen.in .dev-current').innerText(), /iPhone（iOS 18）[\s\S]*この端末/);
+  await page.locator('.screen.in [data-action="devices-demo-new"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .dev-row:not(.dev-current)').count(), 2, 'the tablet and the new phone');
+  await shot('devices', 400);
+  const devAct = await page.evaluate(async () => (await globalThis.__muchi.logic.activity()).value.items.filter((x) => x.kind === 'new_device').map((x) => x.text + '|' + x.link.screen));
+  assert.deepEqual(devAct, ['新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます|devices'], 'one neutral activity entry that links here');
+  const phoneRow = page.locator('.screen.in .dev-row', { hasText: 'Pixel' });
+  await phoneRow.locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm', { timeout: 5000 });
+  assert.match(await page.locator('.screen.in .dev-confirm-title').innerText(), /Pixel（Android 15）をログアウトしますか？/);
+  await shot('devices-confirm', 300);
+  await page.locator('.screen.in .dev-confirm-no').click(); await waitScreen('devices'); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.devices.revoked('phone')).value), false, 'やめる sends nothing');
+  await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm');
+  await page.locator('.screen.in .dev-confirm-yes').click(); await page.waitForTimeout(900);
+  assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.devices.revoked('phone')).value), true, 'the phone\'s next request is SESSION_REVOKED');
+  assert.equal(await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).count(), 0, 'the phone left the list');
+  await page.locator('.screen.in [data-action="devices-signout-others"]').click(); await page.waitForSelector('.screen.in .dev-confirm');
+  assert.match(await page.locator('.screen.in .dev-confirm').innerText(), /一覧にない端末も/);
+  await page.locator('.screen.in .dev-confirm-yes').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .dev-none').count(), 1, 'only this device is left');
+  assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.devices.kpi().map((k) => k.name + ':' + k.s1)), ['new_device_notice:android', 'device_signout:one', 'device_signout:others'], 'KPI: essential rows, categories only');
+  await page.locator('.screen.in [data-action="security-log"]').click(); await waitScreen('security-log'); await page.waitForTimeout(300);
+  // newest first; older rows come from the earlier steps of this flow (R23 integration: the 引き継ぎ step issued codes on this
+  // account after the list began — REQ-DEV-011 logs them), so only the three rows of this step are fixed
+  const secKinds = await page.locator('.screen.in .sec-row').evaluateAll((els) => els.map((e) => e.dataset.kind));
+  assert.deepEqual(secKinds.slice(0, 3), ['signout_others', 'signout_device', 'new_device']);
+  assert.ok(secKinds.slice(3).every((k) => ['transfer_issued', 'transfer_revoked', 'link_added', 'link_removed'].includes(k)), 'older rows: ' + secKinds.join(','));
+  await shot('security-log', 300);
+  const devChanges = await page.evaluate(() => globalThis.__muchiAccountChanges ?? 0);
+  await page.evaluate(() => globalThis.__muchi.show('SessionRevoked')); await waitScreen('session-revoked'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in').innerText(), /この端末はログアウトされました/);
+  assert.doesNotMatch(await page.locator('.screen.in').innerText(), /不正|危険|今すぐ/, 'neutral wording');
+  assert.equal(await page.evaluate(() => globalThis.__muchiAccountChanges), devChanges + 1, 'the signed-out device resets its device state once');
+  await shot('session-revoked', 300);
+
   // ------------------------------------------------------------------ round 21: ディープリンク・再戦 (REQ-LINK-*)
   // その他 › 見た目・お世話・仲間 › リンクで招待・共有: the share sheet (no id in the URL, one link per target), the links I
   // shared, 「リンクを開く」 → the screen behind a confirmation (a room joins only after the button), one neutral notice for a
@@ -2727,6 +2841,62 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .lk-same').innerText(), /前のレースと同じ条件/, 'the same conditions, a new race');
   assert.ok(!(await page.locator('.screen.in').innerText()).match(/今だけ|残りわずか|倍|お得/), 'no urgency wording');
   await shot('rematch-room', 300);
+
+  // ------------------------------------------------------------------ 7. round 23: レースの見どころ (REQ-HL-*)
+  // a race kept in マイリプレイ and made public: its reel (cuts, 次へ, スキップ), the end screen, the share sheet (the card,
+  // the link at the top moment), and the link opening the replay at that moment
+  const hlIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+  await page.evaluate(() => globalThis.__muchi.demo('highlights')); await waitScreen('highlights', 60000);
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 });
+  const hl0 = await page.evaluate(() => globalThis.__muchi.highlight);
+  assert.match(await page.locator('.screen.in .hl-counter').textContent(), new RegExp(`^見どころ \\d / ${hl0.set.moments.length}$`), 'highlights: the counter');
+  assert.equal(await page.locator('.screen.in .hl-mark').count(), hl0.set.moments.length, 'highlights: one mark per moment');
+  assert.equal(await page.locator('.screen.in .speed, .screen.in .rp-speed, .screen.in .rp-cam-next').count(), 0, 'highlights: 1×, no camera switching');
+  await shot('highlights-reel', 600);
+  const hlAt = (await page.evaluate(() => globalThis.__muchi.highlight)).index;
+  if (hlAt + 1 < hl0.set.moments.length && (await screen()) === 'highlights') {
+    await page.locator('.screen.in .hl-next').click({ timeout: 3000 }).catch(() => {});
+    await page.waitForFunction((i) => globalThis.__muchi.highlight.index >= i || globalThis.__muchi.highlight.done || globalThis.__muchi.screen !== 'highlights', hlAt + 1, { timeout: 5000 });
+    const hl1 = await page.evaluate(() => globalThis.__muchi.highlight);
+    if (hl1.index >= 0) assert.equal(hl1.camera, hl1.set.moments[hl1.index].slot, 'highlights: 次へ cuts to the next horse');
+    await shot('highlights-next', 500);
+  }
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  await hlIn('.hl-moment', 10000); // the screen name is set before the new screen takes the .in class (a busy machine shows the gap)
+  assert.equal(await page.locator('.screen.in .hl-moment').count(), hl0.set.moments.length, 'end: every moment listed');
+  assert.equal(await page.locator('.screen.in .hl-moment[data-rank="1"]').count(), 1, 'end: one best moment');
+  const endText = await page.locator('.screen.in').innerText();
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ|local/.test(endText), 'end: no urgency, betting wording or player id');
+  await shot('highlights-summary', 400);
+  await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
+  assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 0, 'share: a public saved replay can be sent as a link');
+  await shot('highlights-share', 400);
+  await page.locator('.screen.in .hl-share-card').click(); await page.waitForTimeout(500);
+  await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
+  await page.locator('.screen.in .hl-share-link').click(); await page.waitForFunction(() => !!globalThis.__muchi.lastHighlightLink, null, { timeout: 10000 });
+  const hlKpi = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name.startsWith('highlight_')));
+  assert.deepEqual(hlKpi.filter((e) => e.name === 'highlight_share').map((e) => e.props.via), ['card', 'link'], 'KPI: highlight_share card, then link');
+  assert.ok(!JSON.stringify(hlKpi).match(/raceId|startTick|local/), 'KPI: no race, tick or player');
+  const hlUrl = await page.evaluate(() => globalThis.__muchi.lastHighlightLink);
+  const resolved = await page.evaluate(async (u) => (await globalThis.__muchi.logic.links.resolve(u)).value, hlUrl);
+  assert.equal(resolved.target.startTick, hl0.set.moments.find((m) => m.rank === 1).startTick, 'the link carries the top moment');
+  await page.evaluate((v) => globalThis.__muchi.show('LinkConfirm', v), resolved); await waitScreen('link-confirm'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .lk-confirm-go').click(); await waitScreen('replay-player', 30000);
+  await page.waitForFunction(() => globalThis.__muchi.replay && globalThis.__muchi.replay.t > 0, null, { timeout: 10000 });
+  const rpAt = await page.evaluate(() => globalThis.__muchi.replay);
+  assert.ok(rpAt.t >= resolved.target.startTick * 50 && !rpAt.paused, 'the replay plays from the shared moment: ' + JSON.stringify(rpAt));
+  await shot('highlights-link-replay', 600);
+  // a private replay: the link row is closed with the note
+  await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await hlIn('.rp-card');
+  await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
+  await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await hlIn('.rp-card[data-public="false"]');
+  await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
+  await page.locator('.screen.in .rp-sheet .rp-highlights').click(); await waitScreen('highlights', 30000);
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
+  assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 1, 'a private replay: no link');
+  assert.equal(await page.locator('.screen.in .hl-link-note').textContent(), '保存して公開すると、リンクで送れます');
+  await shot('highlights-share-private', 400);
 
   // a reload on a named player goes straight home
   await demo('day3');

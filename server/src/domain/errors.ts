@@ -33,7 +33,8 @@ export type ErrorCode =
   // REQ-LIMIT-005 (§67.2): the purchase would go over the player's own monthly limit (409; details name the setting)
   | 'SELF_LIMIT_EXCEEDED'
   | 'CAREER_LOCKED' | 'CAREER_LIMIT_REACHED' | 'CAREER_SESSION_EXPIRED' | 'CAREER_SESSION_USED' | 'CAREER_RESULT_MISMATCH'
-  | 'SURVEY_CLOSED';
+  | 'SURVEY_CLOSED'
+  | 'SESSION_REVOKED' | 'DEVICE_SIGNOUT_TOO_SOON' | 'DEVICE_IS_CURRENT';
 
 const STATUS: Partial<Record<ErrorCode, number>> = {
   BAD_REQUEST: 400, CONFIG_INVALID: 500, UNAUTHORIZED: 401, NOT_FOUND: 404, HORSE_NOT_FOUND: 404,
@@ -57,6 +58,8 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   CAREER_LIMIT_REACHED: 429, CAREER_RESULT_MISMATCH: 422,
   // REQ-SURVEY-009 (§69): the survey has ended (a neutral close; the device closes the sheet quietly)
   SURVEY_CLOSED: 409,
+  // REQ-DEV-* (§70): ログイン中の端末. SESSION_REVOKED = this session was signed out from another device / by support (never retried)
+  SESSION_REVOKED: 401, DEVICE_SIGNOUT_TOO_SOON: 403, DEVICE_IS_CURRENT: 409,
 };
 
 export class AppError extends Error {

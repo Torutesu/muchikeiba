@@ -10,6 +10,7 @@ import { z } from 'zod';
 import type { Master } from './master.js';
 import type { MaintenanceGroup } from './maintenance.js';
 import { shardOf } from './friends.js';
+import { AppError } from './errors.js';
 
 // ------------------------------------------------------------------------------------------------ types
 
@@ -203,3 +204,25 @@ export function androidAssetLinks(cfg: LinksConfig) {
   if (!cfg.android?.sha256CertFingerprints.length) return null;
   return [{ relation: ['delegate_permission/common.handle_all_urls'], target: { namespace: 'android_app', package_name: cfg.android.packageName, sha256_cert_fingerprints: cfg.android.sha256CertFingerprints } }];
 }
+
+// ------------------------------------------------------------------------------------------------ replay start tick (REQ-HL-013, §72.4)
+
+/** The largest start tick a replay link may carry (the engine's tick ceiling). */
+export const REPLAY_LINK_MAX_START_TICK = 72000;
+
+/** The optional `startTick` of a replay link target (the sharer's top highlight): an integer 0..72000, or null when absent. */
+export function replayStartTick(t: Record<string, unknown>): number | null {
+  const st = t.startTick;
+  if (st === undefined || st === null) return null;
+  if (typeof st !== 'number' || !Number.isInteger(st) || st < 0 || st > REPLAY_LINK_MAX_START_TICK) {
+    throw new AppError('BAD_REQUEST', `target.startTick must be an integer 0..${REPLAY_LINK_MAX_START_TICK}`);
+  }
+  return st;
+}
+
+/** The directory row of a replay link: a different start tick is a different target (`raceId@tick`). */
+export const replayLinkRow = (raceId: string, startTick: number | null): { targetKey: string; data: Record<string, string> } =>
+  startTick === null ? { targetKey: raceId, data: { raceId } } : { targetKey: `${raceId}@${startTick}`, data: { raceId, startTick: String(startTick) } };
+
+/** What a resolved replay link adds to its target: `{ startTick }` when the link carries one. */
+export const replayLinkExtra = (data: Record<string, string>): { startTick?: number } => (data.startTick !== undefined ? { startTick: Number(data.startTick) } : {});

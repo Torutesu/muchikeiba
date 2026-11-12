@@ -357,7 +357,9 @@ describe('inquiries (REQ-HELP-009..018)', () => {
     // ops: list (no text), detail, reply
     const list = await x.admin('/v1/admin/inquiries?status=received');
     expect(list.status).toBe(200);
-    expect(list.body.items).toEqual([{ ticketId: 'q_1', playerId: 'u1', category: 'purchase_missing', status: 'received', lang: 'ja', attachments: 0, createdAt: NOW, updatedAt: NOW }]);
+    expect(list.body.items).toEqual([{ ticketId: 'q_1', playerId: 'u1', category: 'purchase_missing', status: 'received', lang: 'ja', attachments: 0, createdAt: NOW, updatedAt: NOW,
+      // §73.6: the queue's clocks (still no text)
+      firstReplyAt: null, autoCloseAt: null, closedAt: null, waitingSince: NOW, assignee: null, waitingMs: 0, slaBreached: false }]);
     const detail = await x.admin('/v1/admin/players/u1/inquiries/q_1');
     expect(detail.body).toMatchObject({ playerId: 'u1', ticketId: 'q_1', indexed: true, inquiryText: expect.stringContaining('［削除しました］') });
     expect((await x.admin('/v1/admin/players/u1/inquiries/q_1/reply', 'viewer', { opKey: 'r-1', content: 'x', reason: 'answer' })).status).toBe(403);
@@ -372,12 +374,12 @@ describe('inquiries (REQ-HELP-009..018)', () => {
     // the player sees it: badge, list, detail, activity entry (once)
     expect((await x.svc.view('u1')).help).toEqual({ unreadReplies: 1 });
     const mine = await x.call('u1', '/v1/help/inquiries');
-    expect(mine.body).toMatchObject({ unread: 1, items: [{ ticketId: 'q_1', status: 'answered', statusText: '回答済み', unread: true }] });
+    expect(mine.body).toMatchObject({ unread: 1, items: [{ ticketId: 'q_1', status: 'answered', statusText: '返信あり', unread: true }] });
     const act = await x.call('u1', '/v1/activity');
     expect(act.body.items.filter((i: any) => i.kind === 'inquiry_answered')).toEqual([expect.objectContaining({ category: 'support', link: { screen: 'help_inquiry', id: 'q_1' }, text: 'お問い合わせに運営から返信がありました' })]);
     const en = await x.call('u1', '/v1/help/inquiries/q_1', { lang: 'en' });
     expect(en.body.messages[0].messageText).toBe('確認しました。コインを付与しました。'); // a person's words are never translated
-    expect(en.body.statusText).toBe('Answered');
+    expect(en.body.statusText).toBe('Replied'); // §73.1 (was 回答済み / Answered)
     expect(untranslated(en.body, PLAYER_TEXT_KEYS)).toEqual([]);
     expect((await x.call('u1', '/v1/activity', { lang: 'en' })).body.items.find((i: any) => i.kind === 'inquiry_answered').text).toBe('Support replied to your inquiry');
     expect((await x.call('u1', '/v1/help/inquiries/q_1/read', { method: 'POST' })).body).toEqual({ ticketId: 'q_1', unread: false, unreadTotal: 0 });

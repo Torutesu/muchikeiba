@@ -18,6 +18,7 @@ import { ageCapOf, applyRefund, applySubscriptionStatus, applyVerifiedPurchase, 
 import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
 import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { bloodlinesView, breedingPedigree, pedigreeMine, pedigreePublic } from './pedigree.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import {
@@ -81,7 +82,8 @@ import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
 import { forgetShowcase, setShowcase, showcaseCopy, showcaseCopyKey, showcaseMine, type ShowcaseInput } from './showcase.js';
 import { checkReleaseNotes, markReleaseNotesSeen, releaseNotesHistory } from './releaseNotes.js';
 import { calendarView, markCalendar, type CalendarExternal } from './calendar.js';
-import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
+import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, summaryOf, ticketOf, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
+import { linkCompensation, needsSettle, playerReply, setTicketStatus, settleTickets, type OpStatus } from './supportTickets.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import {
@@ -126,6 +128,7 @@ import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
   nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
 } from './dataExport.js';
+import { applyCheckin, adminDevicesView, checkinNeedsWrite, devicesView, logSecurity, resetAfterTransfer, revocationsOf, securityLogView, signOutDevice, signOutOthers, supportRevoke, type CheckinInput } from './devices.js';
 import { REDEEM_REPLAY_MS, ensureTransfer, assertMayIssue, formatCodeId, issueTransfer, progressOf, redeemTransfer, revokeTransfer, transferStateView, type TransferMode } from './transferCode.js';
 import {
   answerSurvey, decideSurveyOffer, markSurveySynced, noteSurveyShown, pendingSurveyAnswers, skipSurvey, surveysConfig, SURVEY_PLACEMENTS,
@@ -1577,10 +1580,17 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const r = issueTransfer(this.d.master, s, codeId, mode, now);
       emit({ name: 'transfer_issue', s1: mode });
+      logSecurity(this.d.master, s, { kind: 'transfer_issued', mode }, now); // REQ-DEV-011
       return { previous: r.previous, issuedAt: now, expiresAt: r.expiresAt };
     });
   }
-  transferRevoke(id: string, by: 'player' | 'ops') { return this.tx(id, null, (s, now) => ({ revoked: revokeTransfer(s, now, by) })); }
+  transferRevoke(id: string, by: 'player' | 'ops') {
+    return this.tx(id, null, (s, now) => {
+      const revoked = revokeTransfer(s, now, by);
+      if (revoked) logSecurity(this.d.master, s, { kind: 'transfer_revoked', by }, now); // REQ-DEV-011 (only when a code was revoked)
+      return { revoked };
+    });
+  }
   /** REQ-TRF-009: what the redeeming device would leave behind (read only; a never-stored account has none). */
   async transferProgress(id: string) { return progressOf(await this.repo.get(id)); }
   /** REQ-TRF-005/012: consume the code on the owner's object (serialised: one success per code). */
@@ -1588,6 +1598,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       redeemTransfer(s, codeId, now);
       emit({ name: 'transfer_redeem', s1: 'ok' });
+      resetAfterTransfer(this.d.master, s, now); // REQ-DEV-012: the old sessions are SESSION_REPLACED; the list starts again
       return { displayName: s.profile.displayName, cutoffAt: now };
     });
   }
@@ -1603,6 +1614,44 @@ export class PlayerService {
   }
   /** REQ-TRF-010: the old-device cut-off (read only; null for accounts that never moved). */
   async transferCutoff(id: string) { return (await this.repo.get(id))?.transfer?.cutoffAt ?? null; }
+  /** REQ-TRF-010 + REQ-DEV-008: what the session guard needs — the old-device cut-off and the sign-outs (read only). */
+  async sessionState(id: string) {
+    const s = await this.repo.get(id);
+    return { cutoff: s?.transfer?.cutoffAt ?? null, revoked: revocationsOf(s) };
+  }
+
+  // ---- ログイン中の端末とセキュリティ (REQ-DEV-*, contracts/protocol.md §70); the Worker hashes the install id first ----
+  /** REQ-DEV-002: a read when nothing changes; never creates an account (no state before the bootstrap, or wiped). */
+  async devicesCheckin(id: string, input: CheckinInput) {
+    const stored = await this.repo.get(id);
+    const now = this.d.clock();
+    if (!checkinNeedsWrite(this.d.master, stored, input, now)) return { ...devicesView(this.d.master, stored, input.authTime, now), recorded: false, newDevice: false };
+    return this.tx(id, null, (s, t, emit) => {
+      const out = applyCheckin(this.d.master, s, input, t, emit);
+      return { ...devicesView(this.d.master, s, input.authTime, t), ...out };
+    });
+  }
+  async devicesView(id: string, currentAuth: number | null) { return devicesView(this.d.master, await this.repo.get(id), currentAuth, this.d.clock()); }
+  async securityLog(id: string) { return securityLogView(this.d.master, await this.repo.get(id), this.d.clock()); }
+  async devicesSignOut(id: string, sessionId: string, currentAuth: number | null) {
+    if (!(await this.repo.get(id))) throw new AppError('NOT_FOUND', 'no such device');
+    return this.tx(id, null, (s, now, emit) => {
+      const r = signOutDevice(this.d.master, s, sessionId, currentAuth, now, emit);
+      return { ...r, devices: devicesView(this.d.master, s, currentAuth, now) };
+    });
+  }
+  async devicesSignOutOthers(id: string, currentAuth: number | null) {
+    if (!(await this.repo.get(id))) return { signedOut: 0, devices: devicesView(this.d.master, null, currentAuth, this.d.clock()) };
+    return this.tx(id, null, (s, now, emit) => {
+      const r = signOutOthers(this.d.master, s, currentAuth, now, emit);
+      return { ...r, devices: devicesView(this.d.master, s, currentAuth, now) };
+    });
+  }
+  async adminDevices(id: string) { return adminDevicesView(this.d.master, await this.repo.get(id), this.d.clock()); }
+  async adminDevicesRevoke(id: string, target: { sessionId: string } | { all: true }) {
+    if (!(await this.repo.get(id))) throw new AppError('NOT_FOUND', 'no such player');
+    return this.tx(id, null, (s, now, emit) => supportRevoke(this.d.master, s, target, now, emit));
+  }
   async adminTransfer(id: string) {
     const s = await this.repo.get(id);
     const t = s?.transfer;
@@ -1704,6 +1753,15 @@ export class PlayerService {
   }
   /** The viewer's side of GET /v1/showcase/:playerId: friends and the one block list (§47.1). No writes. */
   async showcaseViewer(id: string) { const s = await this.load(id); return { friendIds: [...s.friends.ids], blocked: [...blockIds(s)] }; }
+  // ---- 血統図と系統 (REQ-PED-*, contracts/protocol.md §71): read only, never writes ----
+  /** REQ-PED-003: my horse's tree (a draft: stud owner names are applied by PedigreeService). */
+  async pedigreeMine(id: string, horseId: string, lang: Locale = 'ja') { return pedigreeMine(this.d.master, await this.load(id), horseId, lang, this.d.clock()); }
+  /** REQ-PED-006: run in the OWNER's object — the horse only while it is shown publicly (stable copy / trainer card). */
+  async pedigreePublic(id: string, horseId: string, lang: Locale = 'ja', relation: 'friend' | 'other' = 'other') { return pedigreePublic(this.d.master, await this.load(id), horseId, lang, relation, this.d.clock()); }
+  /** REQ-PED-009/010: the breeding pair's trees, shared ancestors and hints (a draft, like pedigreeMine). */
+  async pedigreePair(id: string, sireId: string, damId: string, lang: Locale = 'ja') { return breedingPedigree(this.d.master, await this.load(id), sireId, damId, lang, this.d.clock()); }
+  /** REQ-PED-012: the bloodline list of my stable. */
+  async bloodlines(id: string, lang: Locale = 'ja') { return bloodlinesView(this.d.master, await this.load(id), lang); }
   /** REQ-SHOW-018: account deletion step (the copy leaves with the directory profile; the state is wiped at the end anyway). */
   showcaseForget(id: string) { return this.tx(id, null, (s) => forgetShowcase(s)); }
 
@@ -1732,6 +1790,7 @@ export class PlayerService {
    */
   async helpInquirySubmit(id: string, input: InquiryInput, idemKey: string | null, lang: Locale = 'ja') {
     const key = this.requireKey(idemKey);
+    await this.refuseDeleted(id); // §73.3: a tombstoned account never gets a fresh state through a ticket
     const s = await this.historyState(id);
     const known = s.idem.find((e) => e.key === key);
     if (known) return known.result as ReturnType<typeof inquiryDetail>;
@@ -1745,15 +1804,42 @@ export class PlayerService {
       const missing = rows.find((r) => r.kind === null);
       if (missing) throw new AppError('NOT_FOUND', `reference ${missing.ref}`);
     }
-    return this.tx(id, key, (st, now, emit) => submitInquiry(this.d.master, st, input, rows as Exclude<typeof rows[number], { kind: null }>[], key, lang, now, emit));
+    return this.tx(id, key, (st, now, emit) => {
+      settleTickets(this.d.master, st, now, emit);
+      const out = submitInquiry(this.d.master, st, input, rows as Exclude<typeof rows[number], { kind: null }>[], key, lang, now, emit);
+      return { ...out, ...inquiryDetail(this.d.master, st, out.ticketId, lang, false, now), summary: summaryOf(id, ticketOf(st, out.ticketId), this.d.master) };
+    });
+  }
+  private async refuseDeleted(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('FORBIDDEN', 'account deleted');
+  }
+  /** §73.1: a read that finds an auto-close or a purge due settles it first (rare; otherwise a plain read). */
+  private async settledHelp(id: string): Promise<PlayerState> {
+    const s = await this.load(id);
+    if (!needsSettle(this.d.master, s, this.d.clock()) || (await this.wiped(id))) return s;
+    await this.tx(id, null, (st, now, emit) => { settleTickets(this.d.master, st, now, emit); });
+    return this.load(id);
   }
   /** REQ-HELP-014: the player's inquiries, newest first, with the limits. */
   async helpInquiries(id: string, lang: Locale = 'ja') {
-    const s = await this.load(id);
-    return { ...inquiryList(this.d.master, s, lang, this.d.clock()), unindexed: unindexedSummaries(s) };
+    const s = await this.settledHelp(id);
+    return { ...inquiryList(this.d.master, s, lang, this.d.clock()), unindexed: unindexedSummaries(s, this.d.master) };
   }
-  async helpInquiry(id: string, ticketId: string, lang: Locale = 'ja') { return inquiryDetail(this.d.master, await this.load(id), ticketId, lang); }
-  helpInquiryRead(id: string, ticketId: string) { return this.tx(id, null, (s) => markInquiryRead(s, ticketId)); }
+  async helpInquiry(id: string, ticketId: string, lang: Locale = 'ja') { return inquiryDetail(this.d.master, await this.settledHelp(id), ticketId, lang, false, this.d.clock()); }
+  helpInquiryRead(id: string, ticketId: string) { return this.tx(id, null, (s, now, emit) => { settleTickets(this.d.master, s, now, emit); return markInquiryRead(s, ticketId, emit); }); }
+  /**
+   * REQ-TKT-004: the player's reply in a thread (keyed: a retry returns the same thread). Returns the detail plus the
+   * summary the ops index needs.
+   */
+  async helpInquiryMessage(id: string, ticketId: string, content: string, idemKey: string | null, lang: Locale = 'ja') {
+    const key = this.requireKey(idemKey);
+    await this.refuseDeleted(id);
+    return this.tx(id, key, (s, now, emit) => {
+      settleTickets(this.d.master, s, now, emit);
+      playerReply(this.d.master, s, ticketId, content, key, now, emit);
+      return { ...inquiryDetail(this.d.master, s, ticketId, lang, false, now), summary: summaryOf(id, ticketOf(s, ticketId), this.d.master) };
+    });
+  }
   /** REQ-HELP-016: the ops index stored these ticket versions. */
   async helpInquiryIndexed(id: string, items: { ticketId: string; updatedAt: number }[]) {
     if (await this.wiped(id)) return { indexed: 0 };
@@ -1761,14 +1847,38 @@ export class PlayerService {
   }
   /** REQ-HELP-016: the ops view of one inquiry (who replied; a deleted account is NOT_FOUND). */
   async adminInquiry(id: string, ticketId: string) {
-    const s = await this.historyState(id);
-    return { playerId: id, ...inquiryDetail(this.d.master, s, ticketId, 'ja', true), unindexed: unindexedSummaries(s) };
+    await this.historyState(id);
+    const s = await this.settledHelp(id);
+    const now = this.d.clock();
+    // §73.6 (REQ-TKT-008): the player context support needs — no balances, no other free text
+    const player = { createdAt: s.createdAt, deletion: s.deletion?.status ?? null, moderation: moderationOf(s, now), purchases: s.purchases.length };
+    const t = ticketOf(s, ticketId);
+    return { playerId: id, ...inquiryDetail(this.d.master, s, ticketId, 'ja', true, now), player, templateCategory: t.category, unindexed: unindexedSummaries(s, this.d.master) };
   }
   /** REQ-HELP-015/017: an operator's reply (once per opKey; never on a deleted account). */
   async adminInquiryReply(id: string, ticketId: string, content: string, close: boolean, actor: string, opKey: string) {
     await this.historyState(id);
     if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
-    return this.tx(id, null, (s, now, emit) => replyInquiry(this.d.master, s, ticketId, content, close, actor, opKey, now, emit));
+    return this.tx(id, null, (s, now, emit) => { settleTickets(this.d.master, s, now, emit); return replyInquiry(this.d.master, s, ticketId, content, close, actor, opKey, now, emit); });
+  }
+  /** REQ-TKT-009: an operator's status change (once per opKey). */
+  async adminInquiryStatus(id: string, ticketId: string, status: OpStatus, opKey: string) {
+    await this.historyState(id);
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
+    return this.tx(id, null, (s, now, emit) => {
+      settleTickets(this.d.master, s, now, emit);
+      const out = setTicketStatus(this.d.master, s, ticketId, status, opKey, now, emit);
+      return { ...out, summary: summaryOf(id, ticketOf(s, ticketId), this.d.master) };
+    });
+  }
+  /** REQ-TKT-010: link a compensation request (already validated against the OpsDO by the admin route). */
+  async adminInquiryCompensation(id: string, ticketId: string, compensationId: string) {
+    await this.historyState(id);
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
+    return this.tx(id, null, (s, now) => {
+      const out = linkCompensation(this.d.master, s, ticketId, compensationId, now);
+      return { ...out, summary: summaryOf(id, ticketOf(s, ticketId), this.d.master) };
+    });
   }
 
   // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----

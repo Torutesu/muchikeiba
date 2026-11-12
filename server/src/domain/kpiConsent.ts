@@ -34,6 +34,11 @@ export const KPI_ESSENTIAL: Readonly<Record<string, string>> = Object.freeze({
   block_remove: 'safety record (blocks)',
   inquiry_submit: 'support record',
   inquiry_answered: 'support record',
+  // Round 23 §73.8: the support thread — when the player wrote, when a ticket reopened and when it closed are the support
+  // trail ops need for refunds and complaints (SLA proof); the rows carry the category and status only, never the text
+  ticket_player_reply: 'support record (player message in a ticket, §73)',
+  ticket_reopen: 'support record (ticket reopened, §73)',
+  ticket_resolved: 'support record (ticket resolved / closed / auto-closed, §73)',
   // R20 integration: Round 19 §54 引き継ぎコード — account access like sign-in; the issue / redeem rows (with the failure class,
   // never the ID or password) are the audit trail ops need to spot brute force and account takeover (§54.9)
   transfer_issue: 'account access audit (transfer code issued, §54)',
@@ -41,6 +46,10 @@ export const KPI_ESSENTIAL: Readonly<Record<string, string>> = Object.freeze({
   // Round 22 (§67): the spending limit the player set for themself — needed to answer "I set a limit but could / could not
   // buy" and to check refunds, like the §58 choice records
   self_limit_set: 'record of the player\'s own spending limit changes (§67, support and refund checks)',
+  // Round 23 §70 ログイン中の端末: the same account-access audit as the transfer rows — sign-outs and new-device notices are how
+  // ops see account takeover and the response to it (counts and the platform only; no device hash, session id, region or model)
+  device_signout: 'account access audit (devices signed out by the player or support, §70)',
+  new_device_notice: 'account access audit (a new device signed in, §70)',
 });
 
 /** Every other event name the server emits or accepts from clients: optional analytics. */
@@ -80,6 +89,14 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'self_limit_block', 'playtime_setting_change', 'playtime_reminder_shown',
   // R22 §69 ゲーム内アンケート (server rows; the answers themselves are never in KPI)
   'survey_shown', 'survey_skip', 'survey_answer',
+  // Round 23 §70: the device list / security log opened — engagement only
+  'device_list_view',
+  // Round 23: §71 血統図と系統 — engagement only (no id of a player or horse in either row)
+  'pedigree_view', 'bloodline_view',
+  // R23 §72 レースの見どころ — engagement only (no race, player or tick in the rows)
+  'highlight_view', 'highlight_share',
+  // R23 §73: opening a support reply (engagement only; the reply itself is the support record)
+  'ticket_reply_view',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

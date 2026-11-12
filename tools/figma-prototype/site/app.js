@@ -204,7 +204,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .ped-scale, .tkt-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -967,6 +967,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   }).classList.add('rp-keep-result');
   if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
   if (!first && raceCtx.promo) PromoResultCard(raceCtx.promo); // round 22 (§68)
+  // round 23 (REQ-HL-011): the race's best moments, re-simulated from its own log (offline too)
+  if (!first) { const back = () => show(ResultScreen, f, rewards, passXp, pass, missions); Ghost('見どころ', 996, 724, 274, 60, () => HighlightReel({ kind: 'result' }, back)).dataset.action = 'hl-result'; }
   EnToggle();
 }
 // ================================================================= round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
@@ -2876,22 +2878,24 @@ async function Settings(tab) {
   en.style.fontSize = '14px'; en.style.whiteSpace = 'nowrap'; en.style.padding = '0'; ja.dataset.name = 'Language';
   Hair(36, 162, 428, a);
   // 引き継ぎ (REQ-API-005): the same buttons as the prompt; the prompt itself shows once (REQ-UXS-073)
-  Txt('引き継ぎ（Apple・Google）', 36, 186, 428, 21, WHITE, a, { weight: 500 });
+  Txt('引き継ぎ（Apple・Google）', 36, 184, 428, 21, WHITE, a, { weight: 500 });
   const lp = linkedProvider();
-  Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 222, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
-  if (!lp) { Ghost('Apple', 36, 258, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 258, 120, 52, () => Link('google', Settings), a); }
+  Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 220, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
+  if (!lp) { Ghost('Apple', 36, 250, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 250, 120, 52, () => Link('google', Settings), a); }
   // round 19 (REQ-TRF-001): 引き継ぎコード — ID and password, with or without Apple / Google
-  Ghost('IDとパスワード', lp ? 36 : 296, 258, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
-  Hair(36, 336, 428, a);
+  Ghost('IDとパスワード', lp ? 36 : 296, 250, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
+  // round 23 (REQ-DEV-*, §70.6): ログイン中の端末 on the account panel, under 引き継ぎ (その他 keeps its eight rows)
+  TextLink('ログイン中の端末 ›', 36, 306, 428, () => DeviceList(), a).dataset.action = 'devices';
+  Hair(36, 348, 428, a);
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
-  Txt('アカウント削除', 36, 360, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
+  Txt('アカウント削除', 36, 364, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
   const d = player.deletion;
   if (d?.status === 'scheduled') {
-    Txt(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 36, 398, 428, 16, GOLD, a, { weight: 500, lh: 1.6 });
+    Txt(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 36, 402, 428, 16, GOLD, a, { weight: 500, lh: 1.6 });
     Cta('アカウント削除の取り消し', 36, 480, 428, async () => { const r = await L.cancelDeletion(); toast(r.ok ? '削除を取り消しました' : r.message); Settings(); }, a, 'small');
   } else {
-    Txt('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 36, 398, 428, 15, MUTED, a, { lh: 1.6 });
-    Ghost('アカウントを削除する', 36, 462, 300, 56, async () => {
+    Txt('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 36, 402, 428, 15, MUTED, a, { lh: 1.6 });
+    Ghost('アカウントを削除する', 36, 466, 300, 56, async () => {
       const r = await L.requestDeletion(null);
       if (!r.ok) { toast(r.message); return; }
       ConfirmDeletion(r.value);
@@ -3725,6 +3729,11 @@ async function Demo(kind) {
   // round 17: two inquiries — one answered by the real ops reply (unread, an activity entry), one waiting (§48)
   if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
   // round 21 (REQ-CAL-019): a week of play with 28 races — events, tournaments, the weekly challenge and seasons are open
+  // round 23 (REQ-HL-019): a race kept in マイリプレイ and made public → its highlights (the link row enabled)
+  if (kind === 'highlights') {
+    await L.seedDemo(3, [2, 2, 2]); ftue = false; await refresh();
+    return HighlightsDemo();
+  }
   if (kind === 'calendar') { await L.seedDemo(7, [4, 4, 4, 4, 4, 4, 4]); ftue = false; await refresh(); calState.mode = 'month'; calState.weekStart = null; return Calendar(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
@@ -4242,6 +4251,7 @@ function Stable() {
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
+  Ghost('血統', 548, 36, 150, 46, () => Pedigree(p?.id ?? null, () => Stable(), 'horse'), undefined, 'quiet small').classList.add('ped-entry'); // round 23 (REQ-PED-*)
   EnToggle();
   GoalsPanel(p); // round 18 (REQ-HGOAL-*): the horse's goals, bottom left over the art
 }
@@ -5996,6 +6006,225 @@ function calRow(e) {
   return row;
 }
 
+// ================================================================= round 23: 血統図と系統 (REQ-PED-*, contracts/protocol.md §71)
+// Read-only screens on the real pedigree.ts (MuchiLogic.pedigree): a horse's 3-generation tree (the horse → sire / dam →
+// grandparents → great-grandparents, left to right, cyan lines; at the largest text size the tree flows into a list by
+// generation, like PedigreeTree.FlowFor), the breeding pair's 「血統を見る」 with the shared ancestors highlighted and the
+// server's hints, and the bloodline (sire line) list. Every number is the server's (the existing breeding rules); nothing
+// is granted and no line count is a goal. Horse and owner names are what players typed (never translated, .keep-ja).
+// Mirrors unity/Assets/Muchi/Game/PedigreeModel.cs. ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan
+// kickers, one skewed cyan CTA ».
+const PED_STYLE = { nige: '逃げ', senko: '先行', sashi: '差し', oikomi: '追込' };
+const PED_GOING = { fast: '良馬場が得意', heavy: '重馬場が得意' };
+const PED_GEN = ['本人', '父母', '祖父母', '曾祖父母'];
+const pedState = { back: null, pairBack: null, horseId: null };
+const pedLang = () => (isJa() ? 'ja' : 'en');
+const pedFlowRows = () => textScale() >= 1.3; // PedigreeTree.FlowFor: rows at the largest text size
+const PED_COAT = { chestnut: 'Chestnut_Azure', bay: 'Bay_Crimson', dark_bay: 'Bay_Crimson', brown: 'Bay_Crimson', black: 'Black_Emerald', gray: 'DappleGrey_Violet', white: 'DappleGrey_Violet' };
+const pedThumb = (rec) => 'Art/3DPreviews/Partner_' + (PED_COAT[rec?.appearance?.coat] ?? 'Palomino_Gold');
+function pedLabel(slot) { if (slot <= 0) return '本人'; const p = []; for (let i = slot; i > 0; i = Math.floor((i - 1) / 2)) p.unshift(i % 2 === 1 ? '父' : '母'); return p.join('の'); }
+function pedSlots(root) { const s = new Array(15).fill(null); s[0] = root; for (let i = 0; 2 * i + 2 < 15; i++) { if (!s[i]) continue; s[2 * i + 1] = s[i].sire ?? null; s[2 * i + 2] = s[i].dam ?? null; } return s; }
+const pedGen = (i) => (i <= 0 ? 0 : i <= 2 ? 1 : i <= 6 ? 2 : 3);
+function pedTraits(n) {
+  const r = n?.rec;
+  if (!r) return n?.recordText ?? '記録なし';
+  return [PED_STYLE[r.style] ?? r.style, PED_GOING[r.goingAptitude] ?? null, r.skill?.name ?? null].filter(Boolean).join('・');
+}
+function pedKpi(name, props) { L.pedigree.kpi(name, props); (globalThis.__muchiPedKpi ??= []).push({ name, ...props }); }
+/** Horse names go through the catalog like every horse name of the prototype (katakana → romanized); an owner's display name is what they typed (.keep-ja). */
+const pedName = (node, n, cls = '') => { if (cls) node.classList.add(cls); return node; };
+const pedOwner = (node) => { node.classList.add('keep-ja', 'typed'); return node; };
+
+/** The 血統図 of one of my horses (the partner when none is given). */
+async function Pedigree(horseId = null, back = null, source = 'horse') {
+  if (back) pedState.back = back;
+  const id = horseId ?? pedState.horseId ?? partner()?.id;
+  pedState.horseId = id;
+  currentScreen = () => Pedigree(id, null, source);
+  const r = await L.pedigree.view(id, pedLang());
+  if (!r.ok) { toast(r.code === 'NOT_FOUND' ? 'この馬の血統は見られません' : '血統はオンラインで見られます'); return (pedState.back ?? Stable)(); }
+  const v = r.value;
+  Clear('pedigree'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('血統　/　PEDIGREE', `${v.lineName}　·　3代の血統　·　共通の祖先はシアンの枠`, { wallet: false });
+  const slots = pedSlots(v);
+  const rows = pedFlowRows();
+  const panel = Glass('Pedigree tree', 36, 134, 1528, 664, undefined, .88);
+  panel.classList.add('ped-panel'); panel.dataset.flow = rows ? 'rows' : 'columns'; panel.dataset.shared = String(v.sharedKeys.length);
+  if (rows) pedRows(panel, slots); else pedColumns(panel, slots);
+  const shared = slots.filter((n, i) => n && i > 0 && n.shared).length;
+  // the bottom row: the inbreeding rule as the server states it, bloodlines, help
+  const info = v.inbreeding.count > 0 ? `近親：共通の祖先${v.inbreeding.count}頭（能力の基準 −${v.inbreeding.statPenalty}）` : '3代以内に共通の祖先はいません';
+  Txt(info, 200, 826, 640, 16, v.inbreeding.count > 0 ? GOLD : SOFT, undefined, { weight: 700, nowrap: true }).classList.add('ped-inbreeding');
+  Ghost('系統 ›', 880, 814, 200, 50, () => Bloodlines('pedigree', () => Pedigree(id)), undefined, 'small').dataset.action = 'ped-lines';
+  Ghost('配合の血統を見る', 1100, 814, 260, 50, () => BreedingPair(() => Pedigree(id)), undefined, 'small quiet').dataset.action = 'ped-pair';
+  Ghost('？', 1380, 814, 52, 50, () => HelpArticle('pedigree', 'context', () => Pedigree(id)), undefined, 'small quiet').dataset.action = 'ped-help';
+  pedKpi('pedigree_view', { source, relation: v.relation, shared: Math.min(14, shared) });
+  Back(() => (pedState.back ?? Stable)(), '戻る', 40, 816);
+}
+
+/** Columns: generation 0..3 left → right, each slot centred on its share of the height, cyan elbow lines between them. */
+function pedColumns(panel, slots) {
+  const COLS = [[24, 300], [360, 330], [726, 350], [1112, 392]];
+  const TOP = 22, H = 620;
+  const box = {};
+  for (let i = 0; i < 15; i++) {
+    const g = pedGen(i), n = slots[i];
+    const count = 1 << g, idx = i - (count - 1);
+    const cell = H / count, cy = TOP + cell * idx + cell / 2;
+    const [x, w] = COLS[g];
+    const h = [190, 160, 128, 66][g];
+    box[i] = { x, w, cy, h };
+    if (!n) { const e = el('ped-empty', x, cy - h / 2, w, h, panel); e.dataset.slot = String(i); continue; }
+    const b = el('ped-box' + (n.shared ? ' shared' : '') + (n.rec ? '' : ' norec'), x, cy - h / 2, w, h, panel);
+    Object.assign(b.dataset, { slot: String(i), key: n.key, shared: n.shared ? '1' : '0' });
+    const pad = g < 3 ? 86 : 14;
+    if (g < 3) { if (n.rec) ArtImage(pedThumb(n.rec), 10, 10, 66, 66, b, 'ped-thumb'); else el('ped-thumb none', 10, 10, 66, 66, b); }
+    Txt(pedLabel(i), pad, 8, w - pad - 12, g < 3 ? 12 : 11, CYAN, b, { weight: 700, ls: '.14em', nowrap: true }).classList.add('ped-rel');
+    pedName(Txt(n.name, pad, g < 3 ? 28 : 24, w - pad - (n.shared ? 70 : 12), g === 0 ? 22 : g < 3 ? 18 : 15, WHITE, b, { weight: 700, nowrap: true }), n, 'ped-name');
+    if (n.shared) Txt('共通', w - 62, 10, 52, 12, CYAN, b, { weight: 700, align: 'right', nowrap: true }).classList.add('ped-badge');
+    if (g < 3) {
+      Txt(pedTraits(n), pad, 58, w - pad - 12, 13, n.rec ? SOFT : MUTED, b, { nowrap: true }).classList.add('ped-traits');
+      const under = n.lent ? n.lent.ownerName ?? n.lent.label : n.founder ? '系統の祖' : n.rec?.bestText ?? null;
+      if (under) { const u = Txt(under, 10, g === 0 ? 92 : 86, w - 22, 13, n.lent ? MUTED : GOLD, b, { weight: 700, nowrap: true }); u.classList.add('ped-under'); if (n.lent?.ownerName) pedOwner(u); }
+      if (g === 0 && n.rec) Txt(`${n.rec.rarity}　/　${n.rec.lineName}`, 10, 124, w - 22, 14, WHITE, b, { weight: 500, nowrap: true }).classList.add('ped-line');
+      if (g === 0 && n.rec?.stats) Txt(`能力の合計 ${n.rec.statTotal}`, 10, 152, w - 22, 13, MUTED, b, { nowrap: true });
+    } else {
+      Txt(n.founder ? '系統の祖' : n.rec ? pedTraits(n) : n.recordText ?? '記録なし', pad, 44, w - pad - 12, 11, n.founder ? GOLD : MUTED, b, { nowrap: true }).classList.add('ped-traits');
+    }
+  }
+  // elbow lines: parent right edge → mid → each child's left edge
+  for (let i = 0; 2 * i + 2 < 15; i++) {
+    if (!slots[i]) continue;
+    const p = box[i], a = box[2 * i + 1], c = box[2 * i + 2];
+    const mid = Math.round((p.x + p.w + a.x) / 2);
+    const line = (x, y, w, h, on) => { const l = el('ped-line-seg' + (on ? ' on' : ''), x, y, w, h, panel); return l; };
+    line(p.x + p.w, p.cy, mid - p.x - p.w, 2, false);
+    line(mid, Math.min(a.cy, c.cy), 2, Math.abs(c.cy - a.cy), false);
+    for (const [k, ch] of [[2 * i + 1, a], [2 * i + 2, c]]) if (slots[k]) line(mid, ch.cy, ch.x - mid, 2, slots[k].shared);
+  }
+}
+
+/** Rows (largest text): the same 15 slots as a list by generation, each box one row that wraps. */
+function pedRows(panel, slots) {
+  const list = el('ped-list', 24, 20, 1480, 624, panel);
+  for (let g = 0; g < 4; g++) {
+    const h = document.createElement('div'); h.className = 'ped-scale ped-gen'; h.textContent = PED_GEN[g]; list.appendChild(h);
+    const wrap = document.createElement('div'); wrap.className = 'ped-row-wrap'; list.appendChild(wrap);
+    for (let i = (1 << g) - 1; i < (1 << (g + 1)) - 1; i++) {
+      const n = slots[i];
+      const b = document.createElement('div'); b.className = 'ped-row' + (n?.shared ? ' shared' : '') + (n ? '' : ' empty');
+      Object.assign(b.dataset, { slot: String(i), key: n?.key ?? '', shared: n?.shared ? '1' : '0' });
+      const rel = document.createElement('div'); rel.className = 'ped-scale ped-rel'; rel.textContent = pedLabel(i); b.appendChild(rel);
+      if (n) {
+        const nm = document.createElement('div'); nm.className = 'ped-scale ped-name'; nm.textContent = n.name; pedName(nm, n); b.appendChild(nm);
+        const t = document.createElement('div'); t.className = 'ped-scale ped-traits'; t.textContent = pedTraits(n); b.appendChild(t);
+        const under = n.lent ? n.lent.ownerName ?? n.lent.label : n.founder ? '系統の祖' : n.rec?.bestText ?? null;
+        if (under) { const u = document.createElement('div'); u.className = 'ped-scale ped-under'; u.textContent = under; if (n.lent?.ownerName) pedOwner(u); b.appendChild(u); }
+        if (n.shared) { const s = document.createElement('div'); s.className = 'ped-scale ped-badge'; s.textContent = '共通'; b.appendChild(s); }
+      } else { const e = document.createElement('div'); e.className = 'ped-scale ped-traits'; e.textContent = '—'; b.appendChild(e); }
+      wrap.appendChild(b);
+    }
+  }
+}
+
+/** The breeding pair's 「血統を見る」: both parents' trees (to the foal's great-grandparents), shared ancestors and the hints. */
+async function BreedingPair(back = null, sireId = null, damId = null) {
+  if (back) pedState.pairBack = back;
+  currentScreen = () => BreedingPair(null, sireId, damId);
+  const hs = (await L.view()).horses ?? [];
+  const sires = hs.filter((h) => h.status === 'retired' && h.sex === 'male'), dams = hs.filter((h) => h.status === 'retired' && h.sex === 'female');
+  Clear('pedigree-pair'); SetArt('Art/3DPreviews/Partner_Chestnut_Azure', false); Shade('left');
+  TopBar('配合の血統　/　BREEDING PEDIGREE', '父馬と母馬の血統・共通の祖先・受け継ぎやすい能力', { wallet: false });
+  if (!sires.length || !dams.length) {
+    const d = Glass('Pair empty', 36, 134, 760, 300, undefined, .9); d.classList.add('ped-pair-empty');
+    Kicker('配合の組み合わせ', 36, 30, d, { size: 15 });
+    Txt('引退した牡馬と牝馬がそろうと、組み合わせの血統を見られます', 36, 100, 688, 18, WHITE, d, { lh: 1.6 });
+    Cta('デモ：家系を用意する', 36, 190, 420, async () => { const r = await L.pedigree.demo(); if (!r.ok) return toast(r.message); await refresh(); BreedingPair(null, r.value.sireId, r.value.damId); }, d).dataset.action = 'ped-demo';
+    Back(() => (pedState.pairBack ?? Stable)(), '戻る', 40, 834);
+    return;
+  }
+  const sire = sires.find((h) => h.id === sireId) ?? sires[0], dam = dams.find((h) => h.id === damId) ?? dams[0];
+  const r = await L.pedigree.pair(sire.id, dam.id, pedLang());
+  if (!r.ok) { toast(r.message); return (pedState.pairBack ?? Stable)(); }
+  const v = r.value;
+  // left: the pair and the hints
+  const side = Glass('Pair side', 36, 134, 560, 676, undefined, .9); side.classList.add('ped-pair-side');
+  Kicker('組み合わせ', 30, 26, side, { size: 15 });
+  const pick = (label, list, curr, y, set) => {
+    Txt(label, 30, y, 80, 14, CYAN, side, { weight: 700, ls: '.14em', nowrap: true });
+    pedName(Txt(curr.name, 110, y - 4, 330, 20, WHITE, side, { weight: 700, nowrap: true }), curr);
+    if (list.length > 1) Ghost('変える', 452, y - 12, 82, 40, () => { const i = list.indexOf(curr); set(list[(i + 1) % list.length].id); }, side, 'small quiet').dataset.action = 'ped-next-' + label;
+  };
+  pick('父', sires, sire, 92, (id) => BreedingPair(null, id, dam.id));
+  pick('母', dams, dam, 140, (id) => BreedingPair(null, sire.id, id));
+  Hair(30, 182, 500, side);
+  const sharedLine = v.inbreeding.count === 0 ? '3代以内に共通の祖先はいません' : `共通の祖先 ${v.shared.map((x) => x.name).join('・')}（能力の基準 −${v.inbreeding.statPenalty}）`;
+  const sl = Txt(sharedLine, 30, 198, 500, 15, v.inbreeding.count ? GOLD : SOFT, side, { weight: 700, lh: 1.5 }); sl.classList.add('ped-pair-shared'); sl.dataset.count = String(v.inbreeding.count);
+  Kicker('この組み合わせで受け継ぎやすい能力', 30, 262, side, { size: 14, rule: false, w: 500 });
+  const hl = el('ped-hints', 30, 296, 500, 300, side);
+  for (const h of v.hints) { const d = document.createElement('div'); d.className = 'ped-scale ped-hint ' + h.kind; d.dataset.kind = h.kind; d.textContent = h.hintText; hl.appendChild(d); }
+  Txt(v.notice, 30, 612, 500, 13, MUTED, side, { lh: 1.5 });
+  // right: the two trees side by side as columns (the parents' parents and grandparents)
+  const panel = Glass('Pair trees', 612, 134, 952, 676, undefined, .88); panel.classList.add('ped-pair-trees'); panel.dataset.shared = String(v.sharedKeys.length);
+  const rowsFlow = pedFlowRows();
+  [['父', v.sire, 0], ['母', v.dam, 1]].forEach(([who, root, k]) => {
+    const top = 20 + k * 330;
+    Kicker(`${who}　/　${root.name}`, 24, top, panel, { size: 14, rule: false, w: 900 });
+    const s = pedSlots(root).slice(0, 7);
+    const col = [[24, 260], [312, 290], [630, 300]];
+    for (let i = 0; i < 7; i++) {
+      const g = pedGen(i), n = s[i];
+      const count = 1 << g, idx = i - (count - 1), cell = 280 / count, cy = top + 34 + cell * idx + cell / 2;
+      const [x, w] = col[g], h = [96, 92, rowsFlow ? 64 : 58][g];
+      if (!n) { el('ped-empty', x, cy - h / 2, w, h, panel); continue; }
+      const b = el('ped-box' + (n.shared ? ' shared' : '') + (n.rec ? '' : ' norec'), x, cy - h / 2, w, h, panel);
+      Object.assign(b.dataset, { slot: String(i), key: n.key, shared: n.shared ? '1' : '0' });
+      pedName(Txt(n.name, 12, 8, w - (n.shared ? 70 : 24), g < 2 ? 16 : 14, WHITE, b, { weight: 700, nowrap: true }), n, 'ped-name');
+      if (n.shared) Txt('共通', w - 60, 8, 50, 12, CYAN, b, { weight: 700, align: 'right', nowrap: true }).classList.add('ped-badge');
+      Txt(n.founder ? '系統の祖' : pedTraits(n), 12, g < 2 ? 36 : 32, w - 24, 12, n.founder ? GOLD : MUTED, b, { nowrap: true }).classList.add('ped-traits');
+      if (g < 2 && n.rec?.bestText) Txt(n.rec.bestText, 12, 60, w - 24, 12, GOLD, b, { weight: 700, nowrap: true });
+    }
+  });
+  Ghost('系統 ›', 1100, 834, 200, 50, () => Bloodlines('breeding', () => BreedingPair(null, sire.id, dam.id)), undefined, 'small').dataset.action = 'ped-lines';
+  Ghost('父の血統', 1320, 834, 240, 50, () => Pedigree(sire.id, () => BreedingPair(null, sire.id, dam.id), 'breeding'), undefined, 'small quiet').dataset.action = 'ped-open-sire';
+  pedKpi('pedigree_view', { source: 'breeding', relation: 'self', shared: Math.min(14, v.sharedKeys.length) });
+  Back(() => (pedState.pairBack ?? Stable)(), '戻る', 40, 834);
+}
+
+/** 系統: the bloodline (sire line) list of the stable, in master order, empty lines included. No completion, no reward. */
+async function Bloodlines(source = 'pedigree', back = null) {
+  if (back) pedState.linesBack = back;
+  currentScreen = () => Bloodlines(source);
+  const r = await L.pedigree.bloodlines(pedLang());
+  if (!r.ok) { toast(r.message); return (pedState.linesBack ?? Stable)(); }
+  const v = r.value;
+  Clear('bloodlines'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('系統　/　BLOODLINES', `系統は父から子へ受け継がれます　·　${v.notice}`, { wallet: false });
+  const side = Glass('Bloodline rules', 36, 134, 440, 676, undefined, .88); side.classList.add('ped-lines-side');
+  Kicker('受け継ぎ方', 30, 26, side, { size: 15 });
+  Txt('仔の系統は父の系統になります', 30, 96, 380, 16, WHITE, side, { weight: 700, lh: 1.5 });
+  Txt(`ニックス（相性の良い系統の組み合わせ）は能力の基準 +${v.rules.nickBonus}`, 30, 150, 380, 14, SOFT, side, { lh: 1.6 }).classList.add('ped-nick-rule');
+  Txt(`3代以内に共通の祖先がいる配合は、1頭につき能力の基準 −${v.rules.inbreedingPenalty}`, 30, 220, 380, 14, SOFT, side, { lh: 1.6 }).classList.add('ped-inb-rule');
+  Txt(v.notice, 30, 300, 380, 14, MUTED, side, { lh: 1.6 }).dataset.pedNotice = '1';
+  TextLink('血統のヘルプ', 30, 600, 220, () => HelpArticle('pedigree', 'link', () => Bloodlines(source)), side, '血統のヘルプ ›').dataset.action = 'ped-help';
+  const list = Glass('Bloodline list', 496, 134, 1068, 676, undefined, .9); list.classList.add('ped-lines');
+  Kicker(`系統　/　${v.total}頭`, 30, 26, list, { size: 15, rule: false });
+  const box = el('ped-list', 30, 66, 1008, 590, list);
+  for (const l of v.lines) {
+    const row = document.createElement('div'); row.className = 'ped-line-row' + (l.count ? '' : ' none'); row.dataset.line = l.id; row.dataset.count = String(l.count);
+    const top = document.createElement('div'); top.className = 'ped-line-top';
+    const nm = document.createElement('span'); nm.className = 'ped-scale ped-line-name'; nm.textContent = l.lineName; top.appendChild(nm);
+    const ct = document.createElement('span'); ct.className = 'ped-scale ped-line-count'; ct.textContent = `${l.count}頭（現役${l.active}・引退${l.retired}）`; top.appendChild(ct);
+    row.appendChild(top);
+    const f = document.createElement('div'); f.className = 'ped-scale ped-line-founder'; f.textContent = `${l.founderName}　·　${l.note}`; row.appendChild(f);
+    for (const x of l.nickWith) { const n = document.createElement('div'); n.className = 'ped-scale ped-line-nick'; n.textContent = `ニックス：${x.lineName}（${x.role === 'dam' ? '母' : '父'}）+${x.bonus}`; row.appendChild(n); } // one line per partner (PedigreeModel.NickLines)
+    if (l.horses.length) { const h = document.createElement('div'); h.className = 'ped-scale ped-line-horses'; h.textContent = l.horses.slice(0, 6).map((x) => x.name).join('・'); row.appendChild(h); }
+    box.appendChild(row);
+  }
+  pedKpi('bloodline_view', { source, lines: Math.min(64, v.lines.length) });
+  Back(() => (pedState.linesBack ?? Stable)(), '戻る', 40, 834);
+}
+
 // ================================================================= round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
 // Small unranked cups for friends or the branch on the real HostedCupsService / CupRunner (the CupDO logic in memory):
 // create (rules = friend-room conditions), invite / join by an 8-letter code, the lobby (the host presses 出走; the race
@@ -6407,7 +6636,7 @@ function ReplaySheet(x) {
     Txt(rpCourse(x.trackId), 310, y + 2, 302, 15, WHITE, s, { weight: 500, nowrap: true });
     if (x.moment) Txt(RP_MOMENT[x.moment], 48, y + 34, 564, 14, GOLD, s, { weight: 700, ls: '.12em' });
     if (!x.playable) Txt(rpUnplayable(x.reason), 48, y + 62, 564, 15, WARN, s, { weight: 700, lh: 1.5 }).classList.add('rp-unplayable');
-    const play = Cta('再生する', 48, y + 110, 564, () => { close(); ReplayPlayer(x.raceId, { title: rpTitle(x), typed: !!x.replayTitle }); }, s);
+    const play = Cta('再生する', 48, y + 110, 564, () => { close(); ReplayPlayer(x.raceId, { title: rpTitle(x), typed: !!x.replayTitle, isPublic: !!x.public }); }, s);
     play.classList.add('rp-play'); if (!x.playable) disable(play);
     Ghost('名前を変える', 48, y + 214, 270, 56, () => { close(); RenameSheet(x); }, s, 'small').classList.add('rp-rename');
     const fav = Ghost(x.favorite ? '★ お気に入り' : '☆ お気に入り', 342, y + 214, 270, 56, async () => {
@@ -6423,6 +6652,9 @@ function ReplaySheet(x) {
     pub.classList.add('rp-public'); if (x.public) pub.classList.add('on');
     Txt(RP_PUBLIC_NOTE, 48, y + 372, 564, 13, SOFT, s, { lh: 1.55 });
     TextLink('削除', 48, y + 440, 160, async () => { const r = await L.replays.remove(x.raceId); close(); toast(r.ok ? 'リプレイを削除しました' : r.message); MyReplays(); }, s, 'このリプレイを削除').classList.add('rp-delete');
+    // round 23 (REQ-HL-011): the replay's best moments; the link row needs it saved and public (§72.4)
+    const hl = TextLink('見どころ', 342, y + 440, 270, () => { close(); HighlightReel({ kind: 'replay', raceId: x.raceId, linkAllowed: !!x.public, title: rpTitle(x), typed: !!x.replayTitle }, MyReplays); }, s, '見どころを見る ›');
+    hl.classList.add('rp-highlights'); if (!x.playable) disable(hl);
   });
 }
 function rpUnplayable(reason) {
@@ -6538,6 +6770,8 @@ async function ReplayPlayer(raceId, o = {}) {
     if (!state.paused) ctl('pause', 1);
     PhotoOpen('myreplay', () => ReplayPlayer(raceId, { ...o, seekMs: at }));
   }, undefined, 'quiet').dataset.action = 'photo-myreplay';
+  // round 23 (REQ-HL-011): the best moments of this replay
+  Ghost('見どころ', 1030, 664, 260, 60, () => HighlightReel({ kind: 'replay', raceId, friend: !!o.friend, linkAllowed: !o.friend && !!o.isPublic, title: o.title, typed: o.typed }, () => ReplayPlayer(raceId, o)), undefined, 'quiet').dataset.action = 'hl-replay';
   Back(back, 'BACK', 40, 640);
   function paint() {
     pause.querySelector('span').textContent = state.paused ? '再生' : '一時停止';
@@ -6547,7 +6781,7 @@ async function ReplayPlayer(raceId, o = {}) {
     view.playerSlot = state.camera;
   }
   paint();
-  if (o.seekMs) { ctl('seek', o.seekMs); ctl('pause', 1); } // back from photo mode: the same moment, paused
+  if (o.seekMs) { ctl('seek', o.seekMs); if (!o.play) ctl('pause', 1); } // back from photo mode: the same moment, paused (a §72 link plays on)
   let last = performance.now();
   every(33, () => {
     const now = performance.now(), dt = now - last; last = now;
@@ -6578,6 +6812,141 @@ function RpShare(o = {}) {
       close(); toast('共有しました（アプリでは共有シートを開きます）');
     }, s, 'gold').classList.add('rp-share-go');
   });
+}
+
+// ================================================================= round 23: レースの見どころ (REQ-HL-*, contracts/protocol.md §72)
+// The real Muchi.Game HighlightsModel in WASM: the engine's HighlightDetector picks up to three moments from the race's log (the same
+// answer as the verifier), HighlightReel plays them back to back on the replay player's camera, one caption per moment, the
+// commentary lines inside each window. Opened from the result screen (the race just run, offline too) and from マイリプレイ (the
+// sheet's 「見どころ」, the player's 「見どころ」). Share: the card (always) and a §63 replay link that opens at the top moment
+// (only an own public saved replay). ムチ一閃 tone: the 3D race behind, translucent navy panels, small letter-spaced cyan
+// labels, one skewed cyan CTA ». KPI rows are the C# model's own (HighlightsKpi), sent through the real ingest.
+const hlState = { src: null, info: null, back: null };
+const hlKpi = () => { const k = JSON.parse(engine.HighlightsKpi()); if (k.length) { L.kpi(k); globalThis.__muchi && (globalThis.__muchi.lastKpi = k[k.length - 1].name); } };
+/**
+ * src: { kind: 'result' } (the race just run) or { kind: 'replay', raceId, friend?, linkAllowed?, title?, typed? }.
+ * back: where 戻る returns (the result screen, the replay player or マイリプレイ).
+ */
+async function HighlightReel(src = { kind: 'result' }, back = null) {
+  hlState.src = src; hlState.back = back ?? hlState.back ?? (() => Home());
+  let info;
+  if (src.kind === 'result') info = JSON.parse(engine.HighlightsOpenResult(L.now(), reduced()));
+  else {
+    const d = src.friend ? await L.replays.friendData(src.raceId) : await L.replays.data(src.raceId);
+    if (!d.ok) { toast('このリプレイは見られません'); return hlState.back(); }
+    info = JSON.parse(engine.HighlightsOpenReplay(JSON.stringify(d.value), src.surface ?? (src.friend ? 'friend_replay' : 'my_replays'), !!src.linkAllowed, L.now(), reduced()));
+  }
+  hlState.info = info;
+  currentScreen = () => HighlightReel(src, hlState.back);
+  if (!info.available) {
+    Clear('highlights-unavailable'); SetArt('Art/race-result', false); Shade('dim');
+    const box = Dialog('Highlights unavailable', 820, 380);
+    Kicker('見どころ', 52, 48, box);
+    Txt(info.message, 52, 112, 716, 28, WHITE, box, { weight: 700, lh: 1.4 }).classList.add('hl-unavailable');
+    Txt('違うレースを流さないため、再計算の結果が一致しないレースは再生しません', 52, 196, 716, 15, SOFT, box, { lh: 1.6 });
+    Cta('もどる', 52, 270, 360, () => hlState.back(), box);
+    return;
+  }
+  await viewReady;
+  Clear('highlights'); cur.classList.add('race'); $canvas.hidden = false;
+  view.useRig = true; view.start(info, equippedPartner());
+  cur.dataset.transition = info.transition;
+  // header: what is playing (a typed replay title stays as typed)
+  const h = Glass('Highlights header', 36, 31, 760, 88, undefined, .82);
+  el('rule', 22, 18, 84, 3, h);
+  Txt('レースの見どころ', 22, 30, 300, 24, WHITE, h, { weight: 700, nowrap: true, ls: '.05em' });
+  const sub = Txt(src.kind === 'result' ? 'いまのレースから自動で選んだ場面' : (src.title ?? 'リプレイ'), 22, 60, 720, 14, MUTED, h, { nowrap: true });
+  if (src.typed) { sub.classList.add('keep-ja', 'typed'); sub.dataset.typed = '1'; }
+  EnToggle(1466, 31, 98, 88);
+  // the caption panel (one moment at a time)
+  const cp = Glass('Highlight caption', 36, 560, 980, 168, undefined, .86); cp.classList.add('hl-caption-panel');
+  const counter = Kicker('', 30, 22, cp, { size: 15, w: 600 }); counter.classList.add('hl-counter');
+  const caption = Txt('', 30, 84, 920, 32, WHITE, cp, { weight: 700, nowrap: true, ls: '.03em' }); caption.classList.add('hl-caption');
+  const subject = Txt('', 30, 128, 920, 18, GOLD, cp, { weight: 700, nowrap: true }); subject.classList.add('hl-subject', 'keep-ja');
+  const line = Txt('', 36, 500, 980, 18, WHITE, undefined, { weight: 500, cls: 'tshadow', nowrap: true }); line.classList.add('hl-line');
+  // progress and controls
+  const bar = Glass('Highlight controls', 36, 744, 1528, 120, undefined, .86); bar.classList.add('hl-controls');
+  const seek = el('bar hl-progress', 30, 54, 880, null, bar); const fill = document.createElement('i'); seek.appendChild(fill);
+  const marks = info.moments.map((m, i) => { const t = Txt(String(i + 1), 30 + Math.round(880 * info.moments.slice(0, i).reduce((a, x) => a + x.endMs - x.startMs, 0) / Math.max(1, info.totalMs)), 18, 40, 14, SOFT, bar, { cls: 'num', weight: 700 }); t.classList.add('hl-mark'); return t; });
+  Ghost('次へ', 958, 30, 220, 60, () => { engine.HighlightsControl('next'); }, bar, 'small').classList.add('hl-next');
+  Ghost('スキップ', 1198, 30, 220, 60, () => { engine.HighlightsControl('skip'); }, bar, 'small quiet').classList.add('hl-skip');
+  Back(() => hlState.back(), 'BACK', 40, 640);
+  let last = performance.now(), shownIndex = -2, ended = false;
+  every(33, () => {
+    if (ended) return;
+    const now = performance.now(), dt = now - last; last = now;
+    const f = JSON.parse(engine.HighlightsFrame(dt, L.now()));
+    if (shownIndex === -2) hlKpi(); // highlight_view: the model's row once the reel plays
+    if (f.done) { ended = true; return HighlightEnd(); }
+    view.playerSlot = f.camera;
+    view.draw(f);
+    if (f.index !== shownIndex) {
+      shownIndex = f.index;
+      counter.textContent = f.counter; caption.textContent = f.caption; subject.textContent = f.subject;
+      marks.forEach((m, i) => m.style.color = i === f.index ? CYAN : SOFT);
+      if (info.transition === 'wipe' && !reduced()) { const w = el('hl-wipe', 0, 0, 1600, 900); setTimeout(() => w.remove(), 420); } // Codex: the cut between moments
+      fitText(cp);
+    }
+    line.textContent = f.line;
+    fill.style.width = Math.round(f.progress / 10) + '%';
+    globalThis.__muchi && (globalThis.__muchi.highlight = { index: f.index, done: f.done, t: f.t, camera: f.camera, progress: f.progress, elapsedMs: f.elapsedMs, totalMs: info.totalMs, caption: f.caption, line: f.line, set: info.set, hash: info.hash, transition: info.transition });
+  });
+}
+/** Demo (the flows, without resetting the player): a demo race kept in マイリプレイ and made public → its reel. */
+async function HighlightsDemo() {
+  const raceId = await RpDemoRace(); await L.replays.save(raceId); await L.replays.update(raceId, { public: true });
+  return HighlightReel({ kind: 'replay', raceId, linkAllowed: true, title: 'マイリプレイ' }, MyReplays);
+}
+/** After the last moment (or スキップ): the three captions, share (the one CTA), watch again, back. */
+function HighlightEnd() {
+  const info = hlState.info;
+  currentScreen = HighlightEnd;
+  Clear('highlights-end'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('レースの見どころ', `${info.moments.length}つの場面　·　あわせて${Math.round(info.totalMs / 1000)}秒`, { wallet: false });
+  const p = Glass('Highlights summary', 36, 134, 900, 676, undefined, .9); p.classList.add('hl-summary');
+  Kicker('選ばれた場面', 36, 30, p);
+  [...info.moments].sort((a, b) => a.index - b.index).forEach((m, i) => {
+    const c = Card('Highlight moment', 36, 100 + i * 132, 828, 116, p, m.rank === 1 ? 'var(--gold)' : 'var(--cyan)');
+    c.classList.add('hl-moment'); c.dataset.kind = m.kind; c.dataset.rank = String(m.rank);
+    Txt(String(i + 1), 24, 24, 50, 40, m.rank === 1 ? GOLD : CYAN, c, { weight: 700, cls: 'num' });
+    Txt(m.caption, 90, 22, 700, 24, WHITE, c, { weight: 700, nowrap: true });
+    Txt(m.subject, 90, 64, 520, 16, GOLD, c, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    if (m.rank === 1) Pills([['いちばんの場面', 'gold']], 620, 62, 200, c);
+  });
+  Txt('選び方は全員同じです。自分の馬が出る場面を少し優先します。レースの結果は変わりません', 36, 512, 828, 14, SOFT, p, { lh: 1.6 });
+  const g = Glass('Highlights actions', 980, 134, 584, 676, undefined, .86); g.classList.add('hl-actions');
+  Kicker('見どころ', 36, 30, g);
+  Cta('見どころを共有', 36, 110, 512, () => HlShareSheet(), g).classList.add('hl-share');
+  Ghost('もう一度見る', 36, 214, 512, 60, () => HighlightReel(hlState.src, hlState.back), g).classList.add('hl-again');
+  TextLink('もどる', 36, 300, 200, () => hlState.back(), g).classList.add('hl-back');
+  Back(() => hlState.back(), 'BACK', 40, 834);
+}
+/** 見どころを共有: the card (top caption, no names / ids) and the replay link at the top moment (own public saved replay only). */
+function HlShareSheet() {
+  const c = JSON.parse(engine.HighlightsShare('', true));
+  if (!c.ok) { toast('このレースは共有できません'); return; }
+  Sheet('見どころを共有', 'ムチ一閃　/　見どころ', (s, close, y) => {
+    s.classList.add('hl-share-sheet');
+    Txt(c.lines[0] ?? '', 48, y, 564, 26, GOLD, s, { weight: 700, lh: 1.35 }).classList.add('hl-card-caption');
+    Txt(c.horse, 48, y + 84, 564, 17, WHITE, s, { weight: 500, cls: 'keep-ja' });
+    Txt(`${c.placeText}　${c.time}　·　${c.course}`, 48, y + 114, 564, 15, MUTED, s, { lh: 1.4 });
+    Txt('名前・IDは入りません（馬の名前だけ）', 48, y + 160, 564, 13, SOFT, s);
+    Cta('画像で共有', 48, y + 204, 564, () => {
+      const r = JSON.parse(engine.HighlightsShareCard('', L.now()));
+      hlKpi(); close(); toast(r.ok ? '共有しました（アプリでは共有シートを開きます）' : 'このレースは共有できません');
+    }, s, 'gold').classList.add('hl-share-card');
+    const link = Ghost('リンクで送る', 48, y + 310, 564, 60, async () => {
+      const made = await L.links.create('replay', { raceId: c.raceId, startTick: c.startTick });
+      if (!made.ok) { toast(made.code === 'NOT_FOUND' ? '保存して公開すると、リンクで送れます' : made.message); return; }
+      const r = JSON.parse(engine.HighlightsShareLink(JSON.stringify(made.value), L.now()));
+      hlKpi(); close();
+      globalThis.__muchi && (globalThis.__muchi.lastHighlightLink = made.value.url);
+      toast(r.ok ? 'リンクを共有しました（いちばんの場面から始まります）' : r.message);
+    }, s);
+    link.classList.add('hl-share-link');
+    if (c.linkNote) { disable(link); Txt(c.linkNote, 48, y + 384, 564, 14, MUTED, s, { lh: 1.55 }).classList.add('hl-link-note'); }
+    else Txt('リンクを開いたフレンドは、いちばんの場面から見られます', 48, y + 384, 564, 14, SOFT, s, { lh: 1.55 });
+  }, 660, { solo: true });
 }
 
 // ================================================================= round 16: シーズンの振り返り (REQ-RECAP-*, contracts/protocol.md §43)
@@ -7056,7 +7425,7 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ', class_promoted: '昇級' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ', class_promoted: '昇級', new_device: 'アカウント' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
@@ -7068,6 +7437,7 @@ const actGo = (screen, id) => ({
   recap: (rid) => (rid ? Recap(rid) : Recaps()), // round 16 (§43): the recap that became ready
   safety: () => BlockList(), // §47: support's request leads to 通報とブロック
   privacy: () => Privacy(), // round 18 (§51): the data export is ready
+  devices: () => DeviceList(), // round 23 (§70.4): a new device signed in → ログイン中の端末
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {
@@ -7392,7 +7762,7 @@ async function LinkConfirm(v) {
     invite: ['招待コードの入力へ', () => Invite()],
     cup: ['カップの画面へ', () => HostedCups()],
     team: ['支部の画面へ', () => TeamFeed()],
-    replay: ['リプレイの画面へ', () => MyReplays()],
+    replay: ['リプレイの画面へ', () => (t.startTick != null ? ReplayPlayer(t.raceId, { title: t.replayTitle ?? undefined, seekMs: t.startTick * 50, play: true }) : MyReplays())], // R23 §72.4: from the shared moment
   }[v.type];
   if (go) Cta(go[0], 36, 250, 460, go[1], p).classList.add('lk-confirm-go');
   Ghost('開かない', 520, 257, 220, 60, () => Links(), p, 'quiet').classList.add('lk-confirm-no');
@@ -7664,6 +8034,137 @@ function TransferReplaced() {
   Txt('心当たりがないときは、ヘルプのお問い合わせから運営に知らせてください。', 82, 368, 860, 15, MUTED, undefined, { cls: 'tshadow', lh: 1.6 });
   Cta('引き継ぎコードを入力', 78, 440, 440, () => TransferRedeem({ back: 'title' })).classList.add('trf-replaced-redeem');
   Ghost('新しく始める', 542, 447, 260, 60, () => Title()).classList.add('trf-replaced-new');
+  EnToggle();
+}
+
+
+// ================================================================= round 23: ログイン中の端末とセキュリティ (REQ-DEV-*, contracts/protocol.md §70)
+// On the real PlayerService steps (L.devices: check-in, list, sign-outs, the log). Mirrors unity DeviceSessionsModel. ムチ一閃 tone:
+// photoreal art, translucent navy panels, small letter-spaced cyan labels, one skewed cyan CTA » (the confirm sheet's), sparse.
+// Neutral wording only — never 「不正」「危険」「今すぐ」.
+const DEV_OS = { ios: 'iOS', android: 'Android' };
+/** 「iPhone（iOS 18）」 / 「iOSの端末」 / 「端末」 — the same as C# DeviceLabel (EN: proto-en templates). Model names are never translated. */
+function devName(x) {
+  const os = DEV_OS[x?.platform] ? (x.osMajor != null ? `${DEV_OS[x.platform]} ${x.osMajor}` : DEV_OS[x.platform]) : null;
+  // English: ASCII brackets here (the full-width ones are not Japanese to the translator, so no template would apply)
+  if (x?.model) return os ? (isJa() ? `${x.model}（${os}）` : `${x.model} (${os})`) : x.model;
+  return os ? (isJa() ? `${os}の端末` : `${os} device`) : isJa() ? '端末' : 'Device';
+}
+const devRegion = (c) => (!c ? null : c === 'JP' ? '日本' : c);
+const devDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+const devTooSoon = (h) => `この端末でログインしてから${h}時間たつと、前からある端末もログアウトできます`;
+const devKpi = (e) => { (globalThis.__muchiKpi ??= []).push(e); };
+async function DeviceList(state = {}) {
+  currentScreen = () => DeviceList(state);
+  const r = await L.devices.checkin();
+  Clear('devices'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ログイン中の端末', 'このアカウントでログインしている端末とセキュリティの記録', { wallet: false });
+  if (!r.ok || !r.value.enabled) { Txt('この機能は現在ご利用いただけません', 82, 200, 900, 22, WHITE); Back(() => Settings(), 'BACK', 40, 834); return; }
+  const v = r.value;
+  devKpi({ name: 'device_list_view', screen: 'devices', count: v.sessions.length });
+  const lp = Glass('Devices', 36, 134, 960, 676, undefined, .9);
+  lp.classList.add('dev-list');
+  const cur = v.sessions.find((x) => x.current);
+  Kicker('この端末', 36, 30, lp);
+  if (cur) {
+    const row = el('dev-row dev-current', 36, 92, 888, 64, lp);
+    row.dataset.session = cur.sessionId;
+    Txt(devName(cur), 0, 4, 560, 21, WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Txt([devRegion(cur.region), `最後の利用：${devDay(cur.lastSeenAt)}`].filter(Boolean).join('・'), 0, 36, 600, 14, SOFT, row, { nowrap: true });
+    Txt('この端末', 712, 12, 176, 15, CYAN, row, { weight: 700, ls: '.14em', align: 'right', nowrap: true });
+  }
+  Hair(36, 176, 888, lp);
+  Kicker('ほかの端末', 36, 194, lp, { rule: false, size: 15 });
+  const others = v.sessions.filter((x) => !x.current);
+  if (!others.length) Txt('ほかにログインしている端末はありません', 36, 236, 888, 16, MUTED, lp).classList.add('dev-none');
+  others.slice(0, 5).forEach((x, i) => {
+    const row = el('dev-row', 36, 232 + i * 76, 888, 70, lp);
+    row.dataset.session = x.sessionId;
+    Txt(devName(x), 0, 4, 600, 19, WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Txt([devRegion(x.region), `最後の利用：${devDay(x.lastSeenAt)}`].filter(Boolean).join('・'), 0, 34, 600, 14, SOFT, row, { nowrap: true });
+    const b = Ghost('ログアウト', 688, 6, 200, 50, () => {
+      if (!x.canSignOut) { toast(devTooSoon(v.trustAfterHours)); return; }
+      DeviceConfirm(v, x, state);
+    }, row, 'small');
+    b.dataset.devSignout = x.sessionId; b.dataset.can = x.canSignOut ? '1' : '0';
+    Hair(0, 69, 888, row);
+  });
+  if (others.length > 5) Txt(`ほか${others.length - 5}台`, 36, 616, 888, 14, SOFT, lp, { nowrap: true });
+  Txt(`ログアウトは1日${v.revokesPerDay}回まで（今日 ${v.revokesToday}回）`, 36, 640, 888, 13, SOFT, lp, { nowrap: true });
+  const rp = Glass('Security', 1016, 134, 548, 676, undefined, .86);
+  rp.classList.add('dev-side');
+  Kicker('まとめて', 36, 30, rp);
+  const all = Ghost('この端末以外をすべてログアウト', 36, 92, 476, 56, () => {
+    if (!others.length) { toast('ログアウトする端末はありません'); return; }
+    if (!v.signOutOthers.allowed) { toast(devTooSoon(v.trustAfterHours)); return; }
+    DeviceConfirm(v, null, state);
+  }, rp, 'small');
+  all.dataset.action = 'devices-signout-others';
+  Txt(`この端末より後にログインした端末は、すぐにログアウトできます。前からある端末は、この端末でログインしてから${v.trustAfterHours}時間たつとログアウトできます。`, 36, 168, 476, 14, MUTED, rp, { lh: 1.6 });
+  Hair(36, 272, 476, rp);
+  TextLink('セキュリティの記録 ›', 36, 286, 476, () => SecurityLog(), rp).dataset.action = 'security-log';
+  TextLink('ログイン中の端末について（ヘルプ）', 36, 330, 476, () => HelpArticle(L.helpContext('devices'), 'context', () => DeviceList()), rp).dataset.helpContext = 'devices';
+  Hair(36, 386, 476, rp);
+  Kicker('デモ（レビュー用）', 36, 404, rp, { rule: false, size: 15, color: SOFT });
+  Ghost('新しい端末でログインする', 36, 448, 476, 52, async () => { await L.devices.demoNewDevice(); toast('新しい端末でログインがありました'); DeviceList(); }, rp, 'quiet small').dataset.action = 'devices-demo-new';
+  Ghost('ログアウトされた端末の画面', 36, 516, 476, 52, () => SessionRevoked(), rp, 'quiet small').dataset.action = 'devices-demo-revoked';
+  Txt('名前は機種の種類とOSの大きな番号、地域は国だけです。IPアドレスは記録しません。', 36, 590, 476, 13, SOFT, rp, { lh: 1.55 });
+  Back(() => Settings(), 'BACK', 40, 834);
+}
+/** The confirm sheet before a sign-out (`target` null = all the other devices). */
+function DeviceConfirm(v, target, state) {
+  // its own screen (the list's rows would sit under the sheet's longer lines at the largest text size)
+  currentScreen = () => DeviceConfirm(v, target, state);
+  Clear('devices-confirm'); SetArt('Art/home-paddock', false); Shade('dim heavy');
+  const box = Dialog('Device sign-out', 920, 580);
+  box.classList.add('dev-confirm');
+  Kicker('確認', 52, 44, box);
+  Txt(target ? `${devName(target)}をログアウトしますか？` : 'この端末以外をすべてログアウトしますか？', 52, 104, 816, 26, WHITE, box, { weight: 700, cls: 'dev-confirm-title' });
+  Txt(target ? 'その端末は次に通信した時にログアウトされます。' : 'その端末は次に通信した時にログアウトされます。この端末より前にログインした端末も、一覧にない端末も、すべてログアウトされます。', 52, 158, 816, 16, MUTED, box, { lh: 1.6 });
+  if (v.anonymousOnly) Txt('その端末ではこのアカウントに戻れなくなります（Apple・Googleの連携か引き継ぎコードがあれば戻れます）。', 52, 280, 816, 15, GOLD, box, { weight: 500, lh: 1.6, cls: 'dev-anon' });
+  Cta('ログアウトする', 52, 450, 420, async () => {
+    const x = target ? await L.devices.signOut(target.sessionId) : await L.devices.signOutOthers();
+    if (x.ok) toast(x.value.signedOut > 0 ? 'ログアウトしました' : 'ログアウトする端末はありません');
+    else toast(x.code === 'DEVICE_SIGNOUT_TOO_SOON' ? devTooSoon(v.trustAfterHours) : x.code === 'RATE_LIMITED' ? '今日はこれ以上ログアウトできません' : 'ログアウトできませんでした。時間をおいてお試しください');
+    DeviceList(state);
+  }, box, 'small dev-confirm-yes');
+  Ghost('やめる', 496, 456, 220, 50, () => DeviceList(state), box, 'quiet').classList.add('dev-confirm-no');
+}
+const SEC_ICON = { new_device: '新', signout_device: '出', signout_others: '出', signout_support: '出', transfer_issued: '引', transfer_revoked: '引', transfer_redeemed: '引', link_added: '連', link_removed: '連' };
+/** セキュリティの記録 (newest first; view only). */
+async function SecurityLog() {
+  currentScreen = SecurityLog;
+  const r = await L.devices.log();
+  Clear('security-log'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('セキュリティの記録', '新しい端末でのログイン・ログアウト・引き継ぎコード・連携の追加と解除', { wallet: false });
+  const items = r.ok ? r.value.items : [];
+  devKpi({ name: 'device_list_view', screen: 'log', count: items.length });
+  const lp = Glass('Security log', 36, 134, 1528, 676, undefined, .9);
+  lp.classList.add('sec-log');
+  Kicker(r.ok ? `直近${r.value.logDays}日` : 'セキュリティの記録', 36, 30, lp);
+  if (!items.length) Txt('まだ記録はありません', 36, 96, 1400, 16, MUTED, lp).classList.add('sec-none');
+  items.slice(0, 8).forEach((x, i) => {
+    const row = el('sec-row', 36, 92 + i * 66, 1456, 60, lp);
+    row.dataset.kind = x.kind;
+    Txt(jstDate(x.at), 0, 6, 220, 15, SOFT, row, { nowrap: true, cls: 'num' });
+    Txt(x.text, 236, 4, 1000, 18, WHITE, row, { weight: 700, nowrap: true });
+    if (x.device) Txt([devName(x.device), devRegion(x.device.region)].filter(Boolean).join('・'), 236, 32, 1000, 14, SOFT, row, { nowrap: true });
+    Hair(0, 59, 1456, row);
+  });
+  if (items.length > 8) Txt(`ほか${items.length - 8}件`, 36, 626, 1400, 14, SOFT, lp, { nowrap: true });
+  Back(() => DeviceList(), 'BACK', 40, 834);
+}
+/** This device after 401 SESSION_REVOKED (signed out from another device or by support). Neutral; = unity MaintenanceScreen.SessionRevoked. */
+function SessionRevoked() {
+  deviceAccountChanged();
+  currentScreen = SessionRevoked;
+  Clear('session-revoked'); SetArt('Art/home-paddock', false); Shade('left');
+  Kicker('ログアウト', 82, 112, undefined, { size: 18 });
+  Txt('この端末はログアウトされました', 78, 176, 1100, 56, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt('別の端末かサポートからログアウトの操作がありました。Apple・Googleで連携している場合は、もう一度ログインすると続きから遊べます。心当たりがない場合はお問い合わせください。', 82, 268, 860, 21, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  Cta('ログインする', 78, 440, 440, () => Title()).classList.add('dev-revoked-signin');
+  Ghost('新しく始める', 542, 447, 260, 60, () => Title()).classList.add('dev-revoked-new');
+  TextLink('お問い合わせ', 826, 459, 240, () => HelpCenter(Title)).classList.add('dev-revoked-contact');
   EnToggle();
 }
 
@@ -8831,10 +9332,10 @@ async function ReleaseNotesDemo() {
 // attaches, one key kept across retries) and my inquiries (status, the support reply, read on opening). Articles come in
 // the language the screen shows (lang = en in English); what the player typed and support's replies stay as written
 // (.keep-ja). ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan kickers, one skewed cyan CTA ».
-const helpState = { back: null, q: '', cat: null, formKey: null, draft: null, sel: null, picks: null };
+const helpState = { back: null, q: '', cat: null, formKey: null, draft: null, sel: null, picks: null, reply: '', replyKey: null, replyFor: null };
 const helpLang = () => (isJa() ? 'ja' : 'en');
 const helpKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
-const HELP_STATUS_COLOR = { received: GOLD, answered: CYAN, closed: SOFT };
+const HELP_STATUS_COLOR = { received: GOLD, in_progress: CYAN, answered: CYAN, resolved: SOFT, closed: SOFT };
 /** Where an article's screen link leads (protocol §48.1 screens). */
 const helpGo = (screen, back) => ({
   home: () => Home(), settings: () => Settings(), race_lobby: () => RaceLobby(), tutorial: () => Tips(), tips: () => Tips(),
@@ -8852,6 +9353,8 @@ const helpGo = (screen, back) => ({
   // round 22: 使いすぎ・遊びすぎの防止 (§67)
   self_limits: () => SelfLimits(),
   career: () => Career(), // round 22 (§66)
+  // round 23 (§71): the bloodline list
+  bloodlines: () => Bloodlines('help', back),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -8886,7 +9389,7 @@ async function HelpCenter(back = null) {
   Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
   Txt('よくある質問で解決しないときは、運営に問い合わせできます。返信はアクティビティでお知らせします。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
   const unread = player?.help?.unreadReplies ?? 0;
-  const mine = Btn('自分の問い合わせ', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
+  const mine = Btn('お問い合わせ履歴', 36, 200, 376, 56, () => MyInquiries(), 'row last', d); mine.style.fontSize = '19px';
   mine.dataset.action = 'my-inquiries'; mine.dataset.unread = String(unread);
   { const em = document.createElement('em'); em.textContent = unread > 0 ? `未読 ${unread}` : '›'; mine.appendChild(em); }
   Txt('問い合わせには、アプリの版・端末の種類・プレイヤーID・直近のレースIDだけが自動で添えられます。', 36, 290, 376, 13, SOFT, d, { lh: 1.6 });
@@ -8941,7 +9444,7 @@ function helpSide() {
   const d = Glass('Help contact', 1116, 134, 448, 676, undefined, .9);
   Kicker('問い合わせ', 36, 30, d, { size: 16, rule: false });
   Txt('解決しないときは、運営に問い合わせできます。', 36, 84, 376, 15, MUTED, d, { lh: 1.6 });
-  TextLink('自分の問い合わせ', 36, 160, 376, () => MyInquiries(), d);
+  TextLink('お問い合わせ履歴', 36, 160, 376, () => MyInquiries(), d);
   Cta('問い合わせる', 36, 576, 376, () => InquiryForm(), d).dataset.action = 'inquiry';
 }
 /** An article: `source` = list | search | context | link | related (help_article_view once per opening). */
@@ -8994,7 +9497,7 @@ function HelpArticleView(A, back) {
 
 // ---------------------------------------------------------------- the inquiry form
 async function InquiryForm(category = null) {
-  helpState.draft ??= { category: 'other', description: '', refs: [] };
+  helpState.draft ??= { category: 'other', description: '', refs: [], share: true };
   if (category) helpState.draft.category = category;
   currentScreen = () => InquiryForm();
   const [idx, list] = await Promise.all([helpState.index ? { ok: true, value: helpState.index } : L.help(helpLang()), L.inquiries(helpLang())]);
@@ -9038,10 +9541,17 @@ async function InquiryForm(category = null) {
   // right: what is attached automatically (REQ-HELP-011), limits, the CTA
   const d = Glass('Inquiry diagnostics', 1116, 134, 448, 676, undefined, .9);
   Kicker('自動で添える情報', 36, 30, d, { size: 15, rule: false });
-  [['アプリの版', 'proto'], ['端末の種類', 'Editor'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', '最大3件・自動で添えます']].forEach(([k, v], i) => {
-    Txt(k, 36, 80 + i * 34, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 80 + i * 34, 206, 14, WHITE, d, { weight: 700, nowrap: true });
+  // round 23 (REQ-TKT-003): the diagnostics go only with the player's consent (default on; off sends none of them)
+  Txt('診断情報を添える', 36, 66, 170, 14, WHITE, d, { weight: 700, nowrap: true });
+  [['オン', true], ['オフ', false]].forEach(([l, v], j) => {
+    const b = Btn(l, 216 + j * 100, 56, 92, 40, () => { D.share = v; InquiryForm(); }, 'choice' + ((D.share !== false) === v ? ' on' : ''), d);
+    b.dataset.share = v ? 'on' : 'off'; b.style.fontSize = '15px';
   });
-  Txt(H.inquiry.diagnosticsNote, 36, 230, 376, 12, SOFT, d, { lh: 1.6 }).dataset.diagnostics = '1';
+  const share = D.share !== false;
+  [['アプリの版', share ? 'proto' : '送りません'], ['端末の種類', share ? 'Editor' : '送りません'], ['プレイヤーID', '自動で添えます'], ['直近のレースID', share ? '最大3件・自動で添えます' : '送りません']].forEach(([k, v], i) => {
+    Txt(k, 36, 112 + i * 30, 170, 14, MUTED, d, { weight: 500, nowrap: true }); Txt(v, 206, 112 + i * 30, 206, 14, WHITE, d, { weight: 700, nowrap: true });
+  });
+  Txt(H.inquiry.diagnosticsNote, 36, 240, 376, 12, SOFT, d, { lh: 1.6 }).dataset.diagnostics = '1';
   const lim = list.ok ? list.value.limits : null;
   if (lim) Txt(`返信待ち ${lim.open} / ${lim.openMax}　·　今日 ${lim.today} / ${lim.perDay}`, 36, 470, 376, 13, MUTED, d, { weight: 500, nowrap: true, cls: 'num' }).dataset.limits = `${lim.open}/${lim.openMax}`;
   const send = Cta('送信する', 36, 576, 376, async () => {
@@ -9049,7 +9559,7 @@ async function InquiryForm(category = null) {
     if (n < H.inquiry.descriptionMin) { toast('内容をもう少し詳しく書いてください'); return; }
     // REQ-HELP-012: one key per form, kept until the server accepted it (a retry returns the same inquiry)
     helpState.formKey ??= `form-${Date.now()}`;
-    const r = await L.submitInquiry({ category: D.category, description: D.description, refs: D.refs }, helpState.formKey, helpLang());
+    const r = await L.submitInquiry({ category: D.category, description: D.description, refs: D.refs, shareDiagnostics: D.share !== false }, helpState.formKey, helpLang());
     if (!r.ok) { toast(r.code === 'RATE_LIMITED' ? 'いまは送信できません。返信をお待ちいただくか、時間をおいてください' : r.code === 'NOT_FOUND' ? '期間外の記録が含まれています' : r.message); return; }
     helpState.draft = null; helpState.formKey = null; helpState.picks = null;
     toast('問い合わせを受け付けました。返信はアクティビティでお知らせします');
@@ -9060,7 +9570,20 @@ async function InquiryForm(category = null) {
   Back(() => { HelpCenter(); }, '戻る', 40, 834);
 }
 
-// ---------------------------------------------------------------- my inquiries
+// ---------------------------------------------------------------- my inquiries — round 23: お問い合わせ履歴 (REQ-TKT-*, protocol §73)
+// The list with status chips (受付済み / 確認中 / 返信あり / 解決 / クローズ) and the thread: the inquiry, the support replies
+// and the player's replies in time order (a person's words stay as written: .keep-ja), the auto-close / reopen notes from
+// the server's clocks, an apology gift → the gift box, and the reply box (one key kept until the server accepted it,
+// rate limits and a closed ticket as sentences). The thread scrolls inside its panel: text grows with the text size.
+const TKT_CHIP = { received: 'warn', in_progress: 'info', answered: 'ok', resolved: 'muted', closed: 'muted' };
+function TicketChip(status, text, x, y, parent) {
+  const c = el('tkt-chip tkt-scale ' + (TKT_CHIP[status] ?? 'warn'), x, y, null, null, parent);
+  c.textContent = text; c.dataset.chip = status;
+  return c;
+}
+function tktNode(tag, cls, text, parent) {
+  const n = document.createElement(tag); n.className = cls; if (text != null) n.textContent = text; parent.appendChild(n); return n;
+}
 async function MyInquiries(sel = helpState.sel) {
   currentScreen = () => MyInquiries();
   const r = await L.inquiries(helpLang());
@@ -9068,6 +9591,7 @@ async function MyInquiries(sel = helpState.sel) {
   const P = r.value;
   // the first unread reply, else the newest
   if (!P.items.some((x) => x.ticketId === sel)) sel = (P.items.find((x) => x.unread) ?? P.items[0])?.ticketId ?? null;
+  if (helpState.replyFor !== sel) { helpState.reply = ''; helpState.replyKey = null; helpState.replyFor = sel; }
   helpState.sel = sel;
   let T = null;
   if (sel) {
@@ -9078,40 +9602,79 @@ async function MyInquiries(sel = helpState.sel) {
     }
   }
   Clear('my-inquiries'); SetArt('Art/home-paddock', false); Shade('left');
-  TopBar('自分の問い合わせ', '受付済み → 回答済み → 完了　·　返信はアクティビティでもお知らせします');
-  const p = Glass('Inquiry list', 36, 134, 620, 676, undefined, .88);
+  TopBar('お問い合わせ履歴', '受付済み → 確認中 → 返信あり → 解決 → クローズ　·　返信はアクティビティでもお知らせします');
+  const p = Glass('Inquiry list', 36, 134, 560, 676, undefined, .88);
   p.classList.add('inq-list');
   Kicker('新しい順', 36, 30, p, { size: 15 });
-  if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 540, 18, MUTED, p).dataset.inqEmpty = '1';
+  if (!P.items.length) Txt('まだ問い合わせはありません', 36, 100, 480, 18, MUTED, p).dataset.inqEmpty = '1';
   P.items.slice(0, 7).forEach((it, i) => {
-    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 74, 572, 68, p);
+    const row = el('help-row' + (it.ticketId === sel ? ' sel' : ''), 24, 90 + i * 76, 512, 70, p);
     row.dataset.ticket = it.ticketId; row.dataset.status = it.status; row.dataset.unread = it.unread ? '1' : '0'; row.setAttribute('role', 'button');
+    row.setAttribute('aria-label', `${it.categoryTitle} ${it.statusText}`);
     if (it.unread && it.ticketId !== sel) el('act-dot', 6, 30, 10, 10, row);
-    Txt(it.statusText, 22, 8, 160, 12, HELP_STATUS_COLOR[it.status] ?? CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
-    Txt(jstDate(it.createdAt), 200, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
-    Txt(it.categoryTitle, 22, 30, 520, 18, WHITE, row, { weight: 700, nowrap: true });
+    TicketChip(it.status, it.statusText, 22, 8, row);
+    Txt(jstDate(it.createdAt), 300, 10, 190, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num', align: 'right' });
+    Txt(it.categoryTitle, 22, 38, 470, 17, WHITE, row, { weight: 700, nowrap: true });
     row.addEventListener('click', () => MyInquiries(it.ticketId));
   });
-  const d = Glass('Inquiry detail', 676, 134, 888, 676, undefined, .9);
+  const d = Glass('Inquiry detail', 616, 134, 948, 676, undefined, .9);
   d.classList.add('inq-detail');
   if (T) {
-    d.dataset.ticket = T.ticketId; d.dataset.status = T.status;
-    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false });
-    Txt(T.statusText, 700, 34, 150, 14, HELP_STATUS_COLOR[T.status] ?? CYAN, d, { weight: 700, align: 'right', nowrap: true });
-    Txt('送った内容', 36, 76, 300, 13, MUTED, d, { weight: 500 });
-    const mine = Txt(T.inquiryText, 36, 100, 816, 16, WHITE, d, { lh: 1.6, h: 110 }); mine.classList.add('keep-ja', 'typed'); mine.style.overflow = 'hidden';
-    if (T.attachments.length) Txt(T.attachments.map((a) => a.ref).join('　·　'), 36, 216, 816, 13, CYAN, d, { cls: 'num', nowrap: true });
-    Hair(36, 250, 816, d);
-    let y = 268;
-    if (!T.messages.length) Txt('運営が確認しています。返信が届くとアクティビティでお知らせします。', 36, y, 816, 15, MUTED, d, { lh: 1.6 });
-    T.messages.slice(-2).forEach((m) => {
-      Txt(m.from === 'support' ? '運営からの返信' : 'あなた', 36, y, 300, 13, m.from === 'support' ? CYAN : MUTED, d, { weight: 700, ls: '.12em' });
-      Txt(jstDate(m.at), 560, y, 292, 12, SOFT, d, { align: 'right', cls: 'num', nowrap: true });
-      const tx = Txt(m.messageText, 36, y + 24, 816, 16, WHITE, d, { lh: 1.6, h: 120 }); tx.classList.add('keep-ja', 'typed'); tx.style.overflow = 'hidden'; tx.dataset.reply = m.from;
-      y += 160;
-    });
-  } else Txt('問い合わせを選んでください', 36, 100, 600, 16, MUTED, d);
-  Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+    d.dataset.ticket = T.ticketId; d.dataset.status = T.status; d.dataset.canReply = T.canReply ? '1' : '0';
+    Kicker(`${T.categoryTitle}　·　${T.ticketId}`, 36, 30, d, { size: 15, rule: false, w: 640 });
+    TicketChip(T.status, T.statusText, 760, 24, d);
+    // the thread (scrolls in its panel)
+    const box = el('tkt-thread', 24, 70, 900, T.canReply ? 330 : 420, d);
+    box.dataset.thread = T.ticketId; box.setAttribute('role', 'log'); box.setAttribute('aria-label', 'やりとり');
+    const msg = (who, at, text, support) => {
+      const m = tktNode('div', 'tkt-msg' + (support ? ' support' : ''), null, box);
+      m.dataset.from = support ? 'support' : 'player';
+      const head = tktNode('div', 'tkt-head', null, m);
+      tktNode('span', 'tkt-scale tkt-who', who, head);
+      tktNode('span', 'tkt-scale tkt-at num', jstDate(at), head);
+      const tx = tktNode('div', 'tkt-scale tkt-text keep-ja typed', text, m);
+      tx.dataset.reply = support ? 'support' : 'player';
+    };
+    msg('あなた', T.createdAt, T.inquiryText, false);
+    if (T.attachments.length) tktNode('div', 'tkt-scale tkt-note num', T.attachments.map((a) => a.ref).join('　·　'), box);
+    T.messages.forEach((m) => msg(m.from === 'support' ? '運営からの返信' : 'あなた', m.at, m.messageText, m.from === 'support'));
+    if (!T.messages.some((m) => m.from === 'support')) tktNode('div', 'tkt-scale tkt-note', '運営が確認しています。返信が届くとアクティビティでお知らせします。', box);
+    if (T.compensation?.length) {
+      const g = tktNode('button', 'tkt-scale tkt-gift', 'お詫びの品をプレゼントボックスに入れました　›', box);
+      g.dataset.action = 'ticket-gift'; g.addEventListener('click', () => GiftBox('box'));
+    }
+    if (T.autoCloseAt) tktNode('div', 'tkt-scale tkt-note', `返信がないまま ${jstDate(T.autoCloseAt)} を過ぎると自動でクローズします`, box).dataset.autoClose = '1';
+    if (T.status === 'closed' && T.canReply && T.replyUntil) tktNode('div', 'tkt-scale tkt-note', `${jstDate(T.replyUntil)} まで返信できます（返信するとお問い合わせを続けられます）`, box).dataset.reopen = '1';
+    if (!T.canReply) tktNode('div', 'tkt-scale tkt-note', 'このお問い合わせはクローズしました。新しく問い合わせてください', box).dataset.closedNote = '1';
+    requestAnimationFrame(() => { box.scrollTop = box.scrollHeight; });
+    if (T.canReply) {
+      const fb = el('fieldbox', 36, 414, 876, 118, d);
+      const ta = document.createElement('textarea');
+      ta.className = 'field'; ta.maxLength = 1000; ta.value = helpState.reply ?? ''; ta.placeholder = '返信を書く（パスワード・メールアドレスは書かないでください）'; ta.setAttribute('aria-label', '返信の内容');
+      Object.assign(ta.style, { left: '16px', top: '8px', width: '844px', height: '100px', fontSize: '17px', resize: 'none', lineHeight: '1.5' });
+      ta.addEventListener('input', () => { helpState.reply = ta.value; });
+      fb.appendChild(ta);
+      const send = Cta('返信する', 492, 576, 420, async () => {
+        const text = (helpState.reply ?? '').trim();
+        if (!text) { toast('返信の内容を書いてください'); return; }
+        // REQ-TKT-004: one key per reply, kept until the server accepted it (a retry returns the same thread)
+        helpState.replyKey ??= `reply-${Date.now()}`;
+        const rr = await L.inquiryReply(T.ticketId, text, helpState.replyKey, helpLang());
+        if (!rr.ok) {
+          if (rr.code === 'CONFLICT') { helpState.replyKey = null; toast('このお問い合わせはクローズしました。新しく問い合わせてください'); return MyInquiries(T.ticketId); }
+          toast(rr.code === 'RATE_LIMITED' ? 'いまは返信できません。時間をおいてください' : rr.message); return;
+        }
+        helpState.reply = ''; helpState.replyKey = null;
+        toast('返信を送りました');
+        MyInquiries(T.ticketId);
+      }, d, 'small');
+      send.dataset.action = 'ticket-reply';
+      Ghost('新しく問い合わせる', 36, 582, 420, 52, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+    } else Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+  } else {
+    Txt('問い合わせを選んでください', 36, 100, 600, 16, MUTED, d);
+    Cta('新しく問い合わせる', 36, 576, 420, () => InquiryForm(), d, 'small').dataset.action = 'inquiry';
+  }
   Back(() => HelpCenter(), '戻る', 40, 834);
 }
 
@@ -9607,7 +10170,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

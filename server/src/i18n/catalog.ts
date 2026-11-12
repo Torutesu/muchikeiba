@@ -188,7 +188,10 @@ export const PLAYER_TEXT_KEYS = new Set(['displayName', 'teamName', 'plateName',
  */
 export const PRE_LOCALIZED_KEYS = new Set(['qchatText', 'qchatTemplate', 'qchatValue',
   // REQ-SHOW-007 (§62): showcase phrases and background names are picked in the viewer's language from their JA + EN pair
-  'phraseText', 'backgroundName']);
+  'phraseText', 'backgroundName',
+  // REQ-PED-011/010 (§71): bloodline names / founders are picked from their JA + EN pair, and the pair hints are built in the
+  // viewer's language (they may quote a player's horse name, which is never translated)
+  'lineName', 'founderName', 'hintText']);
 /** `name:シンセイアカツキ`, `voice/ja/name/…`: an identifier, not a text. */
 const ID_LIKE = /^[a-z][a-z0-9_]*[:/]/;
 

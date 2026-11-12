@@ -1142,6 +1142,11 @@
     "ipFailuresPerHour": 20, "deviceFailuresPerHour": 10, "limitLockMinutes": 60,
     "issuesPerDay": 5, "passwordMin": 8, "passwordMax": 32
   },
+  "devices": {
+    "_note": "ログイン中の端末とセキュリティ（REQ-DEV-*、contracts/protocol.md §70）。セッションはmaxSessionsまで、覚える端末（インストールIDのハッシュ）はknownDevicesMaxまで、記録はlogMax件・logDays日。ログアウトはゲーム日ごとにrevokesPerDay回、自分より前からある端末はこの端末のログインからtrustAfterHours時間後。無効化の記録はrevokedKeep件。時刻はlastSeenRoundMin分に切り捨て。IPは持たない。何も配らない。",
+    "enabled": true, "maxSessions": 20, "knownDevicesMax": 50, "logMax": 50, "logDays": 180,
+    "revokesPerDay": 10, "trustAfterHours": 24, "revokedKeep": 200, "lastSeenRoundMin": 60
+  },
   "clientErrors": {
     "_note": "REQ-CERR-*（contracts/protocol.md §60）。クライアントのエラー報告。samplingは種類ごとの抽出率（‰、desyncは1000のみ）。束はmaxItems項目・maxBodyBytesまで、プレイヤー・端末ごとに1時間の束の数、匿名は全体で1分の束の数。指紋の行はmaxGroups、見本は指紋ごとにsamplesPerGroup件、retentionDays日で消す。新しい指紋の推定の数がspikeWindowHours時間以内にspikeMinCountに届いたら通知のログ。",
     "enabled": true,

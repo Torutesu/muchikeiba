@@ -62,6 +62,7 @@ export const LNOTIF_OWNERSHIP = {
     team_cheer: 'team_cheer', team_request: 'team_request', team_approved: 'team_approved', team_goal: 'team_goal_milestone', event_start: 'event_start',
     tournament_heat_soon: 'tournament_heat_soon', promotion_near: 'promotion_near', tournament_closing: 'tournament_entry_close',
     rival_record: 'rival_ta_record', ta_beaten: 'ta_record_beaten', lapse_3d: 'comeback_lapse', lapse_7d: 'comeback_lapse', gift_arrived: 'gift_arrived',
+    inquiry_reply: 'support_reply', // R23 §73.7: a support reply is server-sent (never a local notification)
   } as Record<string, string>,
 } as const;
 

@@ -2000,6 +2000,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `cup_started` | カップの最初のレースが始まった（`CupRunner.start` → 主催者以外の各参加者へ `cupStarted`、ポート `notifyStarted`。参加中の人だけ） | `cup_started:{cupId}` | しない | `friends` | `cups` |
 | `cup_finished` / `cup_cancelled` | カップが終わった（順位 `{n}`）／中止になった（`cupClosed`、参加していた人だけ。招待されただけの人には書かない） | `cup_closed:{cupId}` | しない | `friends` | `cups` |
 | `recap_ready` | 振り返りができた（§43、`rollRecaps` が作ったものごと。`vars.kind` = `season`／`year`） | `recap_ready:{recapId}` | しない | `season` | `recap`（`id` = `season:2026-11` など） |
+| `new_device`（Round 23） | 新しい端末でログインがあった（§70.4、`devicesCheckin`。プッシュは送らない） | `new_device:{sessionId}` | しない | `account`（プッシュの種類ではない） | `devices`（`id` = sessionId） |
 
 - 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
 - おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。
@@ -2427,20 +2428,20 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*`・`/v1/career*`（騎手の道 §66、Round 22：検証するひとりのレース） |
 | `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）・ゲーム内アンケート `/v1/surveys*` §69（R22）・昇級戦の表示と見た印 §68 `/v1/promotion*`…） |
+| `core` | それ以外のすべて（マイリプレイ `/v1/replays*` §37（見どころ §72 は新しい口を持たず、ここのログを端末で再計算する。R23）・アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・血統図と系統 `/v1/horses/:horseId/pedigree`・`/v1/breeding/pedigree`・`/v1/bloodlines` §71（Round 23。他のプレイヤーの馬の図も読むだけなので `core`）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）・ゲーム内アンケート `/v1/surveys*` §69（R22）・昇級戦の表示と見た印 §68 `/v1/promotion*`…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
-- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。昇級戦（§68、Round 22）`GET /v1/promotion`・`POST /v1/promotion/ack` も `core`（読むだけと見た印。昇級戦のレース自体は `ranked` の窓で止まる）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）、ログイン中の端末とセキュリティ（§70、Round 23）`GET /v1/account/devices`・`POST /v1/account/devices/checkin`・`POST /v1/account/devices/:sessionId/signout`・`POST /v1/account/devices/signout-others`・`GET /v1/account/security-log`（乗っ取りへの対応はどの窓でも・古いアプリからでも止めない。コインを動かさない。止めるのは `progression.devices.enabled`）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。昇級戦（§68、Round 22）`GET /v1/promotion`・`POST /v1/promotion/ack` も `core`（読むだけと見た印。昇級戦のレース自体は `ranked` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/career/submit`（§66）・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
 - **リンクを開く口**（§63、R21 統合）：`POST /v1/links/resolve` は止めない。窓の間・古いアプリからは、行き先の状態（`maintenance`／`update_required`）を答えの `state` で返し、リンクは捨てない（その画面がいつ開けるかを言う）。`/v1` の外にある Web の代わりのページ `GET /l/:token` と、ユニバーサルリンク・App Links の検証ファイル `GET /.well-known/apple-app-site-association`・`/.well-known/assetlinks.json` は入口の検査の外（窓の間も OS の検証が切れない）。
-- **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
+- **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`・プレイヤーの返信 `POST /v1/help/inquiries/:ticketId/messages`（Round 23、§73.9）、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
 - **主催カップ**（§42）：窓が `cups`（か `all`）を含む間は作成・参加・次のレースの出走が止まる。走っているカップのレースはソケットと結果の確定（Durable Object の中の通知）で最後まで確定し、順位に入る。窓の間に `closesAt` を過ぎたカップは §42 のとおり走ったところまでで終わる（`partial`）。
 
 ### 46.3 1回だけの入口の検査と応答（REQ-MNT-006/007）
@@ -2688,7 +2689,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 
 **`POST /v1/help/inquiries/:ticketId/read`** → `{ ticketId, unread: false, unreadTotal }`（何度送っても同じ）。
 
-- 状態 `status`：`received`（受付済み・返信待ち）→ `answered`（回答済み）→ `closed`（完了）。運営が返すと `answered`（`close: true` なら `closed`）。`statusText` は「受付済み」「回答済み」「完了」。
+- 状態 `status`：`received`（受付済み・返信待ち）→ `answered`（回答済み）→ `closed`（完了）。運営が返すと `answered`（`close: true` なら `closed`）。`statusText` は「受付済み」「回答済み」「完了」。**Round 23（§73.1）で `in_progress`（確認中）・`resolved`（解決）を足し、文字は「返信あり」「クローズ」に変わった。**
 - `GET /v1/player`・bootstrap に `help: { "unreadReplies": n }`（設定画面の「ヘルプ・お問い合わせ」のバッジ）。
 
 ### 48.7 運営（管理 API・ops コンソール、REQ-HELP-015〜017）
@@ -2701,7 +2702,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ### 48.8 アクティビティ（§40 への追加）
 | 種類 `kind` | 書く箇所 | 送り元 id | まとめる | `category` | `link.screen` |
 |---|---|---|---|---|---|
-| `inquiry_answered` | 運営の返信（`adminInquiryReply`） | `inquiry:{ticketId}:{n}` | しない | `support`（プッシュの種類ではない：プッシュは送らない） | `help_inquiry`（`id` = ticketId） |
+| `inquiry_answered` | 運営の返信（`adminInquiryReply`） | `inquiry:{ticketId}:{n}` | しない | `support`（アクティビティの分類。Round 23 からプッシュは別にテンプレート `inquiry_reply`・カテゴリ `gifts` で送る、§73.7） | `help_inquiry`（`id` = ticketId） |
 文：「お問い合わせに運営から返信がありました」。
 
 ### 48.9 KPI
@@ -3477,7 +3478,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 
 ### 58.7 KPI の分類（REQ-CNS-012〜014、`server/src/domain/kpiConsent.ts`）
 - すべての KPI イベント名を **`essential`（必須：法定の記録・不正対策・同意の証跡）** か **`optional`（任意：分析）** に分類する（`KPI_EVENT_CLASS`）。分類の無い名前は `optional` として扱う（迷ったら送らない）。テストがサーバーのコードから出すイベント名・クライアントのイベント名を全部集め、分類が無ければ失敗する。
-- `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
+- `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）、R23 §73.8 の `ticket_player_reply`・`ticket_reopen`・`ticket_resolved`（サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
 - **Round 19〜21 のイベント（R20・R21 統合で決めたこと）**：
   | イベント | 送り手 | 分類 | 理由 |
   |---|---|---|---|
@@ -3487,6 +3488,12 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | `showcase_save`（サーバー）・`showcase_view`・`showcase_share`（§62）、`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）・`deep_link_open`（§63）、`release_notes_view`・`release_notes_target`・`release_notes_history`（§64）、`calendar_view`・`calendar_entry_open`・`calendar_mark`（サーバー、§65）（R21 統合） | サーバー／クライアント | `optional` | カード・リンク・お知らせ・予定表の使われ方の分析だけ。支払い・法定・アカウントの入口の記録は無い。リンクの行はトークン・行き先・相手の id を元から入れない（§63.9）。分析がオフなら書かない（リンク・再戦・カードの見た目はそのまま動く） |
   | **Round 22（R22 統合で確かめた）**：`self_limit_set`（§67、サーバー） | サーバー | `essential` | 本人が決めた支払いの上限の変更の記録（問い合わせ・返金の確認に使う）。分析をオフにしても書く。金額と変更の種類だけ |
   | `self_limit_block`・`playtime_setting_change`（サーバー）・`playtime_reminder_shown`（クライアント）（§67）、`career_start`・`career_clear`・`career_star`（§66）、`promo_series_start`・`promo_series_end`・`demotion_shield_used`（§68）、`survey_shown`・`survey_skip`・`survey_answer`（§69） | サーバー（`playtime_reminder_shown` だけクライアント） | `optional` | 遊び方・調整の分析だけ。遊んだ時間は5分に丸め、アンケートの答えの中身は入れない。分析がオフでも上限・昇級戦・騎手の道・アンケートの規則は状態で守られ、KPI に頼らない |
+  | `device_signout`・`new_device_notice`（§70.9、Round 23） | サーバー | `essential` | アカウントへの入口の監査（`transfer_*` と同じ扱い）。ログアウトの操作と新しい端末の増え方で乗っ取りを見つける。端末のハッシュ・セッションの ID・地域・機種は入れない。**法務の確認待ち**（R23 統合）：分析をオフにした人の行も残す扱い（`transfer_*` と同じ根拠）でよいか、法務の確認を受けてから本番で有効にする（docs/planning/03-legal-risk.md の Round 23 の補足） |
+  | `device_list_view`（§70.9、Round 23） | クライアント | `optional` | 一覧と記録の使われ方の分析 |
+  | `pedigree_view`・`bloodline_view`（§71、Round 23） | クライアント | `optional` | 血統図・系統の一覧の使われ方の分析だけ。プレイヤー・馬の ID を持たない。分析がオフなら書かない（画面はそのまま動く） |
+  | `highlight_view`・`highlight_share`（§72.5、Round 23） | クライアント | `optional` | 見どころの再生と共有の使われ方の分析だけ。レース・プレイヤー・tick を持たない。分析がオフなら書かない（見どころはそのまま動く） |
+  | `ticket_player_reply`・`ticket_reopen`・`ticket_resolved`（§73.8、Round 23） | サーバー | `essential` | サポートの記録（`inquiry_submit`・`inquiry_answered` と同じ扱い）。いつ連絡し、いつ再開・解決したかは返金・苦情の対応の証跡。本文・番号は入れない |
+  | `ticket_reply_view`（§73.8、Round 23） | サーバー（既読の時） | `optional` | 運営の返信が読まれたかの分析だけ |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
@@ -3740,7 +3747,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `calendar_mark`（R21 統合） | 予定表（§65）で印を付けた行の**始まり** | `reminders`（自分で付けた印なので呼び戻しと同じ種類、既定オフ） | `startAt − leadHours.calendar_mark`（既定 2 時間） | 印があり、まだ始まっていない（始まった行・印を外した行・`until` を過ぎた行は予約しない）。名前は文言に入れない（「印を付けた予定が{date}に始まります」） | `calendar` |
 
 - Round 22（§67）：遊ぶ時間のお知らせは**アプリの中のシート**（通知ではない）。OS の通知・プッシュのどちらにも持ち主を作らない（`LNOTIF_OWNERSHIP` に足さない）。
-- 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
+- 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`）・お問い合わせへの返信（`inquiry_reply`、Round 23 §73.7））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
 - 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。
 
@@ -3911,7 +3918,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 |---|---|---|---|---|---|
 | `room` | `{ "passphrase": "123456" }` | その部屋の参加者 | `{ "passphrase" }`（参加は見る人が馬を選んで `POST /v1/friend-rooms/:passphrase/join`） | `friend_room_join` | `ranked` |
 | `cup` | `{ "cupId": "…" }` | 主催者・参加者（コードが見える人） | `{ "code", "preview": CupPreview }`（参加は `POST /v1/cups/join`、§42。コードの試行回数に数える） | `cup_join` | `cups` |
-| `replay` | `{ "raceId": "…" }` | 自分の**公開**した保存リプレイ（§37） | `{ "ownerId", "raceId", "replayTitle" }`（フレンドだけ。フレンドでなければ `state: "friends_only"`） | `friend_replay` | `social` |
+| `replay` | `{ "raceId": "…", "startTick"?: 0〜72000 }`（`startTick` は §72.4 の見どころの始まり、R23） | 自分の**公開**した保存リプレイ（§37） | `{ "ownerId", "raceId", "replayTitle", "startTick"? }`（フレンドだけ。フレンドでなければ `state: "friends_only"`） | `friend_replay` | `social` |
 | `invite` | `{}` | 誰でも（自分の招待コード） | `{ "code" }`（§19 の入力画面に入れるだけ。入力の条件・報酬は §19 のまま） | `invite_redeem` | `social` |
 | `friend` | `{}` | 誰でも（自分のフレンドコード） | `{ "friendCode", "displayName" }`（申請は見る人が押す。自分のリンクは `self: true`） | `friend_request` | `social` |
 | `team` | `{}` | 支部の仲間 | `{ "teamId", "teamName" }`（参加の申請は §18 のまま） | `team_view` | `teams` |
@@ -4532,3 +4539,318 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - **アカウントが変わった時（§54）**：`AccountChangeReset` が遊ぶ時間の時計と上限の表示（§67）、待っている結果のシートと写し（§68）、騎手の道の地図と開始の鍵（§66）、アンケートの行（§69）を捨てる。
 - **KPI（§58.7）**：`self_limit_set` だけ essential、ほかの Round 22 のイベントは optional。
 
+
+## 70. ログイン中の端末とセキュリティ（signed-in devices & account security、REQ-DEV-001〜020、`server/src/domain/devices.ts`・`server/src/domain/sessionRevocation.ts`、C# `Devices.cs`（`DeviceSessionList`・`SecurityLog`・`DeviceLabel`）・`Muchi.Game.DeviceSessionsModel`、docs/handoff-codex-round23-devices.md）
+課金しているプレイヤーが期待する「アカウントの安全」：**このアカウントでログインしている端末の一覧**、**ほかの端末のログアウト**（1台ずつ・この端末以外すべて）、**新しい端末でログインがあった時のお知らせ**、**セキュリティの記録**（新しい端末・ログアウト・引き継ぎコード・連携の追加と解除）。何も配らない・何も売らない（E番号なし、経済の目標なし）。入口は その他 › 設定（アカウントのパネル）の「ログイン中の端末」（その他の行は増やさない）。
+
+**決まりごと**
+- **セッション**＝Firebase の1回のサインイン。ID トークンの `auth_time`（サインインした時刻、秒。トークンの更新では変わらない）で見分ける。端末は `x-install-id`（インストール ID）を **アカウントごとの塩で SHA-256** にした先頭16桁（`device:<uid>:<installId>`）だけを持つ。**IP は保存しない**（ハッシュも持たない）。地域は Cloudflare の `cf-ipcountry`（国の2文字、`XX`・`T1` は持たない）だけ。
+- 端末の名前は**クライアントが送る粗い情報だけ**：`platform`（`ios`・`android`・`other`）、OS の大きい番号（`osMajor`、0〜99）、機種の系統（`model`。サーバーは英字と空白だけを残して24文字まで＝`iPhone15,2` → `iPhone`）、アプリの版（`x.y.z`）。最初に見た時刻・最後に見た時刻は **1時間に切り捨て**（`lastSeenRoundMin`、既定60分）。トークン・IP・端末の ID そのものは一覧にも記録にも出さない。
+- **ログアウトはサーバー側の無効化**：ログアウトされたセッションの次の要求は **`401 SESSION_REVOKED`**（「この端末はログアウトされました」）。§54.6 の `SESSION_REPLACED`（データが別の端末に移った）とは意味が違うので別のコード・別の画面（中立の文言、70.6）。同じ1か所（`authenticateSession` の後、ルートの前、`sessionGuard`）で判定し、`SESSION_REPLACED` を先に見る。Worker の isolate ごとに30秒持つ（ログアウトした isolate はすぐ覚える。ほかの isolate では最大30秒で効く）。
+- **何度送っても同じ**：もうログアウトしたセッションをもう一度ログアウトしても 200（`signedOut: 0`）、数にも数えない。
+- **確認と「新しい端末から古い端末はすぐには追い出せない」**（決めたこと：再認証の代わり）。匿名のアカウントは再認証できない（パスワードが無い）ので、Firebase の「最近のログイン」は使わない。代わりに：
+  1. 本文の `confirm: true`（画面の確認シート）が無ければ `400 BAD_REQUEST`。
+  2. **自分より後にログインした端末は、いつでもすぐログアウトできる**（持ち主の古い端末が、知らない新しい端末を追い出す場合）。
+  3. **自分より前からある端末をログアウトするには、この端末でログインしてから `trustAfterHours`（既定24時間）たっていること**。足りなければ `403 DEVICE_SIGNOUT_TOO_SOON`（`details.availableAt`）。乗っ取った側が、すぐに持ち主の端末を締め出せないようにする。持ち主は新しい端末のお知らせを見て、先に相手をログアウトできる。急ぐ時（端末をなくした等）はサポートが確かめてログアウトする（70.7）。
+- **この端末は「ほかの端末」に入らない**：一覧の「この端末」を指定したログアウトは `409 DEVICE_IS_CURRENT`。この端末のログアウトはアプリのサインアウト（端末の中）で、サーバーの無効化はしない。
+- **回数**：ログアウトはゲーム日（§DAY、04:00 JST）ごとに `revokesPerDay`（既定10）回まで（何かを実際にログアウトした操作だけ数える）→ 超えたら `429 RATE_LIMITED`（再試行しない）。チェックインは変化がなければ書かない（読むだけ）。
+- **匿名だけのアカウントの注意**：Apple・Google の連携も引き継ぎコードも無いアカウントでは、ログアウトされた端末は**同じアカウントに戻れない**（新しく始めることになる）。確認シートでそう言う（70.6）。
+- **引き継ぎ（§54）との関係**：引き継ぎコードで新しい端末に移ると、古いセッションは全部 `SESSION_REPLACED` になる（今まで通り）。その時に一覧・覚えている端末・ログアウトの記録を空にし、記録に `transfer_redeemed` を残す（一覧は移った後の端末だけになる。移った後の最初の端末は「最初の端末」なのでお知らせは出さない）。
+- **メンテナンス**：`/v1/account/devices*`・`/v1/account/security-log` は §46 の `EXEMPT_ROUTES`（決めたこと：ログアウトは乗っ取りへの対応で、どの窓でも古いアプリからでも止めない。コインを動かさない）。止めたい時は運用がリモート設定の `progression.devices.enabled` を false にする（一覧は `enabled: false`、ログアウトは 404。**無効化の判定（`SESSION_REVOKED`）は設定に関係なく効き続ける**）。
+- **削除の手続き中**（`deleting`）・消えたアカウントでは何も書かない（一覧は空、ログアウトは `409 DELETION_PENDING`）。削除の予約中（取り消せる期間）は一覧もログアウトも使える（乗っ取りへの対応は取り消し期間にも要る）。
+
+### 70.1 チェックイン `POST /v1/account/devices/checkin`（要認証）
+アプリの起動・復帰・サインインの直後（連携の追加・解除の後も）に送る。本文 `{ "platform": "ios", "osMajor": 18, "model": "iPhone", "appVersion": "1.4.0" }`（`platform` だけ必須）、ヘッダー `x-install-id`。
+1. `enabled: false`、トークンに `auth_time` が無い、アカウントがまだ無い（ブートストラップ前・削除で消えた）、削除の手続き中（`deleting`）→ 何も書かずに 70.2 と同じ形を返す（`recorded: false`）。
+2. 同じ `auth_time` と同じ端末のセッションがあれば、名前と最後に見た時刻（1時間単位）を更新する。何も変わらなければ書かない。
+3. 無ければ新しいセッションを足す（`sessionId` = `s_` + SHA-256(`session:<uid>:<auth_time>:<端末のハッシュ>`) の先頭16桁）。`maxSessions`（既定20）を超えたら最後に見た時刻の古いものから落とす。
+4. **新しい端末のお知らせ**（70.4）：覚えている端末（`knownDevicesMax`、既定50）に無い端末で、覚えている端末が1台以上あり、そのセッションのログインがこのアカウントの記録の始まり（`since`）より後のとき。**最初の端末には出さない**（記録が始まる前からあったセッション＝この機能の前から使っていた2台目にも出さない）。`x-install-id` が無い時は、同じ `platform`・`model` のセッションが無い時だけ新しい端末とみなす。
+5. **連携の変化**：ID トークンの `firebase.identities` にある `apple.com`・`google.com` を前回と比べ、増えたら `link_added`、減ったら `link_removed` を記録する（初めて見た時は記録しない。クライアントの申告は使わない）。
+6. 引き継ぎの `cutoffAt` より前のセッションは一覧から落とす。
+
+応答は 70.2 と同じ形に `recorded`（true／false）と `newDevice`（true／false）を足したもの。
+
+### 70.2 一覧 `GET /v1/account/devices`（要認証、読むだけ）
+```json
+{ "enabled": true, "current": "s_3f9a0c1d2e4b5a69",
+  "sessions": [ { "sessionId": "s_3f9a0c1d2e4b5a69", "current": true, "platform": "ios", "osMajor": 18, "model": "iPhone", "appVersion": "1.4.0",
+                  "region": "JP", "firstSeenAt": 1794376800000, "lastSeenAt": 1794380400000, "canSignOut": false, "availableAt": null },
+                { "sessionId": "s_7b21e0aa94c3d5f1", "current": false, "platform": "android", "osMajor": 15, "model": "Pixel", "appVersion": "1.3.2",
+                  "region": "JP", "firstSeenAt": 1793000000000, "lastSeenAt": 1794200000000, "canSignOut": true, "availableAt": null } ],
+  "signOutOthers": { "allowed": true, "availableAt": null, "count": 1 },
+  "revokesToday": 0, "revokesPerDay": 10, "trustAfterHours": 24, "anonymousOnly": false, "lastTransferredAt": null }
+```
+- 並びは「この端末」が先、あとは最後に見た時刻の新しい順。`canSignOut` は 70.3 の規則で今ログアウトできるか（できない時の `availableAt`）。`anonymousOnly`：連携が1つも見えていない（70 の注意を確認シートに出す）。
+- 名前の組み立てはクライアント（`DeviceLabel`）：「iPhone（iOS 18）」「Pixel（Android 15）」、機種が無ければ「iOS の端末」。地域は国の名前（`JP` → 日本、それ以外は2文字のまま）。
+
+### 70.3 ログアウト `POST /v1/account/devices/:sessionId/signout`・`POST /v1/account/devices/signout-others`（要認証）
+- 本文 `{ "confirm": true }`。応答 `{ "signedOut": 1, "devices": <70.2> }`。
+- 1台：無い `sessionId` → `404 NOT_FOUND`、この端末 → `409 DEVICE_IS_CURRENT`、もうログアウト済み → 200 `signedOut: 0`、自分より前からある端末で `trustAfterHours` に足りない → `403 DEVICE_SIGNOUT_TOO_SOON`。
+- この端末以外すべて：一覧のこの端末以外を全部ログアウトし、さらに **今より前にログインした、この端末以外のすべてのセッション**（一覧にまだ出ていない端末も）を無効にする（`othersBefore = { at: 今, keep: この端末の auth_time }`）。一覧に自分より前からある端末があり `trustAfterHours` に足りなければ `403 DEVICE_SIGNOUT_TOO_SOON`。一覧にログアウトする相手がいなくても 200（`signedOut: 0`、回数に数えない、記録にも残さない。`trustAfterHours` たったこの端末なら、一覧に無い前のセッションのための `othersBefore` だけは今に動かす）。`trustAfterHours` に足りないこの端末は、一覧にある自分より後の端末だけをログアウトし、`othersBefore` は動かさない（一覧に出ていない古いセッション＝チェックインしない古いアプリの持ち主の端末には届かない）。
+- 無効化の記録 `devices.revoked`：`{ authTime, at }` の新しい `revokedKeep`（既定200）件。Firebase の匿名のセッションは期限が無いので、件数で切る（1日 `revokesPerDay` 回の上限があるので、200件は20日以上の連続の操作でしか溢れない）。
+- この端末の `auth_time` が分からない要求（トークンに無い）は `400 BAD_REQUEST`（「この端末」を決められない）。
+
+### 70.4 新しい端末のお知らせ（§40 のアクティビティ）
+- アクティビティの種類 **`new_device`**（`category: "account"`＝プッシュの種類ではない、`screen: "devices"`、まとめない、`source` = `new_device:<sessionId>`、`linkId` = `sessionId`）。文言：「新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます」。怖がらせる言葉（「不正」「危険」「すぐに」）を使わない。新しい端末の名前は文言に入れない（一覧で見る）。
+- **プッシュは送らない**（決めたこと）：今のプッシュの種類（`season`・`friends`・`invites`・`events`・`comeback`・`gifts`・`reminders`）に合うものが無く、新しい種類を足すと通知の設定（§61、一画面の種類の数）と同意（06 §3.5）が変わる。「セキュリティのお知らせ」を装うプッシュは釣りの形でもある。お知らせは全ての端末のアクティビティ（ベルの数）とセキュリティの記録に残る。後でプッシュを足す時は新しい種類 `account`（既定オン）と §61.1 の持ち主の表に行を足す。
+- 割り込みのシートは出さない（§58.11 の表に行は足さない）。
+
+### 70.5 セキュリティの記録 `GET /v1/account/security-log`（要認証、読むだけ）
+```json
+{ "enabled": true, "logDays": 180,
+  "items": [ { "at": 1794380400000, "kind": "new_device", "text": "新しい端末でログインがありました",
+               "device": { "platform": "android", "osMajor": 15, "model": "Pixel", "region": "JP" } },
+             { "at": 1794300000000, "kind": "transfer_issued", "text": "引き継ぎコードを発行しました（パスワードを設定）", "mode": "custom" } ] }
+```
+| kind | いつ | 付くもの |
+|---|---|---|
+| `new_device` | 70.4 のお知らせを出した時 | `device` |
+| `signout_device` | 1台をログアウトした | `device` |
+| `signout_others` | この端末以外をすべてログアウトした | `count` |
+| `signout_support` | サポートがログアウトした（70.7） | `count` |
+| `transfer_issued` | 引き継ぎコードを発行した（`mode`：`custom`＝パスワードを設定、`generated`） | `mode` |
+| `transfer_revoked` | 引き継ぎコードを取り消した（`by`：`player`・`ops`） | `by` |
+| `transfer_redeemed` | 引き継ぎコードでこのアカウントが新しい端末に移った | |
+| `link_added`／`link_removed` | Apple・Google の連携が増えた・減った（70.1 の5） | `provider` |
+- 新しい `logMax`（既定50）件、`logDays`（既定180日）より古いものは読む・書くたびに落とす。文言は日本語で組み立て、英語は応答の境界（i18n/en.ts）。
+- 何かを配ったり、ボタンで何かを実行したりしない（見るだけ。一覧へのリンクだけ）。
+
+### 70.6 クライアントの画面（ムチ一閃の調子、日英、最大の文字）
+- **入口**：その他 › 設定（アカウントのパネル）の「引き継ぎ」の下の「ログイン中の端末 ›」。その他のページの行は増やさない（8行のまま）。アクティビティの `new_device` とヘルプの記事・ヒントのカードからも開く。
+- **ログイン中の端末**：「この端末」の行（シアンのラベル）と、ほかの端末の行（名前・地域・最後に見た日・「ログアウト」）。下に「この端末以外をすべてログアウト」（斜めのシアンの CTA ではなく、静かな枠のボタン）と「セキュリティの記録 ›」「ヘルプ」。
+- **確認シート**：「〇〇をログアウトしますか？」「その端末は次に通信した時にログアウトされます。」連携が無い時（`anonymousOnly`）は「その端末ではこのアカウントに戻れなくなります（Apple・Google の連携か引き継ぎコードがあれば戻れます）」を足す。「ログアウトする」「やめる」。
+- **ログアウトされた端末**（`401 SESSION_REVOKED`）：全画面の中立の案内「この端末はログアウトされました」「別の端末かサポートからログアウトの操作がありました。Apple・Google で連携している場合は、もう一度ログインすると続きから遊べます。心当たりがない場合はお問い合わせください。」ボタン「ログインする」（連携がある時）・「新しく始める」・「お問い合わせ」。`MaintenanceModel` が §54.6 と同じ1か所で受け、メンテナンス・強制アップデート・オフラインはそれを置き換えない。表示した時に `AccountChangeReset` が端末の状態（ローカル通知・エラーの束・お願いの画面・保留のリンク・アップデートのお知らせ・**端末の一覧の写し**）を消す。
+- 文言は「不正」「危険」「今すぐ」を使わない。
+
+### 70.7 運用（`/v1/admin/players/:playerId/devices*`）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/players/:playerId/devices` | viewer | 一覧（名前・地域・時刻。トークン・端末のハッシュ・`auth_time` は出さない）、ログアウトの記録の件数・`othersBefore` の時刻、セキュリティの記録 |
+| `POST /v1/admin/players/:playerId/devices/revoke` | **admin** | `{ "sessionId": "s_…" }` か `{ "all": true }` と `reason`。本人からの依頼（端末をなくした・乗っ取られた）を確かめてからログアウトする。`all` は今より前のすべてのセッション（この端末の例外なし）。監査ログ `player.devices.revoke`、記録に `signout_support`。`trustAfterHours`・1日の回数の制限は掛からない |
+
+### 70.8 保存
+- **プレイヤーの状態** `devices`（新しいトップレベルのキー、`devices.ts`）：`{ since, sessions: [{ id, authTime, device, platform, osMajor, model, appVersion, region, firstSeenAt, lastSeenAt }], known: [端末のハッシュ], revoked: [{ authTime, at }], othersBefore: { at, keep } | null, revokes: { day, count }, providers: string[] | null, log: [{ at, kind, … }] }`。
+- **§51（データの開示）**：`account` に分類。`account.signedInDevices`（名前・地域・時刻だけ）と `account.securityLog` を出す。`auth_time`・端末のハッシュ・無効化の記録・覚えている端末のハッシュは出さない（それだけでは本人にとって意味の無い内部の値で、端末を結びつける鍵になるため）。アカウント削除の `wipe` で消える（ほかに写しは無い）。
+- wrangler の移行は不要（PlayerDO の状態に足すだけ）。
+
+### 70.9 KPI
+| イベント | 送り手 | s1 | 分類（§58.7） |
+|---|---|---|---|
+| `device_list_view` | クライアント（`props.screen`：`devices`・`log`、`props.count`：0〜50 → value） | 画面 | `optional`（使われ方の分析） |
+| `device_signout` | サーバー（実際にログアウトした時だけ、count = 数） | `one`・`others`・`support` | `essential`（アカウントへの入口の監査：§54 の `transfer_*` と同じ。乗っ取りへの対応を見つける） |
+| `new_device_notice` | サーバー（70.4 のお知らせを出した時） | `ios`・`android`・`other` | `essential`（同じ理由。新しい端末の増え方で乗っ取りの波を見つける） |
+
+端末のハッシュ・`sessionId`・地域・機種は入れない。クエリは `docs/ops/kpi-queries.md`「ログイン中の端末」。
+
+### 70.10 設定 `progression.devices`
+`{ "enabled": true, "maxSessions": 20, "knownDevicesMax": 50, "logMax": 50, "logDays": 180, "revokesPerDay": 10, "trustAfterHours": 24, "revokedKeep": 200, "lastSeenRoundMin": 60 }`。範囲：`maxSessions` 5〜50、`knownDevicesMax` 10〜200（`maxSessions` 以上）、`logMax` 10〜200、`logDays` 30〜400、`revokesPerDay` 1〜50、`trustAfterHours` 0〜168、`revokedKeep` 50〜1000、`lastSeenRoundMin` 15〜1440。起動時とリモート設定の版ごとに検査（`devicesProblems`）。
+
+### 70.11 クライアント
+- `Muchi.Client`：`DeviceSessionList`（`Parse`）・`DeviceSession`・`SignOutOthersInfo`・`SecurityLog`・`SecurityLogItem`・`DeviceLabel`（名前・地域の組み立て、日英）・`DeviceCheckin`、`ApiClient.CheckinDeviceAsync`・`GetDevicesAsync`・`SignOutDeviceAsync`・`SignOutOtherDevicesAsync`（再試行しない）・`GetSecurityLogAsync`、`ApiErrorCode.SessionRevoked`・`DeviceSignoutTooSoon`・`DeviceIsCurrent`、`SessionRevokedException` と `ApiClient.SessionRevoked` イベント（再試行しない）、analytics `AnalyticsEvent.DeviceListView`。
+- `Muchi.Game`：`DeviceSessionsModel`（一覧・確認シート・ログアウト・記録・`ForgetAll`）、`MaintenanceModel` の `MaintenanceScreen.SessionRevoked`（`SessionReplacedShown` と同じく `AccountChangeReset` を呼ぶ）、`AccountChangeReset.Devices`。
+- 画面が守ること：docs/handoff-codex-round23-devices.md。
+
+## 71. 血統図と系統（pedigree viewer & bloodlines、REQ-PED-001〜020、`server/src/domain/pedigree.ts`・`server/master/bloodlines.json`、C# `Pedigree.cs`（`PedigreeView`・`PedigreeRecord`・`PedigreeTree`・`BreedingPedigree`・`BloodlineList`）・`Muchi.Game.PedigreeModel`、docs/handoff-codex-round23-pedigree.md）
+配合（§8.5 の種牡馬の貸し借り・隔世遺伝・見た目の継承）の長い遊びを深める**読むだけ**の画面。馬の 3 代の血統図、系統（父系）ごとのまとまり、配合の組み合わせで受け継ぎやすいもの、近親の共通の祖先を見せる。**何も配らない・何も売らない**（E 番号なし、balance-targets の節なし）。**新しい乱数も新しい仕組みも足さない**：見せる確率・数は既存の配合の規則（`previewFor`・`goingAptitudeOdds`・`skillInheritOdds`・`atavismOdds`・`inbreedingCount`・`BREED`・`nicks.json`）がそのまま返すものだけ。レースの結果・ゴールデンは変わらない。系統を集めても報酬は無い（コンプガチャにならない：系統の数・揃い具合に何も結び付けない）。
+
+### 71.1 血統の記録（REQ-PED-001/002）
+- 既存：馬は `sireId`・`damId`・`sireName`・`damName` を持ち、借りた種牡馬の仔は `studSire`（持ち主・馬 ID・その父母名、REQ-BREED-014）を持つ。馬は厩舎から消えない（引退しても `status: retired` で残る）ので、自分の厩舎の祖先はいつでも今の馬から読める。
+- **足すもの：生まれた時の写し `lineage`**（配合で生まれた仔だけ。`breedWith` が仔を作る時に 1 回だけ書き、その後は変えない）。`{ v: 1, sire: LineageSnap, dam: LineageSnap }`、`LineageSnap = { name, named?, templateId, rarity, sex, style, goingAptitude?, surface, line, skillId?, appearance, stats（配合の時の覚醒込みの能力 effectiveStats）, sireName, damName }`。借りた種牡馬の写しは持ち主の馬の写し（§8.5 の `StudSnapshot.horse`）から作る。**他のプレイヤーの ID は写しに入れない**（持ち主は既存の `studSire.ownerId` だけ）。乱数は使わない（配合の抽選がすべて終わった後に書くので、仔の結果も乱数の使い方も変わらない）。
+- 読む順：自分の厩舎の今の馬 → 写し `lineage` → 名前だけ（`sireName`／`damName`、テンプレートの架空の親の名前）→ 何も無ければ出さない。名前だけの祖先は `rec: null`（「記録なし」）。
+- **移行は無い**（wrangler の移行も無し）：`lineage` は任意。前からいる馬の親は今の馬から読めるので写しは要らない。写しの無い前の借りた種牡馬は名前と持ち主だけ（能力などは「記録なし」）。
+
+### 71.2 血統図 `GET /v1/horses/:horseId/pedigree[?playerId=<id>]`（要認証、読むだけ、REQ-PED-003〜008）
+- 既存の口（REQ-HORSE-007）の答えに**足すだけ**（`key`・`name`・`horseId`・`sire`・`dam` はそのまま、新しい欄を足す）。自分の馬は 5 代まで（既存）、他のプレイヤーの馬は 3 代まで。画面は 3 代（父母・祖父母・曾祖父母、14 頭）を描く。
+- 節（`PedigreeNode`）に足す欄：`gen`（0 = 本人）、`rec`（下記。無ければ `null`）、`recordText`（`rec` が無い時「記録なし」）、`shared`（共通の祖先なら `true`）、`founder`（系統の祖の名前なら `true`）、`lent`（他のプレイヤーの種牡馬の節だけ：`{ ownerName, label }`）、`nameHidden`（13 歳未満の持ち主の名前を隠した時 `true`）。
+- `rec` = `{ source: "live"|"snapshot", rarity, sex, style, goingAptitude, surface, line, lineName, appearance, thumbKey, skill: {id, name}|null, status: "active"|"retired"|null, statTotal, stats?（自分の馬だけ）, best: {races, wins, places, tournamentWins}|null, bestText }`。`thumbKey` はテンプレートの馬なら既存の `collection/portrait/<templateId>`、ほかは `null`（`appearance` から描く、§17 のキー）。`best` は §34 の通算記録（確定した結果だけ、`CareerRecord`）から。写しの馬は `best: null`。
+- 根に足す欄：`v: 2`、`relation`（`self`・`friend`・`other`）、`generations`、`line`・`lineName`（系統）、`sharedKeys`（共通の祖先の `key`）、`inbreeding`（既存の規則をそのまま：`{ count, penaltyPerAncestor: BREED.inbreedingPenalty, statPenalty }`、`count` = この馬の父側（2 代）と母側（2 代）の両方に出る祖先の数＝生まれた時の `inbreedingCount` と同じ数え方）、`young`、`rev`（中身のハッシュ）。
+- **近親**：既存の規則（REQ-HORSE-007：3 代以内の同じ祖先 1 頭につき能力の基準 −`inbreedingPenalty`）を見せるだけ。祖先の `key` は既存の `pedigree()` と同じ（自分の馬は馬 ID、他人の種牡馬は `stud:<持ち主>:<馬ID>`、名前だけは `name:<名前>`）なので、図の強調と配合の計算はいつも同じ。**新しい規則は足さない。**
+- **借りた種牡馬**：`lent.ownerName` は、持ち主が見る人本人か、見る人のフレンド（ブロックしていない・公開プロフィールがあり停止中でない）の時だけ表示名。それ以外は `null` で `label` が「他のトレーナーの馬」（英語 "Another trainer's horse"）。持ち主の ID は答えに入れない（他人の図では `key` の `stud:<持ち主>:…` も `stud:<連番>` に置き換える）。
+- **他のプレイヤーの馬**（`playerId` が自分でない）：相手の公開プロフィールが無い・停止中・どちらかがブロック（§47.1 の 1 つの一覧）→ `404 NOT_FOUND`（理由は言わない、厩舎の訪問と同じ）。相手の状態で、その馬が**今公開されている**（マイ厩舎の公開の写しの馬房 `stableSnapshot().horses`、またはトレーナーカードの愛馬 `showcaseCopy().horse`）時だけ答える。どちらにも無い・削除の予約中・停止中 → `404 NOT_FOUND`。
+- **13 歳未満の持ち主**（§62 と同じ `showcaseYoung`）：他の人が見る図に、持ち主が付けた名前を入れない（名前を付けた馬・写しの名前、マスターの名前（テンプレートの馬・その架空の親）でない名前だけの祖先は「名前は非公開」、`nameHidden: true`）。自分で見る時は隠さない。
+- 文言：系統の名前は見る人の言語で組から選ぶ（`lineName`・`founderName`、境界で訳さない）。馬の名前はこれまでどおり。`ownerName` はプレイヤーの文字で訳さない。
+- **キャッシュ**：答えは保存された血統から作るので、同じ状態なら同じ。`ETag`（`rev`）と `cache-control: private, no-cache` を付け、`If-None-Match` が合えば `304`。クライアントは `(playerId, horseId)` ごとに `rev` で持つ。
+
+### 71.3 配合の組み合わせ `GET /v1/breeding/pedigree?sireId&damId`（要認証、読むだけ、REQ-PED-009/010）
+- 配合の画面の「血統を見る」。自分の引退した牡馬と牝馬（`breedingPreview` と同じ確認：`HORSE_NOT_RETIRED`・`BREEDING_INVALID_PAIR`・`HORSE_NOT_FOUND`）。
+- 答え：`{ sire: PedigreeNode（3 代）, dam: PedigreeNode（3 代）, sharedKeys, shared: [{key, name}], inbreeding: { count, penaltyPerAncestor, statPenalty }, nick: { on, bonus }, hints: Hint[], line: { id, lineName }, notice }`。`sharedKeys` は既存の `inbreedingCount(s, sire, dam)` が数える祖先そのもの（数は `inbreeding.count` と必ず同じ。テストで確かめる）。
+- `Hint` =「この組み合わせで受け継ぎやすい能力」：`{ kind, text, permille?, value? }`。どれも `previewFor` の答えから作る（新しい計算・乱数なし）：`line`（仔の系統は父の系統）・`nick`（ニックスなら `+bonus`）・`stat`（基準の高い能力 2 つとその幅）・`style`（脚質ごとの確率、`styles` の百分率をそのまま）・`going`（馬場の適性の確率）・`skill`（固有スキルの確率）・`atavism`（隔世遺伝の候補と確率、`progression.atavismPermille` が無ければ出さない）・`inbreeding`（近親の数 × 罰）。確率はデータが決めているものだけ（ニックス・近親は確率でなく数）。
+- 借りた種牡馬との組み合わせは既存の `POST /v1/stud/preview`（`inbreedingCount` を返す）が受け持つ（この口は自分の馬どうしだけ）。
+
+### 71.4 系統 `GET /v1/bloodlines`（要認証、読むだけ、REQ-PED-011〜013）
+- 系統＝**父系の始まりの系統**（馬の `line`。仔は父の `line` を受け継ぐ、既存）。名前はマスター `master/bloodlines.json`（`{ version, lines: [{ id, ja, en, founder: {ja, en}, note: {ja, en} }] }`）。検証（`bloodlineProblems`）：id の形・重複、テンプレートの `line` とニックスの系統がすべて載っている、日英が揃う、禁止語（「倍」「お得」「今だけ」「残りわずか」「通常価格」・賭けの言葉・英語の禁止語）を使わない、英語に日本語が残らない。起動時に検証し、問題があれば起動しない。
+- 答え：`{ lines: [{ id, lineName, founderName, note, count, active, retired, nickWith: [{ id, lineName, role: "sire"|"dam", bonus }], horses: [{ horseId, name, sex, status, rarity }]（最大 50） }], total, rules: { lineFromSire: true, nickBonus, inbreedingPenalty, generations: 3 }, notice }`。系統はマスターの順。厩舎にいない系統も 0 頭で出す（集める目標にしない：「揃えた」「達成」の表示・報酬は無い）。`notice` =「系統の数で報酬はありません。」。
+- 系統ごとの「受け継ぎやすさ」は規則の説明だけ（ニックスの相手と `bonus`、系統は父から）。
+
+### 71.5 ゲート・データの開示・削除（REQ-PED-014/015）
+- メンテナンスのゲート（§46）：3 つとも `core`（`/v1/horses/*`・`/v1/breeding/*`・`/v1/bloodlines`。他のプレイヤーの馬の図も `core`：読むだけで、相手の状態は公開の判定とブロックだけ読む）。
+- 個人データの開示（§51）：新しい状態のキーは無い。`lineage` は馬（`horses` の節、`horseOut`）の中に入る（自分の馬の生まれた時の親の写し。他のプレイヤーの ID は入らない）。
+- アカウント削除：`lineage` は馬と一緒に最後の `wipe` で消える。他のプレイヤーの図に残るのは、その人の馬の `studSire` と写し（既存の §8.5 と同じ：名前と能力の写しだけ。持ち主が削除されると公開プロフィールが無いので「他のトレーナーの馬」）。
+
+### 71.6 KPI（REQ-PED-016）
+- クライアント：`pedigree_view`（`props: { source: "horse"|"breeding"|"stable"|"showcase"|"bloodlines", relation: "self"|"friend"|"other", shared: 0..14 }`）→ s1 = source、s2 = relation、count = shared。`bloodline_view`（`props: { source: "breeding"|"pedigree"|"help", lines: 0..64 }`）→ s1 = source、value = lines。
+- どれも相手のプレイヤー ID・馬 ID を持たない（strict）。§58 の分類：どちらも `optional`。
+
+### 71.7 画面（REQ-PED-017/018）
+- 入口：馬の詳細の「血統」（既存の馬の画面。その他の行には置かない）、配合の画面の組み合わせの「血統を見る」と共通の祖先の強調、系統の一覧は配合の画面と血統図の「系統 ›」から。厩舎の訪問・トレーナーカードの愛馬から相手の馬の図（公開されている時だけ）。
+- 血統図：本人 → 父母 → 祖父母 → 曾祖父母を左から右へ（縦長・文字「特大」では上から下へ流し直す）。各頭に名前・見た目の小さな絵・脚質・馬場の適性・固有スキル・一番の成績。共通の祖先はシアンの縁と印「共通」。借りた種牡馬は持ち主（または「他のトレーナーの馬」）。記録の無い祖先は「記録なし」。
+- 新しい割り込みのシートは無い（§58.11 の表は変わらない）。端末に新しいアカウントごとの状態は持たない（`rev` のキャッシュはメモリだけで、`AccountChangeReset` で捨てる）。
+- ディープリンク（§63）：足さない（馬の ID はプレイヤーごとで、共有の行き先にならない）。
+
+### 71.8 ヘルプ（REQ-PED-019）
+- 記事 `pedigree`（血統図の見方・記録なし・他のトレーナーの馬・系統・近親の罰 `{{inbreeding_penalty}}`・ニックスの加算 `{{nick_bonus}}`・系統を集めても報酬が無いこと）。画面の「？」の文脈 `pedigree`、画面のリンク `bloodlines`。ヒントのカード `pedigree_tip`（`horses`、記事へのリンク）。
+
+### 71.9 クライアント（REQ-PED-020）
+- `Muchi.Client`：`ApiClient.GetPedigreeViewAsync(horseId, playerId)`（既存の `GetPedigreeAsync` はそのまま）・`GetBreedingPedigreeAsync(sireId, damId)`・`GetBloodlinesAsync()`、`PedigreeView`・`PedigreeRecord`・`PedigreeTree`（3 代の 14 枠への並べ方・共通の祖先）・`BreedingPedigree`・`BloodlineList`、`AnalyticsEvent.PedigreeView`・`BloodlineView`。
+- `Muchi.Game`：`PedigreeModel`（開く・15 の枠・強調・記録なし・他のトレーナーの馬・自分の祖先の図へ移る・`rev` のキャッシュと 304・組み合わせ・系統の一覧とニックスの相手・`AccountChangeReset` で捨てる・KPI）。描画は docs/handoff-codex-round23-pedigree.md。
+
+## 72. レースの見どころ（automatic race highlights、REQ-HL-001〜020、C# `Highlights.cs`（`HighlightRules`・`HighlightDetector`・`HighlightMoment`・`HighlightReel`・`HighlightCaptions`・`HighlightShare`）・`Muchi.Game.HighlightsModel`、共有ベクター `contracts/highlights.vectors.json`、docs/handoff-codex-round23-highlights.md）
+レースが終わったら、そのレースの**いちばんの瞬間を3つまで**自動で選び、15〜30秒の「見どころ」として続けて再生・共有できるようにする。**表示だけ**：コインもアイテムも動かない（E番号なし、経済は変わらない）。
+
+**決まりごと**
+- **決定論・読むだけ**：見どころは §7 のリプレイログ（設定＋確定入力）を C# のエンジンで**もう一度計算**して選ぶ（`HighlightDetector.Detect`）。走っているレースの `RaceSim` には触らない。レースの結果・チェックサム・結果ハッシュ・ゴールデンは変わらない。同じログと同じ `focusSlot` なら、端末（Unity・プロトタイプの WASM）でも検証サーバー（`Muchi.Verifier highlights`）でも**同じ答え**（共有ベクター `contracts/highlights.vectors.json` を両方が確かめる）。整数（Q16.16 の生の値・mm・tick）だけで計算し、浮動小数・時刻・乱数・端末の設定を使わない。
+- **保存しない**（Round 23 で決定）：瞬間の一覧はサーバーに置かない。再生する人の端末がログから毎回計算する（12頭で 50ms 未満）。理由：(1) 見る時は必ずログを再計算する（§37.4）ので一覧を運ぶ必要がない、(2) 置かなければ §51 の開示・アカウント削除・リプレイの削除の対象が増えない、(3) 判定の版を上げても古い一覧と食い違わない。**プレイヤーの状態に新しいキーを足さない・wrangler の移行もない**。
+- 判定の版：`HighlightRules.Version`（今は `1`）。しきい値は下の表の定数で、リモート設定では変えない（変えると端末と検証の答えがずれる）。変える時は版を上げ、ベクターを作り直す。
+
+### 72.1 瞬間の種類（`kind`）と点数（REQ-HL-002〜004）
+`n` = 出走頭数、`hz` = `config.net.tickHz`、`残り` = その馬の残りの距離。`focusSlot` = 見る人の馬（結果画面は自分の馬、マイリプレイは `ReplayData.focusSlot`、観戦などで無ければ `-1`）。
+
+| kind | 見つけ方 | 主役 `slot`／相手 `slot2` | `value` | 点数 `score` | 窓（鍵の tick からの前・後） |
+|---|---|---|---|---|---|
+| `photo_finish` | 隣り合う着順の差（`RaceResult.Margins`）が **0.5 m 未満**。1着と2着、または `focusSlot` が入る組 | 後ろの馬／前の馬 | 差（mm） | 90 ＋ (500 − 差mm)/25 | 前 5.0 秒・後 1.5 秒（鍵 = 後ろの馬のゴールの tick） |
+| `near_miss` | 隣り合う着順の差が 0.5 m 以上 **1.5 m 未満**。1〜3着の組、または `focusSlot` が入る組 | 後ろの馬／前の馬 | 差（mm） | 50 ＋ (1500 − 差mm)/50 | 前 5.0 秒・後 1.5 秒 |
+| `lead_change` | 先頭が替わった（`LeaderChanged`）時、新しい先頭の残りが **400 m 以下** | 新しい先頭／前の先頭 | 残り（m） | 60 ＋ (400 − 残りm)/10 | 前 3.0 秒・後 2.0 秒 |
+| `whip_burst` | ムチ（`Whip`）を打った tick の順位から、**3.0 秒後**の順位で **2つ以上** 上がった | その馬／−1 | 上がった数 | 45 ＋ 12 × min(上がった数, 6) | 前 1.5 秒・後 3.5 秒 |
+| `comeback` | 残り **600 m** の時に後ろ3分の1（0始まりの順位 ≥ `n − ⌈n/3⌉`）にいて **3着以内** でゴール（`n ≥ 5`） | その馬／−1 | 残り600mの順位（1始まり） | 55 ＋ min(40, 8 × (その順位 − 着順)) ＋ 1着なら 15 | 前 7.0 秒・後 1.0 秒（鍵 = ゴールの tick） |
+| `unique_skill` | 固有スキル（`Skill`、ルールセット 1.3）が出た | その馬／−1 | 出た時の順位（1始まり） | 40 | 前 1.0 秒・後 3.0 秒 |
+| `finish` | いつも1つ（どのレースにも見どころがあるように） | 1着の馬／−1 | 0 | 10 | 前 4.0 秒・後 1.5 秒（鍵 = 1着のゴールの tick） |
+
+- `focusSlot` が `slot` か `slot2` なら **＋30**。
+- 窓は `[0, RaceResult.EndTick]` に収める。tick ＝ 秒 × `hz`（切り捨て）。
+- 同じ種類は **2つまで**、`whip_burst` は**同じ馬で1つまで**。
+
+### 72.2 選び方（REQ-HL-005）
+1. 候補を `score` の大きい順 → `keyTick` の小さい順 → 種類の順（上の表の順）→ `slot` の小さい順に並べる（全順序）。
+2. 上から、すでに選んだ窓と**重ならない**（`a.start ≤ b.end && b.start ≤ a.end` でない）ものを、72.1 の数の上限を守って **3つまで**選ぶ。
+3. 選んだものを時間の順に並べ、**合計が 15 秒未満なら窓を広げる**：足りない分を残りの窓の数で割り（切り上げ）、時間の順に、まず前へ（前の窓の終わり＋1、または 0 まで）、足りなければ後ろへ（次の窓の始まり−1、または `EndTick` まで）。広げられなくなったら止める（短いレースは短いまま）。1つの窓は最長 10 秒（窓が1つだけなら 15 秒）なので合計は 30 秒を超えない。
+4. 答え：`{ "version": 1, "focusSlot", "endTick", "totalTicks", "moments": [ { "rank": 1..3（点数の順）, "kind", "startTick", "endTick", "keyTick", "slot", "slot2", "value", "remainingM", "place", "score" } ]（時間の順） }`。`remainingM` は鍵の tick の主役の残り（m、切り捨て、0 以上）、`place` は主役の着順（1始まり、完走しなければ 0）。`keyTick`・`startTick`・`endTick` は「`sim.Tick` がその値の時の状態」の番号（`ReplayPlayer` の tick と同じ、時刻 = tick × 1000/`hz` ms）。イベントの tick `t` の前の状態は `t`、後は `t+1`。
+
+### 72.3 見どころの再生（REQ-HL-008〜011）
+- 入口：結果画面の「見どころ」（どのモードでも、レースが終わった後。ログは端末にある）・マイリプレイ（§37）の再生画面と一覧の行の「見どころ」（保存・名場面・最近のレース・フレンドの公開リプレイ）。チュートリアルは結果画面に出さない（FTUE の流れを変えない）。
+- `HighlightReel`：`ReplayPlayer`（§37.4 と同じ再計算・同じハッシュの確認・同じカメラ `RaceCameraRig`）の上で、窓を順に**続けて**再生する。窓ごとにカメラを主役の馬に向け、窓の始まりで切り替える（つなぎの見せ方は Codex、引き継ぎ書）。ハッシュが合わない・再生できないログは見どころも出さない（「再生できません」、§37.4 と同じ）。
+- **スキップ**：「次へ」で次の窓へ、「スキップ」で終わり（結果画面・再生画面へ戻る）。速度は 1× 固定（短いので）。
+- **字幕**（`HighlightCaptions`）：窓ごとに1行（例「最後の直線で3頭抜き」「ハナ差の写真判定」「残り400mで先頭が替わる」「後方から追い込んで2着」「固有スキル発動」）。馬の名前は馬の名前だけ、乗り手は「あなた」・CPU・他の人間は出さない（§37 と同じ：名前を出さない）。英語あり。最大の文字（§41）で2行まで。
+- **実況**：§36 の装備中の実況パックで全体を `Commentator` に通し、窓の中に始まる行だけを流す（`HighlightReel.LinesIn`）。チュートリアルは標準（§36 と同じ）。窓の外の行は流さない。
+- 動きを減らす設定（§41 `MotionPolicy`）では、つなぎの動き（ズーム・ワイプ）をやめて切り替えだけにする。
+
+### 72.4 共有（REQ-HL-012〜014）
+- **共有カード**：`HighlightShare.Card` ＝ 既存の `ShareCard`（REQ-UXS-071）に、1位の瞬間の字幕を足したもの（`Kind = "highlight_image"`）。他の人の名前・プレイヤー ID を入れない。画像は端末で作り OS の共有シートへ（`IClipRecorder`／`IShareSheet`）。
+- **リプレイのリンク**（§63 の `replay`）：本文 `{ "type": "replay", "target": { "raceId": "…", "startTick": 1234 } }`。`startTick`（任意、整数 0〜72000）＝1位の瞬間の始まり。作れるのは今までどおり**自分の公開した保存リプレイだけ**（保存していない・非公開は `404 NOT_FOUND`。画面は「保存して公開すると、リンクで送れます」と出す）。同じリプレイでも `startTick` が違えば別の行き先（`targetKey` = `raceId@startTick`）。開いた人には `target.startTick` を返し、アプリはそのリプレイをその tick から再生する（範囲外は端末が `[0, endTick]` に収める）。**URL にプレイヤー ID・tick を入れない**（トークンだけ）。見られる人・ブロック・メンテナンス（`social`）・期限は §63 のまま。
+- `shareText` は §63 の `replay` の文のまま（名前・tick を入れない）。
+
+### 72.5 KPI（REQ-HL-015、すべてクライアント、§58 で `optional`）
+| イベント | いつ | props → s1／s2／value |
+|---|---|---|
+| `highlight_view` | 見どころの再生を始めた時 | `surface`（`result`・`my_replays`・`friend_replay`・`link`）→ s1、`top`（1位の瞬間の kind）→ s2、`moments`（1〜3）→ value |
+| `highlight_share` | OS の共有シートに渡した時だけ | `surface` → s1、`via`（`card`・`link`）→ s2 |
+レース・プレイヤー・tick は入れない。クエリは docs/ops/kpi-queries.md「レースの見どころ」。
+
+### 72.6 ゲート・データ・ヘルプ
+- **新しい口は無い**。ログは §37 の `/v1/replays*`（グループ `core`）とフレンドの `/v1/friends/*`（`social`）、リンクは `/v1/links`（`social`）から。結果画面の見どころは端末だけで動く（オフラインでも見られる。共有のリンクだけオンライン）。
+- **§51**：プレイヤーの状態に新しいキーは無い（分類の追加なし）。リンクの `startTick` は §63 の `links` の行の `data` に入り、§63.7 のとおりアカウント削除で消える。リプレイの削除で写しが消えれば、そのリンクは §63 のとおり `unavailable`。
+- **ヘルプ**：記事 `race_highlights`（カテゴリ `races`：見どころの選び方・共有のしかた・リンクは公開した保存リプレイだけ）、ヒント `highlights_tip`（記事へのリンク）。
+- アカウントの切り替え（`AccountChangeReset`）：見どころは端末に何も残さない（計算した一覧は画面を閉じれば捨てる）。
+
+### 72.7 クライアント
+- `Muchi.Client`：`HighlightRules`（定数・版）、`HighlightDetector.Detect(config, inputs, focusSlot)`／`Detect(ReplayPlayer)`（同じ答え）、`HighlightSet`・`HighlightMoment`（`ToJson`）、`HighlightReel`（`ReplayPlayer` の上の再生：`Advance`・`Next`・`Skip`・`Frame`・`Current`・`LinesIn`）、`HighlightCaptions`（字幕、日英）、`HighlightShare`（`Card`・`LinkTarget`）、`AnalyticsEvent.HighlightView`・`HighlightShare`。
+- `Muchi.Game`：`HighlightsModel`（結果画面・マイリプレイからの入口、再生・スキップ・字幕・実況の行、共有シートでカードとリンク（保存して公開していなければ案内）、KPI）。
+- 画面が守ること：docs/handoff-codex-round23-highlights.md。
+
+## 73. お問い合わせの状況確認（support tickets & replies、REQ-TKT-001〜020、`server/src/domain/supportTickets.ts`・§48 の `help.ts` を拡張・`server/src/ops/inquiries.ts`（索引・担当・内部メモ）、C# `Help.cs`（`InquiryStatuses`・`InquiryThread`・`SendInquiryMessageAsync`）・`Muchi.Game.HelpCenterModel`（スレッド・返信）、docs/handoff-codex-round23-support-tickets.md）
+§48 の問い合わせを**やりとりのできるチケット**にする。新しい保存場所・新しい Durable Object・マイグレーションは無い（チケットは今までどおりプレイヤーの状態 `help.tickets`、運営だけが見る担当と内部メモは OpsDO の SQLite に `CREATE TABLE IF NOT EXISTS` で足す）。**コイン・アイテムを動かさない**（E番号なし、経済は変わらない）。お詫びの品は**既存の補填（§22 `POST /v1/admin/compensations`、プレゼントボックス §26 に理由つきで入る）だけ**で配り、その id をチケットに結ぶ。新しい配り方は作らない（有償コインは配れない＝`grantSchema` に無い）。
+
+### 73.1 状態（REQ-TKT-001）
+| `status` | 日本語 | 英語 | 誰が・いつ | 返信できるか（プレイヤー） |
+|---|---|---|---|---|
+| `received` | 受付済み | Received | 送った時・プレイヤーが返信した時（再開を含む） | できる |
+| `in_progress` | 確認中 | Checking | 運営（`status`）。プレイヤーが返信しても確認中のまま | できる |
+| `answered` | 返信あり | Replied | 運営の返信（§48.7 の `reply`） | できる |
+| `resolved` | 解決 | Resolved | 運営（`status`） | できる（返信で `received` に戻る＝再開） |
+| `closed` | クローズ | Closed | 運営（`status`／`reply` の `close`）・**自動クローズ** | 閉じてから `reopenDays` 日のうちはできる（再開）。過ぎたら「新しく問い合わせる」だけ |
+- §48 の `statusText`「回答済み」「完了」は「返信あり」「クローズ」に変わる（値 `answered`・`closed` は同じ。古いアプリは知らない値 `in_progress`・`resolved` を `received`・`closed` として見せてよい）。
+- **自動クローズ**：`answered`・`resolved` のまま**プレイヤーの返信が `autoCloseDays` 日無い** → `closed`（時刻 `autoCloseAt` = その状態になった時 + `autoCloseDays` 日）。読む・書く時に遅れて確定する（`settleTickets`。チケットを読む `GET`、送信・返信・既読・運営の操作のトランザクションで、期限を過ぎたものだけ書く）。運営の一覧は索引の `autoCloseAt` から同じ状態を計算して見せる。
+- **保存期間**：`closed` になってから `retentionDays` 日（既定 365、30〜1095）たったチケットはプレイヤーの状態から**消す**（索引の行・担当・内部メモも OpsDO の一覧を読む時に消す）。法的な整理は docs/planning/03「お問い合わせの保存期間」。
+- 返信待ちの数（§48.6 の `openMax`）は `received`＋`in_progress`。保存数 `keepMax` を超えたら古い `closed`→`resolved`→`answered` から消す（返信待ちは消さない）。
+
+### 73.2 マスター（`help.json` の `config.tickets` と `replyTemplates`、REQ-TKT-002）
+```json
+"tickets": { "playerReplyMax": 1000, "repliesPerDay": 10, "replyIntervalSec": 30, "messagesMax": 40, "autoCloseDays": 7, "reopenDays": 14,
+             "retentionDays": 365, "slaHours": 48, "noteMax": 1000, "notesMax": 50, "compensationMax": 5, "pushOnReply": true },
+"replyTemplates": [ { "id": "received_ack", "title": { "ja": "受付のお礼", "en": "Thanks for contacting us" },
+                      "body": { "ja": "…{{ticket_id}}…", "en": "…" } } ]
+```
+- 範囲（起動時・リモート設定で検査）：`playerReplyMax` 100〜4000・`repliesPerDay` 1〜50・`replyIntervalSec` 0〜3600・`messagesMax` 10〜200・`autoCloseDays` 1〜60・`reopenDays` 0〜90・`retentionDays` 30〜1095・`slaHours` 1〜336・`noteMax` 100〜4000・`notesMax` 1〜200・`compensationMax` 1〜20。無い版は既定（この表）で動く。
+- 返信のひな形：`id` は `^[a-z0-9_]{2,40}$` で重ならない、20件まで、日本語・英語の両方、本文は §48 の `replyMax` 文字まで。トークンは §48.1 のトークン（数字はデータから）と `{{ticket_id}}`・`{{category}}`（チケットの種類の名前）だけ。日本語と英語でトークンの組が同じ。言葉は §48 と同じ検査（「倍」「お得」「今だけ」「残りわずか」「通常価格」・賭けの言葉・英語の禁止語）。
+
+### 73.3 送信の追加（`POST /v1/help/inquiries`、REQ-TKT-003）
+- `diagnostics` は**任意**になる。`shareDiagnostics: false`（フォームの「診断情報を添える」を外した）か `diagnostics` が無い → アプリの版・端末・直近のレース ID を保存しない（`diagnostics: { appVersion: null, platform: null, playerId, lastRaceIds: [] }`、`shareDiagnostics: false`）。トークン・パスワード・広告 ID・端末の機種名は**どちらでも**送らない（キーが増えたら 400）。
+- 本文・返信・内部メモは保存の前に §48 の個人情報の置き換えに加えて**秘密らしいもの**を消す（`scrubTicketText`：§60.3 の `bearer`・`jwt`・リンクのトークンの規則、`パスワード`／`password`／`pw`／`暗証番号` の後の値、URL の `?` 以降）。§60 のほかの規則（日本語・引用・数字を消す）は使わない（サポートが読めるように）。置き換えた数は `redacted` に足す。
+- **削除済み（トゥームストーン）のアカウントは送れない**（403 `FORBIDDEN`、`account deleted`。新しい状態を作らない）。削除の手続き中も今までどおり 403。削除についての問い合わせは公式サポートサイト（`supportSite`、ログイン不要）で受ける（ヘルプの記事 `support_tickets`・`deletion` に書く）。
+
+### 73.4 プレイヤーの返信（`POST /v1/help/inquiries/:ticketId/messages`、要認証、REQ-TKT-004）
+`Idempotency-Key` 必須（同じキーの再送は最初の応答）。`{ "content": "まだ届いていません。" }` → 73.5 の詳細。
+- 返信できる状態（73.1）だけ。できない → 409 `CONFLICT`（`details.reason`：`closed`（再開の期限を過ぎた））。他人の・無い id は 404。
+- `content`：前後の空白を除いて1〜`playerReplyMax` 文字・制御文字なし・置き換えて保存（73.3）。
+- 回数：同じチケットへの前の返信から `replyIntervalSec` 秒（429 `RATE_LIMITED`、`details: { reason: "interval", retryAt }`）、1ゲーム日に全部のチケットで `repliesPerDay` 件（`reason: "day"`）、1件のチケットのやりとりは `messagesMax` 件まで（409 `CONFLICT`、`reason: "full"`）。削除の手続き中・削除済みは 403。
+- 効果：プレイヤーの発言を足す。`answered`・`resolved`・`closed`（期限内）→ `received`（`resolved`・`closed` からは**再開**、KPI `ticket_reopen`）。`received`・`in_progress` はそのまま。`updatedAt` が進み、運営の索引に書き直す（`indexed: false`）。
+
+### 73.5 詳細・一覧の追加（REQ-TKT-005）
+- 詳細：`canReply`・`replyUntil`（`closed` の再開の期限、他は null）・`autoCloseAt`（`answered`／`resolved` の時だけ）・`shareDiagnostics`・`compensation: [ { "ref": "comp_12", "at": 1794900000000, "screen": "gift_box" } ]`（結ばれたお詫びの品。中身はプレゼントボックスで見る）・`statusText`（73.1）。`messages[]` にプレイヤーの返信も入る（`from: "player"`）。**内部メモと担当は入らない**。
+- 一覧の行：`canReply` を足す。`limits` に `repliesPerDay`・`repliesToday` を足す。
+- 既読（`POST …/read`）の時、未読の運営の返信があったら KPI `ticket_reply_view`（s1 = 種類）。
+
+### 73.6 運営（管理 API・ops コンソール「問い合わせ」、REQ-TKT-006〜010）
+役割は今までどおり：見る＝viewer、書く＝operator（どれも `reason` 必須・監査ログに残る）。
+- `GET /v1/admin/inquiries?status=&category=&lang=&assignee=&minAgeHours=&limit=`（viewer）：`status` は73.1の5つか `open`（`received`＋`in_progress`）。`assignee` は担当の id・`me`・`none`。`minAgeHours` は**待ち時間**（返信待ちになってからの時間）がそれ以上のもの。行：§48.7 の項目＋`assignee`・`waitingSince`・`waitingMs`・`slaBreached`（待ち時間 ≥ `slaHours`）・`firstReplyAt`・`autoCloseAt`・`closedAt`。状態は自動クローズを計算した値。返信待ちは待ちの長い順、ほかは新しい順。**本文は載せない**。
+- `GET /v1/admin/inquiries/export?…`（viewer、同じ絞り込み、監査 `inquiry.export`）：`{ csv, rows }`。列は `ticket_id,player_id,category,status,lang,attachments,created_at,updated_at,first_reply_at,closed_at,assignee,waiting_hours,sla_breached` だけ（**本文・返信・メモ・添えた行の中身は出さない**）。最大 2,000 行。
+- `GET /v1/admin/players/:playerId/inquiries/:ticketId`（viewer、監査）：§48.7 の詳細＋`assignee`・`internalNotes: [ { by, at, text } ]`・`waitingMs`・`slaHours`・`compensation`・`player: { createdAt, deletion, moderation, purchases }`（プレイヤーの文脈。購入は §33 の件数だけ）。
+- `GET /v1/admin/inquiry-templates?playerId=&ticketId=`（viewer）：ひな形をチケットの言語（`lang`）でトークンを埋めて返す（`{ lang, items: [ { id, title, body } ] }`）。コンソールは本文の欄に入れるだけ（送る前に人が直す）。
+- `POST …/inquiries/:ticketId/reply`（operator）：§48.7 のまま。73.1 の自動クローズの時計が始まる。`pushOnReply` なら**プッシュ** `inquiry_reply` を送る（73.7）。
+- `POST …/inquiries/:ticketId/status`（operator）`{ opKey, status: "in_progress" | "resolved" | "closed" }`：状態を変える（`opKey` ごとに1回）。`closed` からは変えられない（409）。`resolved`・`closed` は KPI `ticket_resolved`。
+- `POST …/inquiries/:ticketId/assign`（operator）`{ assignee: "<admin id>" | "me" | null }`：担当（OpsDO の `inquiry_desk`）。
+- `POST …/inquiries/:ticketId/notes`（operator）`{ opKey, text }`：**内部メモ**（OpsDO の `inquiry_notes`、`noteMax` 文字・1件に `notesMax` 件、73.3 の置き換え）。**プレイヤーには見せない・§51 のダウンロードにも入らない**。
+- `POST …/inquiries/:ticketId/compensation`（operator）`{ compensationId }`：既存の補填（§22 の `POST /v1/admin/compensations` で作った、同じプレイヤーの、`rejected`・`expired` でない依頼）をチケットに結ぶ（何度でも同じ、`compensationMax` 件まで）。お詫びの品を**配るのは補填の手続きだけ**（二人の確認・上限・プレゼントボックス・理由はそのまま）。ここでは何も配らない。
+- 削除済みのアカウントは 404（§48.7 のまま、索引・担当・メモの行を消す）。
+
+### 73.7 お知らせ（アクティビティ §40・プッシュ、REQ-TKT-011）
+- 運営の返信ごとに §48.8 の `inquiry_answered`（送り元 `inquiry:{ticketId}:{n}`）を書く（変わらない）。
+- プッシュ：テンプレート `inquiry_reply`（「お問い合わせに返信がありました」「運営からの返信をアプリで確認できます」）、カテゴリ **`gifts`**（既存の「プレゼント」：運営からのお届けと同じ種類。既定オン）。返信の本文・種類・番号は文言に入れない（ロック画面）。`data` は `ticketId` だけ、開く画面は `help_inquiry`。1日の上限・静かな時間帯は §3.5 のまま。**持ち主は `server`**（§61.1 の `LNOTIF_OWNERSHIP.server.inquiry_reply`。サーバーから届く出来事なので端末のローカル通知では作らない）。
+- 状態の変更（確認中・解決・クローズ・自動クローズ）は知らせない。
+
+### 73.8 KPI（§58.7 の分類、REQ-TKT-012）
+| 名前 | どこ | 中身 | 分類 |
+|---|---|---|---|
+| `inquiry_submit`（チケットを作る、§48） | サーバー | s1 = 種類、count = 添えた行、value = 置き換えた数 | essential（サポートの記録） |
+| `inquiry_answered`（最初の返信、§48） | サーバー | s1 = 種類、durationMs | essential（サポートの記録） |
+| `ticket_player_reply` | サーバー | s1 = 種類、s2 = 返信の前の状態、value = 置き換えた数 | essential：プレイヤーがいつ運営に連絡したかは返金・苦情の対応の記録（SLA の証明）。本文は入らない |
+| `ticket_reopen` | サーバー | s1 = 種類、s2 = `resolved`／`closed` | essential：同上（解決したと扱った件が戻った記録） |
+| `ticket_resolved` | サーバー | s1 = 種類、s2 = `resolved`／`closed`／`auto_closed`、durationMs = 受付から | essential：サポートの対応の記録（いつ閉じたか） |
+| `ticket_reply_view` | サーバー（既読の時） | s1 = 種類 | optional（読んだかどうかは分析だけ） |
+クエリは `docs/ops/kpi-queries.md`「お問い合わせの状況」。
+
+### 73.9 ゲートのグループ（§46.2、REQ-TKT-013）
+`POST /v1/help/inquiries/:ticketId/messages` は**止めない**（`EXEMPT_ROUTES`。§48 の問い合わせと同じ「サポートへの道」：メンテナンス中も古いアプリからも運営とやりとりできる）。ほかの新しい口は管理 API（`/v1/admin/*`、止まらない）。
+
+### 73.10 データのダウンロード（§51）・アカウント削除（REQ-TKT-014）
+- 新しいトップレベルのキーは無い（チケットは `help`、§51 の分類 `helpInquiries` のまま）。ダウンロードの `helpInquiries.items[]` は本人の本文・**本人の返信と運営の返信**（運営の id なし）・状態・`closedAt`・結ばれた補填の id・`shareDiagnostics` を出す。**内部メモ・担当は出さない**（OpsDO にあり、プレイヤーのデータではなく運営の作業メモ。docs/planning/03 に整理）。
+- アカウント削除：チケットは状態と一緒に消える。`inquiries` の段（§48.7）で索引の行・担当・内部メモも消す。保存期間を過ぎたチケットは 73.1 のとおり消す。
+
+### 73.11 クライアント（REQ-TKT-015〜017）
+- `Muchi.Client`：`InquiryStatuses`（5つ・`TextOf`）・`Inquiry` に `CanReply`・`ReplyUntil`・`AutoCloseAt`・`ShareDiagnostics`・`Compensation`、`InquiryDraft.ShareDiagnostics`、`ApiClient.SendInquiryMessageAsync(ticketId, content, key)`（キーは返信ごとに1つ、再送で同じキー）。
+- `Muchi.Game.HelpCenterModel`：スレッド（運営とプレイヤーの発言を時刻の順）・状態のチップ（`StatusChip`：文字と色の種類 `warn`／`info`／`ok`／`muted`）・返信の欄（`ReplyDraft`、オフラインは送らずに残す、同じキーで再送）・再開の期限の表示・お詫びの品からプレゼントボックスへ。
+- 入口：その他 › 設定・サポート › ヘルプ・お問い合わせ（§48 の画面）› **お問い合わせ履歴**。その他の行は足さない（9行目は作らない）。未読の運営の返信の数は今までどおり「ヘルプ・お問い合わせ」の行のバッジ（`help.unreadReplies`）。通報（§47）はチケットではない（通報の受付の画面から問い合わせへは案内しない）。
+
+### 73.12 コンソール・プロトタイプ・引き継ぎ（REQ-TKT-018〜020）
+- ops コンソール「問い合わせ」：絞り込み（種類・状態・待ち時間・言語・担当）・待ち時間（SLA を超えたら赤）・CSV（本文なし）・詳細（プレイヤーの文脈・やりとり・内部メモ（「プレイヤーには見えません」）・担当・状態・ひな形からの返信・補填を結ぶ）。e2e の手順に入れる。
+- プロトタイプ：お問い合わせ履歴（状態のチップ）・スレッド・返信。ムチ一閃の調子。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+- 画面が守ること：docs/handoff-codex-round23-support-tickets.md。

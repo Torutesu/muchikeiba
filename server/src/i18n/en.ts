@@ -34,6 +34,24 @@ export const CODE_EN: Record<string, string> = {
   'よく使われるパスワードは使えません': 'No common passwords',
   'この端末のデータは別の端末に引き継がれました': 'This account has moved to another device',
 
+  // ---- ログイン中の端末とセキュリティ (devices.ts / sessionRevocation.ts, protocol §70; REQ-DEV-*). Neutral wording, no alarm words.
+  'この端末はログアウトされました': 'This device was signed out',
+  'この端末はここからはログアウトできません': 'This device cannot be signed out from here',
+  '今日はこれ以上ログアウトできません': 'No more sign-outs today',
+  'この端末でログインしてから{hours}時間たつと、前からある端末もログアウトできます': '{hours} hours after signing in on this device, you can also sign out devices that were signed in before it',
+  '新しい端末でログインがありました': 'A new device signed in',
+  'ほかの端末をログアウトしました': 'Signed out another device',
+  'この端末以外をすべてログアウトしました': 'Signed out all other devices',
+  'サポートが端末をログアウトしました': 'Support signed out a device',
+  '引き継ぎコードを発行しました': 'Issued a transfer code',
+  '引き継ぎコードを発行しました（パスワードを設定）': 'Issued a transfer code (password set)',
+  '引き継ぎコードを取り消しました': 'Cancelled the transfer code',
+  'サポートが引き継ぎコードを取り消しました': 'Support cancelled the transfer code',
+  '引き継ぎコードでこのアカウントが新しい端末に移りました': 'This account moved to a new device with a transfer code',
+  '{provider}の連携を追加しました': 'Linked {provider}',
+  '{provider}の連携を解除しました': 'Unlinked {provider}',
+  '新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます': 'A new device signed in. If it was not you, you can check it under Signed-in devices',
+
   // ---- ディープリンク (deepLinks.ts SHARE_TEXT, protocol §63; REQ-LINK-003): no rewards, no urgency, no names
   'ムチ一閃のフレンド部屋に招待します': 'Join my friend room in Muchi Issen',
   'ムチ一閃の主催カップに招待します': 'Join my cup in Muchi Issen',
@@ -533,6 +551,17 @@ export const CODE_EN: Record<string, string> = {
   'レースの途中には出しません。結果の後かホームで知らせます': 'Never during a race: the reminder appears after a race result or on the home screen',
   '時間は端末で数えます（サーバーには送りません）': 'The time is counted on this device (never sent to the server)',
   '自分で決めた今月の上限に達しているため、いま購入できるパックはありません': 'You have reached the monthly limit you set, so no pack can be bought now',
+
+  // ---- 血統図と系統 (pedigree.ts, protocol §71; REQ-PED-003..013). Horse and owner names are never translated.
+  '記録なし': 'No record',
+  '名前は非公開': 'Name hidden',
+  '他のトレーナーの馬': "Another trainer's horse",
+  'フレンドの種牡馬': "A friend's stallion",
+  'あなたの種牡馬': 'Your stallion',
+  '出走なし': 'No starts yet',
+  '大会優勝{n}回': 'Tournament wins: {n}',
+  '系統の数で報酬はありません。': 'Holding more lines earns no reward.',
+  '確率と数は配合の規則のとおりです。': 'Chances and numbers follow the breeding rules.',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',

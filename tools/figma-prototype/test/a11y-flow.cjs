@@ -199,6 +199,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('GiftBox'); await shot('gift-box', english, 600);
     await show('Collection'); await shot('collection', english, 600);
     await show('Training'); await shot('training', english, 600);
+    // quality pass (raising & breeding): 馬カード and the breeding screen at the largest size
+    await show('HorseCard'); await waitScreen('horse-card'); await shot('horse-card', english, 700);
+    await show('Breeding'); await waitScreen('breeding'); await shot('breeding', english, 700);
     // Round 14 screens (integration): 殿堂, 勝負服エディタ, 実況パック, マイリプレイ
     await show('Hall'); await waitScreen('hall'); await shot('hall', english, 600);
     await show('SilksEditor'); await waitScreen('silks'); await shot('silks-editor', english, 600);

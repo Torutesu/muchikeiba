@@ -5224,7 +5224,7 @@ function qrStage(trained, potential) {
   return { index, nextAt: next === undefined ? null : Math.ceil((next * potential) / 1000) };
 }
 const QR_FROM = { own: '生まれつき', sire: '父から', dam: '母から', both: '父と母から' };
-const QR_COAT = { bay: 0, chestnut: 1, grey: 2, dapple_grey: 2, gray: 2, black: 3, palomino: 4 };
+const QR_COAT = { bay: 0, brown: 0, chestnut: 1, grey: 2, dapple_grey: 2, gray: 2, black: 3, dark_bay: 3, palomino: 4 };
 const qrArt = (h) => partnerPreview(QR_COAT[h?.appearance?.coat] ?? ([...(h?.id ?? 'x')].reduce((a, c) => a + c.charCodeAt(0), 0) % 5));
 const qrPct = (ppm) => (ppm <= 0 ? '0%' : ppm < 500 ? '<0.1%' : `${(Math.round(ppm / 1000) / 10).toFixed(1)}%`);
 const qrPermille = (p) => `${(p / 10).toFixed(1)}%`;

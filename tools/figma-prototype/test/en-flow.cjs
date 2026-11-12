@@ -646,6 +646,15 @@ await shot('diagnostics', 600);
   await page.locator('.screen.in .rm-demo-others').click(); await page.waitForTimeout(700); await shot('rematch-opened', 300);
   assert.match(await page.locator('.screen.in .rm-status').innerText(), /A new room is ready/, 'rematch: the outcome in English');
   await page.locator('.screen.in .rm-room').click(); await waitScreen('room-lobby'); await shot('room-lobby', 300);
+  // quality pass (raising & breeding): 馬カード after 12 days of training, the breeding screen, the foal reveal step by step
+  await page.evaluate(() => globalThis.__muchi.demo('raising')); await waitScreen('horse-card', 90000); await shot('horse-card', 700);
+  assert.match(await page.locator('.screen.in .qr-ranked').innerText(), /Ranked \(class/, 'horse card: the ranked line in English');
+  await show('Training'); await waitScreen('training'); await shot('training-outlook', 600);
+  await page.evaluate(() => globalThis.__muchi.demo('breeding')); await waitScreen('breeding', 60000); await page.waitForTimeout(600); await shot('breeding', 500);
+  assert.match(await page.locator('.screen.in .qr-rarity-line').innerText(), /SSR .*SR .*R /, 'breeding: the rarity odds line');
+  await page.locator('.screen.in .qr-breed').click(); await waitScreen('breeding-reveal'); await shot('foal-reveal-1', 600);
+  for (let i = 0; i < 3; i++) { await page.locator('.screen.in .qr-next').click(); await page.waitForTimeout(500); }
+  await shot('foal-reveal-all', 900);
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

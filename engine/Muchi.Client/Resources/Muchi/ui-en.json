@@ -1461,6 +1461,24 @@
   "印はこれ以上付けられません": "You cannot add more marks",
   "これから": "Upcoming",
   "観戦できます": "You can watch",
-  "（日本時間）": " JST"
+  "（日本時間）": " JST",
+  "_highlights": "---- round 23: race highlights (HighlightCaptions / HighlightsModel, REQ-HL-*); horse names only",
+  "見どころ": "Highlights",
+  "レースの見どころ": "Race highlights",
+  "見どころを共有": "Share highlights",
+  "リンクで送る": "Send a link",
+  "保存して公開すると、リンクで送れます": "Save the replay and make it public to send a link",
+  "見どころはありません": "No highlights for this race",
+  "見どころを再生できません": "These highlights cannot be played",
+  "ゴール前、写真判定の大接戦": "Photo finish at the line",
+  "ゴール前、わずかな差の競り合い": "A narrow battle at the line",
+  "残り{m}mで先頭が替わる": "New leader with {m} m to go",
+  "最後の直線で{n}頭抜き": "Passed {n} in the final straight",
+  "ムチ一閃、{n}頭抜き": "One crack of the whip, {n} passed",
+  "{a}番手から追い込んで{p}着": "Charged from {a:ord} to finish {p:ord}",
+  "固有スキル発動": "Unique skill unleashed",
+  "ゴールの瞬間": "The finish",
+  "（あなた）": " (you)",
+  "見どころ {i} / {n}": "Highlight {i} / {n}"
  }
 }

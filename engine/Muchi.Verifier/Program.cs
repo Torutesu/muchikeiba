@@ -20,6 +20,20 @@ if (args.Length >= 3 && args[0] == "golden")
         Console.WriteLine("wrote " + path);
     return 0;
 }
+if (args.Length >= 3 && args[0] == "highlights")
+{
+    // REQ-HL-001 (§72): `highlights <goldenDir> <vectors.json> [write]` checks (or writes) the shared highlight vectors
+    if (args.Length >= 4 && args[3] == "write")
+    {
+        File.WriteAllText(args[2], HighlightVectors.Render(HighlightVectors.Compute(args[1])));
+        Console.WriteLine("wrote " + args[2]);
+        return 0;
+    }
+    var problems = HighlightVectors.Check(args[1], args[2]);
+    foreach (var p in problems) Console.WriteLine(p);
+    Console.WriteLine(problems.Count == 0 ? "highlights: no drift" : "highlights: " + problems.Count + " mismatches");
+    return problems.Count == 0 ? 0 : 1;
+}
 if (args.Length >= 2 && args[0] == "balance")
 {
     var rsNode = Muchi.Net.JsonNode.Parse(File.ReadAllText(args[1]));

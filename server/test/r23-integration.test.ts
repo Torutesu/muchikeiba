@@ -29,6 +29,7 @@ const ROOT = join(import.meta.dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 const NOW = Date.UTC(2026, 10, 12, 3);
 const sec = (ms: number) => Math.floor(ms / 1000);
+const NO_META = { ip: null, platform: null, version: null };
 
 const R23_KPI = {
   devices: ['device_signout', 'new_device_notice', 'device_list_view'],
@@ -99,8 +100,9 @@ describe('その他 stays at eight rows per page; Round 23 entries live on their
     expect(fnBody('HelpCenter')).toContain("dataset.action = 'my-inquiries'");
     expect(app).toContain("Pedigree(p?.id ?? null, () => Stable(), 'horse')");
   });
-  it('§58.11 keeps its seven rows; no Round 23 sheet joined SessionPrompts or the prototype gate', () => {
-    const TABLE = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'];
+  it('§58.11 keeps the Round 22 rows; no Round 23 sheet joined SessionPrompts or the prototype gate', () => {
+    // the table as Round 22 left it (§68 added promotion_outcome); Round 23 adds no row
+    const TABLE = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt'];
     const p = read('contracts/protocol.md');
     const s = p.slice(p.indexOf('### 58.11'), p.indexOf('## 59.'));
     expect([...s.matchAll(/^\s*\| \d \| `([a-z_]+)` \|/gm)].map((x) => x[1])).toEqual(TABLE);
@@ -144,9 +146,9 @@ async function world() {
   });
   const ticket = await svc.helpInquirySubmit('me', { category: 'purchase_missing', description: 'コインを買ったのに増えていません。確認をお願いします。', refs: [], diagnostics: { appVersion: '1.9.0', platform: 'ios' } }, 'c:/v1/help/inquiries:k1') as unknown as { ticketId: string; summary: never };
   const ops = memoryOps(m, () => invoker);
-  await ops.api.inquiries.upsert([ticket.summary]);
-  await ops.api.inquiries.assign('me', ticket.ticketId, 'op-1', now);
-  await ops.api.inquiries.addNote('me', ticket.ticketId, { by: 'op-1', at: now, text: '内部メモ', opKey: 'n1' } as never, 20);
+  await ops.api.inquiries!.upsert([ticket.summary]);
+  await ops.api.inquiries!.assign('me', ticket.ticketId, 'op-1', now);
+  await ops.api.inquiries!.addNote('me', ticket.ticketId, { by: 'op-1', at: now, text: '内部メモ', opKey: 'n1' } as never, 20);
   const dir = new MemoryLinkDirectory();
   const blocks: Record<string, string[]> = { me: [], friend: [], stranger: [] };
   const links = new LinkService({
@@ -185,18 +187,18 @@ describe('account deletion × Round 23', () => {
       markStep: async (u: string, st: never) => { await w.svc.deletionMarkStep(u, st); },
       friends: { removeFriend: async () => undefined, dropOutgoing: async () => undefined, dropIncoming: async () => undefined },
       directory: { forget: async (u: string) => { w.dir.forget(u); } }, leaderboards: { forget: async () => undefined, deleteGhosts: async () => undefined },
-      inquiries: { forget: (u: string) => w.ops.api.inquiries.forgetPlayer(u) },
+      inquiries: { forget: (u: string) => w.ops.api.inquiries!.forgetPlayer(u) },
       finalize: (u: string) => w.svc.deletionFinalize(u), retain: async () => undefined, wipe: (u: string) => w.svc.wipe(u),
     } as unknown as DeletionPorts;
     const before = await w.svc.state('me') as PlayerState & { help?: { tickets: unknown[] } };
     expect([!!before.devices, (before.help?.tickets.length ?? 0) > 0]).toEqual([true, true]);
-    expect((await w.ops.api.inquiries.list({})).length).toBe(1);
+    expect((await w.ops.api.inquiries!.list({})).length).toBe(1);
     expect(await w.dir.get('abcd2345efghjkmnpqrstu')).not.toBeNull();
     await runAccountDeletion(ports, 'me', w.now());
     expect(w.repo.get('me')).toBeNull();
     expect(await w.dir.get('abcd2345efghjkmnpqrstu')).toBeNull();
-    expect(await w.ops.api.inquiries.list({})).toEqual([]);
-    expect(await w.ops.api.inquiries.desk('me', w.ticket.ticketId)).toEqual({ assignee: null, notes: [] });
+    expect(await w.ops.api.inquiries!.list({})).toEqual([]);
+    expect(await w.ops.api.inquiries!.desk('me', w.ticket.ticketId)).toEqual({ assignee: null, notes: [] });
     // a check-in after the wipe never brings the account back (REQ-DEV-002)
     await w.svc.devicesCheckin('me', await buildCheckinInput('me', sec(w.now()), 'install-a', { platform: 'ios' } as never, 'JP', {}));
     expect(w.repo.get('me')).toBeNull();
@@ -207,12 +209,12 @@ describe('§47 one block list × §72 highlight links', () => {
   it('a replay link with a start tick opens at the moment for a friend, and is the one neutral `unavailable` across a block either way', async () => {
     const w = await world();
     const targets = { open: async (_v: string, rec: { data: Record<string, string> }) => ({ state: 'ok', type: 'replay', screen: 'friend_replay', target: { raceId: rec.data.raceId, ...(rec.data.startTick ? { startTick: Number(rec.data.startTick) } : {}) } }) } as never;
-    const ok = await w.links.resolve('friend', 'abcd2345efghjkmnpqrstu', {}, targets);
+    const ok = await w.links.resolve('friend', 'abcd2345efghjkmnpqrstu', NO_META, targets);
     expect(ok).toMatchObject({ state: 'ok', target: { startTick: 1825 } });
     w.blocks.me = ['friend'];
-    expect(await w.links.resolve('friend', 'abcd2345efghjkmnpqrstu', {}, targets)).toEqual({ state: 'unavailable' });
+    expect(await w.links.resolve('friend', 'abcd2345efghjkmnpqrstu', NO_META, targets)).toEqual({ state: 'unavailable' });
     w.blocks.me = []; w.blocks.friend = ['me'];
-    expect(await w.links.resolve('friend', 'abcd2345efghjkmnpqrstu', {}, targets)).toEqual({ state: 'unavailable' });
+    expect(await w.links.resolve('friend', 'abcd2345efghjkmnpqrstu', NO_META, targets)).toEqual({ state: 'unavailable' });
   });
 });
 

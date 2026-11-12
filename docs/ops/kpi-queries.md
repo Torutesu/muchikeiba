@@ -1534,6 +1534,113 @@ GROUP BY kind ORDER BY opens DESC
 
 - `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。
 
+## 騎手の道：挑戦・クリア・星（REQ-CAREER-013、Round 22、contracts/protocol.md §66.8）
+列（どれもサーバーのイベント、§58 の分類は `optional`）：`career_start` `blob8` = レース id、`blob9` = 章 id、`double5` = そのレースの挑戦回数。`career_clear` `blob8` = レース id、`blob9` = 章 id、`double4` = 着順、`double6` = タイム（ms）、`double8` = 1 で初クリア、`double5` = そのレースの星の数、`double9` = 1 でこの初クリアで章が終わった、`double3` = 払った無償コイン。`career_star` `blob8` = レース id、`blob9` = 章 id、`double9` = 星の番号（1〜3）、`double5` = 全体の星の数。入力・tick・seed は送らない。
+
+**レースごとの詰まり**（どこでやめるか）：挑戦した人・初クリアした人・1人あたりの挑戦回数。初クリアの率が低く挑戦回数が多いレースは、CPU の段・能力（`cpuStatPermille`）・クリアの着順を見直す（`server/master/career.json`、balance-targets 4.20）。
+
+```sql
+SELECT blob9 AS chapter, blob8 AS race,
+  count(DISTINCT if(blob1 = 'career_start', blob2, NULL)) AS players,
+  count(DISTINCT if(blob1 = 'career_clear' AND double8 = 1, blob2, NULL)) AS cleared_players,
+  cleared_players / players AS clear_rate,
+  countIf(blob1 = 'career_start') / players AS tries_per_player
+FROM muchi_kpi
+WHERE blob1 IN ('career_start', 'career_clear') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY chapter, race ORDER BY chapter, race
+```
+
+**星の集め方**：星2・星3（`career_star` の `double9` = 2・3）を取った人の割合。星3がほとんど取れないレースは目標（ムチの回数・着順）がきつすぎる。
+
+```sql
+SELECT blob8 AS race, double9 AS star, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'career_star' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY race, star ORDER BY race, star
+```
+
+**公平性の監視**：課金者（`blob7`）と無課金で初クリアまでの挑戦回数が大きく違うなら、章の上限（`statCap`）と相棒の能力合計の前提（§66.1）を調べる。報酬は一度ずつなので、`double3`（無償コイン）の合計は表の一生分（E20）を超えない。
+
+## 使いすぎ・遊びすぎの防止：自分の上限・遊ぶ時間のお知らせ（REQ-LIMIT-016、Round 22、contracts/protocol.md §67）
+列：`self_limit_set`（サーバー、**essential**＝分析をオフにしても書く。本人が決めた支払いの上限の記録）`blob8` = 変更（`set`＝すぐ効いた変更・`raise_requested`・`remove_requested`・`raise_cancelled`）、`double1` = 新しい額（上限なしは 0）、`double9` = 前の額（無しは 0）。`self_limit_block`（サーバー、optional）`blob8` = 商品、`double1` = 価格（購入の確認が自分の上限で断られた）。`playtime_setting_change`（サーバー、optional）`blob8` = 変えた項目（`session`・`daily`・`quiet_after`、複数は `,`）、`blob9` = `on`／`off`（変更後にどれか有効か）。`playtime_reminder_shown`（クライアント、optional）`blob8` = 理由（`quiet_after,daily,session` のシートの順）、`blob9` = 答え（`continue`／`stop`／`settings`）、`double9` = セッションの分（5分に丸め）、`double5` = その日の分（5分に丸め）。正確な遊んだ時間・時刻は送らない。
+
+**上限を決めた人と変更の種類**（下げる・上げる・外す・取り消し。引き上げの取り消しが多いのは冷却期間が働いているしるし）：
+
+```sql
+SELECT toStartOfWeek(timestamp) AS week, blob8 AS change, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'self_limit_set' AND timestamp > NOW() - INTERVAL '84' DAY
+GROUP BY week, change
+ORDER BY week DESC, n DESC
+```
+
+**自分の上限で断られた購入**（売上の目標にしない。断られた後にサポートへの問い合わせが増えていないかを見る）：
+
+```sql
+SELECT blob8 AS product, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'self_limit_block' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY product
+ORDER BY n DESC
+```
+
+**遊ぶ時間のお知らせ：理由と答え**（「今日はここまで」の割合は目標にしない。シートが区切りで出ているか・設定を見直す人がいるかを見る）：
+
+```sql
+SELECT blob8 AS reasons, blob9 AS choice, sum(_sample_interval) AS n, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'playtime_reminder_shown' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY reasons, choice
+ORDER BY n DESC
+```
+
+## 昇級戦：始まり・結果・盾（REQ-PROMO-015、Round 22、contracts/protocol.md §68）
+列（すべてサーバー、§58 の分類は optional）：`promo_series_start` `blob8` = クラス、`blob9` = 次のクラス、`blob10` = 昇級戦 ID（`2026-11:C:1`）、`double5`（count）= そのシーズン・クラスで何回目、`double9`（value）= 始まった時のポイント。`promo_series_end` `blob8` = `pass`／`fail`／`season_end`、`blob9` = クラス、`blob10` = 次のクラス、`double5` = 上位の数、`double9` = 走った数。`demotion_shield_used` `blob8` = クラス、`blob9` = シーズン、`double9` = 締めのポイント、`double5` = 猶予で走った数。
+
+**突破率と再挑戦**（月ごと、クラスごと。突破率が極端なら `needTop`・`topPlace` を見直す。`fail` の後の `start` の回数が多ければ `setbackPoints` が小さすぎる）：
+
+```sql
+SELECT toStartOfMonth(timestamp) AS month, if(blob1 = 'promo_series_start', blob8, blob9) AS class,
+  sumIf(_sample_interval, blob1 = 'promo_series_start') AS started,
+  sumIf(_sample_interval, blob1 = 'promo_series_start' AND double5 > 1) AS retries,
+  sumIf(_sample_interval, blob1 = 'promo_series_end' AND blob8 = 'pass') AS passed,
+  sumIf(_sample_interval, blob1 = 'promo_series_end' AND blob8 = 'fail') AS failed,
+  sumIf(_sample_interval, blob1 = 'promo_series_end' AND blob8 = 'season_end') AS open_at_close
+FROM muchi_kpi
+WHERE blob1 IN ('promo_series_start', 'promo_series_end') AND timestamp > NOW() - INTERVAL '120' DAY
+GROUP BY month, class
+ORDER BY month DESC, class
+```
+
+**盾を使った数**（締めのたびに。多ければ昇級したての人が上のクラスで勝てていない＝`classStatCap` の差かマッチングを見る）：
+
+```sql
+SELECT blob9 AS season, blob8 AS class, sum(_sample_interval) AS shields, avg(double9) AS avg_points
+FROM muchi_kpi
+WHERE blob1 = 'demotion_shield_used' AND timestamp > NOW() - INTERVAL '120' DAY
+GROUP BY season, class
+ORDER BY season DESC, class
+```
+
+## ゲーム内アンケート：出した・スキップ・答えた（REQ-SURVEY-019、Round 22、contracts/protocol.md §69.9。R22 統合で追加）
+列（すべてサーバー、§58 の分類は optional：分析がオフの人の行は書かない）：`survey_shown` `blob8` = アンケート id、`blob9` = `inbox`（お知らせの中の行。R22 統合でホームのカード・結果の後のシートは無くなった）、`double5`（count）= その人に出した回数。`survey_skip` `blob8` = id、`blob9` = 場所。`survey_answer` `blob8` = id、`blob9` = 場所、`double5` = 答えた問いの数。**答えの中身は KPI に無い**（結果は運営の画面 §69.7 と CSV で、プレイヤー ID なしで見る）。
+
+**答えた率・スキップ率**（アンケート・場所ごと。スキップが多い場所・題は、出す場所か前置きを見直す。答えた人の数は運営の画面の件数と同じくらいのはず。差は分析をオフにした人）：
+
+```sql
+SELECT blob8 AS survey, blob9 AS placement,
+  sumIf(_sample_interval, blob1 = 'survey_shown') AS shown,
+  sumIf(_sample_interval, blob1 = 'survey_skip') AS skipped,
+  sumIf(_sample_interval, blob1 = 'survey_answer') AS answered,
+  avgIf(double5, blob1 = 'survey_answer') AS avg_questions
+FROM muchi_kpi
+WHERE blob1 IN ('survey_shown', 'survey_skip', 'survey_answer') AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY survey, placement
+ORDER BY survey, placement
+```
+
+- 2回目に出した行（`double5 = 2`）が多いのに答えも スキップもしない人が多いなら、`maxShowsPerSurvey` を下げる。報酬が無いので、答えた人の偏りは「答えたい人」だけ（景品で増やさない、§69）。
+
 ## ログイン中の端末：お知らせ・ログアウト・一覧（REQ-DEV-016、contracts/protocol.md §70.9、Round 23）
 
 **新しい端末のお知らせがどれだけ出て、どれだけログアウトにつながるか、乗っ取りの波が無いか**。`new_device_notice`（サーバー、essential、`blob8` = `ios` / `android` / `other`）、`device_signout`（サーバー、essential、`blob8` = `one` / `others` / `support`、`double5` = ログアウトした数、実際にログアウトした時だけ）、`device_list_view`（クライアント、optional、`blob8` = `devices` / `log`、`double9` = 行の数）。端末のハッシュ・セッションの ID・地域・機種は入らない（§70.9）。

@@ -60,7 +60,7 @@ function playerDetail(v, reload) {
     { label: '日時', value: (p) => jst(p.at) }, { label: 'ストア', value: (p) => [p.platform, p.sandbox ? badge('sandbox', 'muted') : null] },
     { label: '商品', value: (p) => p.productId }, { label: '取引ID', value: (p) => h('code', {}, p.txId) },
     { label: '金額', value: (p) => yen(p.priceYen), class: 'num' }, { label: '有償', value: (p) => num(p.paidCoinsGranted), class: 'num' }, { label: 'おまけ', value: (p) => num(p.bonusCoinsGranted), class: 'num' },
-    { label: '状態', value: (p) => [p.refunded ? badge('返金', 'bad') : badge('有効', 'ok'), p.limitBreach ? badge('上限超過', 'warn') : null] },
+    { label: '状態', value: (p) => [p.refunded ? badge('返金', 'bad') : badge('有効', 'ok'), p.limitBreach ? badge('上限超過', 'warn') : null, p.selfLimitBreach ? badge('自分の上限を超えて届いた', 'warn') : null] },
   ], [...(s.purchases ?? [])].reverse(), { empty: '購入なし', testid: 'purchases-table' }));
 
   const flags = card('サポート用の印', table([
@@ -74,6 +74,23 @@ function playerDetail(v, reload) {
     ['隔離期限', jst(integ.quarantinedUntil ?? null)], ['BAN', integ.banned ? `${integ.banned.until ? `${jst(integ.banned.until)} まで` : '無期限'}（${integ.banned.by}：${integ.banned.reason}）` : 'なし'],
   ], 'integrity-kv'), modActions(id, integ, reload),
   integ.notes?.length ? h('details', {}, h('summary', {}, `メモ ${integ.notes.length} 件`), table([{ label: '日時', value: (n) => jst(n.at) }, { label: '操作', value: (n) => n.action }, { label: '担当', value: (n) => n.by }, { label: '理由', value: (n) => n.reason }], [...integ.notes].reverse())) : null);
+
+  // REQ-LIMIT-017 (§67.10): the player's own limits — read only. Support cannot raise, remove or hurry them (no admin route);
+  // a player asking to lift one is pointed to the app setting (the cool-off applies).
+  const sl = s.selfLimits;
+  const yenOrNone = (v) => (v === null || v === undefined ? 'なし' : yen(v));
+  const selfLimits = card('自分で決めた上限（使いすぎ・遊びすぎの防止）', sl ? [
+    kv([
+      ['自分の上限', yenOrNone(sl.spending.limitYen)], ['年齢帯の上限', yenOrNone(sl.spending.ageLimitYen)], ['効いている上限', yenOrNone(sl.spending.effectiveLimitYen)],
+      ['今月の支払い', yen(sl.spending.monthSpentYen)],
+      ['待っている変更', sl.spending.pending ? `${yenOrNone(sl.spending.pending.limitYen)}（${jst(sl.spending.pending.effectiveAt)} から）` : 'なし'],
+      ['遊ぶ時間のお知らせ', sl.playtime.enabled ? [sl.playtime.sessionMin ? `一度に${sl.playtime.sessionMin}分` : null, sl.playtime.dailyMin ? `一日${sl.playtime.dailyMin}分` : null, sl.playtime.quietAfterHour !== null ? `${sl.playtime.quietAfterHour}時以降` : null].filter(Boolean).join('・') : 'オフ'],
+    ], 'self-limits-kv'),
+    h('p', { class: 'muted small' }, 'サポートは見るだけです。上限を上げる・外す・早めることはできません（本人がアプリで変え、上げる時は冷却期間があります）。'),
+    sl.history?.length ? h('details', {}, h('summary', {}, `変更の履歴 ${sl.history.length} 件`), table([
+      { label: '日時', value: (x) => jst(x.at) }, { label: '変更', value: (x) => x.kind }, { label: '前', value: (x) => yenOrNone(x.fromYen) }, { label: '後', value: (x) => yenOrNone(x.toYen) },
+    ], sl.history, { testid: 'self-limits-history' })) : null,
+  ] : h('div', { class: 'muted', 'data-testid': 'self-limits-kv' }, '記録なし'));
 
   const del = s.deletion;
   const deletion = card('アカウント削除', del ? kv([['状態', badge(del.status, 'warn')], ['申請', jst(del.requestedAt)], ['削除予定', jst(del.deleteAt)], ['済んだ手順', del.steps.join(', ') || '—'], ['試行', String(del.attempts)], ['再試行', jst(del.retryAt)]], 'deletion-kv')
@@ -109,7 +126,7 @@ function playerDetail(v, reload) {
     { label: '増減', value: (l) => (l.delta > 0 ? `+${num(l.delta)}` : num(l.delta)), class: 'num' }, { label: '残高', value: (l) => num(l.balanceAfter), class: 'num' }, { label: '理由', value: (l) => l.reason },
   ], [...(s.ledger ?? [])].reverse())));
 
-  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, historyCard(id), devicesCard(id), h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), gifts, comps, ledger,
+  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, historyCard(id), devicesCard(id), h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), selfLimits, gifts, comps, ledger,
     h('details', {}, h('summary', {}, '生データ（JSON）'), json(v)));
 }
 

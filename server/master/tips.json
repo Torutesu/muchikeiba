@@ -37,6 +37,12 @@
     { "id": "practice_tip", "topic": "race", "unlock": null, "art": "whip", "help": "practice_races",
       "title": { "ja": "練習レースで試す", "en": "Try it in practice" },
       "body": { "ja": "コース・頭数・相手の強さを選んで、同じ展開を何度でも走れる。端末の中だけのレースで、報酬も記録も動かない。", "en": "Pick the course, field size and rival strength, then run the same race as often as you like. It runs on your device only and changes no rewards or records." } },
+    { "id": "promotion_series_tip", "topic": "race", "unlock": "season", "art": "whip", "help": "promotion_series",
+      "title": { "ja": "昇級戦", "en": "Promotion series" },
+      "body": { "ja": "昇級ラインに届くと昇級戦。{{promo_races}}戦で{{promo_place}}着以内が{{promo_need}}回なら突破。届かなくても少し戻るだけで、また挑める。", "en": "Reach the line to start a series: {{promo_need}} top-{{promo_place}} finishes in {{promo_races}} races win it. Fall short and you only drop back a little." } },
+    { "id": "career_stars", "topic": "race", "unlock": null, "art": "career", "help": "career_mode",
+      "title": { "ja": "騎手の道で星を集める", "en": "Collect career stars" },
+      "body": { "ja": "前のレースをクリアすると次が開く。星2・星3は1着やムチの回数の目標。何度でも無料でやり直せる。", "en": "Clear a race to open the next. Stars 2 and 3 ask for a win or a whip limit. Retry for free as often as you like." } },
     { "id": "breeding_pair", "topic": "horses", "unlock": "breeding", "art": "breeding", "help": "breeding",
       "title": { "ja": "配合のきほん", "en": "Breeding basics" },
       "body": { "ja": "牡馬と牝馬を1頭ずつ選ぶと、両親の脚質や適性を引く子馬が生まれる。能力には幅がある。", "en": "Pick one stallion and one mare. The foal draws on its parents' style and aptitude, and its abilities vary." } },
@@ -111,7 +117,10 @@
       "body": { "ja": "設定の「ログイン中の端末」で、ログインしている端末と記録を確かめられる。知らない端末はログアウトできる。", "en": "Check the devices signed in to your account under Signed-in devices in the settings. Sign out any you do not know." } },
     { "id": "pedigree_tip", "topic": "horses", "unlock": null, "art": "breeding", "help": "pedigree",
       "title": { "ja": "血統で選ぶ", "en": "Pick by pedigree" },
-      "body": { "ja": "配合の前に「血統を見る」。共通の祖先が光ったら近親配合で能力の基準が下がる。系統の相性（ニックス）も確かめよう。", "en": "Check See pedigree before breeding. A shared ancestor lights up when the pair is inbred, which lowers base stats. Check the line match (nick) too." } }
+      "body": { "ja": "配合の前に「血統を見る」。共通の祖先が光ったら近親配合で能力の基準が下がる。系統の相性（ニックス）も確かめよう。", "en": "Check See pedigree before breeding. A shared ancestor lights up when the pair is inbred, which lowers base stats. Check the line match (nick) too." } },
+    { "id": "self_limits", "topic": "shop", "unlock": "shop", "art": "coins", "help": "self_limits",
+      "title": { "ja": "上限は自分で決められる", "en": "Set your own limits" },
+      "body": { "ja": "月の購入上限と遊ぶ時間のお知らせを自分で決められる。下げた上限はすぐ効き、上げる時は少し時間をおいてから効く。", "en": "You can set a monthly spending limit and a play-time reminder. A lower limit applies at once; raising it takes effect after a pause." } }
   ],
   "contexts": {
     "gacha_odds": "scout_pity_tip",

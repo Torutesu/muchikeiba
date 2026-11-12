@@ -90,9 +90,13 @@ namespace Muchi.Client
     public sealed class SessionPrompts
     {
         /// <summary>Priority order, highest first (protocol §58.11 table). The §46 maintenance / update screens are not prompts: they block all of these.</summary>
+        /// R22 integration: §68 PromotionOutcome (earned feedback, right after the release notes). The §67 play-time reminder is
+        /// NOT a prompt here: the player asked for it, so it neither takes nor waits for the session's one prompt (the exempt row of
+        /// the §58.11 table). §69 surveys are not in the table at all: a quiet row in お知らせ the player opens, never an interruption.
         public const string RecommendedUpdate = "recommended_update", ConsentPrePrompt = "consent_pre_prompt", ComebackWelcome = "comeback_welcome",
-            ReleaseNotes = "release_notes", RemindersPrePermission = "reminders_pre_permission", AccountLink = "account_link", ReviewPrompt = "review_prompt";
-        public static readonly string[] Priority = { RecommendedUpdate, ConsentPrePrompt, ComebackWelcome, ReleaseNotes, RemindersPrePermission, AccountLink, ReviewPrompt };
+            ReleaseNotes = "release_notes", PromotionOutcome = "promotion_outcome", RemindersPrePermission = "reminders_pre_permission", AccountLink = "account_link",
+            ReviewPrompt = "review_prompt";
+        public static readonly string[] Priority = { RecommendedUpdate, ConsentPrePrompt, ComebackWelcome, ReleaseNotes, PromotionOutcome, RemindersPrePermission, AccountLink, ReviewPrompt };
 
         private readonly Func<OutageKind> _outage;
         private readonly Func<bool> _inFtue;

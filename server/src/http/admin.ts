@@ -1,4 +1,7 @@
 import { z } from 'zod';
+import type { SurveyIngest, SurveysCore } from '../ops/surveys.js';
+import { normalizeSurveyDef, surveyDefProblems, surveysConfig, surveyView, SURVEY_ID_RE, type LiveSurvey, type SurveyDef } from '../domain/surveys.js';
+import { invalidateSurveyCache } from '../ops/surveys.js';
 import { AppError } from '../domain/errors.js';
 import { BASE_VERSION_ID, bundleDiff, groupProblems, resolveBundle, type ConfigBundle, type ConfigVersion, type Activation, type ActiveConfigInfo, type DryRunOp, type DryRunResult } from '../ops/config.js';
 import { OPS_TITLE_KEYS, GIFT_BOX_LIMITS } from '../domain/giftBox.js';
@@ -84,6 +87,8 @@ export interface OpsApi {
   playerReports?: PlayerReportsApi;
   /** REQ-CERR-*: client error reports (§60). */
   clientErrors?: ClientErrorsApi;
+  /** REQ-SURVEY-*: in-app surveys (§69; OpsDO tables; absent = the survey routes answer NOT_FOUND / no survey). */
+  surveys?: SurveysApi;
   /** REQ-HELP-016: the inquiry index (no text; absent = the inquiry list answers NOT_FOUND). */
   inquiries?: {
     upsert(items: InquirySummary[]): Promise<{ stored: number }>;
@@ -96,6 +101,23 @@ export interface OpsApi {
     addNote(playerId: string, ticketId: string, n: InquiryNote & { opKey: string }, max: number): Promise<InquiryDesk & { duplicate: boolean }>;
   };
 }
+/** REQ-SURVEY-*: the survey store (src/ops/surveys.ts SurveysCore in OpsDO). */
+export interface SurveysApi {
+  create(def: SurveyDef, by: string, now: number): Promise<SurveySummary>;
+  update(id: string, def: SurveyDef, rev: number, by: string, now: number): Promise<SurveySummary>;
+  publish(id: string, startAt: number, endAt: number, maxLive: number, by: string, now: number): Promise<SurveySummary>;
+  close(id: string, by: string, now: number): Promise<SurveySummary>;
+  list(now: number): Promise<SurveySummary[]>;
+  get(id: string, now: number): Promise<SurveySummary & { def: SurveyDef }>;
+  live(now: number): Promise<LiveSurvey[]>;
+  one(id: string): Promise<LiveSurvey | null>;
+  ingest(xs: SurveyIngest[]): Promise<{ stored: number; received: number }>;
+  results(id: string, now: number): Promise<ReturnType<SurveysCore['results']>>;
+  csv(id: string, now: number): Promise<{ filename: string; csv: string; rows: number }>;
+  hideText(id: string, ref: string, hidden: boolean): Promise<{ ref: string; hidden: boolean }>;
+  forget(playerId: string): Promise<{ anonymised: number }>;
+}
+export type SurveySummary = ReturnType<SurveysCore['summary']>;
 /** REQ-CERR-*: the client error store (ClientErrorsDO; absent = reports are accepted and dropped, the console answers NOT_FOUND). */
 export interface ClientErrorsApi {
   ingest(b: ClientErrorBatch, who: IngestWho, now: number, cfg: ClientErrorsConfig): Promise<{ accepted: number; dropped: number; duplicate: boolean }>;
@@ -158,6 +180,30 @@ const cerr = (ctx: AdminContext): ClientErrorsApi => {
 };
 /** The client error config of the master in effect. */
 const clientErrorsCfgOf = async (ctx: AdminContext, now: number) => (ctx.baseMaster ? clientErrorsConfig((await masterFor(ctx, null, now)).master) : clientErrorsConfig({ progression: {} } as never));
+
+const svs = (ctx: AdminContext): SurveysApi => {
+  if (!ctx.ops.surveys) throw new AppError('NOT_FOUND', 'surveys are not available');
+  return ctx.ops.surveys;
+};
+const surveyIdOf = (id: string | undefined) => {
+  if (!id || !SURVEY_ID_RE.test(id)) throw new AppError('NOT_FOUND', 'unknown survey');
+  return id;
+};
+/** The master in effect (remote config resolved) — the NG list, classes and progression.surveys a survey is checked against. */
+const surveyMasterOf = async (ctx: AdminContext, now: number) => (await masterFor(ctx, null, now)).master;
+/** REQ-SURVEY-015: problems and the JA / EN preview (nothing stored). */
+function surveyCheck(m: Master, raw: unknown) {
+  const problems = surveyDefProblems(m, raw, surveysConfig(m));
+  if (problems.length) return { problems, preview: null };
+  const def = normalizeSurveyDef(raw as SurveyDef);
+  const live = { def, rev: 0, startAt: 0, endAt: 0 };
+  return { problems, preview: { ja: surveyView(live, 'ja', 'inbox'), en: surveyView(live, 'en', 'inbox') } };
+}
+function validSurvey(m: Master, raw: unknown): SurveyDef {
+  const c = surveyCheck(m, raw);
+  if (c.problems.length) throw new AppError('BAD_REQUEST', `invalid survey: ${c.problems.slice(0, 5).join('; ')}`, undefined, { problems: c.problems });
+  return normalizeSurveyDef(raw as SurveyDef);
+}
 
 const inq = (ctx: AdminContext) => {
   if (!ctx.ops.inquiries) throw new AppError('NOT_FOUND', 'inquiries are not available');
@@ -827,6 +873,51 @@ export const adminRoutes: AdminRoute[] = [
     return { result: { ticketId, compensation: out.compensation }, target: `player:${playerId}`, after: { ticketId, compensation: req.id, status: req.status } };
   } },
 
+  // ---- ゲーム内アンケート (REQ-SURVEY-015..018, contracts/protocol.md §69.7) ----
+  { method: 'GET', path: '/v1/admin/surveys', role: 'viewer', write: false, action: 'surveys.list', handler: async (r) => ({ result: await svs(r.ctx).list(r.now) }) },
+  { method: 'POST', path: '/v1/admin/surveys/validate', role: 'viewer', write: false, action: 'surveys.validate', handler: async (r) => {
+    const m = await surveyMasterOf(r.ctx, r.now);
+    return { result: surveyCheck(m, r.body.survey) };
+  } },
+  { method: 'GET', path: '/v1/admin/surveys/:id', role: 'viewer', write: false, action: 'surveys.view', handler: async (r) => ({ result: await svs(r.ctx).get(surveyIdOf(r.params.id), r.now), target: `survey:${r.params.id}` }) },
+  { method: 'POST', path: '/v1/admin/surveys', role: 'operator', write: true, action: 'surveys.create', handler: async (r) => {
+    const def = validSurvey(await surveyMasterOf(r.ctx, r.now), r.body.survey);
+    const out = await svs(r.ctx).create(def, r.principal.id, r.now);
+    return { result: out, target: `survey:${def.id}`, before: null, after: { rev: out.rev, status: out.status } };
+  } },
+  { method: 'PUT', path: '/v1/admin/surveys/:id', role: 'operator', write: true, action: 'surveys.update', handler: async (r) => {
+    const id = surveyIdOf(r.params.id);
+    const rev = parse(z.number().int().min(1), r.body.rev);
+    const def = validSurvey(await surveyMasterOf(r.ctx, r.now), r.body.survey);
+    const out = await svs(r.ctx).update(id, def, rev, r.principal.id, r.now);
+    return { result: out, target: `survey:${id}`, before: { rev }, after: { rev: out.rev } };
+  } },
+  { method: 'POST', path: '/v1/admin/surveys/:id/publish', role: 'admin', write: true, action: 'surveys.publish', handler: async (r) => {
+    const id = surveyIdOf(r.params.id);
+    const b = parse(z.object({ startAt: z.number().int(), endAt: z.number().int() }).passthrough(), r.body);
+    const m = await surveyMasterOf(r.ctx, r.now);
+    // the definition is checked again against the master in effect now (NG list / classes may have changed since the draft)
+    const cur = await svs(r.ctx).get(id, r.now);
+    validSurvey(m, cur.def);
+    const out = await svs(r.ctx).publish(id, b.startAt, b.endAt, surveysConfig(m).maxLive, r.principal.id, r.now);
+    invalidateSurveyCache(svs(r.ctx));
+    return { result: out, target: `survey:${id}`, before: { status: cur.status }, after: { status: out.status, startAt: out.startAt, endAt: out.endAt } };
+  } },
+  { method: 'POST', path: '/v1/admin/surveys/:id/close', role: 'admin', write: true, action: 'surveys.close', handler: async (r) => {
+    const id = surveyIdOf(r.params.id);
+    const out = await svs(r.ctx).close(id, r.principal.id, r.now);
+    invalidateSurveyCache(svs(r.ctx));
+    return { result: out, target: `survey:${id}`, after: { status: out.status, closedAt: out.closedAt } };
+  } },
+  { method: 'GET', path: '/v1/admin/surveys/:id/results', role: 'viewer', write: false, action: 'surveys.results', handler: async (r) => ({ result: await svs(r.ctx).results(surveyIdOf(r.params.id), r.now), target: `survey:${r.params.id}` }) },
+  { method: 'GET', path: '/v1/admin/surveys/:id/results.csv', role: 'viewer', write: false, action: 'surveys.csv', handler: async (r) => ({ result: await svs(r.ctx).csv(surveyIdOf(r.params.id), r.now), target: `survey:${r.params.id}` }) },
+  { method: 'POST', path: '/v1/admin/surveys/:id/texts/:ref/hide', role: 'operator', write: true, action: 'surveys.text.hide', handler: async (r) => {
+    const id = surveyIdOf(r.params.id);
+    const hidden = parse(z.boolean(), r.body.hidden);
+    const out = await svs(r.ctx).hideText(id, r.params.ref!, hidden);
+    return { result: out, target: `survey:${id}`, after: out };
+  } },
+
   // ---- クライアントのエラー報告 (REQ-CERR-014..016, contracts/protocol.md §60.7) ----
   { method: 'GET', path: '/v1/admin/client-errors', role: 'viewer', write: false, action: 'client_errors.list', handler: async (r) => {
     const q: ClientErrorQuery = { limit: num(r.query, 'limit', 100) };
@@ -1013,7 +1104,7 @@ export async function handleAdmin(req: Request, ctx: AdminContext): Promise<Resp
         console.error('audit write failed', ae);
       }
     }
-    if (err) return json({ error: { code: err.code, message: err.message } }, err.status);
+    if (err) return json({ error: { code: err.code, message: err.message, ...(err.details ? { details: err.details } : {}) } }, err.status); // R22: e.g. a survey's problem list
     return json({ error: { code: 'INTERNAL', message: 'internal error' } }, 500);
   }
 }

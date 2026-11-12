@@ -25,6 +25,8 @@ const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks',
   'showcase',
   // REQ-NEW-002: the release notes carry their own English side by side (checked by releaseNotes.ts releaseNotesProblems)
   'releaseNotes',
+  // REQ-CAREER-010: 騎手の道 titles and story lines carry their own English side by side (checked by career.ts careerProblems)
+  'career',
   // REQ-PED-011 (§71): bloodline names, founders and notes are JA + EN pairs of their own (checked by pedigree.ts bloodlineProblems)
   'bloodlines']);
 

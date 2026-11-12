@@ -31,10 +31,12 @@ namespace Muchi.Client
             QchatMention = "qchat_mention",
             // Round 18: the personal data export is ready (§51; Category "account", LinkId = requestId)
             DataExportReady = "data_export_ready",
+            // Round 22: a promotion at the season close (§68; Category "season", Screen recap, LinkId = season:YYYY-MM)
+            ClassPromoted = "class_promoted",
             // Round 23: a new device signed in (§70.4; Category "account", LinkId = sessionId, no push)
             NewDevice = "new_device";
         public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, InquiryAnswered,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention, DataExportReady, NewDevice };
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention, DataExportReady, ClassPromoted, NewDevice };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>

@@ -1,0 +1,1101 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "off",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 300,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "off",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session not due",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 59,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "not_due",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session due at result",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 60,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "遊びはじめて60分たちました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": 60,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session due at home, en",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "en",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 75,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "home"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": null,
+        "title": "Time for a short break?",
+        "lines": [
+          "You have been playing for 60 minutes"
+        ],
+        "note": "This is the reminder you set for yourself. Carry on or stop here, as you like.",
+        "buttons": {
+          "continue": "Continue",
+          "stop": "Done for today",
+          "settings": "Reminder settings"
+        },
+        "marks": {
+          "sessionMark": 60,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session due mid race",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 75,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": "not_safe",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session due in matchmaking",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 75,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "matchmaking"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": "not_safe",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session due in purchase",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 75,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "purchase"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": "not_safe",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session due in tutorial",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 75,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "tutorial"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": "not_safe",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session second mark",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 125,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": 60,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "session"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "遊びはじめて120分たちました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": 120,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "session between marks",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 60,
+          "dailyMin": null,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 110,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": 60,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "not_due",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": 60,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "daily due",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": 120,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 130,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "daily"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "今日は合計130分遊びました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": true,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "daily shown today",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": 120,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 200,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": true,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "not_due",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": true,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "daily shown yesterday",
+      "snapshot": {
+        "now": 1794308400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": 120,
+          "quietAfterHour": null
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 200,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-09",
+          "dailyShown": true,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "daily"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "今日は合計200分遊びました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": true,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "quiet before",
+      "snapshot": {
+        "now": 1794315540000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "not_due",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "quiet at",
+      "snapshot": {
+        "now": 1794315600000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "22時を過ぎました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "quiet after midnight same day",
+      "snapshot": {
+        "now": 1794330000000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "22時を過ぎました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "quiet shown",
+      "snapshot": {
+        "now": 1794330000000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "not_due",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "quiet morning",
+      "snapshot": {
+        "now": 1794337200000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [],
+        "blockedBy": "not_due",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-11",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "quiet midnight choice",
+      "snapshot": {
+        "now": 1794324600000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 0
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "0時を過ぎました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "quiet 21 en",
+      "snapshot": {
+        "now": 1794312600000,
+        "localOffsetMin": 540,
+        "locale": "en",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 21
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after"
+        ],
+        "blockedBy": null,
+        "title": "Time for a short break?",
+        "lines": [
+          "It is past 9 p.m."
+        ],
+        "note": "This is the reminder you set for yourself. Carry on or stop here, as you like.",
+        "buttons": {
+          "continue": "Continue",
+          "stop": "Done for today",
+          "settings": "Reminder settings"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "quiet midnight en",
+      "snapshot": {
+        "now": 1794326400000,
+        "localOffsetMin": 540,
+        "locale": "en",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 0
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after"
+        ],
+        "blockedBy": null,
+        "title": "Time for a short break?",
+        "lines": [
+          "It is past midnight"
+        ],
+        "note": "This is the reminder you set for yourself. Carry on or stop here, as you like.",
+        "buttons": {
+          "continue": "Continue",
+          "stop": "Done for today",
+          "settings": "Reminder settings"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "all three ja",
+      "snapshot": {
+        "now": 1794317400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 30,
+          "dailyMin": 120,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 31,
+        "dayPlayedMin": 125,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after",
+          "daily",
+          "session"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "22時を過ぎました",
+          "今日は合計125分遊びました",
+          "遊びはじめて30分たちました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": 30,
+          "dayKey": "2026-11-10",
+          "dailyShown": true,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "all three en",
+      "snapshot": {
+        "now": 1794317400000,
+        "localOffsetMin": 540,
+        "locale": "en",
+        "settings": {
+          "sessionMin": 30,
+          "dailyMin": 120,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 31,
+        "dayPlayedMin": 125,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after",
+          "daily",
+          "session"
+        ],
+        "blockedBy": null,
+        "title": "Time for a short break?",
+        "lines": [
+          "It is past 10 p.m.",
+          "You have played 125 minutes in total today",
+          "You have been playing for 30 minutes"
+        ],
+        "note": "This is the reminder you set for yourself. Carry on or stop here, as you like.",
+        "buttons": {
+          "continue": "Continue",
+          "stop": "Done for today",
+          "settings": "Reminder settings"
+        },
+        "marks": {
+          "sessionMark": 30,
+          "dayKey": "2026-11-10",
+          "dailyShown": true,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "all three not safe",
+      "snapshot": {
+        "now": 1794317400000,
+        "localOffsetMin": 540,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 30,
+          "dailyMin": 120,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 31,
+        "dayPlayedMin": 125,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race"
+      },
+      "expect": {
+        "show": false,
+        "reasons": [
+          "quiet_after",
+          "daily",
+          "session"
+        ],
+        "blockedBy": "not_safe",
+        "title": null,
+        "lines": [],
+        "note": null,
+        "buttons": null,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": false
+        }
+      }
+    },
+    {
+      "name": "utc device",
+      "snapshot": {
+        "now": 1794349800000,
+        "localOffsetMin": 0,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": null,
+          "dailyMin": null,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 0,
+        "dayPlayedMin": 0,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "22時を過ぎました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": null,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    },
+    {
+      "name": "negative offset device",
+      "snapshot": {
+        "now": 1794367800000,
+        "localOffsetMin": -300,
+        "locale": "ja",
+        "settings": {
+          "sessionMin": 30,
+          "dailyMin": 120,
+          "quietAfterHour": 22
+        },
+        "sessionPlayedMin": 95,
+        "dayPlayedMin": 119,
+        "marks": {
+          "sessionMark": null,
+          "dayKey": null,
+          "dailyShown": false,
+          "quietShown": false
+        },
+        "place": "race_result"
+      },
+      "expect": {
+        "show": true,
+        "reasons": [
+          "quiet_after",
+          "session"
+        ],
+        "blockedBy": null,
+        "title": "ひと息つきませんか",
+        "lines": [
+          "22時を過ぎました",
+          "遊びはじめて90分たちました"
+        ],
+        "note": "ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に",
+        "buttons": {
+          "continue": "続ける",
+          "stop": "今日はここまで",
+          "settings": "お知らせの設定"
+        },
+        "marks": {
+          "sessionMark": 90,
+          "dayKey": "2026-11-10",
+          "dailyShown": false,
+          "quietShown": true
+        }
+      }
+    }
+  ]
+}

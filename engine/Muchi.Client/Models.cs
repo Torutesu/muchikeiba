@@ -277,6 +277,8 @@ namespace Muchi.Client
         public HorseGoalPin HorseGoalPin;
         /// <summary>REQ-LNOTIF-008 (§61.3): the deadlines the device plans local notifications from (null = an older server).</summary>
         public LocalRemindersDigest LocalReminders;
+        /// <summary>REQ-LIMIT-013 (§67.5): the play-time settings and the spending limit in effect (null = an older server).</summary>
+        public SelfLimitsDigest SelfLimits;
         public int Rating, RatingDeviation, RankedRaces;
         public string SeasonId, ClassId;
         public int SeasonPoints;
@@ -315,6 +317,7 @@ namespace Muchi.Client
                 NextActions = NextActionsView.Parse(J.Opt(o, "nextActions")),
                 HorseGoalPin = HorseGoalPin.Parse(J.Opt(o, "horseGoalPin")),
                 LocalReminders = LocalRemindersDigest.Parse(J.Opt(o, "localReminders")),
+                SelfLimits = SelfLimitsDigest.Parse(J.Opt(o, "selfLimits")),
             };
         }
     }
@@ -462,8 +465,14 @@ namespace Muchi.Client
         public PassPurchaseInfo Pass;
         /// <summary>REQ-UXS-018: 厩舎手当 only.</summary>
         public AllowanceTerms Allowance;
+        /// <summary>REQ-LIMIT-005 (§67.2): the player's own limit (null = none), the cap in effect, whether the own one binds, a waiting raise.</summary>
+        public int? SelfLimitYen, EffectiveLimitYen;
+        public bool SelfLimitBinding;
+        public SelfLimitPending SelfLimitPending;
         internal static PurchaseIntent Parse(JsonNode o) => new PurchaseIntent
         {
+            SelfLimitYen = J.IntN(o, "selfLimitYen"), EffectiveLimitYen = J.IntN(o, "effectiveLimitYen"), SelfLimitBinding = J.Bool(o, "selfLimitBinding"),
+            SelfLimitPending = SelfLimitPending.Parse(J.Opt(o, "selfLimitPending")),
             Product = Product.Parse(J.Opt(o, "product")), MonthSpentYen = J.Int(o, "monthSpentYen"),
             MonthlyLimitYen = J.IntN(o, "monthlyLimitYen"), RemainingYen = J.IntN(o, "remainingYen"),
             FirstPurchaseBonus = FirstPurchaseBonus.Parse(J.Opt(o, "firstPurchaseBonus")), Pass = PassPurchaseInfo.Parse(J.Opt(o, "pass")),
@@ -477,8 +486,11 @@ namespace Muchi.Client
         public int PriceYen, PaidCoinsGranted, BonusCoinsGranted;
         public long At;
         public bool Refunded, LimitBreach;
+        /// <summary>REQ-LIMIT-007: arrived over the player's own limit (granted and counted all the same).</summary>
+        public bool SelfLimitBreach;
         internal static PurchaseRecord Parse(JsonNode o) => new PurchaseRecord
         {
+            SelfLimitBreach = J.Bool(o, "selfLimitBreach"),
             TxId = J.Str(o, "txId"), Platform = J.Str(o, "platform"), ProductId = J.Str(o, "productId"), LotId = J.Str(o, "lotId"),
             PriceYen = J.Int(o, "priceYen"), PaidCoinsGranted = J.Int(o, "paidCoinsGranted"), BonusCoinsGranted = J.Int(o, "bonusCoinsGranted"),
             At = J.Long(o, "at"), Refunded = J.Bool(o, "refunded"), LimitBreach = J.Bool(o, "limitBreach"),

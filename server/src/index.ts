@@ -52,6 +52,7 @@ import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
 import { helpProblems } from './domain/help.js';
 import { practiceProblems } from './domain/practice.js';
+import { careerProblems } from './domain/career.js';
 import { tipsProblems } from './domain/tips.js';
 import { showcaseProblems } from './domain/showcase.js';
 import { bloodlineProblems } from './domain/pedigree.js';
@@ -61,7 +62,7 @@ import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
 import { cryptoRng } from './domain/rng.js';
 import type { Master } from './domain/master.js';
-import type { ClientErrorsApi, OpsApi } from './http/admin.js';
+import type { ClientErrorsApi, OpsApi, SurveysApi } from './http/admin.js';
 import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, type AdminAuthConfig, type AdminRole } from './ops/admin.js';
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
@@ -81,6 +82,7 @@ import { LOCALES } from './i18n/locale.js';
 import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
 import { WeeklyChallengeService } from './race/weeklyChallenge.js';
+import { CareerService } from './race/career.js';
 import { HttpVerifierClient } from './domain/verifier.js';
 import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
 import { devModeRefused } from './http/devMode.js';
@@ -137,6 +139,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
 { const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
 { const pr = practiceProblems(baseMaster); if (pr.length) throw new Error('master/practice.json: ' + pr.join('; ')); } // REQ-PRAC-003
+{ const cp = careerProblems(baseMaster); if (cp.length) throw new Error('master/career.json: ' + cp.join('; ')); } // REQ-CAREER-002
 { const tp = tipsProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (tp.length) throw new Error('master/tips.json: ' + tp.join('; ')); } // REQ-TUT-010
 { const sp = showcaseProblems(baseMaster); if (sp.length) throw new Error('master/showcase.json: ' + sp.join('; ')); } // REQ-SHOW-002
 { const bp = bloodlineProblems(baseMaster); if (bp.length) throw new Error('master/bloodlines.json: ' + bp.join('; ')); } // REQ-PED-011
@@ -304,6 +307,13 @@ function tournamentBackend(env: Env): TournamentBackend {
 type Rpc = Record<string, (...a: unknown[]) => Promise<Envelope<unknown>>>;
 const stub = (ns: DurableObjectNamespace, name: string) => ns.get(ns.idFromName(name)) as unknown as Rpc;
 
+const surveysApis = new WeakMap<object, SurveysApi>();
+const surveysApiFor = (key: object, make: () => SurveysApi): SurveysApi => {
+  let a = surveysApis.get(key);
+  if (!a) { a = make(); surveysApis.set(key, a); }
+  return a;
+};
+
 /** Ops backend over the OpsDO / IntegrityDO singletons (REQ-OPS-*). */
 export function makeOpsApi(env: Env): OpsApi | undefined {
   if (!env.OPS || !env.INTEGRITY) return undefined;
@@ -364,6 +374,23 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
         forget: (pid) => call(stub(env.CLIENT_ERRORS!, 'global').ceForget!(pid)),
       } satisfies ClientErrorsApi,
     } : {}),
+    // REQ-SURVEY-*: in-app surveys (OpsDO tables, no migration). One object per OPS binding so the 30 s live cache
+    // (liveSurveysCached, keyed by this object) survives the per-request contexts of an isolate.
+    surveys: surveysApiFor(env.OPS, () => ({
+      create: (d, by, now) => call(ops().svCreate!(d, by, now)),
+      update: (id, d, rev, by, now) => call(ops().svUpdate!(id, d, rev, by, now)),
+      publish: (id, a, b, max, by, now) => call(ops().svPublish!(id, a, b, max, by, now)),
+      close: (id, by, now) => call(ops().svClose!(id, by, now)),
+      list: (now) => call(ops().svList!(now)),
+      get: (id, now) => call(ops().svGet!(id, now)),
+      live: (now) => call(ops().svLive!(now)),
+      one: (id) => call(ops().svOne!(id)),
+      ingest: (xs) => call(ops().svIngest!(xs)),
+      results: (id, now) => call(ops().svResults!(id, now)),
+      csv: (id, now) => call(ops().svCsv!(id, now)),
+      hideText: (id, ref, h) => call(ops().svHideText!(id, ref, h)),
+      forget: (pid) => call(ops().svForget!(pid)),
+    })),
     // REQ-HELP-016: the inquiry index (OpsDO)
     inquiries: {
       upsert: (items) => call(ops().inqUpsert!(items)),
@@ -586,6 +613,14 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     }),
     // REQ-WCH-*: weekly challenges (the time attack verifier path)
     weeklyChallenge: new WeeklyChallengeService({
+      player,
+      verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
+      ticketSecret: env.TICKET_SECRET,
+      clock: () => Date.now(),
+      activeRuleset: async () => (await activeConfig(env)).ruleset,
+    }),
+    // REQ-CAREER-*: 騎手の道 (the weekly challenge verifier path)
+    career: new CareerService({
       player,
       verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
       ticketSecret: env.TICKET_SECRET,

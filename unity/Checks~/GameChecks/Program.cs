@@ -148,14 +148,22 @@ static class Program
         await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 22: 昇級戦と降級の猶予 (PromotionModel: start banner, pips, 「昇級戦 2/3」, outcome sheet through the one-prompt gate, ack once, offline copy, grace, kill switch, English; REQ-PROMO-*)");
+        await PromotionChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 22: ゲーム内アンケート (SurveyModel: FTUE / offline / one-prompt gate (last), home card → sheet, optional pages, skip in one tap, one key per answer set, SURVEY_CLOSED, account change, English; REQ-SURVEY-*)");
+        await SurveyChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: クライアントのエラー報告 (ClientErrorModel: Unity log lines, no loop, stalls / pause, API failures, desync race id + tick, asset, consent hook, send on pause; REQ-CERR-*)");
         await ClientErrorChecks.Run(Check);
         Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");
         await LocalNotificationChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 22: 使いすぎ・遊びすぎの防止 (SelfLimitsModel: rows, lower now / raise waits / cancel, custom amount, refusal sentence, play-time sheet at safe points only, KPI, restart, English; REQ-LIMIT-*)");
+        await SelfLimitsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20 integration: one system-ish prompt per session (consent → reminders → review), the error reporter follows the analytics choice, an account change resets reminders / error queue / review session");
         await Round20IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 21 integration: ONE prompt gate (update > consent > comeback > release notes > reminders > account link > review; none in the FTUE), an account change drops the waiting deep link and the release notes session");
         await Round21IntegrationChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 22 integration: an account change drops the play-time clock, the waiting outcome sheet, the career map / keyed start and the survey row; the gate starts over (AccountChangeReset)");
+        Round22IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 23 integration: one AccountChangeReset drops the device list and the pedigree trees; SESSION_REPLACED > SESSION_REVOKED > update > maintenance > offline");
         await Round23IntegrationChecks.Run(Check);
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
@@ -174,6 +182,8 @@ static class Program
         await ConsentChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 21: トレーナーカード (ShowcaseCardModel / ShowcaseEditorModel: card lines, neutral card, share without a player id, report targets, editor limits, locked backgrounds, KPI, English; REQ-SHOW-*)");
         await ShowcaseChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 22: 騎手の道 (CareerModel: map, stars as text and shapes, detail, locked race, keyed start, HUD objective, device stars, server verdict, rewards once, English; REQ-CAREER-*)");
+        await CareerChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 23: レースの見どころ (HighlightsModel: vectors = verifier, result gate, reel / next / skip, captions JA/EN, commentary windows, card and link share, KPI; REQ-HL-*)");
         await HighlightsChecks.Run(Check, Root);
         if (args.Length >= 2 && args[0] == "online")

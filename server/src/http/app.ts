@@ -21,6 +21,7 @@ import { clientBatchSchema } from '../domain/kpi.js';
 import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../domain/clientErrors.js';
 import type { TimeAttackService } from '../race/timeAttack.js';
 import type { WeeklyChallengeService } from '../race/weeklyChallenge.js';
+import type { CareerService } from '../race/career.js';
 import { TA_BOARD_RE } from '../domain/timeAttack.js';
 import { LEAGUE_BOARD_RE } from '../domain/league.js';
 import { TeamsService, type TeamPlayers } from '../domain/teamService.js';
@@ -45,6 +46,7 @@ import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import { accessibilityBodySchema } from '../domain/accessibility.js';
 import { privacyChoicesBodySchema, privacyPlatformBodySchema, privacyPromptBodySchema } from '../domain/privacyChoices.js';
+import { playtimeBodySchema, spendingBodySchema } from '../domain/selfLimits.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { ADVICE_CONTEXTS, type AdviceContext } from '../domain/raceAdviceService.js';
 import { DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
@@ -67,6 +69,8 @@ import type { RematchView } from '../domain/rematch.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
+import { SURVEY_ID_RE, SURVEY_PLACEMENTS, surveysConfig, validateSurveyAnswers, type LiveSurvey, type PendingSurveyAnswer, type SurveyFacts } from '../domain/surveys.js';
+import { liveSurveysCached } from '../ops/surveys.js';
 import { buildCheckinInput, checkinBodySchema, type CheckinInput } from '../domain/devices.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
@@ -103,16 +107,20 @@ export type PlayerMethod =
   | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
   | 'accessibility' | 'setAccessibility'
   | 'privacyChoices' | 'setPrivacyChoices' | 'setPrivacyPlatform' | 'notePrivacyPromptShown' | 'clientErrorsAttach'
+  | 'selfLimits' | 'setSpendingLimit' | 'cancelSpendingRaise' | 'setPlaytime'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
   | 'wchView' | 'wchStart' | 'wchPrepare' | 'wchAbort' | 'wchRecord'
+  | 'careerView' | 'careerStart' | 'careerPrepare' | 'careerAbort' | 'careerRecord'
   | 'teamGoalReward' | 'goalPlayerView'
   | 'hallMine' | 'hallViewer' | 'hallNoteView' | 'horseCareer' | 'hallAck' | 'hallSettings'
   | 'nextActions' | 'dismissNextAction'
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
+  | 'promotion' | 'promotionAck'
+  | 'surveyOffer' | 'surveyShown' | 'surveySkip' | 'surveyAnswer' | 'surveySynced'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
   | 'photoCatalog' | 'photos' | 'photoSave' | 'photoDelete'
@@ -186,6 +194,8 @@ export interface AppContext {
   timeAttack: TimeAttackService;
   /** REQ-WCH-*: 週替わりチャレンジ. Absent → the routes answer NOT_FOUND. */
   weeklyChallenge?: WeeklyChallengeService;
+  /** REQ-CAREER-* (§66): 騎手の道 (the weekly challenge verifier path). Absent = 404. */
+  career?: CareerService;
   /** REQ-TEAM-*: 支部. Absent in contexts that do not serve teams (routes answer NOT_FOUND). */
   teams?: TeamsService;
   /** REQ-EVENT-*: event races. */
@@ -361,6 +371,28 @@ export const clientIdemKey = (req: Request) => {
   return `c:${new URL(req.url).pathname}:${k}`;
 };
 const idem = clientIdemKey;
+
+// ---------------------------------------------------------------- ゲーム内アンケート (REQ-SURVEY-*, §69)
+const surveyPlacementBody = z.object({ placement: z.enum(SURVEY_PLACEMENTS) }).strict();
+function surveyPlacementOf(v: string | null) {
+  if (v === null || !(SURVEY_PLACEMENTS as readonly string[]).includes(v)) throw new AppError('BAD_REQUEST', `placement must be ${SURVEY_PLACEMENTS.join('|')}`);
+  return v as (typeof SURVEY_PLACEMENTS)[number];
+}
+/** The targeting facts of a request: the §46 client headers (platform, app version). */
+const surveyFacts = (r: Request): SurveyFacts => { const h = clientHeaders(r.headers); return { platform: h.platform, appVersion: h.version }; };
+/** One survey by id, read through to the store (null = unknown / draft; the domain answers NOT_FOUND or SURVEY_CLOSED). */
+async function surveyOne(c: AppContext, id: string): Promise<LiveSurvey | null> {
+  if (!SURVEY_ID_RE.test(id) || !c.ops?.surveys) return null;
+  return c.ops.surveys.one(id);
+}
+/** REQ-SURVEY-011: write answers to the ops table (one row per survey and player), then mark them sent. Best effort. */
+async function syncSurveyAnswers(c: AppContext, uid: string, pending: PendingSurveyAnswer[]) {
+  if (!c.ops?.surveys || pending.length === 0) return;
+  try {
+    await c.ops.surveys.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: uid, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
+    await c.player(uid).invoke('surveySynced', uid, pending.map((x) => x.surveyId));
+  } catch (e) { console.error('survey answers not synced yet', uid, (e as Error).message); }
+}
 /** REQ-REV-005 (§59.4): the device's half of the review-prompt summary. Minutes are capped at a year (null = none / unknown). */
 const reviewMinutes = z.number().int().min(0).max(525_600).nullable();
 const reviewCheckSchema = z.object({
@@ -418,6 +450,10 @@ const confirmSchema = z.object({ confirm: z.literal(true) }).strict();
 const weekly = (c: AppContext) => {
   if (!c.weeklyChallenge) throw new AppError('NOT_FOUND', 'weekly challenges are not available');
   return c.weeklyChallenge;
+};
+const career = (c: AppContext) => {
+  if (!c.career) throw new AppError('NOT_FOUND', '騎手の道 is not available');
+  return c.career;
 };
 const teams = (c: AppContext) => {
   if (!c.teams) throw new AppError('NOT_FOUND', 'teams are not available');
@@ -691,6 +727,11 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/privacy/choices', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPrivacyChoices', u, await body(r, privacyChoicesBodySchema)) },
   { method: 'PUT', path: '/v1/privacy/platform', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPrivacyPlatform', u, await body(r, privacyPlatformBodySchema)) },
   { method: 'POST', path: '/v1/privacy/prompt-shown', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('notePrivacyPromptShown', u, (await body(r, privacyPromptBodySchema)).privacyVersion) },
+  // REQ-LIMIT-013/014 (§67): 使いすぎ・遊びすぎの防止 — never gated (§46 EXEMPT_ROUTES), idempotent by content
+  { method: 'GET', path: '/v1/self-limits', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('selfLimits', u) },
+  { method: 'PUT', path: '/v1/self-limits/spending', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setSpendingLimit', u, (await body(r, spendingBodySchema)).limitYen) },
+  { method: 'DELETE', path: '/v1/self-limits/spending/pending', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cancelSpendingRaise', u) },
+  { method: 'PUT', path: '/v1/self-limits/playtime', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPlaytime', u, await body(r, playtimeBodySchema)) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);
@@ -791,6 +832,43 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/review-prompt/:promptId/answer', auth: 'player', handler: async (r, p, c, u) => {
     if (!/^rp_[0-9]{1,9}$/.test(p.promptId!)) throw new AppError('NOT_FOUND', 'unknown review prompt');
     return c.player(u).invoke('reviewPromptAnswer', u, p.promptId!, (await body(r, z.object({ step: z.enum(REVIEW_STEPS) }).strict())).step);
+  } },
+  // 昇級戦と降級の猶予 (REQ-PROMO-013/014, contracts/protocol.md §68): reads and a seen mark — maintenance group `core`
+  { method: 'GET', path: '/v1/promotion', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('promotion', u) },
+  { method: 'POST', path: '/v1/promotion/ack', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ seriesId: z.string().regex(/^\d{4}-\d{2}:[A-Za-z0-9_]{1,16}:\d{1,3}$/) }).strict());
+    return c.player(u).invoke('promotionAck', u, b.seriesId);
+  } },
+  // ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69): nothing is ever granted for answering
+  { method: 'GET', path: '/v1/surveys/current', auth: 'player', handler: async (r, _p, c, u) => {
+    const placement = surveyPlacementOf(new URL(r.url).searchParams.get('placement'));
+    const now = (c.clock ?? Date.now)();
+    const live = c.ops?.surveys ? await liveSurveysCached(c.ops.surveys, now) : [];
+    const { pending, ...offer } = await c.player(u).invoke('surveyOffer', u, live, surveyFacts(r), placement, resolveLocale(r));
+    await syncSurveyAnswers(c, u, pending); // REQ-SURVEY-011: answers the ops table has not confirmed yet
+    return offer;
+  } },
+  { method: 'POST', path: '/v1/surveys/:surveyId/shown', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, surveyPlacementBody);
+    return c.player(u).invoke('surveyShown', u, await surveyOne(c, p.surveyId!), b.placement);
+  } },
+  { method: 'POST', path: '/v1/surveys/:surveyId/skip', auth: 'player', handler: async (r, p, c, u) => {
+    const b = await body(r, surveyPlacementBody);
+    return c.player(u).invoke('surveySkip', u, await surveyOne(c, p.surveyId!), b.placement);
+  } },
+  { method: 'POST', path: '/v1/surveys/:surveyId/answers', auth: 'player', handler: async (r, p, c, u) => {
+    const key = idem(r);
+    if (!key) throw new AppError('IDEMPOTENCY_KEY_REQUIRED', 'Idempotency-Key required');
+    const b = await body(r, z.object({ placement: z.enum(SURVEY_PLACEMENTS), answers: z.record(z.string(), z.unknown()) }).strict());
+    const live = await surveyOne(c, p.surveyId!);
+    const now = (c.clock ?? Date.now)();
+    if (!live || now < live.startAt) throw new AppError('NOT_FOUND', 'unknown survey');
+    const answers = validateSurveyAnswers(live.def, b.answers, surveysConfig(c.master)); // strict: 400 before anything is written
+    // an ended survey (or enabled: false) is refused by the player object as SURVEY_CLOSED — after its idempotency check, so
+    // the retry of an answer that was saved just before the close still gets its original result
+    const { pending, ...out } = await c.player(u).invoke('surveyAnswer', u, live, { placement: b.placement, answers, facts: surveyFacts(r) }, key);
+    await syncSurveyAnswers(c, u, pending);
+    return out;
   } },
   { method: 'GET', path: '/v1/horses/:horseId/career', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('horseCareer', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall', auth: 'player', handler: async (r, _p, c, u) => { const q = hallPage(r); return hall(c).mine(u, q.cursor, q.limit); } },
@@ -1254,6 +1332,20 @@ export const routes: Route[] = [
       inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
     }).strict());
     return weekly(c).submit(u, b);
+  } },
+  // 騎手の道 single-player career (REQ-CAREER-*, contracts/protocol.md §66; gate group time_attack, the submit is exempt like §31's)
+  { method: 'GET', path: '/v1/career', auth: 'player', handler: async (r, _p, c, u) => career(c).view(u, resolveLocale(r)) },
+  { method: 'POST', path: '/v1/career/races/:raceId/start', auth: 'player', handler: async (r, p, c, u) => {
+    if (!/^[a-z0-9_]{2,40}$/.test(p.raceId!)) throw new AppError('BAD_REQUEST', 'bad race id');
+    const b = await body(r, z.object({ horseId: id }).strict());
+    return career(c).start(u, p.raceId!, b.horseId, idem(r), resolveLocale(r));
+  } },
+  { method: 'POST', path: '/v1/career/submit', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({
+      sessionId: id, token: z.string().min(1).max(2048), resultHash: z.string().regex(/^[0-9a-f]{64}$/),
+      inputs: z.array(z.unknown()).max(4000), config: z.unknown().optional(),
+    }).strict());
+    return career(c).submit(u, b);
   } },
   // rewarded ads (REQ-AD-*, contracts/protocol.md §21)
   { method: 'GET', path: '/v1/ads', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('ads', u) },

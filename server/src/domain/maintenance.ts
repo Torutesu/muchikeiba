@@ -23,7 +23,8 @@ import { bettingWordsIn } from './bettingWords.js';
 export const LEGAL_WORDS_JA: readonly string[] = ['倍', 'お得', '今だけ', '残りわずか', '通常価格'];
 
 // cups: Round 16 hosted cups (/v1/cups*), a race group of their own (Round 17 integration). Roster, recap and the home's
-// next card are `core` (closed only by `all`).
+// next card are `core` (closed only by `all`). Round 22: the promotion series view and its seen mark (/v1/promotion*) are
+// `core` too — the series' races themselves are closed by a `ranked` window.
 export const MAINTENANCE_GROUPS = ['gacha', 'shop', 'ranked', 'teams', 'events', 'tournaments', 'training', 'time_attack', 'social', 'cups', 'core'] as const;
 export type MaintenanceGroup = typeof MAINTENANCE_GROUPS[number];
 /** Groups a window may name (`core` = everything not in another group; only `all` closes it). */
@@ -186,6 +187,7 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history;
  *   - the ad / analytics choices (§58: GET/PUT /v1/privacy/choices, PUT /v1/privacy/platform, POST /v1/privacy/prompt-shown);
  *   - client error reports (§60);
+ *   - the player's own spending limit and play-time reminder (§67, /v1/self-limits*);
  *   - the signed-in devices, their sign-out and the security log (§70).
  */
 export const EXEMPT_ROUTES: readonly string[] = [
@@ -195,6 +197,8 @@ export const EXEMPT_ROUTES: readonly string[] = [
   'DELETE /v1/player', 'POST /v1/player/deletion/cancel',
   'GET /v1/race/:raceId/ws',
   'POST /v1/time-attack/submit', 'POST /v1/challenges/weekly/submit', 'POST /v1/training/:sessionId/finish',
+  // Round 22 (§66, REQ-CAREER-014): a 騎手の道 run already raced on the device settles like the weekly challenge's
+  'POST /v1/career/submit',
   'POST /v1/match/cancel', 'POST /v1/events/:eventId/cancel',
   'POST /v1/analytics/events',
   'GET /v1/history/summary', 'GET /v1/history/:kind', 'POST /v1/history/support-ticket',
@@ -220,6 +224,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 21 (§63, REQ-LINK-009): opening a link answers with a maintenance / update state of its target instead of failing
   // (the link is kept; the screen says when to open it again). Making, listing and revoking links stay in group `social`.
   'POST /v1/links/resolve',
+  // Round 22 (§67, REQ-LIMIT-014): the player's own limits — lowering must work whenever a purchase can (store receipts are
+  // exempt above); a raise only starts the cool-off. Moves no coins. Not under /v1/shop so a `shop` window never closes it.
+  'GET /v1/self-limits', 'PUT /v1/self-limits/spending', 'DELETE /v1/self-limits/spending/pending', 'PUT /v1/self-limits/playtime',
   // Round 23 (§70, REQ-DEV-013): ログイン中の端末 — signing out a device is the response to an account takeover, like the
   // transfer code it is account access: never closed by a window or an old app. Moves no coins; ops stop it with progression.devices.enabled.
   'GET /v1/account/devices', 'POST /v1/account/devices/checkin', 'POST /v1/account/devices/:sessionId/signout', 'POST /v1/account/devices/signout-others',
@@ -236,7 +243,7 @@ const PREFIX_GROUPS: [string, MaintenanceGroup][] = [
   ['/v1/events', 'events'],
   ['/v1/tournaments', 'tournaments'],
   ['/v1/training', 'training'],
-  ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'],
+  ['/v1/time-attack', 'time_attack'], ['/v1/challenges', 'time_attack'], ['/v1/career', 'time_attack'], // §66: verified solo races
   ['/v1/friends', 'social'], ['/v1/invite', 'social'], ['/v1/stable', 'social'], ['/v1/rival', 'social'], ['/v1/links', 'social'],
   ['/v1/showcase', 'social'], // REQ-SHOW-016 (§62): the trainer card is a social view
   ['/v1/cups', 'cups'],

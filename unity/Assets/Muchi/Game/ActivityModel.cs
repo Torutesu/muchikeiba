@@ -74,6 +74,7 @@ namespace Muchi.Game
             [ActivityKinds.InquiryAnswered] = "お問い合わせ",
             [ActivityKinds.QchatMention] = "支部",
             [ActivityKinds.DataExportReady] = "データ",
+            [ActivityKinds.ClassPromoted] = "昇級", // Round 22 (§68)
             [ActivityKinds.NewDevice] = "アカウント",
         };
         public static readonly IReadOnlyDictionary<string, string> Icons = new Dictionary<string, string>
@@ -87,6 +88,7 @@ namespace Muchi.Game
             [ActivityKinds.InquiryAnswered] = "support",
             [ActivityKinds.QchatMention] = "chat",
             [ActivityKinds.DataExportReady] = "data",
+            [ActivityKinds.ClassPromoted] = "promotion",
             [ActivityKinds.NewDevice] = "device",
         };
 

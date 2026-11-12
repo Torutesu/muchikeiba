@@ -90,7 +90,7 @@ export async function driveSettlement(core: RaceRoomCore, meta: SettleMeta, deps
   if (core.phase === 'final' && !meta.settled && core.final) {
     const log = core.replayLog();
     if (!meta.results) {
-      meta.results = settleRace(core.config, core.final, meta.ratings, log, meta.eventId ?? null);
+      meta.results = settleRace(core.config, core.final, meta.ratings, log, meta.eventId ?? null, core.startAtMs);
       meta.pending = Object.keys(meta.results).sort();
       await deps.persist();
     }

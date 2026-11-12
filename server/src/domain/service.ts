@@ -13,7 +13,8 @@ import type { SeasonEntry } from './leaderboard.js';
 import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
-import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
+import { cancelSpendingRaise, selfLimitsDigest, selfLimitsView, setPlaytime, setSpendingLimit, type PlaytimeBody, type PlaytimeSettings } from './selfLimits.js';
+import { ageCapOf, applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
 import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
@@ -40,6 +41,8 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 
 /** Collects analytics events inside a transaction; they are emitted only if the transaction is saved. */
 export type Emit = (e: KpiEvent) => void;
+/** §67.8 `playtime_setting_change` s1 names. */
+const PLAYTIME_KPI_KEY: Record<keyof PlaytimeSettings, string> = { sessionMin: 'session', dailyMin: 'daily', quietAfterHour: 'quiet_after' };
 import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import { ensureGoal, mayContribute, playerGoalPending, playerGoalRace, playerGoalReward, playerGoalTa, playerGoalView, weekKeyOf, type GoalContribution } from './teamGoal.js';
@@ -111,6 +114,7 @@ import {
   countCodeAttempt, noteCupCommitted, playerCupsView, receiveCupClosed, receiveCupInvite, releaseCup, reserveCup, ensureCups,
   type CupClosedNotice, type CupFormat, type CupStartedNotice, type PlayerCupInvite,
 } from './hostedCups.js';
+import { abortCareerSubmit, careerView, prepareCareerSubmit, recordCareerResult, startCareerRace } from './career.js';
 import { abortChallengeSubmit, prepareChallengeSubmit, recordChallengeResult, startChallenge, weeklyChallengeView, type WchStartInput } from './weeklyChallenge.js';
 import {
   ackCeremony, hallSnapshot, hallSnapshotKey, hallViewerOf, horseCareerView, myHallView, noteHallRace, noteHallRetire, noteHallTa, noteHallTournament,
@@ -118,6 +122,7 @@ import {
 } from './hallOfFame.js';
 import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
 import { answerReviewPrompt, checkReviewPrompt, reviewPromptStatus, type ReviewCheckInput, type ReviewStep } from './reviewPrompt.js';
+import { ackPromotion, notePromotionRace, promotionEnabled, promotionView } from './promotion.js';
 import { localRemindersView } from './localNotify.js';
 import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
@@ -125,6 +130,10 @@ import {
 } from './dataExport.js';
 import { applyCheckin, adminDevicesView, checkinNeedsWrite, devicesView, logSecurity, resetAfterTransfer, revocationsOf, securityLogView, signOutDevice, signOutOthers, supportRevoke, type CheckinInput } from './devices.js';
 import { REDEEM_REPLAY_MS, ensureTransfer, assertMayIssue, formatCodeId, issueTransfer, progressOf, redeemTransfer, revokeTransfer, transferStateView, type TransferMode } from './transferCode.js';
+import {
+  answerSurvey, decideSurveyOffer, markSurveySynced, noteSurveyShown, pendingSurveyAnswers, skipSurvey, surveysConfig, SURVEY_PLACEMENTS,
+  type LiveSurvey, type SurveyAnswers, type SurveyFacts, type SurveyLang, type SurveyPlacement,
+} from './surveys.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
 /** Storage for one player's state. The Durable Object implements this with SQLite; tests use memory. */
@@ -272,7 +281,14 @@ export class PlayerService {
     }
     const draft: PlayerState = structuredClone(current);
     const now = this.d.clock();
-    rollSeason(this.d.master, draft, now);
+    const rolled = rollSeason(this.d.master, draft, now);
+    // §68 × §40 (REQ-PROMO-018): a promotion at the close is one activity entry (linked to that month's recap)
+    if (rolled.closed && rolled.from !== rolled.to && promotionEnabled(this.d.master) && rolled.seasonId) {
+      const cs = this.d.master.progression.classes;
+      if (cs.findIndex((c) => c.id === rolled.to) > cs.findIndex((c) => c.id === rolled.from)) {
+        recordActivity(this.d.master, draft, { kind: 'class_promoted', source: `class_promoted:${rolled.seasonId}`, vars: { from: rolled.from!, to: rolled.to!, via: rolled.promo?.promo === 'series' ? 'series' : 'line' }, linkId: `season:${rolled.seasonId}` }, now);
+      }
+    }
     // REQ-RECAP-002/003: a closed season / game year becomes its recap (once); §43 × §40: one activity entry per recap
     for (const rid of rollRecaps(this.d.master, draft, now)) {
       const [kind, period] = rid.split(':') as [string, string];
@@ -289,6 +305,15 @@ export class PlayerService {
     const hallBefore = this.d.onHall ? hallSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
+    // REQ-PROMO-015: what the season close did to the promotion series / the shield (rollSeason ran before emit existed)
+    if (rolled.closed && rolled.promo) {
+      const x = rolled.promo.ended;
+      if (x) emit({ name: 'promo_series_end', s1: 'season_end', s2: x.classId, s3: x.toClassId, count: x.results.filter((r) => r.top).length, value: x.results.length });
+      if (rolled.promo.shielded) {
+        const h = draft.seasonHistory.find((y) => y.seasonId === rolled.seasonId);
+        emit({ name: 'demotion_shield_used', s1: rolled.from ?? '', s2: rolled.seasonId ?? '', value: h?.points ?? 0, count: rolled.promo.graceRaces ?? 0 });
+      }
+    }
     expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
     settleExchanges(this.d.master, draft, now, giftGiver(this.d.master, draft, now, emit)); // REQ-EXCH-006 / §26.1: leftover event points → material, into the gift box
     let result: T;
@@ -366,7 +391,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s), privacyChoices: privacyChoicesBadge(m, s, now, adIneligibility(m, s, now) === null), localReminders: localRemindersView(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s), privacyChoices: privacyChoicesBadge(m, s, now, adIneligibility(m, s, now) === null), localReminders: localRemindersView(m, s, now), selfLimits: selfLimitsDigest(s, ageCapOf(m, s, now), now) };
   }
 
   async view(id: string) {
@@ -504,7 +529,16 @@ export class PlayerService {
     if (moderationOf(s, this.d.clock()) === 'banned') throw new AppError('BANNED', 'purchases are disabled for this account'); // REQ-OPS-033
     // REQ-UXS-040: no new purchases while the account is scheduled for deletion (cancel the deletion to buy)
     notDeleting(s);
-    return checkPurchaseIntent(this.d.master, s, productId, this.d.clock());
+    try {
+      return checkPurchaseIntent(this.d.master, s, productId, this.d.clock());
+    } catch (e) {
+      // REQ-LIMIT-016: a confirmation refused by the player's own limit (no state is written)
+      if (e instanceof AppError && e.code === 'SELF_LIMIT_EXCEEDED' && this.d.onKpi) {
+        const now = this.d.clock();
+        await this.writeKpi(id, s, now, [kpiRecord(s, now, { name: 'self_limit_block', s1: productId, amountYen: Number(e.details?.priceYen ?? 0) })]);
+      }
+      throw e;
+    }
   }
 
   async purchase(id: string, platform: PurchaseRecord['platform'], productId: string, receipt: string) {
@@ -628,6 +662,49 @@ export class PlayerService {
   reviewPromptAnswer(id: string, promptId: string, step: ReviewStep) {
     return this.tx(id, null, (s, now, emit) => answerReviewPrompt(s, promptId, step, now, emit));
   }
+
+  // ---- 昇級戦と降級の猶予 (REQ-PROMO-*, promotion.ts) — nothing here ever grants anything ----
+  /** REQ-PROMO-013: the series, the grace window, the rules (a read on a copy: a season close is not saved by a read). */
+  async promotion(id: string) {
+    const s = structuredClone(await this.load(id));
+    rollSeason(this.d.master, s, this.d.clock());
+    return promotionView(this.d.master, s);
+  }
+  /** REQ-PROMO-014: the result sheet of an ended series was seen (idempotent). */
+  promotionAck(id: string, seriesId: string) { return this.tx(id, null, (s) => ackPromotion(s, seriesId)); }
+
+  // ---- ゲーム内アンケート (REQ-SURVEY-*, surveys.ts, protocol §69) — nothing here ever grants anything ----
+  private async notWiped(id: string, placement?: string) {
+    // R22 integration (§69): one quiet place only (`inbox`, the お知らせ row); home / result are gone
+    if (placement !== undefined && !(SURVEY_PLACEMENTS as readonly string[]).includes(placement)) throw new AppError('BAD_REQUEST', `placement must be ${SURVEY_PLACEMENTS.join(' | ')}`);
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
+  }
+  /** REQ-SURVEY-005/011: the one survey to show here (a read) and the answers the ops table has not confirmed yet. */
+  async surveyOffer(id: string, live: LiveSurvey[], facts: SurveyFacts, placement: SurveyPlacement, lang: SurveyLang) {
+    await this.notWiped(id, placement);
+    const s = await this.load(id);
+    return { ...decideSurveyOffer(surveysConfig(this.d.master), live, s, facts, placement, lang, this.d.clock()), pending: pendingSurveyAnswers(s) };
+  }
+  /** REQ-SURVEY-007: the survey was put on screen. */
+  async surveyShown(id: string, live: LiveSurvey | null, placement: SurveyPlacement) {
+    await this.notWiped(id, placement);
+    return this.tx(id, null, (s, now, emit) => noteSurveyShown(surveysConfig(this.d.master), s, live, placement, now, emit));
+  }
+  /** REQ-SURVEY-008: one tap; never asked again. */
+  async surveySkip(id: string, live: LiveSurvey | null, placement: SurveyPlacement) {
+    await this.notWiped(id, placement);
+    return this.tx(id, null, (s, now, emit) => skipSurvey(s, live, placement, now, emit));
+  }
+  /** REQ-SURVEY-009/013: one answer per player (keyed); the segment only while analytics is effective (§58). */
+  async surveyAnswer(id: string, live: LiveSurvey | null, input: { placement: SurveyPlacement; answers: SurveyAnswers; facts: SurveyFacts }, idemKey: string | null) {
+    await this.notWiped(id, input.placement);
+    return this.tx(id, this.requireKey(idemKey), (s, now, emit) => {
+      const r = answerSurvey(surveysConfig(this.d.master), s, live, { ...input, analytics: analyticsAllowed(this.d.master, s, now) }, now, emit);
+      return { ...r, pending: pendingSurveyAnswers(s).filter((x) => x.surveyId === r.surveyId) };
+    });
+  }
+  /** REQ-SURVEY-011: the ops table has these answers. */
+  surveySynced(id: string, surveyIds: string[]) { return this.tx(id, null, (s) => markSurveySynced(s, surveyIds)); }
 
   // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
   /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */
@@ -1180,6 +1257,7 @@ export class PlayerService {
         return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0, achievements: [] as ReturnType<typeof syncCollection>, event: null };
       }
       const base0 = applyRaceResult(this.d.master, s, r, now);
+      notePromotionRace(this.d.master, s, r, now, emit); // REQ-PROMO-003..007: the series / grace window (after the points)
       noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
       noteFsugRace(this.d.master, s, r, now); // REQ-FSUG-013: friend-room / event / tournament opponents (never ranked)
@@ -2026,6 +2104,39 @@ export class PlayerService {
     return this.tx(id, null, (s, now) => notePrivacyPromptShown(this.d.master, s, privacyVersion, now, adIneligibility(this.d.master, s, now) === null));
   }
 
+  // ---------------------------------------------------------------- 使いすぎ・遊びすぎの防止 (REQ-LIMIT-*, selfLimits.ts, §67)
+  /** GET /v1/self-limits: read-only (never creates state). */
+  async selfLimits(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    return selfLimitsView(this.d.master, s, ageCapOf(this.d.master, s, now), now);
+  }
+  /** PUT /v1/self-limits/spending: lowering applies now, raising / removing after the cool-off (idempotent by content). */
+  setSpendingLimit(id: string, limitYen: number | null) {
+    return this.tx(id, null, (s, now, emit) => {
+      const age = ageCapOf(this.d.master, s, now);
+      const r = setSpendingLimit(this.d.master, s, limitYen, age, now);
+      if (r.kind) emit({ name: 'self_limit_set', s1: r.kind, amountYen: r.toYen ?? 0, value: r.fromYen ?? 0 });
+      return { applied: r.applied, view: selfLimitsView(this.d.master, s, age, now) };
+    });
+  }
+  /** DELETE /v1/self-limits/spending/pending: the waiting raise / removal is dropped (nothing waiting = no change). */
+  cancelSpendingRaise(id: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = cancelSpendingRaise(this.d.master, s, now);
+      if (r.kind) emit({ name: 'self_limit_set', s1: r.kind, amountYen: r.toYen ?? 0, value: r.fromYen ?? 0 });
+      return { applied: r.applied, view: selfLimitsView(this.d.master, s, ageCapOf(this.d.master, s, now), now) };
+    });
+  }
+  /** PUT /v1/self-limits/playtime: the reminder settings (missing keys keep their value). */
+  setPlaytime(id: string, body: PlaytimeBody) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = setPlaytime(this.d.master, s, body, now);
+      if (r.changed.length > 0) emit({ name: 'playtime_setting_change', s1: r.changed.map((k) => PLAYTIME_KPI_KEY[k]).join(','), s2: r.enabled ? 'on' : 'off' });
+      return { changed: r.changed, view: selfLimitsView(this.d.master, s, ageCapOf(this.d.master, s, now), now) };
+    });
+  }
+
   // ---------------------------------------------------------------- アクセシビリティ設定 (REQ-A11Y-*, accessibility.ts)
   /** GET /v1/settings/accessibility: read-only (defaults when never set). */
   async accessibility(id: string) { return accessibilityView(await this.load(id)); }
@@ -2136,6 +2247,36 @@ export class PlayerService {
   wchAbort(id: string, sessionId: string) { return this.tx(id, null, (s) => abortChallengeSubmit(s, sessionId)); }
   wchRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
     return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordChallengeResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
+  }
+
+  // ---- 騎手の道 single-player career (REQ-CAREER-*, contracts/protocol.md §66; orchestrated by race/career.ts) ----
+  async careerView(id: string, lang: Locale = 'ja') { return careerView(this.d.master, await this.load(id), this.d.clock(), lang); }
+  /** Keyed (a retry returns the same session). Refused for a wiped (tombstoned) account and while the deletion runs. */
+  async careerStart(id: string, raceId: string, horseId: string, idemKey: string | null = null, ruleset?: Ruleset, lang: Locale = 'ja') {
+    await this.notTombstoned(id);
+    return this.tx(id, idemKey, (s, now, emit) => {
+      notWhileDeleting(s);
+      const rng = this.d.challengeRng ?? this.d.rng;
+      const sessionId = 'k' + [0, 0, 0].map(() => rng.nextU32().toString(36)).join('');
+      return startCareerRace(this.d.master, s, raceId, horseId, sessionId, rng, now, emit, ruleset, lang);
+    });
+  }
+  async careerPrepare(id: string, sessionId: string, inputs: unknown, resultHash: string, echoedConfig: unknown) {
+    await this.notTombstoned(id);
+    return this.tx(id, null, (s, now) => { notWhileDeleting(s); return prepareCareerSubmit(this.d.master, s, sessionId, inputs, resultHash, echoedConfig, now); });
+  }
+  async careerAbort(id: string, sessionId: string) {
+    await this.notTombstoned(id);
+    return this.tx(id, null, (s) => abortCareerSubmit(s, sessionId));
+  }
+  /** REQ-CAREER-009: a result verified after the account was wiped never re-creates it (no write, NOT_FOUND). */
+  async careerRecord(id: string, sessionId: string, out: VerifierOutput, claimedHash: string) {
+    await this.notTombstoned(id);
+    return this.tx(id, null, (s, now, emit) => { notWhileDeleting(s); return recordCareerResult(this.d.master, s, sessionId, out, claimedHash, now, emit); });
+  }
+  /** A wiped account (state gone, tombstone kept) is never written again by a career call. */
+  private async notTombstoned(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('NOT_FOUND', 'account deleted');
   }
 
   // ---- teams: per-player steps, orchestrated by TeamsService (REQ-TEAM-*) ----

@@ -123,7 +123,8 @@ describe('REQ-RECAP-001/002/007 season recap', () => {
   });
 
   it('promotion is the first moment and the rank line shows the class reached', async () => {
-    const w = world();
+    // the line alone promotes here (§68 promotion series off: the old rule); the series case is in promotion.test.ts
+    const w = world({ ...m, progression: { ...m.progression, promotion: { ...m.progression.promotion!, enabled: false } } });
     const horse = await w.player('u');
     const s0 = await w.svc.state('u');
     s0.season.points = 400; // C promotes at 300
@@ -241,7 +242,7 @@ describe('REQ-RECAP-006/007 sources read by period, and the hooks', () => {
     expect(svc).toMatch(/if \(!r\.alreadySaved\) noteRecapReplaySaved/);
     expect(svc.match(/noteRecapTeamGoal\(this\.d\.master, s, goal, now\)/g)).toHaveLength(2);
     expect(svc).toMatch(/noteRecapRace\(this\.d\.master, s, r, now\)/);
-    expect(svc).toMatch(/rollSeason\(this\.d\.master, draft, now\);\n[^\n]*\n\s+for \(const rid of rollRecaps\(this\.d\.master, draft, now\)\)/); // + the recap_ready activity entry (Round 16 integration)
+    expect(svc).toMatch(/const rolled = rollSeason\(this\.d\.master, draft, now\);\n[\s\S]{0,1200}?\n[^\n]*\n\s+for \(const rid of rollRecaps\(this\.d\.master, draft, now\)\)/); // + the §68 class_promoted entry (Round 22) // + the recap_ready activity entry (Round 16 integration)
     expect(rival).toMatch(/noteRecapRival\(m, s, outcome, now\)/);
   });
 });
@@ -326,7 +327,7 @@ describe('REQ-RECAP-011/012 wording, English, privacy', () => {
     expect(en.title).toBe('Season 11/2026');
     expect(en.steps.find((x) => x.key === 'horse')!.horseName).toBe('アイボウ');
     expect(en.steps.find((x) => x.key === 'best_finish')!.value).toBe('1st');
-    expect(en.steps.find((x) => x.key === 'rank')!.notes).toEqual(['Final position: 2nd', 'Promoted from Class C to Class B']);
+    expect(en.steps.find((x) => x.key === 'rank')!.notes).toEqual(['Final position: 2nd', 'Promoted from Class C to Class B', 'Won the promotion series']); // §68: the line was reached, then two wins passed the series
     expect(localize({ t: '2026-11-09からの記録です' }, 'en', catalogFor(m)).t).toBe('Recorded since 2026-11-09');
   });
 

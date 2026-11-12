@@ -113,6 +113,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
   // round 12: かんたん操作 in English — the options screen; the ranked race below rides with the whip assist (the HUD chip)
   await show('AssistSettings'); await waitScreen('assist-settings'); await shot('assist-settings', 400);
   assert.match(await page.locator('.screen.in').innerText(), /never rides better than skilled play/i, 'assist: the fairness rule in English');
+  await page.evaluate(() => globalThis.__muchi.logic.promotion.setEnabled(false)); // round 22: the promotion series has its own block below
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('whip'));
   // round 15: アクセシビリティ in English at the standard size (a11y-flow.cjs audits the largest size in both languages)
   await show('A11ySettings'); await waitScreen('a11y-settings'); await shot('a11y-settings', 400);
@@ -304,6 +305,38 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
   }
 
+  // round 22: 昇級戦 in English (REQ-PROMO-020): the start card, the home label, the pass and fail sheets
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('PromotionResult', 'start'); await waitScreen('result'); await waitIn('.pp-card'); await shot('promotion-start', 500);
+    assert.match(await page.locator('.screen.in .pp-card').innerText(), /Promotion series begins/, 'promo: the banner in English');
+    await show('PromotionResult', 'one'); await waitScreen('result'); await waitIn('.pp-card');
+    await show('Home'); await waitScreen('home'); await waitIn('.pp-home'); await shot('promotion-home', 500);
+    await show('PromotionResult', 'passed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-pass', 500);
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Promotion to Class [A-Z] confirmed/, 'promo: the pass sheet in English');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    await show('PromotionResult', 'failed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-fail', 500);
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Not promoted this time/, 'promo: the fail sheet in English');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
+  }
+
+  // round 22: アンケート in English (REQ-SURVEY-022): the お知らせ row, each question type, the thanks state
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    // R22 integration (the user's change): the quiet row inside お知らせ is the only entry (no home card)
+    await show('Survey', 'inbox'); await waitScreen('activity'); await waitIn('.sv-row'); await shot('survey-row', 500);
+    assert.match(await page.locator('.screen.in .sv-row').innerText(), /Help us with a short survey/, 'survey: the お知らせ row in English');
+    await page.locator('.screen.in .sv-row').click(); await waitScreen('survey'); await waitIn('.sv-sheet[data-kind="scale"]'); await shot('survey-scale', 400);
+    assert.match(await page.locator('.screen.in .sv-title').innerText(), /How the whip feels/, 'survey: the title in English');
+    await page.locator('.screen.in [data-scale="3"]').click(); await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="single"]'); await shot('survey-single', 400);
+    await page.locator('.screen.in [data-option="events"]').click(); await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="multi"]'); await shot('survey-multi', 400);
+    await page.locator('.screen.in .sv-next').click(); await waitIn('.sv-sheet[data-kind="text"]'); await shot('survey-text', 400);
+    await page.locator('.screen.in .sv-next').click(); await waitScreen('survey-thanks'); await waitIn('.sv-thanks'); await shot('survey-thanks', 400);
+    await page.locator('.screen.in .sv-close').click(); await waitScreen('activity');
+    await page.evaluate(() => globalThis.__muchi.logic.surveys.clear());
+  }
+
   // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog
   {
     const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
@@ -312,6 +345,18 @@ module.exports = async function enFlow(browser, base, out, errors) {
     assert.ok(!/[぀-ヿ一-鿿]/.test(await page.locator('.screen.in .ln-upcoming').innerText()), 'notify: the upcoming reminders in English');
     await show('LnotifPrePrompt'); await waitScreen('ln-primer'); await waitIn('.ln-primer'); await shot('reminders-primer', 400);
     await page.evaluate(async () => { localStorage.removeItem('muchi.lnotif.os'); await globalThis.__muchi.logic.localNotify.setCategory('reminders', false); });
+  }
+
+  // round 22: 使いすぎ・遊びすぎの防止 in English (REQ-LIMIT-022): the screen, the refused purchase, the play-time sheet
+  {
+    const waitIn = (sel, timeout = 20000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await page.evaluate(async () => { await globalThis.__muchi.logic.selfLimits.seedDemo(); await globalThis.__muchi.logic.selfLimits.setSpending(null); });
+    await show('SelfLimits'); await waitScreen('self-limits'); await waitIn('.sl-pending'); await shot('self-limits', 500);
+    await show('SelfLimitRefused'); await waitScreen('purchase'); await waitIn('[data-state="self-limit"]'); await shot('self-limit-refused', 400);
+    assert.match(await page.locator('.screen.in .pstate').innerText(), /monthly limit you set/, 'limits: the refusal in English');
+    await show('PlaytimeSheet'); await waitScreen('playtime-sheet'); await waitIn('.pt-sheet'); await shot('playtime-sheet', 400);
+    assert.match(await page.locator('.screen.in .pt-sheet').innerText(), /Time for a short break\?/, 'playtime: the sheet in English');
+    await page.evaluate(async () => { const S = globalThis.__muchi.logic.selfLimits; await S.cancel(); await S.setPlaytime({ sessionMin: null }); localStorage.removeItem('muchi.playtime.clock'); });
   }
 
   // round 16: 厩舎の整理 in English (REQ-ORG-015): the list, the sort and filter sheets, selection, the confirmation; names as typed
@@ -335,6 +380,32 @@ module.exports = async function enFlow(browser, base, out, errors) {
     assert.match(await page.locator('.screen.in .org-refund').innerText(), /nothing/, 'roster: nothing comes back (English)');
     await page.locator('.screen.in .org-cancel').click(); await waitScreen('roster');
     await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
+  }
+
+  // round 22: 騎手の道 in English (REQ-CAREER-021): the map, the pre-race, a race, the verified result — story and titles in
+  // the master's own English, horse names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('Career'); await waitScreen('career'); await waitIn('.cr-band');
+    await shot('career-map', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Jockey's Road/, 'career: the title in English');
+    assert.match(await page.locator('.screen.in').innerText(), /The First Strike/, 'career: the chapter title from the master English');
+    await page.locator('.screen.in .cr-go').click(); await waitScreen('career-prerace'); await waitIn('.cr-prerace');
+    await shot('career-prerace', 400);
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000);
+    for (let i = 0, kicked = false, w = 0, last = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (f.departed && w < 3 && f.remainingM <= 400 && f.whips > 0 && Date.now() - last > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; last = Date.now(); }
+      if (f.departed && f.remainingM < 700 && !globalThis.__crShotEn) { globalThis.__crShotEn = 1; await shot('career-race', 0); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await waitIn('.cr-verdict');
+    await shot('career-result', 600);
+    assert.match(await page.locator('.screen.in .cr-verdict').innerText(), /^(Cleared|So close)$/, 'career: the verdict in English');
+    assert.match(await page.locator('.screen.in .cr-stars-text').innerText(), /^Stars \d\/3$/, 'career: the stars in English');
   }
 
   // round 18: 練習レース in English (REQ-PRAC-018): the setup (a lit course at night, strengths, options), a short race on the

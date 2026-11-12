@@ -33,8 +33,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // interrupt the player — at most one per session (one launch, or until the account changes), none during the FTUE. The
 // first one shown claims the session; the others stay due for a later session. When several are due at one moment the
 // table decides (highest first). Round 20's consent → reminders → review gate and Round 21's release-notes list were two
-// gates for one rule; this is the one table both sections point at.
-const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'];
+// gates for one rule; this is the one table both sections point at. R22 integration: §68's outcome sheet (earned feedback,
+// right after the release notes) joined it; §67's play-time sheet is the documented exception (the player asked for it: it
+// neither takes nor waits for the session's prompt); §69 surveys are not prompts at all (a quiet row inside お知らせ).
+const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt'];
 const sessionPrompt = {
   shown: null,
   can(kind) {
@@ -861,7 +863,7 @@ function paintHud(f) {
   if (tut) return;
   if (raceCtx.challenge) paintChallengeHud(f);
   if (raceCtx.practice) paintPracticeHud(f); // round 18
-  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
+  setText(hud.banner, `${raceCtx.ta ? 'タイムアタック' : raceCtx.career ? '騎手の道' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.trackName}　/　${!f.departed ? '発走前' : f.remainingM <= 400 ? '最後の直線' : f.remainingM >= f.distanceM - 200 ? 'スタート' : 'レース中'}`);
   hud.rein.classList.toggle('need', !!feel.kakariWarning);
   // ⑤ the field on the course oval: each runner at its share of the distance (the partner gold, on top)
   f.progress.forEach((pr, i) => {
@@ -899,10 +901,12 @@ async function RaceResult(f) {
   if (raceCtx.tutorial) return TutorialResult(f);
   if (raceCtx.ta) return show(TaResult, f);
   if (raceCtx.practice) return show(PracticeResult, f); // round 18: nothing is applied — practice grants nothing
+  if (raceCtx.career) return CareerSubmit(f); // round 22: 騎手の道 — the server judges the stars
   if (raceCtx.challenge) return ChallengeSubmit(f); // round 13: the server decides the clear
   const r = f.result;
   const finishTick = r.place > 0 ? f.finishTicks[r.place - 1] : -1;
   const passBefore = await L.passView();
+  const promoBefore = await L.promotion.view(); // round 22 (§68): which series was running before this race
   // round 11: the field met (図鑑) and whether the partner's skill fired (実績) go with the result, like a room's settlement
   // round 14 (REQ-MYRP-001): the race's confirmed inputs + hash go with the result, so it shows in マイリプレイ
   const li = JSON.parse(engine.LastRaceInputs());
@@ -912,6 +916,8 @@ async function RaceResult(f) {
   const missions = await L.missions();
   await refresh();
   const rewards = applied.ok ? applied.value : { coins: 0, seasonPoints: 0, firstWinBonus: 0 };
+  const promoAfter = await L.promotion.view();
+  raceCtx.promo = promoAfter.ok ? { view: promoAfter.value, beforeId: promoBefore.ok ? promoBefore.value.series?.id ?? null : null } : null;
   show(ResultScreen, f, rewards, passAfter.xp - passBefore.xp, passAfter, missions.ok ? missions.value : []);
 }
 /** The left result panel of 10-race-result (kicker, big place, stats, one CTA); x/y are the panel's corner. */
@@ -947,6 +953,7 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   } else {
     // round 12: the one-time かんたん操作 suggestion (REQ-ASSIST-010) on the way out, only when no offer was shown
     Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace(), () => AssistThen(() => StartRace())), p);
+    // round 22 (§69): on the way home a due survey shows as a sheet (after the offer / assist suggestion, through the gate)
     TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(Home)), p);
   }
   // ③ the rest (pass XP, missions, the full order) in a drawer
@@ -959,9 +966,89 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
   }).classList.add('rp-keep-result');
   if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
+  if (!first && raceCtx.promo) PromoResultCard(raceCtx.promo); // round 22 (§68)
   // round 23 (REQ-HL-011): the race's best moments, re-simulated from its own log (offline too)
   if (!first) { const back = () => show(ResultScreen, f, rewards, passXp, pass, missions); Ghost('見どころ', 996, 724, 274, 60, () => HighlightReel({ kind: 'result' }, back)).dataset.action = 'hl-result'; }
   EnToggle();
+}
+// ================================================================= round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
+// The ranked result shows the promotion series on the real promotion.ts rules: the start banner on the race that reached the
+// line, the pips (○ top · ● miss · · to run · – not run), the rule line, and when the series is decided the outcome sheet —
+// through the session's one-prompt gate (§58.11): when another prompt already showed this session the outcome stays on the
+// card only and the sheet waits for the home. The class still changes at the season close. Nothing is sold or granted.
+// Mirrors unity/Assets/Muchi/Game/PromotionModel.cs.
+const PROMO_GLYPH = { top: '○', miss: '●', open: '·', skip: '–' };
+const promoMarks = (x) => (x?.pips ?? []).map((p) => PROMO_GLYPH[p] ?? '·').join('');
+const promoHomeLabel = (v) => (v?.enabled && v.series?.status === 'active' && v.series.next ? `昇級戦 ${v.series.next}/${v.series.races}` : null);
+const promoRuleLine = (x) => `${x.races}戦で${x.topPlace}着以内が${x.needTop}回で突破`;
+const promoPending = (v) => !!(v?.enabled && v.series && (v.series.status === 'passed' || v.series.status === 'failed') && !v.series.seen);
+let promoDeferred = null; // the series whose sheet waited for a later session (the gate was taken on its result screen)
+function promoLog(x) { (globalThis.__muchiPromo ??= []).push(x); }
+/** The pips row: one circle per race of the series. */
+function PromoPips(x, px, py, parent, size = 34) {
+  const row = el('pp-pips', px, py, x.races * (size + 18), size, parent);
+  row.dataset.marks = promoMarks(x);
+  row.setAttribute('aria-label', promoMarks(x));
+  x.pips.forEach((p, i) => { const c = el('pp-pip ' + p, i * (size + 18), 0, size, size, row); c.dataset.pip = p; });
+  return row;
+}
+/** The card on the ranked result: start banner / progress / outcome, the rule line. */
+function PromoResultCard(ctx) {
+  const v = ctx.view, x = v?.series;
+  if (!v?.enabled || !x) return null;
+  const started = x.status === 'active' && x.results.length === 0 && x.id !== ctx.beforeId;
+  const c = Glass('Promotion series', 900, 180, 520, started ? 340 : 300, undefined, .86); c.classList.add('pp-card', 'rise');
+  c.dataset.status = started ? 'start' : x.status;
+  Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
+  const title = started ? '昇級戦 開始' : x.status === 'passed' ? `${v.toClassId}級へ昇級確定` : x.status === 'failed' ? '昇級ならず' : promoHomeLabel(v);
+  Txt(title, 28, 92, 464, 34, x.status === 'passed' || started ? GOLD : WHITE, c, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-title');
+  if (started) Txt('昇級ラインに到達。ここからが本番だ', 28, 142, 464, 16, WHITE, c, { weight: 500, nowrap: true }).classList.add('pp-lead');
+  PromoPips(x, 28, started ? 182 : 148, c);
+  Txt(promoRuleLine(x), 28, started ? 234 : 200, 464, 16, MUTED, c, { nowrap: true }).classList.add('pp-rule');
+  const foot = x.status === 'failed' && x.setbackTo != null ? `ポイントは${fmt(x.setbackTo)}ptに戻りました` : x.status === 'passed' ? 'クラスが上がるのはシーズンの締め' : `ライン ${fmt(v.line ?? 0)}pt　·　いま ${fmt(v.points)}pt`;
+  Txt(foot, 28, started ? 270 : 236, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
+  if (promoPending(v)) {
+    if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {});
+    else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); }
+  }
+  return c;
+}
+/** The outcome sheet (passed / failed). Close = seen (POST /v1/promotion/ack); the sheet never shows again for this series. */
+function PromoOutcome(v, after) {
+  const x = v.series, pass = x.status === 'passed';
+  promoLog({ sheet: x.status, id: x.id });
+  const host = cur;
+  const scrim = document.createElement('div'); scrim.className = 'scrim'; host.appendChild(scrim);
+  const d = Dialog('Promotion outcome', 760, 470); d.classList.add('pp-sheet', pass ? 'pass' : 'fail'); d.style.zIndex = 41;
+  Kicker(pass ? '昇級戦　/　突破' : '昇級戦　/　届かず', 48, 36, d, { w: 600, gold: pass });
+  Txt(pass ? `${v.toClassId}級へ昇級確定` : '昇級ならず', 48, 112, 664, 44, pass ? GOLD : WHITE, d, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-sheet-title');
+  Txt(pass ? '一閃、届いた。' : '次の一閃で取り返せ。', 48, 172, 664, 20, WHITE, d, { weight: 500, nowrap: true }).classList.add('pp-tag');
+  PromoPips(x, 48, 222, d, 40);
+  const body = pass
+    ? `シーズンの締めで${v.toClassId}級に上がります。上がった後の最初の${v.rules.graceRaces}戦は、締めで一度だけ降級しません。`
+    : `ポイントは${fmt(x.setbackTo ?? v.points)}ptに戻りました。あと${fmt(Math.max(0, (v.line ?? 0) - (x.setbackTo ?? v.points)))}ptでもう一度挑めます。`;
+  Txt(body, 48, 290, 664, 16, MUTED, d, { lh: 1.6 }).classList.add('pp-body');
+  const close = async () => {
+    const a = await L.promotion.ack(x.id);
+    promoLog({ ack: x.id, ok: a.ok });
+    scrim.remove(); d.remove();
+    after();
+  };
+  Cta('つづける', 48, 368, 330, close, d).classList.add('pp-close');
+  TextLink('昇級戦のルール', 420, 386, 220, () => HelpArticle('promotion_series', 'list', currentScreen), d).classList.add('pp-help');
+  return d;
+}
+/** Demo entry (show('PromotionResult', state)): a ranked result after the real results of the demo state. */
+async function PromoResultDemo(state = 'start', fresh = true) {
+  if (fresh) sessionPrompt.reset(); // the demo state is a player opening the app (a new session), like the review demo
+  await L.promotion.demo(state);
+  const v = await L.promotion.view();
+  await refresh();
+  const place = state === 'failed' ? 9 : state === 'start' ? 2 : state === 'one' ? 1 : 3;
+  raceCtx = { tutorial: false, trackName: '青葉競馬場 芝1600m', trackId: 'aoba_turf_1600', beginner: false, ftue: false, config: { raceId: 'demo_promo' },
+    promo: v.ok ? { view: v.value, beforeId: state === 'start' ? null : v.value.series?.id ?? null } : null };
+  const f = { result: { place, runners: 12, won: place === 1, time: '1:35.8', line: place <= 3 ? '直線の一閃が届いた' : '仕掛けが一歩遅れた', code: 'demo', tip: '', margin: '', rows: [] } };
+  return ResultScreen(f, { coins: 0, seasonPoints: 0, firstWinBonus: 0 }, 0, { level: 1, xpToNextLevel: 0 }, []);
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
   Sheet('着順と報酬', 'レース結果　/　詳細', (s, close, y) => {
@@ -1232,11 +1319,15 @@ async function Home() {
   // again on the next home. Both are decided before home is drawn; R21 integration (§58.11 = §64.6): when both are due the
   // one table decides (the consent sheet first), and neither shows once another prompt took this session.
   const comeback = await cbView();
+  // round 22 (REQ-LIMIT-011/012): the play-time reminder the player asked for, at this safe point (never through sessionPrompt)
+  const pt = await playtimeDue('home');
+  if (pt) return PlaytimeSheet(pt, Home);
   const cnsDue = await consentHomeDue();
   const firstPrompt = sessionPrompt.pick([...(comeback.active && comeback.window.showWelcome ? ['comeback_welcome'] : []), ...(cnsDue ? ['consent_pre_prompt'] : [])]);
   if (firstPrompt === 'consent_pre_prompt') return ConsentPrompt(Home, cnsDue);
   if (firstPrompt === 'comeback_welcome') return ComebackWelcome(comeback);
-  const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
+  const [missions, fw, bond, training, promoR] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null, L.promotion.view()]);
+  const promo = promoR.ok ? promoR.value : null; // round 22 (§68)
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
   // top left: season / class (④)
@@ -1245,7 +1336,7 @@ async function Home() {
   const cls = L.master.classes.find((c) => c.id === player.season.classId);
   if (unlock('season').unlocked) {
     Txt(`クラス ${player.season.classId}`, 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
-    Txt(cls?.promotePoints ? (player.season.points >= cls.promotePoints ? `${fmt(player.season.points)}pt　·　昇級ラインに到達` : `${fmt(player.season.points)}pt　·　昇級まで あと${fmt(cls.promotePoints - player.season.points)}pt`) : `${fmt(player.season.points)}pt　·　最上位クラス`, 150, 59, 300, 15, MUTED, season, { weight: 500, nowrap: true });
+    Txt(promoHomeLabel(promo) ? `${fmt(player.season.points)}pt　·　${promoHomeLabel(promo)}` : cls?.promotePoints ? (player.season.points >= cls.promotePoints ? `${fmt(player.season.points)}pt　·　昇級ラインに到達` : `${fmt(player.season.points)}pt　·　昇級まで あと${fmt(cls.promotePoints - player.season.points)}pt`) : `${fmt(player.season.points)}pt　·　最上位クラス`, 150, 59, 300, 15, MUTED, season, { weight: 500, nowrap: true });
   } else {
     Txt('ルーキー', 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
     Txt('シーズン・クラスは' + unlockText('season'), 150, 59, 300, 14, SOFT, season, { nowrap: true });
@@ -1284,7 +1375,10 @@ async function Home() {
   } else Txt('無料スカウトで相棒を迎えよう', 29, 124, 400, 18, WHITE, pc);
   pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
   // ② race: the largest, bottom right
-  Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
+  // round 22 (§68, REQ-PROMO-017): over the race button 「昇級戦 2/3」 with the pips, or the grace window, in place of the caption
+  if (promoHomeLabel(promo)) Caption(`${promoHomeLabel(promo)}　${promoMarks(promo.series)}`, 1134, 602, undefined, 17, GOLD).classList.add('tshadow', 'pp-home');
+  else if (promo?.enabled && promo.grace && player.rating.rankedRaces >= L.master.beginnerRaces) Caption(`ランク戦　·　降級の猶予 残り${promo.grace.racesLeft}戦`, 1134, 604, undefined, 15, CYAN).classList.add('tshadow', 'pp-grace');
+  else Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
@@ -1295,6 +1389,7 @@ async function Home() {
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
+  if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion_outcome')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -1347,9 +1442,10 @@ function RaceLobby(fresh = true) {
   Txt(`出走馬　/　${p?.name ?? '—'}（${STYLE_JA[p?.style] ?? ''}・${fmt(p?.distMinM ?? 0)}〜${fmt(p?.distMaxM ?? 0)}m）`, 44, 520, 520, 19, WHITE, d, { weight: 500 });
   Txt('参加費なし。報酬は着順のコイン・シーズンpt・パスXP。端末内のエンジンで走るオフライン版です（ランクの変動なし）。', 44, 566, 500, 14, SOFT, d, { lh: 1.6 });
   Cta('ランク戦に出る', 44, 640, 478, () => { advice.follow('ranked', p?.id); StartRace(null, p?.id ?? null); }, d);
-  if (!ftue) Ghost('練習レース', 44, 730, 240, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
+  if (!ftue) Ghost('練習レース', 44, 730, 150, 54, () => Practice(), d, 'quiet small').classList.add('pr-entry'); // round 18 (§50.8): after the FTUE only
+  if (!ftue) Ghost('騎手の道', 206, 730, 150, 54, () => Career(), d, 'quiet small').classList.add('cr-entry'); // round 22 (§66.9): after the FTUE, beside practice
   // round 19 (§55): watch a friend room and cheer (R19 integration: beside the practice entry, not on top of it)
-  if (!ftue) TextLink('観戦', 312, 739, 250, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
+  if (!ftue) TextLink('観戦', 368, 739, 210, () => Spectate(), d, '観戦して応援する').dataset.action = 'spectate';
   Back(Home, '戻る');
   EnToggle();
 }
@@ -1507,6 +1603,8 @@ async function Shortfall(sf, ctx, retry, back) {
     // free-only payments, the monthly limit, an unsettled refund…: the shortfall is said, nothing is sold
     const c = Card('Shortfall none', 52, 242, 976, 160, d, 'var(--text-3)');
     Txt(sf.line, 30, 34, 916, 19, WHITE, c, { weight: 500, lh: 1.6 }).dataset.line = '1';
+    // round 22 (REQ-LIMIT-006): the player's own limit — a link to the setting only
+    if (sf.blockedCode === 'SELF_LIMIT_EXCEEDED') TextLink('上限の設定', 30, 104, 300, () => SelfLimits(() => Shortfall(sf, ctx, retry, back)), c).dataset.action = 'self-limits';
   }
   Txt('購入するとこの画面の前の操作に戻ります　·　有償コインから先に使われます', 52, 494, 976, 13, SOFT, d, { nowrap: true });
   Cta('閉じる', 52, 548, 380, back, d);
@@ -1710,6 +1808,9 @@ async function PurchaseConfirm(productId, back, after) {
     Kicker('年齢確認済み', 0, 0, state, { rule: false, size: 16, color: OK });
     S(v.firstPurchaseBonus ? v.firstPurchaseBonus.label : 'はじめての購入ボーナスの対象ではありません', 34, 19, v.firstPurchaseBonus ? CYAN : DIM, { weight: 500 });
     S(v.monthlyLimitYen == null ? '今月の購入上限：なし（20歳以上）' : `今月の購入上限 ${yen(v.monthlyLimitYen)}　·　あと ${yen(v.remainingYen)}　（翌月1日に戻ります）`, 72, 19, WHITE, { weight: 500 });
+    // round 22 (REQ-LIMIT-005): the player's own limit next to the age cap, and the way to set one
+    if (v.selfLimitYen != null) S(`自分で決めた上限 ${yen(v.selfLimitYen)}　·　あと ${yen(Math.max(0, v.selfLimitYen - v.monthSpentYen))}`, 104, 16, CYAN, { weight: 500 }).dataset.selfLimit = '1';
+    TextLink('上限を設定', 760, 160, 244, () => SelfLimits(() => PurchaseConfirm(productId)), state).dataset.action = 'self-limits';
     if (v.pass) S(`有効期間：${seasonEnd(v.pass.endsAt)}まで（今シーズン限り・自動更新なし）${v.pass.remainingDays != null ? '　残り' + v.pass.remainingDays + '日' : ''}`, 110, 16, GOLD);
     if (v.allowance) S(`${v.allowance.days}日間、毎日 無償コイン${v.allowance.dailyFreeCoins}枚（自動更新なし）`, 110, 16, GOLD);
     const buy = disable(Cta('購入する（プロトタイプでは決済しません）', 492, 652, 560, () => {}, box, 'gold'));
@@ -1735,6 +1836,14 @@ async function PurchaseConfirm(productId, back, after) {
     S(`今月はあと ${yen(rem ?? 0)} まで購入できます。上限は翌月1日に戻ります。`, 50, 20, WHITE, { weight: 500 });
     S('年齢ごとの月の上限は、未成年の保護のために設けています。', 90, 15, SOFT);
     TextLink('年齢を訂正する', 0, 160, 200, () => { ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
+  } else if (r.code === 'SELF_LIMIT_EXCEEDED') {
+    // round 22 (REQ-LIMIT-005): over the player's own monthly limit — said plainly, a link to the setting, no raise suggested
+    state.dataset.state = 'self-limit';
+    const x = r.details ?? {};
+    S('自分で決めた今月の上限を超えます', 0, 28, WARN, { weight: 700 });
+    S(`自分で決めた上限 ${yen(x.selfLimitYen ?? 0)}　·　今月の支払い ${yen(x.monthSpentYen ?? 0)}　·　この商品 ${yen(x.priceYen ?? p.priceYen)}`, 50, 19, WHITE, { weight: 500 });
+    S('上限は翌月1日に戻ります。上限はご自身で決めたもので、いつでも確かめられます。', 90, 15, SOFT);
+    TextLink('上限の設定', 0, 160, 260, () => SelfLimits(() => PurchaseConfirm(productId)), state).dataset.action = 'self-limits';
   } else if (r.code === 'DELETION_PENDING') {
     state.dataset.state = 'deletion';
     S('アカウント削除の手続き中のため、購入できません', 0, 26, WARN, { weight: 700 });
@@ -2432,7 +2541,7 @@ function ChallengeResult(f, r) {
   const res = r.value, ev = res.evaluation;
   p.dataset.cleared = String(res.cleared);
   Txt(res.cleared ? 'チャレンジ達成' : 'チャレンジ失敗', 40, 112, 540, 60, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('wch-verdict');
-  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 206, 520, 20, WHITE, p, { weight: 500, nowrap: true });
+  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 214, 520, 20, WHITE, p, { weight: 500, nowrap: true });
   Hair(44, 254, 478, p);
   s.challenge.labels.forEach((l, i) => {
     const chk = ev.checks.find((c) => c.kind === l.kind) ?? ev.checks[0];
@@ -2447,6 +2556,205 @@ function ChallengeResult(f, r) {
   Txt(`端末の判定：${dev.cleared ? '達成' : '失敗'}`, 44, 574, 500, 13, SOFT, p).dataset.device = String(dev.cleared);
   Cta('一覧へ', 44, 640, 478, () => WeeklyChallenge(s.challengeId), p);
   TextLink('もう一度', 44, 734, 120, () => WeeklyChallengeRace(s.challengeId, raceCtx.horseId ?? null), p);
+  EnToggle();
+}
+
+// ================================================================= round 22: 騎手の道 (REQ-CAREER-*, contracts/protocol.md §66)
+// The single-player career on the real server rules (MuchiLogic: the map from career.json, the unlock order, the issued
+// config with the CPU field at the chapter cap, no skills) and the real engine (WASM ChallengeRun: the career race is a
+// challenge-mode config with raceId car_…). The device submits only its inputs; the "server" re-simulates its own replay
+// log in the WASM verifier and judges every star. Mirrors unity/Assets/Muchi/Game/CareerModel.cs. ムチ一閃 tone: the
+// chapters as a photoreal vertical road (the summit at the top), translucent navy panels, cyan kickers, one cyan CTA ».
+// Stars are shapes and text (「★★☆　星 2/3」, never colour alone, §41); nothing blinks. No energy, no paid continue.
+const careerState = { sel: null, view: null, session: null };
+const CAREER_ART = { dawn: 'Art/Courses/spring-course', rain: 'Art/Weather/rain', night: 'Art/Weather/cloudy', north: 'Art/Weather/fog', summit: 'Art/Courses/autumn-course' };
+const careerArt = (k) => CAREER_ART[k] ?? 'Art/first-ride';
+const CAREER_ERR = {
+  CAREER_LOCKED: '前のレースをクリアすると開きます',
+  CAREER_LIMIT_REACHED: '今日はここまで。4:00からまた走れます。',
+  CAREER_SESSION_EXPIRED: '時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。',
+  CAREER_SESSION_USED: 'このレースは記録済みです。',
+  CAREER_RESULT_MISMATCH: 'レースの記録を確認できませんでした。もう一度挑戦してください。',
+};
+const CAREER_RULES = 'どの馬も章ごとの能力の上限にそろえ、固有スキルは使いません。相棒でも上限まで届きます。報酬は初クリアと星ごとに一度だけ。何度でも無料でやり直せます。';
+const careerLang = () => (isJa() ? 'ja' : 'en');
+const careerStars = (have, max) => `${'★'.repeat(Math.min(have, max))}${'☆'.repeat(Math.max(0, max - have))}`;
+const careerItem = (id) => (id === 'breeding_material' ? '配合素材' : id === 'training_apple' ? 'りんごのおやつ' : id);
+const careerReward = (r) => [r?.freeCoins ? `無償コイン${r.freeCoins}枚` : null, ...(r?.items ?? []).map((i) => `${careerItem(i.itemId)}×${i.qty}`)].filter(Boolean).join('・');
+const careerCourse = (r) => `${r.surface === 'dirt' ? 'ダート' : '芝'}${r.distanceM}m・${WCH_GOING[r.going] ?? '良'}${r.night ? '・ナイター' : ''}`;
+const careerField = (r) => `${r.fieldSize}頭立て・CPU Lv${r.cpuLevel}${r.cpuStyles?.length ? `・相手は${r.cpuStyles.map((x) => STYLE_JA[x] ?? x).join('・')}` : ''}`;
+function careerFind(v, raceId) {
+  for (const [ci, ch] of v.chapters.entries()) { const ri = ch.races.findIndex((r) => r.id === raceId); if (ri >= 0) return { ch, ci, race: ch.races[ri], ri }; }
+  return null;
+}
+async function careerLoad() {
+  const r = await L.career(careerLang());
+  if (!r.ok || !r.value.enabled) return null;
+  careerState.view = r.value;
+  return r.value;
+}
+
+/** The map: chapters as a vertical road (chapter 1 at the bottom, the summit at the top) and the selected race. */
+async function Career(selectId) {
+  currentScreen = () => Career(selectId ?? careerState.sel);
+  const v = await careerLoad();
+  await refresh();
+  if (!v) { toast('騎手の道はオンラインで遊べます。練習レースはオフラインでも遊べます'); RaceLobby(); return; }
+  if (selectId) careerState.sel = selectId;
+  if (!careerFind(v, careerState.sel)) careerState.sel = v.nextRaceId ?? v.chapters[v.chapters.length - 1].races.at(-1).id;
+  const at = careerFind(v, careerState.sel);
+  Clear('career'); SetArt('Art/title-screen', false); Shade('left');
+  TopBar(`騎手の道　/　星 ${v.totalStars}/${v.maxStars}`, `クリア ${v.clearedRaces}/${v.totalRaces}　·　前のレースをクリアすると開きます　·　何度でも無料でやり直せます`);
+  // ① the road: one band per chapter, the summit on top; the road line runs behind the bands
+  const lp = Glass('Career road', 36, 134, 760, 676, undefined, .86);
+  lp.classList.add('cr-road');
+  const road = el('cr-path', 58, 24, 6, 628, lp); road.dataset.name = 'Road';
+  const n = v.chapters.length, bandH = Math.floor((628 - (n - 1) * 8) / n);
+  v.chapters.forEach((ch, ci) => {
+    const y = 24 + (n - 1 - ci) * (bandH + 8);
+    const band = Card('Chapter ' + ch.id, 24, y, 712, bandH, lp, ch.cleared ? GOLD : ch.unlocked ? CYAN : 'var(--text-4)');
+    band.classList.add('cr-band'); band.dataset.chapter = ch.id; band.dataset.unlocked = String(ch.unlocked);
+    if (!ch.unlocked) band.classList.add('cr-locked');
+    ArtImage(careerArt(ch.art), 0, 0, 150, bandH, band, 'cover cr-art');
+    Txt(`第${ci + 1}章`, 168, 12, 120, 13, CYAN, band, { weight: 700, ls: '.18em', nowrap: true });
+    Txt(ch.title, 168, 32, 330, 20, WHITE, band, { weight: 700, ls: '.04em', nowrap: true });
+    const st = Txt(`星 ${ch.stars}/${ch.maxStars}`, 520, 14, 176, 14, ch.cleared ? GOLD : MUTED, band, { weight: 700, align: 'right', nowrap: true });
+    st.classList.add('cr-chstars');
+    if (!ch.unlocked) Txt('前の章をクリアすると開きます', 168, bandH - 34, 520, 13, SOFT, band, { nowrap: true });
+    else ch.races.forEach((r, ri) => {
+      const p = r.progress, w = 128;
+      const node = Btn(r.title, 168 + ri * (w + 6), bandH - 58, w, 48, () => Career(r.id), 'ghost small cr-node' + (r.id === careerState.sel ? ' sel' : '') + (p.unlocked ? '' : ' locked') + (r.id === v.nextRaceId ? ' next' : ''), band,
+        p.unlocked ? `${careerStars(p.stars.length, r.objectives.length)}` : '🔒');
+      node.dataset.race = r.id; node.dataset.stars = String(p.stars.length); node.dataset.cleared = String(p.cleared);
+      node.setAttribute('aria-label', `第${ri + 1}戦 ${r.title}　星 ${p.stars.length}/${r.objectives.length}`);
+    });
+  });
+  // ② the selected race: story, conditions, objectives with rewards, one CTA
+  const { ch, ci, race, ri } = at;
+  const p = race.progress;
+  const rp = Glass('Career race', 816, 134, 748, 676, undefined, .88);
+  rp.dataset.race = race.id; rp.classList.add('cr-detail');
+  Kicker(`第${ci + 1}章　${ch.title}　/　第${ri + 1}戦`, 36, 26, rp, { w: 676 });
+  Txt(race.title, 36, 92, 520, 32, WHITE, rp, { ls: '.06em', nowrap: true });
+  const sb = Txt(`${careerStars(p.stars.length, race.objectives.length)}　星 ${p.stars.length}/${race.objectives.length}`, 532, 100, 180, 16, p.cleared ? GOLD : MUTED, rp, { weight: 700, align: 'right', nowrap: true });
+  sb.classList.add('cr-race-stars');
+  Txt(`${careerCourse(race)}　·　${careerField(race)}`, 36, 144, 676, 15, GOLD, rp, { weight: 700, nowrap: true });
+  const story = Txt(race.story.before, 36, 178, 676, 16, WHITE, rp, { lh: 1.7 });
+  story.classList.add('cr-story');
+  Hair(36, 268, 676, rp);
+  Kicker('目標', 36, 284, rp, { rule: false, size: 14 });
+  race.objectives.forEach((o, i) => {
+    const y = 314 + i * 52;
+    const has = p.stars.includes(o.star);
+    const paid = o.star === 1 ? p.rewarded.clear : o.star === 2 ? p.rewarded.star2 : p.rewarded.star3;
+    const line = Txt(`${has ? '★' : '☆'}　星${o.star}　${o.labels.map((l) => l.text).join('・')}`, 36, y, 440, 17, has ? GOLD : WHITE, rp, { weight: 700, nowrap: true });
+    line.classList.add('cr-obj'); line.dataset.star = String(o.star); line.dataset.ok = String(has);
+    if (o.reward) Txt(paid ? '受け取り済み' : `報酬：${careerReward(o.reward)}`, 484, y + 2, 228, 13, paid ? SOFT : MUTED, rp, { align: 'right', nowrap: true });
+  });
+  if (p.attempts) Txt(`挑戦 ${p.attempts}回${p.bestPlace ? `・最高 ${p.bestPlace}着` : ''}`, 36, 476, 420, 13, SOFT, rp, { nowrap: true }).classList.add('cr-progress');
+  if (p.unlocked) Cta('出走前へ', 36, 512, 440, () => CareerPreRace(race.id), rp).classList.add('cr-go');
+  else { disable(Cta('出走前へ', 36, 512, 440, () => {}, rp)).classList.add('cr-go'); Txt('前のレースをクリアすると開きます', 36, 592, 440, 13, SOFT, rp, { nowrap: true }).classList.add('cr-locked-note'); }
+  TextLink('騎手の道とは（ヘルプ）', 496, 526, 216, () => HelpArticle(L.helpContext('career'), 'context', () => Career(race.id)), rp).dataset.helpContext = 'career';
+  Txt(CAREER_RULES, 36, 612, 676, 12, SOFT, rp, { lh: 1.55 }).classList.add('cr-rules');
+  Back(() => RaceLobby(), 'BACK', 40, 834);
+  globalThis.__muchi && (globalThis.__muchi.career = { sel: race.id, next: v.nextRaceId, totalStars: v.totalStars });
+}
+
+/** Pre-race: the chapter's photo, the story before the race, the horse at the chapter cap, the objectives, the gate. */
+async function CareerPreRace(raceId) {
+  currentScreen = () => CareerPreRace(raceId);
+  const v = careerState.view ?? (await careerLoad());
+  const at = v && careerFind(v, raceId);
+  if (!at) return Career();
+  const { ch, ci, race, ri } = at;
+  const h = partner();
+  Clear('career-prerace'); SetArt(careerArt(ch.art), false); Shade('left');
+  const d = Glass('Career pre-race', 36, 48, 820, 804, undefined, .9); d.classList.add('rise', 'cr-prerace');
+  Kicker(`騎手の道　/　第${ci + 1}章　第${ri + 1}戦`, 44, 52, d, { w: 732 });
+  Txt(race.title, 44, 122, 732, 40, WHITE, d, { ls: '.06em', nowrap: true });
+  Txt(race.story.before, 44, 196, 732, 20, WHITE, d, { lh: 1.75 }).classList.add('cr-story');
+  Hair(44, 330, 732, d);
+  Txt(`${careerCourse(race)}　·　${careerField(race)}`, 44, 352, 732, 16, GOLD, d, { weight: 700, nowrap: true });
+  Txt(`出走馬　${h?.name ?? '—'}（${STYLE_JA[h?.style] ?? ''}）`, 44, 392, 732, 18, WHITE, d, { weight: 500, nowrap: true }).classList.add('cr-horse');
+  Txt(`能力は章の上限 ${fmt(race.statCap)} にそろえます　·　固有スキルなし`, 44, 428, 732, 14, MUTED, d, { nowrap: true });
+  race.objectives.forEach((o, i) => Txt(`${race.progress.stars.includes(o.star) ? '★' : '☆'}　星${o.star}　${o.labels.map((l) => l.text).join('・')}`, 44, 476 + i * 36, 732, 16, i === 0 ? WHITE : MUTED, d, { weight: 700, nowrap: true }).classList.add('cr-pre-obj'));
+  Cta('ゲートへ', 44, 640, 478, () => CareerRace(race.id), d).classList.add('cr-gate');
+  TextLink('地図に戻る', 548, 654, 228, () => Career(race.id), d).dataset.action = 'career-map';
+  EnToggle();
+}
+
+async function CareerRace(raceId) {
+  await viewReady;
+  const h = partner();
+  const st = await L.careerStart(raceId, h?.id, careerLang());
+  if (!st.ok) { toast(CAREER_ERR[st.code] ?? st.message); Career(raceId); return; }
+  const s = st.value;
+  careerState.session = s;
+  raceInfo = JSON.parse(engine.StartChallenge(JSON.stringify(s.config), s.playerSlot, JSON.stringify(s.conditions)));
+  // the clear objective drives the challenge HUD (one line, live, red once it can no longer be met)
+  const shim = { challenge: { labels: s.race.objectives[0].labels, conditions: s.conditions, title: s.race.title } };
+  raceCtx = { tutorial: false, ta: false, challenge: shim, career: s, horseId: h?.id, trackId: s.config.track.id, trackName: wchTrack(s.config.track.id), config: s.config };
+  view.useRig = true; view.start(raceInfo, equippedPartner());
+  BuildRaceScreen();
+  hud.challenge = Glass('Career HUD', 33, 172, 450, 24 + shim.challenge.labels.length * 34, undefined, .74);
+  hud.challenge.classList.add('wch-hud', 'cr-hud');
+  hud.chLines = shim.challenge.labels.map((l, i) => { const t = Txt(l.text, 18, 12 + i * 34, 414, 17, WHITE, hud.challenge, { weight: 700, nowrap: true }); t.dataset.kind = l.kind; t.dataset.ok = 'true'; return t; });
+  if (globalThis.__muchi) globalThis.__muchi.careerSession = s;
+}
+
+/** The race has finished: submit the run; the logic re-simulates its own log in the WASM verifier and judges the stars. */
+async function CareerSubmit(f) {
+  const s = raceCtx.career, run = f.challengeRun;
+  const r = await L.careerSubmit(s.sessionId, run.inputs, run.hash, (log) => engine.VerifyReplay(log));
+  if (globalThis.__muchi) globalThis.__muchi.lastCareer = r.ok ? r.value : { error: r.code };
+  await refresh();
+  await careerLoad();
+  show(CareerResult, f, r);
+}
+
+function CareerResult(f, r) {
+  const s = raceCtx.career ?? careerState.session, dev = f.challengeRun;
+  const v = careerState.view;
+  Clear('career-result'); SetArt(r.ok && r.value.cleared ? 'Art/race-result' : careerArt(careerFind(v, s.raceId)?.ch.art));
+  const p = ResultPanel(`騎手の道　/　${s.race.title}`);
+  p.classList.add('cr-result');
+  if (!r.ok) {
+    Txt('記録できませんでした', 40, 118, 540, 40, WHITE, p, { weight: 700 });
+    Txt(CAREER_ERR[r.code] ?? r.message, 44, 190, 520, 17, MUTED, p, { lh: 1.6 });
+    Cta('騎手の道へ', 44, 640, 478, () => Career(s.raceId), p);
+    EnToggle();
+    return;
+  }
+  const res = r.value, ev = res.evaluation, max = s.race.objectives.length;
+  p.dataset.cleared = String(res.cleared);
+  Txt(res.cleared ? 'クリア' : 'あと一歩', 40, 128, 300, 54, res.cleared ? GOLD : WHITE, p, { weight: 700, ls: '.04em', lh: 1.2 }).classList.add('cr-verdict');
+  const big = Txt(careerStars(res.stars.length, max), 330, 132, 230, 40, GOLD, p, { weight: 700, align: 'right', nowrap: true });
+  big.classList.add('cr-stars'); big.setAttribute('aria-hidden', 'true');
+  Txt(`星 ${res.stars.length}/${max}`, 330, 182, 230, 15, MUTED, p, { weight: 700, align: 'right', nowrap: true }).classList.add('cr-stars-text');
+  Txt(`${ev.place ? ev.place + '着' : '完走できず'}　·　${ev.timeMs != null ? fmtMs(ev.timeMs) : '—'}　·　ムチ ${ev.whips}回`, 44, 206, 520, 20, WHITE, p, { weight: 500, nowrap: true });
+  Hair(44, 250, 478, p);
+  s.race.objectives.forEach((o, i) => {
+    const sr = res.objectives.find((x) => x.star === o.star);
+    const row = Txt(`${sr?.ok ? '○' : '×'}　星${o.star}　${o.labels.map((l) => l.text).join('・')}${sr?.newly ? '　NEW' : ''}`, 44, 270 + i * 38, 520, 18, sr?.ok ? OK : RED, p, { weight: 700, nowrap: true });
+    row.dataset.ok = String(!!sr?.ok); row.dataset.star = String(o.star); row.classList.add('cr-check');
+  });
+  let y = 290 + max * 38;
+  for (const g of res.rewards) { Txt(`報酬：${careerReward(g.reward)}`, 44, y, 520, 17, GOLD, p, { weight: 700, nowrap: true }).classList.add('cr-reward'); y += 30; }
+  const next = res.unlockedRaceId && careerFind(v, res.unlockedRaceId);
+  if (next) { Txt(`次のレース「${next.race.title}」が開きました`, 44, y, 520, 16, WHITE, p, { weight: 500, nowrap: true }).classList.add('cr-unlock'); y += 30; }
+  if (res.chapterCleared) { Txt(`第${careerFind(v, res.raceId).ci + 1}章 クリア`, 44, y, 520, 18, GOLD, p, { weight: 700, nowrap: true }).classList.add('cr-chapter'); y += 30; }
+  if (!res.cleared) Txt('何度でも無料でやり直せます', 44, y, 520, 15, MUTED, p, { nowrap: true }).classList.add('cr-retry-note');
+  Txt('判定はサーバーが同じエンジンで再計算して行います。', 44, 560, 500, 13, SOFT, p, { lh: 1.6 });
+  Txt(`端末の判定：${dev.cleared ? 'クリア' : 'あと一歩'}`, 44, 586, 500, 13, SOFT, p).dataset.device = String(dev.cleared);
+  Cta('騎手の道へ', 44, 640, 478, () => Career(next ? res.unlockedRaceId : s.raceId), p).classList.add('cr-back');
+  TextLink('もう一度', 44, 734, 120, () => CareerPreRace(s.raceId), p).dataset.action = 'career-retry';
+  // the story's closing line after a clear (right, on the photo)
+  if (res.cleared) {
+    const after = Glass('Career story', 700, 640, 864, 160, undefined, .84);
+    after.classList.add('rise', 'cr-after');
+    Kicker('その後', 32, 22, after, { rule: false, size: 14 });
+    Txt(s.race.story.after, 32, 56, 800, 20, WHITE, after, { lh: 1.7 });
+  }
   EnToggle();
 }
 
@@ -3383,7 +3691,7 @@ async function Demo(kind) {
   L.reset();
   ftue = false; // every demo state is a player past the first run
   // R20 integration (§58.11): a demo state is a fresh player opening the app — a new session for the one-prompt rule
-  sessionPrompt.reset(); revPrompted = false;
+  sessionPrompt.reset(); revPrompted = false; svSession = null;
   document.querySelectorAll('.toast').forEach((t) => t.remove());
   for (const k of ['muchi.partner', 'muchi.notify.primer', 'muchi.link.prompt', 'muchi.link.firstPurchase', 'muchi.link.provider', 'muchi.proto.taFriends', 'muchi.att']) { try { localStorage.removeItem(k); } catch { /* */ } }
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('muchi.proto.ta.')) localStorage.removeItem(k); } catch { /* */ }
@@ -4139,6 +4447,156 @@ async function ReviewDemo(style = 'native') {
   const o = await reviewMoment('first_win');
   if (o === 'skipped') { toast('今回は依頼しません'); Home(); }
   return o;
+}
+
+// ================================================================= round 22: ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69)
+// Ops ask a few short questions; the real surveys.ts rules decide (never in the FTUE, a cool-down between surveys, one at a
+// time) and the real ops store keeps the answers. R22 integration (the user's change): never in a prominent place, never an
+// interruption — the ONLY entry is a quiet row inside お知らせ (「アンケートにご協力ください ›」, a small dot while unread; no home
+// card, no sheet after a race result, nothing on the home bell's number, not in the §58.11 prompt table). Skip is one tap and
+// that survey never comes back. Nothing is granted for answering. Mirrors unity SurveyModel.cs.
+const SV_LANG = () => (isJa() ? 'ja' : 'en');
+const SV_KEY = 'muchi.survey.key.';
+let svSession = null; // { id, placement, answers, index, key, after }
+function svLog(x) { (globalThis.__muchiSurvey ??= []).push(x); }
+/** The お知らせ row: { survey, unread } or null (the reason is logged). A read: nothing is counted. */
+async function svRow() {
+  if (ftue) { svLog({ placement: 'inbox', skipped: 'ftue' }); return null; }
+  const r = await L.surveys.offer('inbox', SV_LANG());
+  if (!r.ok || !r.value.survey) { svLog({ placement: 'inbox', skipped: r.ok ? r.value.reason : r.code }); return null; }
+  return { survey: r.value.survey, unread: r.value.unread };
+}
+/** The player tapped the row: the sheet opens (and the show is counted). */
+function SurveyOpen(s, after) {
+  let key = null; try { key = localStorage.getItem(SV_KEY + s.id); } catch { /* */ }
+  svSession = { id: s.id, placement: 'inbox', answers: {}, index: 0, key, after };
+  L.surveys.shown(s.id, 'inbox').then((r) => svLog({ shown: s.id, placement: 'inbox', ok: r.ok }));
+  return SurveySheet();
+}
+async function svSkip() {
+  const v = svSession; if (!v) return;
+  svSession = null;
+  const r = await L.surveys.skip(v.id, v.placement);
+  svLog({ skip: v.id, ok: r.ok });
+  try { localStorage.removeItem(SV_KEY + v.id); } catch { /* */ }
+  (v.after ?? Activity)();
+}
+const SV_SCALE = [1, 2, 3, 4, 5];
+/** The sheet: one question per page (1つ選ぶ / いくつでも / 1〜5 / 自由な文), skip on every page, とばす for optional ones. */
+function SurveySheet() {
+  const v = svSession;
+  if (!v) return Activity();
+  const s = L.surveys.view(v.id, SV_LANG(), v.placement);
+  if (!s) { svSession = null; return (v.after ?? Activity)(); }
+  currentScreen = SurveySheet;
+  Clear('survey'); SetArt('Art/home-paddock', false); Shade('dim');
+  const q = s.questions[v.index];
+  const d = Dialog('Survey', 1040, 700, { y: 100 });
+  d.classList.add('sv-sheet'); d.dataset.survey = s.id; d.dataset.q = q.id; d.dataset.kind = q.kind;
+  Kicker('アンケート', 48, 32, d, { w: 600, size: 16 });
+  Txt(s.title, 48, 96, 760, 16, MUTED, d, { weight: 500, nowrap: true }).classList.add('sv-title');
+  Txt(`${v.index + 1} / ${s.questions.length}`, 832, 96, 160, 16, CYAN, d, { weight: 700, align: 'right', cls: 'num', nowrap: true }).classList.add('sv-progress');
+  Txt(q.text, 48, 132, 944, 26, WHITE, d, { weight: 700, lh: 1.35 }).classList.add('sv-question');
+  if (!q.required) Txt('任意', 48, 210, 200, 13, SOFT, d, { weight: 700, ls: '.12em' }).classList.add('sv-optional');
+  const a = v.answers;
+  const redraw = () => SurveySheet();
+  let nextBtn = null;
+  const area = el('sv-area', 48, 240, 944, 330, d);
+  if (q.kind === 'single' || q.kind === 'multi') {
+    if (q.kind === 'multi') Txt(`${q.maxChoices}つまで選べます`, q.required ? 0 : 120, -30, 600, 13, SOFT, area, { nowrap: true }).classList.add('sv-note'); // beside 任意
+    const two = q.options.length > 3;
+    q.options.forEach((o, i) => {
+      const on = q.kind === 'single' ? a[q.id] === o.id : (a[q.id] ?? []).includes(o.id);
+      const b = Btn(o.text, two ? (i % 2) * 476 : 0, (two ? Math.floor(i / 2) : i) * 76, two ? 468 : 944, 64, () => {
+        if (q.kind === 'single') a[q.id] = o.id;
+        else {
+          const cur2 = a[q.id] ?? [];
+          if (cur2.includes(o.id)) a[q.id] = cur2.filter((x) => x !== o.id);
+          else if (cur2.length < q.maxChoices) a[q.id] = [...cur2, o.id];
+          else { toast(`${q.maxChoices}つまで選べます`); return; }
+          if (!a[q.id].length) delete a[q.id];
+        }
+        redraw();
+      }, 'choice sv-option' + (on ? ' on' : ''), area);
+      b.dataset.option = o.id;
+    });
+  } else if (q.kind === 'scale') {
+    SV_SCALE.forEach((n, i) => {
+      const b = Btn(String(n), i * 190, 20, 174, 96, () => { a[q.id] = n; redraw(); }, 'choice sv-scale' + (a[q.id] === n ? ' on' : ''), area);
+      b.dataset.scale = String(n); b.style.fontSize = '30px';
+    });
+    Txt(q.labels.low, 0, 132, 400, 15, MUTED, area, { weight: 500 }).classList.add('sv-low');
+    Txt(q.labels.high, 544, 132, 400, 15, MUTED, area, { weight: 500, align: 'right' }).classList.add('sv-high');
+  } else {
+    const box = el('fieldbox', 0, 0, 944, 190, area);
+    const ta = document.createElement('textarea');
+    ta.className = 'field sv-text'; ta.value = a[q.id] ?? ''; ta.placeholder = T('名前やメールアドレスなどは書かないでください'); ta.setAttribute('aria-label', q.text);
+    Object.assign(ta.style, { left: '18px', top: '10px', width: '906px', height: '168px', fontSize: '18px', resize: 'none', lineHeight: '1.5' });
+    const counter = Txt('', 644, 204, 300, 14, MUTED, area, { align: 'right', cls: 'num', nowrap: true });
+    counter.classList.add('sv-counter');
+    const max = q.maxLength;
+    const count = () => {
+      const n = [...ta.value].length;
+      if (ta.value.trim()) a[q.id] = ta.value; else delete a[q.id];
+      counter.textContent = isJa() ? `あと${max - n}文字` : `${max - n} characters left`;
+      counter.style.color = n > max ? 'var(--danger)' : '';
+      nextBtn?.classList.toggle('disabled', n > max);
+      if (nextBtn) { const l2 = a[q.id] !== undefined ? (v.index === s.questions.length - 1 ? '送る' : '次へ') : 'とばす'; nextBtn.dataset.label = l2; nextBtn.querySelector('span').textContent = T(l2); nextBtn.dataset.action = l2 === '送る' ? 'send' : l2 === 'とばす' ? 'pass' : 'next'; }
+    };
+    ta.addEventListener('input', count); box.appendChild(ta);
+    Txt('名前やメールアドレスなどは書かないでください', 0, 204, 600, 13, SOFT, area, { nowrap: true }).classList.add('sv-hint');
+    queueMicrotask(count);
+  }
+  // the footer: later (back to お知らせ, the row stays) — skip (one tap) — back — next / pass / send
+  TextLink('あとで', 48, 600, 160, () => { const a2 = v.after ?? Activity; svSession = null; a2(); }, d).classList.add('sv-later');
+  TextLink('スキップ', 48, 640, 160, () => svSkip(), d).classList.add('sv-skip');
+  if (v.index > 0) Ghost('戻る', 456, 604, 180, 64, () => { v.index--; redraw(); }, d, 'small sv-back');
+  const last = v.index === s.questions.length - 1;
+  const has = a[q.id] !== undefined;
+  const label = !has && !q.required ? 'とばす' : last ? '送る' : '次へ';
+  const go = async () => {
+    if (!last) { v.index++; return redraw(); }
+    return svSend(s);
+  };
+  nextBtn = Cta(label, 660, 600, 332, go, d, 'small sv-next');
+  if (q.required && !has) disable(nextBtn);
+  nextBtn.dataset.action = label === '送る' ? 'send' : label === 'とばす' ? 'pass' : 'next';
+  EnToggle();
+}
+async function svSend(s) {
+  const v = svSession;
+  if (!v.key) { v.key = `c:/v1/surveys/answers:${s.id}:${Date.now().toString(36)}`; try { localStorage.setItem(SV_KEY + s.id, v.key); } catch { /* */ } }
+  const r = await L.surveys.answer(s.id, v.placement, v.answers, v.key);
+  svLog({ answer: s.id, ok: r.ok, code: r.ok ? null : r.code });
+  if (r.ok || ['SURVEY_CLOSED', 'NOT_FOUND', 'NOT_ELIGIBLE', 'CONFLICT'].includes(r.code)) { try { localStorage.removeItem(SV_KEY + s.id); } catch { /* */ } }
+  if (!r.ok) {
+    if (['SURVEY_CLOSED', 'NOT_FOUND', 'NOT_ELIGIBLE', 'CONFLICT'].includes(r.code)) { svSession = null; toast('このアンケートは終了しました'); return (v.after ?? Activity)(); }
+    toast(r.message); return; // keep the sheet and the key: the player may send again
+  }
+  svSession = null;
+  return SurveyThanks(v.after ?? Activity);
+}
+/** The thanks state: one line, nothing granted, no effect. */
+function SurveyThanks(after = Activity) {
+  currentScreen = () => SurveyThanks(after);
+  Clear('survey-thanks'); SetArt('Art/home-paddock', false); Shade('dim');
+  const d = Dialog('Survey thanks', 720, 360);
+  d.classList.add('sv-thanks');
+  Kicker('アンケート', 48, 36, d, { w: 400, size: 16 });
+  Txt('ありがとうございました', 48, 112, 624, 32, WHITE, d, { weight: 700, nowrap: true });
+  Txt('いただいた声は、これからのムチ一閃づくりに使います。', 48, 172, 624, 16, MUTED, d, { lh: 1.6 });
+  Ghost('閉じる', 48, 256, 220, 60, () => after(), d, 'small sv-close');
+  EnToggle();
+}
+/** Demo entry (show('Survey', 'inbox' | 'sheet' | 'thanks')): ops published a survey; a settled player opens お知らせ. */
+async function SurveyDemo(where = 'inbox') {
+  await L.surveys.demo();
+  ftue = false; svSession = null;
+  await refresh();
+  if (where === 'thanks') return SurveyThanks(Activity);
+  if (where === 'sheet') { const r = await svRow(); return r ? SurveyOpen(r.survey, Activity) : Activity(); }
+  actState.cursor = null; actState.stack = [];
+  return Activity();
 }
 
 // ================================================================= round 16: 厩舎の整理 (REQ-ORG-*, contracts/protocol.md §44)
@@ -6967,7 +7425,7 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ', new_device: 'アカウント' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ', class_promoted: '昇級', new_device: 'アカウント' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
@@ -7042,8 +7500,16 @@ async function Activity() {
   Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
   // R21 integration (§65): お知らせ › 予定表 (the home's bell is one tap from home)
-  TextLink('予定表', 36, 520, 376, () => Calendar(Activity), d, '予定表 ›').dataset.action = 'calendar';
-  Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  TextLink('予定表', 36, 500, 376, () => Calendar(Activity), d, '予定表 ›').dataset.action = 'calendar';
+  // R22 integration (§69, the user's change): the ONLY survey entry — a quiet row here, a small dot while unread (never a
+  // badge or a count on the home screen, never a card / sheet / prompt elsewhere)
+  const sv = await svRow();
+  if (sv && cur?.dataset.screen === 'activity') {
+    const row = TextLink('アンケートにご協力ください', 36, 540, 376, () => SurveyOpen(sv.survey, Activity), d, 'アンケートにご協力ください ›');
+    row.dataset.action = 'survey'; row.classList.add('sv-row'); row.dataset.unread = sv.unread ? '1' : '0';
+    if (sv.unread) el('act-dot sv-dot', 18, 553, 10, 10, d);
+  }
+  Cta('ホームへ', 36, 596, 376, () => Home(), d, 'small');
   Back(Home, 'ホームへ', 40, 834);
 }
 
@@ -7546,7 +8012,10 @@ function TransferDone(v) {
 function deviceAccountChanged() {
   lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
   try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
-  revPrompted = false;
+  revPrompted = false; svSession = null; // R22 (§69): the old account's survey sheet goes too
+  // R22 integration (§54 × §67 / §68): the play-time clock starts afresh; an outcome sheet that waited for the old account goes
+  try { localStorage.removeItem(PT_KEY); } catch { /* private mode */ }
+  promoDeferred = null;
   // R21 integration (§54 × §63 / §64): the link waiting on this device came for the old account; the release notes'
   // "shown this session" goes with the session ("seen" is per account on the server)
   lkInput = '';
@@ -8149,6 +8618,9 @@ async function History(tab) {
     Txt(S.limitText, 36, y, 376, 13, WHITE, d, { weight: 500, lh: 1.5 }).dataset.hiLimit = '1';
     Gauge(36, y + 46, 376, S.monthlyLimitYen ? S.monthSpentYen / S.monthlyLimitYen : 0, d, { gold: true }); y += 66;
   }
+  // round 22 (REQ-LIMIT-008/018): the player's own limit next to the age cap; the setting is reached from here
+  if (S.selfLimitText) { Txt(S.selfLimitText, 36, y, 376, 13, CYAN, d, { weight: 500, lh: 1.5 }).dataset.hiSelfLimit = '1'; y += 26; }
+  TextLink('上限の設定', 36, y - 4, 220, () => SelfLimits(() => History()), d).dataset.action = 'self-limits'; y += 36;
   Txt(S.notice, 36, y, 376, 12, SOFT, d, { lh: 1.5 }); y = Math.max(y + 76, 310);
   Hair(36, y, 376, d); y += 16;
   const r = P.items.find((x) => x.ref === hiState.sel);
@@ -8878,6 +9350,9 @@ const helpGo = (screen, back) => ({
   notifications: () => NotifySettings(),
   // round 21 (§65): the calendar
   calendar: () => Calendar(),
+  // round 22: 使いすぎ・遊びすぎの防止 (§67)
+  self_limits: () => SelfLimits(),
+  career: () => Career(), // round 22 (§66)
   // round 23 (§71): the bloodline list
   bloodlines: () => Bloodlines('help', back),
 })[screen]?.() ?? back?.();
@@ -9514,6 +9989,157 @@ async function NotifySettings() {
   Back(Settings, 'BACK', 40, 834);
 }
 
+// ================================================================= round 22: 使いすぎ・遊びすぎの防止 (REQ-LIMIT-*, contracts/protocol.md §67)
+// The real selfLimits rules on the local player: the own monthly limit (lower → at once; higher / none → after the cool-off,
+// cancellable), a custom amount on the step, the play-time reminder settings. Reached from the purchase history (その他 ›
+// 設定・サポート › 購入・コイン・ガチャ履歴 › 上限の設定), the purchase confirmation (上限を設定), a refused purchase, the shortfall
+// card and the sheet — never a ninth row on either その他 page. The device clock counts this page's time; the demo adds minutes.
+// The sheet is player-requested: it never goes through sessionPrompt (§58.11) and never takes the session's one prompt.
+const slState = { back: null, custom: '' };
+const PT_KEY = 'muchi.playtime.clock';
+const ptClock = () => { try { return JSON.parse(prefs.get(PT_KEY) ?? 'null') ?? null; } catch { return null; } };
+function ptLoad() {
+  let c = ptClock();
+  const nowMs = L.now();
+  if (!c || nowMs - (c.lastAt ?? 0) >= 30 * 60_000) c = { sessionStart: nowMs, extraMin: 0, sessionMark: null, dayKey: c?.dayKey ?? null, dailyShown: c?.dailyShown ?? false, quietShown: c?.quietShown ?? false, dayExtra: c?.dayExtra ?? 0 };
+  c.lastAt = nowMs; prefs.set(PT_KEY, JSON.stringify(c));
+  return c;
+}
+const ptOffset = () => -new Date(L.now()).getTimezoneOffset();
+async function playtimeDue(place) {
+  if (ftue) return null;
+  const r = await L.selfLimits.view();
+  if (!r.ok || !r.value.playtime.enabled) return null;
+  const c = ptLoad();
+  const played = Math.floor((L.now() - c.sessionStart) / 60_000) + c.extraMin;
+  const d = L.selfLimits.decide({
+    now: L.now(), localOffsetMin: ptOffset(), locale: isJa() ? 'ja' : 'en',
+    settings: { sessionMin: r.value.playtime.sessionMin, dailyMin: r.value.playtime.dailyMin, quietAfterHour: r.value.playtime.quietAfterHour },
+    sessionPlayedMin: played, dayPlayedMin: played + (c.dayExtra ?? 0), marks: { sessionMark: c.sessionMark, dayKey: c.dayKey, dailyShown: !!c.dailyShown, quietShown: !!c.quietShown }, place,
+  });
+  if (!d.show) return null;
+  Object.assign(c, d.marks); prefs.set(PT_KEY, JSON.stringify(c));
+  return { d, played };
+}
+/** The calm sheet over the paddock: two buttons of the same size, nothing gained or lost either way. */
+function PlaytimeSheet(pt, next) {
+  currentScreen = () => PlaytimeSheet(pt, next);
+  Clear('playtime-sheet'); SetArt('Art/home-paddock', false); Shade('dim');
+  const box = Dialog('Playtime reminder', 960, 560);
+  box.classList.add('pt-sheet'); box.dataset.reasons = pt.d.reasons.join(',');
+  Kicker('遊ぶ時間のお知らせ', 52, 44, box);
+  // the rule's own texts follow the device language (like §61); the screen language here is the same
+  Txt(pt.d.title, 52, 108, 856, 32, WHITE, box, { weight: 700 }).classList.add('keep-ja');
+  pt.d.lines.forEach((l, i) => Txt(l, 52, 172 + i * 40, 856, 20, WHITE, box, { weight: 500, nowrap: true }).classList.add('pt-line', 'keep-ja'));
+  Txt(pt.d.note, 52, 312, 856, 15, SOFT, box, { lh: 1.6 }).classList.add('keep-ja');
+  const answer = (choice) => {
+    L.kpi([{ name: 'playtime_reminder_shown', at: L.now(), props: { reasons: pt.d.reasons.join(','), sessionMin: Math.min(1440, Math.floor(pt.played / 5) * 5), dayMin: Math.min(1440, Math.floor(pt.played / 5) * 5), choice } }]);
+    globalThis.__muchi && (globalThis.__muchi.lastPlaytime = { reasons: pt.d.reasons, choice });
+    if (choice === 'stop') { toast('おつかれさまでした'); return Home(); }
+    if (choice === 'settings') return SelfLimits(() => next());
+    next();
+  };
+  // same size and weight: neither answer is pushed
+  Ghost(pt.d.buttons.continue, 52, 400, 420, 64, () => answer('continue'), box).dataset.pt = 'continue';
+  Ghost(pt.d.buttons.stop, 488, 400, 420, 64, () => answer('stop'), box).dataset.pt = 'stop';
+  TextLink(pt.d.buttons.settings, 52, 484, 400, () => answer('settings'), box).dataset.pt = 'settings';
+}
+/** Review: a 60-minute session and the 22:00 mark due on the home. */
+async function PlaytimeDemo() {
+  await L.selfLimits.setPlaytime({ sessionMin: 60 });
+  const c = ptLoad(); c.extraMin = (c.extraMin ?? 0) + 61; c.sessionMark = null; prefs.set(PT_KEY, JSON.stringify(c));
+  const pt = await playtimeDue('home');
+  return pt ? PlaytimeSheet(pt, Home) : Home();
+}
+/** Review: the refused purchase (own limit ¥3,000, ¥2,400 spent, a ¥800 pack). */
+async function SelfLimitRefusedDemo() {
+  await L.selfLimits.seedDemo();
+  return PurchaseConfirm('coin_800', () => Store('coins'));
+}
+async function SelfLimits(back) {
+  if (back) slState.back = back;
+  currentScreen = () => SelfLimits();
+  const r = await L.selfLimits.view();
+  Clear('self-limits'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　購入履歴　/　使いすぎ・遊びすぎの防止', '自分で決める上限とお知らせ。下げるのはすぐ、上げるのは少し時間をおいてから', { wallet: false });
+  const goBack = () => (slState.back ?? (() => History()))();
+  if (!r.ok) { toast(r.message); Back(goBack, 'BACK', 40, 834); return; }
+  const v = r.value, sp = v.spending, pt = v.playtime;
+  // ① the monthly spending limit
+  const a = Glass('Spending limit', 36, 134, 880, 676, undefined, .9);
+  a.classList.add('sl-spending'); a.dataset.limit = String(sp.limitYen ?? 'none'); a.dataset.pending = sp.pending ? String(sp.pending.limitYen ?? 'none') : '';
+  Kicker('月の購入上限', 36, 26, a, { size: 16 });
+  Txt(sp.statusText, 36, 84, 808, 22, WHITE, a, { weight: 700, nowrap: true }).classList.add('sl-status');
+  Txt(sp.ageLimitYen != null ? `年齢に応じた上限 ${yen(sp.ageLimitYen)}　·　効いている上限 ${yen(sp.effectiveLimitYen)}　·　今月の支払い ${yen(sp.monthSpentYen)}` : `年齢に応じた上限：なし　·　今月の支払い ${yen(sp.monthSpentYen)}`, 36, 120, 808, 14, MUTED, a, { weight: 500, nowrap: true });
+  const amounts = [...sp.choicesYen];
+  if (sp.limitYen != null && !amounts.includes(sp.limitYen)) amounts.push(sp.limitYen);
+  amounts.sort((x, y) => x - y); amounts.push(null);
+  amounts.forEach((yv, i) => {
+    const cur = yv === sp.limitYen;
+    const b = Btn(yv == null ? '上限なし' : yen(yv), 36 + (i % 3) * 272, 160 + Math.floor(i / 3) * 62, 260, 54, async () => {
+      if (cur) return;
+      const s = await L.selfLimits.setSpending(yv);
+      toast(s.ok ? (s.value.applied === 'pending' ? s.value.view.spending.pendingText : '上限を変えました') : s.message);
+      SelfLimits();
+    }, 'choice' + (cur ? ' on' : ''), a);
+    b.dataset.slAmount = String(yv ?? 'none'); b.style.whiteSpace = 'nowrap';
+  });
+  const rowsY = 160 + Math.ceil(amounts.length / 3) * 62 + 4;
+  // a custom amount on the step (numbers only)
+  const fieldBox = el('fieldbox sl-field', 36, rowsY, 532, 54, a);
+  const inp = document.createElement('input');
+  inp.className = 'field keep-ja'; inp.inputMode = 'numeric'; inp.maxLength = 8;
+  inp.placeholder = isJa() ? `金額を入力（${fmt(sp.custom.stepYen)}円単位）` : `Enter an amount (steps of ¥${fmt(sp.custom.stepYen)})`;
+  inp.setAttribute('aria-label', '金額を入力');
+  Object.assign(inp.style, { left: '16px', top: '6px', width: '500px', height: '42px', fontSize: '22px' });
+  inp.value = slState.custom; inp.addEventListener('input', () => { slState.custom = inp.value.replace(/[^0-9]/g, ''); });
+  fieldBox.appendChild(inp);
+  Ghost('この金額にする', 584, rowsY, 260, 54, async () => {
+    const n = Number(slState.custom);
+    if (!Number.isInteger(n) || n <= 0) { toast('金額を入力してください'); return; }
+    const s = await L.selfLimits.setSpending(n);
+    if (s.ok) slState.custom = '';
+    toast(s.ok ? (s.value.applied === 'pending' ? s.value.view.spending.pendingText : '上限を変えました') : 'この金額は選べません');
+    SelfLimits();
+  }, a, 'quiet small').dataset.action = 'sl-custom';
+  let y = rowsY + 74;
+  if (sp.pending) {
+    Txt(sp.pendingText, 36, y, 560, 15, GOLD, a, { weight: 500, lh: 1.5 }).classList.add('sl-pending');
+    Ghost('変更を取り消す', 604, y - 8, 240, 50, async () => { const s = await L.selfLimits.cancel(); toast(s.ok ? '変更を取り消しました' : s.message); SelfLimits(); }, a, 'quiet small').dataset.action = 'sl-cancel';
+    y += 56;
+  }
+  Hair(36, y, 808, a); y += 14;
+  sp.rulesText.forEach((l) => { Txt(l, 36, y, 808, 13, SOFT, a, { lh: 1.5 }).classList.add('sl-rule'); y += 24; });
+  // ② the play-time reminder (off by default)
+  const b = Glass('Playtime reminder', 936, 134, 628, 676, undefined, .9);
+  b.classList.add('sl-playtime'); b.dataset.enabled = String(pt.enabled);
+  Kicker('遊ぶ時間のお知らせ', 36, 26, b, { size: 16 });
+  Txt(pt.enabled ? 'お知らせはオンです' : 'お知らせはオフです（最初はオフ）', 36, 84, 556, 18, pt.enabled ? CYAN : MUTED, b, { weight: 500, nowrap: true }).classList.add('sl-pt-status');
+  const ptRow = (label, key, choices, fmtv, yy) => {
+    Txt(label, 36, yy, 556, 15, WHITE, b, { weight: 500, nowrap: true });
+    [null, ...choices].forEach((c, i) => {
+      const on = (pt[key] ?? null) === c;
+      const btn = Btn(c == null ? '使わない' : fmtv(c), 36 + i * 112, yy + 28, 104, 48, async () => {
+        if (on) return;
+        const s = await L.selfLimits.setPlaytime({ [key]: c });
+        if (!s.ok) toast(s.message);
+        SelfLimits();
+      }, 'choice' + (on ? ' on' : ''), b);
+      btn.dataset.pt = key + ':' + String(c ?? 'off'); btn.style.whiteSpace = 'nowrap'; btn.style.fontSize = '15px'; btn.style.padding = '0';
+    });
+  };
+  ptRow('一度に遊ぶ時間', 'sessionMin', pt.choices.sessionMin, (n) => `${n}分`, 128);
+  ptRow('一日の合計', 'dailyMin', pt.choices.dailyMin, (n) => `${n}分`, 232);
+  ptRow('◯時を過ぎたら', 'quietAfterHour', pt.choices.quietAfterHour, (n) => `${n}時`, 336);
+  let yb = 452;
+  pt.rulesText.forEach((l) => { Txt(l, 36, yb, 556, 13, SOFT, b, { lh: 1.5 }).classList.add('sl-rule'); yb += 24; });
+  Txt('使っても使わなくても、もらえるものや遊べる内容は変わりません', 36, yb, 556, 13, SOFT, b, { lh: 1.5 }).classList.add('sl-rule'); yb += 24;
+  TextLink('上限とお知らせについて（ヘルプ）', 36, 600, 556, () => HelpArticle(L.helpContext('self_limits'), 'context', () => SelfLimits()), b).dataset.helpContext = 'self_limits';
+  // review only: play an hour on this device's clock, then the home shows the sheet
+  Ghost('デモ：60分遊んだことにする', 36, 636, 360, 36, () => PlaytimeDemo(), b, 'quiet small').dataset.action = 'pt-demo';
+  Back(goBack, 'BACK', 40, 834);
+}
+
 async function boot() {
   const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn, commentaryPacks] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
@@ -9544,7 +10170,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

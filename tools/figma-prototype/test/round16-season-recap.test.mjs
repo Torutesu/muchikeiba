@@ -39,7 +39,7 @@ const nov = (await L.recap.view('season:2026-11')).value;
 const step = (k) => nov.steps.find((s) => s.key === k);
 assert.strictEqual(step('races').value, '20');
 assert.strictEqual(step('rank').value, 'B級');
-assert.deepStrictEqual(step('rank').notes, ['最終順位 4位', 'C級からB級へ昇格']);
+assert.deepStrictEqual(step('rank').notes, ['最終順位 4位', 'C級からB級へ昇格', '昇級戦を突破']); // round 22 (§68): the line, then the promotion series
 assert.strictEqual(step('horse').horseName, 'ソラノカナタ', 'the horse with the most races');
 assert.deepStrictEqual(step('hall').horses, [{ horseName: 'ソラノカナタ' }]);
 assert.deepStrictEqual(step('moments').moments.map((m) => m.kind), ['promotion', 'hall', 'first_win']);

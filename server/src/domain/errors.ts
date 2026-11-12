@@ -30,6 +30,10 @@ export type ErrorCode =
   | 'TRANSFER_INVALID' | 'TRANSFER_EXPIRED' | 'TRANSFER_LOCKED' | 'TRANSFER_PASSWORD_WEAK' | 'TRANSFER_CONFIRM_REQUIRED' | 'TRANSFER_SAME_ACCOUNT'
   | 'TRANSFER_REFUSED' | 'TRANSFER_ISSUE_LIMIT' | 'SESSION_REPLACED'
   | 'LINK_LIMIT'
+  // REQ-LIMIT-005 (§67.2): the purchase would go over the player's own monthly limit (409; details name the setting)
+  | 'SELF_LIMIT_EXCEEDED'
+  | 'CAREER_LOCKED' | 'CAREER_LIMIT_REACHED' | 'CAREER_SESSION_EXPIRED' | 'CAREER_SESSION_USED' | 'CAREER_RESULT_MISMATCH'
+  | 'SURVEY_CLOSED'
   | 'SESSION_REVOKED' | 'DEVICE_SIGNOUT_TOO_SOON' | 'DEVICE_IS_CURRENT';
 
 const STATUS: Partial<Record<ErrorCode, number>> = {
@@ -50,6 +54,10 @@ const STATUS: Partial<Record<ErrorCode, number>> = {
   TRANSFER_SAME_ACCOUNT: 409, TRANSFER_REFUSED: 403, TRANSFER_ISSUE_LIMIT: 429, SESSION_REPLACED: 401,
   // REQ-LINK-003 (§63): links made per game day
   LINK_LIMIT: 429,
+  // REQ-CAREER-* (§66): 騎手の道. CAREER_LOCKED = the race before is not cleared yet (409 default)
+  CAREER_LIMIT_REACHED: 429, CAREER_RESULT_MISMATCH: 422,
+  // REQ-SURVEY-009 (§69): the survey has ended (a neutral close; the device closes the sheet quietly)
+  SURVEY_CLOSED: 409,
   // REQ-DEV-* (§70): ログイン中の端末. SESSION_REVOKED = this session was signed out from another device / by support (never retried)
   SESSION_REVOKED: 401, DEVICE_SIGNOUT_TOO_SOON: 403, DEVICE_IS_CURRENT: 409,
 };

@@ -23,6 +23,8 @@ namespace Muchi.Game
             ["NG_NAME"] = "この名前は使用できません。別の名前を入力してください。",
             ["AGE_REQUIRED"] = "生年月を入力してください。",
             ["AGE_LIMIT_EXCEEDED"] = "今月の購入上限に達しています。翌月1日に戻ります。",
+            // REQ-LIMIT-005 (§67.2): the player's own limit — the screen adds the 「上限の設定」 link (SelfLimitsModel.RefusedText has the amount)
+            ["SELF_LIMIT_EXCEEDED"] = "自分で決めた今月の上限を超えるため、購入できません。上限は「上限の設定」で確かめられます。",
             ["GUARDIAN_CONSENT_REQUIRED"] = "18歳未満の方は保護者の同意が必要です。",
             ["ALREADY_PURCHASED"] = "この商品は購入済みです。",
             ["UNSETTLED_DEBT"] = "未精算の返金があるため、購入・スカウトを止めています。お問い合わせください。",
@@ -56,6 +58,12 @@ namespace Muchi.Game
             ["CHALLENGE_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
             ["CHALLENGE_SESSION_USED"] = "このレースは記録済みです。",
             ["CHALLENGE_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
+            // REQ-CAREER-* (§66): 騎手の道. A retry is always free; the limit is a hidden anti-abuse ceiling
+            ["CAREER_LOCKED"] = "前のレースをクリアすると開きます",
+            ["CAREER_LIMIT_REACHED"] = "今日はここまで。4:00からまた走れます。",
+            ["CAREER_SESSION_EXPIRED"] = "時間切れのため、このレースは記録できませんでした。もう一度挑戦できます。",
+            ["CAREER_SESSION_USED"] = "このレースは記録済みです。",
+            ["CAREER_RESULT_MISMATCH"] = "レースの記録を確認できませんでした。もう一度挑戦してください。",
             ["PHOTO_LIMIT"] = "保存できる写真がいっぱいです。古い写真を消してから保存してください。",
             ["PHOTO_LOCKED"] = "まだ使えないフレーム・スタンプが含まれています。",
             ["PHOTO_SOURCE_INVALID"] = "このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。",

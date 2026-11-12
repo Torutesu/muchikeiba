@@ -8,6 +8,7 @@ import { IntegrityCore, MemoryIntegrityRepo, type ModerationChange } from './int
 import { MemoryPlayerReportRepo, PlayerReportsCore } from './playerReports.js';
 import { InquiryIndex, MemoryInquiryIndexRepo } from './inquiries.js';
 import { ClientErrorsCore, MemoryClientErrorRepo } from './clientErrors.js';
+import { MemorySurveyRepo, SurveysCore } from './surveys.js';
 import { DeadLetterService, MemoryDeadLetterRegistry, type DeadLetterOwner, type DeadLetterSource } from './deadLetter.js';
 
 /**
@@ -33,7 +34,24 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
   const inquiries = new InquiryIndex(inquiryRepo);
   const clientErrorRepo = new MemoryClientErrorRepo();
   const clientErrors = new ClientErrorsCore(clientErrorRepo);
+  const surveyRepo = new MemorySurveyRepo();
+  const surveys = new SurveysCore(surveyRepo);
   const api: OpsApi = {
+    surveys: {
+      create: async (d, by, now) => surveys.create(d, by, now),
+      update: async (id, d, rev, by, now) => surveys.update(id, d, rev, by, now),
+      publish: async (id, a, b, max, by, now) => surveys.publish(id, a, b, max, by, now),
+      close: async (id, by, now) => surveys.close(id, by, now),
+      list: async (now) => surveys.list(now),
+      get: async (id, now) => surveys.get(id, now),
+      live: async (now) => surveys.live(now),
+      one: async (id) => surveys.one(id),
+      ingest: async (xs) => surveys.ingest(xs),
+      results: async (id, now) => surveys.results(id, now),
+      csv: async (id, now) => surveys.csv(id, now),
+      hideText: async (id, ref, h) => surveys.hideText(id, ref, h),
+      forget: async (pid) => surveys.forgetPlayer(pid),
+    },
     clientErrors: {
       ingest: async (b, who, now, cfg) => { const r = clientErrors.ingest(b, who, now, cfg); return { accepted: r.accepted, dropped: r.dropped, duplicate: r.duplicate }; },
       list: async (q, now, cfg) => clientErrors.list(q, now, cfg),
@@ -93,5 +111,5 @@ export function memoryOps(base: Master, player: (uid: string) => PlayerInvoker, 
       release: async (pid, reason, by, now) => { const c = integrity.release(pid, reason, by, now); await push([c]); return c; },
     },
   };
-  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo, inquiryRepo, playerReportRepo, clientErrorRepo, clientErrors };
+  return { api, config, audits, integrity, integrityRepo, deadLetterRegistry, compensationRepo, inquiryRepo, playerReportRepo, clientErrorRepo, clientErrors, surveyRepo, surveys };
 }

@@ -1162,5 +1162,32 @@
     "retentionDays": 30,
     "spikeMinCount": 50,
     "spikeWindowHours": 24
+  },
+  "selfLimits": {
+    "_note": "REQ-LIMIT-*（contracts/protocol.md §67）。使いすぎ・遊びすぎの防止。自分で決める月の購入上限（年齢帯の上限以下だけ。下げるのはすぐ、上げる・外すのは coolOffHours 後で、その間は取り消せる。JST の暦月）と、遊ぶ時間のお知らせ（既定オフ、端末が数えて区切りで知らせる）。停止スイッチは無い（区画が無ければ既定値）。コイン・アイテムは動かない。",
+    "spendingChoicesYen": [1000, 3000, 5000, 10000, 30000],
+    "customMinYen": 100,
+    "customMaxYen": 1000000,
+    "customStepYen": 100,
+    "coolOffHours": 72,
+    "historyKeep": 30,
+    "playtime": { "sessionChoicesMin": [30, 60, 90, 120], "dailyChoicesMin": [60, 120, 180, 240], "quietAfterChoicesHour": [21, 22, 23, 0] }
+  },
+  "promotion": {
+    "_note": "REQ-PROMO-*（contracts/protocol.md §68）。昇級ラインに届いたら races 戦の昇級戦。topPlace 着以内（CPU の引き継ぎなし）が needTop 回で突破（その月の昇級が確定、クラスは締めで変わる）。届かなければ promotePoints − setbackPoints まで戻す。昇級後 graceRaces 戦は締めの降級を1回止める（盾）。何も配らない。enabled: false で前の動き。",
+    "enabled": true,
+    "races": 3,
+    "needTop": 2,
+    "topPlace": 3,
+    "setbackPoints": 40,
+    "graceRaces": 10
+  },
+  "surveys": {
+    "_note": "REQ-SURVEY-*（contracts/protocol.md §69）。ゲーム内アンケート。答えても何も配らない。coolDownHoursはアンケートとアンケートの間（答えた・スキップした時から）、maxShowsPerSurveyは答えもスキップもしなかった時に出す回数の上限、maxLiveは同時に公開できる本数、textMaxは自由な文の上限（200字まで）。定義は運営の画面（/v1/admin/surveys、OpsDO）で作る。",
+    "enabled": true,
+    "coolDownHours": 72,
+    "maxShowsPerSurvey": 2,
+    "maxLive": 5,
+    "textMax": 200
   }
 }

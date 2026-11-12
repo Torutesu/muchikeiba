@@ -127,6 +127,8 @@ export const CODE_EN: Record<string, string> = {
   '{cls}級': 'Class {cls}',
   '最終順位 {n}位': 'Final position: {n:ord}',
   '{from}級から{to}級へ昇格': 'Promoted from Class {from} to Class {to}',
+  '昇級戦を突破して{to}級へ昇格': 'Won the promotion series: up to Class {to}',
+  '昇級戦を突破': 'Won the promotion series',
   'タイムアタックの記録': 'Time attack record',
   'このコースの自己ベスト': 'Your best on this course',
   'よく使った脚質': 'Most-used running style',
@@ -478,6 +480,9 @@ export const CODE_EN: Record<string, string> = {
   '共通のフレンド{n}人': '{n} mutual friends',
   '共通のフレンド1人': '1 mutual friend',
   'データのダウンロードの準備ができました': 'Your data download is ready',
+  // Round 22 (§68 × §40): a promotion at the season close
+  '昇級戦を突破して{to}級に昇級しました': 'You won your promotion series and moved up to Class {to}',
+  '{from}級から{to}級に昇級しました': 'You moved up from Class {from} to Class {to}',
 
   // ---- 個人データの開示・ダウンロード (dataExport.ts, protocol §51; REQ-DEX-015). Values in the summary are never translated
   'アカウントに保存されているあなたのデータ（プロフィール・設定・馬・コインと購入の履歴・フレンドなど）をまとめてダウンロードできます。準備ができるとお知らせに届きます。ファイルは{days}日後に削除されます。':
@@ -532,6 +537,20 @@ export const CODE_EN: Record<string, string> = {
   'カードに出せるのは自分で手に入れたものだけです。': 'Your card shows only things you earned yourself.',
   '引退した馬や手元にないものは自動で外れます。': 'Retired horses and things you no longer have come off automatically.',
   '一言は決まった文から選びます。': 'Your line is picked from a fixed list.',
+
+  // ---- 使いすぎ・遊びすぎの防止 (selfLimits.ts SELF_LIMIT_TEXT, protocol §67; REQ-LIMIT-008/013). The play-time sheet carries
+  // its own English (decidePlaytimeReminder picks the device language, like §61).
+  '自分で決めた上限 ¥{limit}（今月の残り ¥{left}）': 'Your own limit: ¥{limit} (¥{left} left this month)',
+  '自分で決めた上限はありません': 'You have not set your own limit',
+  '¥{yen}への変更は {at} から効きます（取り消せます）': 'The change to ¥{yen} takes effect from {at} JST (you can cancel it)',
+  '上限なしへの変更は {at} から効きます（取り消せます）': 'Removing the limit takes effect from {at} JST (you can cancel it)',
+  '下げた上限はすぐに効きます': 'A lower limit applies at once',
+  '上げる・外す変更は{h}時間たってから効きます（その間は取り消せます）': 'Raising or removing it takes effect after {h} hours (you can cancel it until then)',
+  '年齢に応じた上限より高くはできません': 'It cannot be higher than the limit for your age',
+  'ストアで支払いが済んだ購入は、上限を超えていても受け取れます（今月の支払いに数えます）': 'A purchase already paid in the store is still delivered over the limit (it counts toward this month)',
+  'レースの途中には出しません。結果の後かホームで知らせます': 'Never during a race: the reminder appears after a race result or on the home screen',
+  '時間は端末で数えます（サーバーには送りません）': 'The time is counted on this device (never sent to the server)',
+  '自分で決めた今月の上限に達しているため、いま購入できるパックはありません': 'You have reached the monthly limit you set, so no pack can be bought now',
 
   // ---- 血統図と系統 (pedigree.ts, protocol §71; REQ-PED-003..013). Horse and owner names are never translated.
   '記録なし': 'No record',

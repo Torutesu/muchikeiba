@@ -4369,13 +4369,15 @@ async function NextCard() {
   card.dataset.next = p.kind; card.dataset.links = String(line.links.length); card.classList.add('next-card', 'next-line', 'rise');
   if (p.featureKey) card.dataset.feature = p.featureKey;
   if (p.deadlineAt) card.dataset.deadline = String(p.deadlineAt);
-  Kicker('次にやること', 22, 10, card, { rule: false, size: 13 });
-  const what = t.deadline ? t.title + '　·　' + t.deadline : p.kind === 'feature_unlocked' ? t.title + '　·　' + t.detail : t.title;
-  const tw = NEXT_BOX.w - (line.links.length ? 214 : 64);
-  Txt(what, 22, 36, tw, 16, WHITE, card, { weight: 700, nowrap: true }).dataset.nextGo = p.kind;
-  Txt('›', 22 + tw + 4, 30, 20, 22, CYAN, card, { weight: 700 });
+  Kicker('次にやること', 22, 10, card, { rule: false, size: 13, w: 130 });
+  // the deadline (a date, never a countdown) sits on the kicker row, so the line itself stays one readable phrase
+  if (t.deadline) Txt(t.deadline, 160, 7, NEXT_BOX.w - 160 - (line.links.length ? 180 : 24), 16, GOLD, card, { weight: 700, nowrap: true }).classList.add('next-deadline');
+  const what = p.kind === 'feature_unlocked' ? t.title + '　·　' + t.detail : t.title;
+  // the phrase gets the whole width (› at the end); the one link sits on the kicker row, top right
+  Txt(what, 22, 36, NEXT_BOX.w - 22 - 52, 16, WHITE, card, { weight: 700, nowrap: true }).dataset.nextGo = p.kind;
+  Txt('›', NEXT_BOX.w - 40, 30, 20, 22, CYAN, card, { weight: 700 });
   if (line.links.includes('dismiss')) {
-    const dm = TextLink('今日は閉じる', NEXT_BOX.w - 168, 18, 150, async () => {
+    const dm = TextLink('今日は閉じる', NEXT_BOX.w - 168, 0, 150, async () => {
       const d = await L.dismissNext(p.kind);
       if (!d.ok) return toast(d.message);
       toast('今日はこのお知らせを閉じました');
@@ -6426,8 +6428,8 @@ async function Breeding() {
   await pick('父（引退した牡馬）', sires, qrSire, 26, true, (id) => { qrSire = id; }, (id) => against(id, qrDam));
   await pick('母（引退した牝馬）', dams, qrDam, 344, false, (id) => { qrDam = id; }, (id) => against(qrSire, id));
   if (!sires.length || !dams.length) {
-    Txt('牡馬と牝馬を1頭ずつ引退させると配合できます。引退は所属馬の一覧から。', 36, 600, 368, 16, MUTED, lp, { lh: 1.5 });
-    TextLink('所属馬の一覧', 36, 632, 240, () => Roster(), lp, '所属馬の一覧 ›');
+    Txt('牡馬と牝馬を1頭ずつ引退させると配合できます。引退は所属馬の一覧から。', 36, 540, 368, 16, MUTED, lp, { lh: 1.5 });
+    TextLink('所属馬の一覧', 36, 636, 240, () => Roster(), lp, '所属馬の一覧 ›');
   }
   // ② the outlook: stat ranges, rarity odds, compatibility
   const mp = Glass('Breeding outlook', 496, 134, 560, 676, undefined, .88);

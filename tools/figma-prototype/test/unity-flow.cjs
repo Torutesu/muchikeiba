@@ -2113,6 +2113,43 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // the help article from the side panel
   await page.locator('.screen.in [data-action="cal-help"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
   assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'calendar', 'calendar: its help article');
+  // ------------------------------------------------------------------ 6. round 23: 血統図と系統 (REQ-PED-*)
+  // 厩舎 › 血統 (the partner's tree: template parents 記録なし, a founder), the demo family (the breeding pair's 「血統を見る」 with
+  // the shared ancestors in cyan and the server's hints), another trainer's stallion (「他のトレーナーの馬」), the bloodline list
+  // (every line, no reward), the help article, and the KPI rows
+  await page.evaluate(() => globalThis.__muchi.show('Stable')); await waitScreen('stable'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .ped-entry').click(); await waitScreen('pedigree'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ped-panel').getAttribute('data-flow'), 'columns', 'pedigree: columns at the standard text size');
+  assert.equal(await page.locator('.screen.in .ped-box').count() + await page.locator('.screen.in .el.ped-empty').count(), 15, 'pedigree: 15 slots (3 generations)');
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /記録なし/, 'pedigree: template parents have no record');
+  await shot('pedigree-partner', 300);
+  const pd = await page.evaluate(async () => (await globalThis.__muchi.logic.pedigree.demo()).value);
+  await page.evaluate((x) => globalThis.__muchi.show('BreedingPair', x.sireId, x.damId), pd); await waitScreen('pedigree-pair'); await page.waitForTimeout(500);
+  const pairShared = Number(await page.locator('.screen.in .ped-pair-shared').getAttribute('data-count'));
+  assert.ok(pairShared > 0, 'pair: brother × sister share ancestors');
+  assert.ok(await page.locator('.screen.in .ped-pair-trees .ped-box.shared').count() >= 2, 'pair: the shared ancestors are framed in both trees');
+  const pv = await page.evaluate(async (x) => (await globalThis.__muchi.logic.breedingPreview(x.sireId, x.damId)).value, pd);
+  assert.equal(pv.inbreedingCount, pairShared, 'pair: the same count as the breeding preview');
+  assert.ok(await page.locator('.screen.in .ped-hint[data-kind="style"]').count() >= 1, 'pair: the style chances from the preview');
+  const pairText = await page.locator('.screen.in').innerText();
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ/.test(pairText), 'pair: no urgency, shop or betting wording');
+  await shot('pedigree-pair', 300);
+  await page.locator('.screen.in [data-action="ped-open-sire"]').click(); await waitScreen('pedigree'); await page.waitForTimeout(400);
+  assert.ok(Number(await page.locator('.screen.in .ped-panel').getAttribute('data-shared')) === 0, 'the brother himself is not inbred');
+  await page.evaluate((id) => globalThis.__muchi.show('Pedigree', id, 'horse'), pd.studFoalId); await waitScreen('pedigree'); await page.waitForTimeout(400);
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /他のトレーナーの馬/, 'pedigree: another trainer\'s stallion has no owner name');
+  assert.match(await page.locator('.screen.in .ped-panel').innerText(), /系統の祖/, 'pedigree: the stallion\'s sire is the founder of its line');
+  await shot('pedigree-stud', 300);
+  await page.locator('.screen.in [data-action="ped-lines"]').click(); await waitScreen('bloodlines'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .ped-line-row').count(), 7, 'bloodlines: every line');
+  assert.ok(await page.locator('.screen.in .ped-line-row.none').count() >= 1, 'bloodlines: empty lines listed');
+  assert.match(await page.locator('.screen.in').innerText(), /系統の数で報酬はありません/, 'bloodlines: no reward for lines');
+  await shot('bloodlines', 300);
+  await page.locator('.screen.in [data-action="ped-help"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'pedigree', 'bloodlines: the pedigree help article');
+  const pk = await page.evaluate(() => globalThis.__muchiPedKpi ?? []);
+  assert.ok(pk.some((e) => e.name === 'pedigree_view' && e.source === 'breeding' && e.shared > 0), 'pedigree_view from the pair');
+  assert.ok(pk.some((e) => e.name === 'bloodline_view' && e.lines === 7), 'bloodline_view');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch

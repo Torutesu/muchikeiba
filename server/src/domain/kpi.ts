@@ -16,6 +16,9 @@ import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
 import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS } from './lnotifKinds.js';
 
 /** REQ-LINK-021: how a link reached the app (universal / app link, the custom scheme, the Android install referrer, typed). */
+/** REQ-PED-016 (§71): where a pedigree tree / the bloodline list was opened from (C# PedigreeSources / BloodlineSources). */
+export const PEDIGREE_SOURCES = ['horse', 'breeding', 'stable', 'showcase', 'bloodlines'] as const;
+export const BLOODLINE_SOURCES = ['breeding', 'pedigree', 'help'] as const;
 export const DEEP_LINK_ENTRIES = ['universal', 'scheme', 'referrer', 'typed'] as const;
 export const DEEP_LINK_KPI_TYPES = ['room', 'cup', 'replay', 'invite', 'friend', 'team', 'help', 'none'] as const;
 const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
@@ -255,6 +258,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-LINK-021 (§63.9): a link reached the app — how it arrived and its type once resolved (`none` when it did not open).
   // Never the token, the target or any id (strict).
   z.object({ name: z.literal('deep_link_open'), at: z.number().int(), props: z.object({ entry: z.enum(DEEP_LINK_ENTRIES), type: z.enum(DEEP_LINK_KPI_TYPES) }).strict() }),
+  // REQ-PED-016 (§71): a pedigree tree opened (where from, whose, how many shared ancestors it highlighted) / the bloodline list
+  // opened (where from, how many lines). Never a player or horse id (strict).
+  z.object({ name: z.literal('pedigree_view'), at: z.number().int(), props: z.object({ source: z.enum(PEDIGREE_SOURCES), relation: z.enum(['self', 'friend', 'other']), shared: z.number().int().min(0).max(14) }).strict() }),
+  z.object({ name: z.literal('bloodline_view'), at: z.number().int(), props: z.object({ source: z.enum(BLOODLINE_SOURCES), lines: z.number().int().min(0).max(64) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -322,6 +329,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'showcase_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, s3: e.props.neutral ? 'neutral' : 'card' };
     case 'showcase_share': return { name: e.name, count: e.props.pins, value: e.props.records, s1: e.props.horse ? 'horse' : 'none' };
     case 'deep_link_open': return { name: e.name, s1: e.props.entry, s2: e.props.type };
+    case 'pedigree_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, count: e.props.shared };
+    case 'bloodline_view': return { name: e.name, s1: e.props.source, value: e.props.lines };
   }
 }
 

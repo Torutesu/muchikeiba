@@ -105,7 +105,10 @@
       "body": { "ja": "部屋・カップ・リプレイは「共有」からリンクで送れる。開いても何ももらえず、何も使わない。レースの後は「再戦」。", "en": "Send rooms, cups and replays as a link from Share. Opening one gives nothing and spends nothing. After a race, press Rematch." } },
     { "id": "devices_tip", "topic": "social", "unlock": null, "art": "branch", "help": "signed_in_devices",
       "title": { "ja": "ログイン中の端末", "en": "Signed-in devices" },
-      "body": { "ja": "設定の「ログイン中の端末」で、ログインしている端末と記録を確かめられる。知らない端末はログアウトできる。", "en": "Check the devices signed in to your account under Signed-in devices in the settings. Sign out any you do not know." } }
+      "body": { "ja": "設定の「ログイン中の端末」で、ログインしている端末と記録を確かめられる。知らない端末はログアウトできる。", "en": "Check the devices signed in to your account under Signed-in devices in the settings. Sign out any you do not know." } },
+    { "id": "pedigree_tip", "topic": "horses", "unlock": null, "art": "breeding", "help": "pedigree",
+      "title": { "ja": "血統で選ぶ", "en": "Pick by pedigree" },
+      "body": { "ja": "配合の前に「血統を見る」。共通の祖先が光ったら近親配合で能力の基準が下がる。系統の相性（ニックス）も確かめよう。", "en": "Check See pedigree before breeding. A shared ancestor lights up when the pair is inbred, which lowers base stats. Check the line match (nick) too." } }
   ],
   "contexts": {
     "gacha_odds": "scout_pity_tip",

@@ -533,6 +533,17 @@ export const CODE_EN: Record<string, string> = {
   '引退した馬や手元にないものは自動で外れます。': 'Retired horses and things you no longer have come off automatically.',
   '一言は決まった文から選びます。': 'Your line is picked from a fixed list.',
 
+  // ---- 血統図と系統 (pedigree.ts, protocol §71; REQ-PED-003..013). Horse and owner names are never translated.
+  '記録なし': 'No record',
+  '名前は非公開': 'Name hidden',
+  '他のトレーナーの馬': "Another trainer's horse",
+  'フレンドの種牡馬': "A friend's stallion",
+  'あなたの種牡馬': 'Your stallion',
+  '出走なし': 'No starts yet',
+  '大会優勝{n}回': 'Tournament wins: {n}',
+  '系統の数で報酬はありません。': 'Holding more lines earns no reward.',
+  '確率と数は配合の規則のとおりです。': 'Chances and numbers follow the breeding rules.',
+
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',
   '{a}〜{b}文字': '{a}–{b} characters',

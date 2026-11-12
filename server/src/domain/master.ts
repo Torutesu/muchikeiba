@@ -30,6 +30,7 @@ import practiceJson from '../../master/practice.json';
 import tipsJson from '../../master/tips.json';
 import showcaseJson from '../../master/showcase.json';
 import releaseNotesJson from '../../master/release-notes.json';
+import bloodlinesJson from '../../master/bloodlines.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -443,6 +444,8 @@ export interface Master {
   showcase?: import('./showcase.js').ShowcaseMaster;
   /** REQ-NEW-*: アップデートのお知らせ per app version (master/release-notes.json; releaseNotes.ts releaseNotesOf falls back to it when absent; remote config `releaseNotes` replaces it). */
   releaseNotes?: import('./releaseNotes.js').ReleaseNotesMaster;
+  /** REQ-PED-011 (§71): 系統 names and notes (master/bloodlines.json; pedigree.ts bloodlinesOf falls back to it when absent). */
+  bloodlines?: import('./pedigree.js').BloodlinesMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -601,6 +604,7 @@ export function loadMaster(): Master {
     tips: tipsJson as unknown as import('./tips.js').TipsMaster,
     showcase: showcaseJson as unknown as import('./showcase.js').ShowcaseMaster,
     releaseNotes: releaseNotesJson as unknown as import('./releaseNotes.js').ReleaseNotesMaster,
+    bloodlines: bloodlinesJson as unknown as import('./pedigree.js').BloodlinesMaster,
   };
   cached = m;
   return m;

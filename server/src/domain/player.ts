@@ -45,6 +45,18 @@ export interface HorseInstance {
   skillId?: string;
   /** REQ-TRAIN-003: stat points gained from training (training.ts). Counts in races (normalised in ranked), not in breeding. */
   trained?: Stats;
+  /**
+   * REQ-PED-001 (§71): the parents as they were when this foal was born (bred foals only; written once by breedWith, never
+   * changed). Never holds another player's id (a borrowed stallion's owner stays in studSire).
+   */
+  lineage?: { v: 1; sire: LineageSnap; dam: LineageSnap };
+}
+
+/** REQ-PED-001: one parent at the foal's birth (effective stats incl. awakening at that time). */
+export interface LineageSnap {
+  name: string; named?: true; templateId: string | null; rarity: Rarity; sex: Sex; style: Style; goingAptitude?: GoingAptitude;
+  surface: 'turf' | 'dirt' | 'both'; line: string; skillId?: string; appearance: Appearance; stats: Stats;
+  sireName: string | null; damName: string | null;
 }
 
 export interface PurchaseRecord {

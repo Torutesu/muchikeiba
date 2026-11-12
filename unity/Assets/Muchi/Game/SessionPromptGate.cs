@@ -48,6 +48,8 @@ namespace Muchi.Game
         public ReleaseNotesModel ReleaseNotes { get; set; }
         /// <summary>Round 23 (§70): the cached device list and security log (they belong to the old account).</summary>
         public DeviceSessionsModel Devices { get; set; }
+        /// <summary>Round 23 (§71): the pedigree trees cached for this session.</summary>
+        public PedigreeModel Pedigree { get; set; }
         /// <summary>How many times the device state was reset (for checks).</summary>
         public int Resets { get; private set; }
 
@@ -60,6 +62,7 @@ namespace Muchi.Game
             Guard(() => Links?.ForgetPending());
             Guard(() => ReleaseNotes?.NewSession());
             Guard(() => Devices?.ForgetAll());
+            Guard(() => Pedigree?.ForgetCache());
             Prompts?.NewSession();
         }
 

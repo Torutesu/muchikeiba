@@ -21,7 +21,7 @@ import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
 import type { KpiEvent } from './kpi.js';
-import { searchFold } from './horses.js';
+import { BREED, searchFold } from './horses.js';
 import { findBanner, oddsDisclosure } from './gacha.js';
 import { deletionConfig } from './accountDeletion.js';
 import { HISTORY_LIMITS, SUPPORT_TOPIC_TEXT, type ResolvedRef } from './history.js';
@@ -58,6 +58,8 @@ export const HELP_SCREENS = [
   'calendar',
   // Round 23 (§70): settings › ログイン中の端末 (signed-in devices and the security log)
   'devices',
+  // Round 23 (§71): the 系統 (bloodline) list
+  'bloodlines',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -74,7 +76,9 @@ export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_
   // Round 21 (§65): the 予定表 (event calendar)
   'calendar',
   // Round 23 (§70): ログイン中の端末
-  'devices'] as const;
+  'devices',
+  // Round 23 (§71): the pedigree tree's ? link
+  'pedigree'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -140,6 +144,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
   calendar: { ja: '予定表を開く', en: 'Open the calendar' },
   devices: { ja: 'ログイン中の端末を開く', en: 'Open signed-in devices' },
+  bloodlines: { ja: '系統の一覧を開く', en: 'Open the bloodlines' },
 };
 /** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
 export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }
@@ -216,6 +221,9 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'calendar_days': return String(CALENDAR_LIMITS.maxRangeDays);
     case 'calendar_marks': return String(CALENDAR_LIMITS.marksMax);
     case 'day_rollover_hour': return String(dayRule(m).hourJst);
+    // Round 23 (§71, REQ-PED-019): the existing breeding rules the pedigree article quotes (horses.ts BREED, master/nicks.json)
+    case 'inbreeding_penalty': return String(BREED.inbreedingPenalty);
+    case 'nick_bonus': return String(m.nicks.bonus);
     default: throw new Error(`unknown token ${name}`);
   }
 }

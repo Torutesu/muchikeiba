@@ -7,7 +7,7 @@ import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
 import { clientBatchSchema, clientToKpi, type ClientBatch } from '../../../server/src/domain/kpi.js';
 import type { AccessibilityBody } from '../../../server/src/domain/accessibility.js';
-import { playerView, type PlayerState } from '../../../server/src/domain/player.js';
+import { newPlayer, playerView, type HorseInstance, type PlayerState } from '../../../server/src/domain/player.js';
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { exchangeClosesAt } from '../../../server/src/domain/exchange.js';
@@ -20,7 +20,9 @@ import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
 import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
-import { createHorseFromTemplate } from '../../../server/src/domain/horses.js';
+import { breed as breedHorses, createHorseFromTemplate, lineageSnap } from '../../../server/src/domain/horses.js';
+import { finishBreedingPedigree, finishPedigree } from '../../../server/src/domain/pedigree.js';
+import { seededRng } from '../../../server/src/domain/rng.js';
 import tracksJson from '../../../server/master/tracks.json';
 import { FakeStoreVerifier } from '../../../server/src/domain/purchase.js';
 import { raceFieldSeen } from '../../../server/src/domain/collection.js';
@@ -502,6 +504,43 @@ const linkTargets: LinkTargets = {
 };
 async function linkFriend() {
   if (!(await repo.get(LINK_FRIEND))) { await svc.bootstrap(LINK_FRIEND); await svc.setDisplayName(LINK_FRIEND, LINK_FRIEND_NAME); }
+}
+
+// round 23 (REQ-PED-*): the demo family for the pedigree screens, bred by the real breedWith on the local player (once).
+const PED_DEMO = { sire: 'アカツキボーイ', stud: 'ホシカゲ', owner: 'demo_ped_owner' };
+async function pedigreeDemo() {
+  return svc.tx(ID, null, (s, t) => {
+    const named = (n: string) => s.horses.find((h) => h.name === n);
+    if (!named(PED_DEMO.sire)) {
+      const ret = (id: string) => { const h = createHorseFromTemplate(s, master.templateById.get(id)!, t); h.status = 'retired'; return h; };
+      const sire = ret('t_akatsuki'), dam = ret('t_kohaku');
+      const keep = s.breeding;
+      let bro: HorseInstance | undefined, sis: HorseInstance | undefined;
+      for (let i = 0; i < 40 && (!bro || !sis); i++) {
+        s.breeding = { date: null, count: 0 };
+        const f = breedHorses(master, s, sire.id, dam.id, seededRng(2300 + i), t).foal;
+        if (f.sex === 'male' && !bro) bro = f; else if (f.sex === 'female' && !sis) sis = f;
+        else s.horses = s.horses.filter((h) => h.id !== f.id);
+      }
+      s.breeding = keep; // the demo does not use today's breedings
+      bro!.name = PED_DEMO.sire; bro!.named = true; bro!.status = 'retired';
+      sis!.name = 'アカツキヒメ'; sis!.named = true; sis!.status = 'retired';
+      // another trainer's stallion (REQ-BREED-014) with its birth snapshot (REQ-PED-001): the owner is not a friend
+      const st = createHorseFromTemplate(newPlayer(PED_DEMO.owner, t, '2026-11'), master.templateById.get('t_ginga')!, t); // never stored
+      st.status = 'retired';
+      s.counters.horseSeq += 1;
+      const foal: HorseInstance = {
+        id: `h${s.counters.horseSeq}`, templateId: null, name: PED_DEMO.stud, rarity: 'SR', sex: 'female', style: 'senko', distMinM: 1600, distMaxM: 2400, surface: 'turf',
+        line: st.line, base: { speed: 720, stamina: 760, burst: 700, guts: 680, temper: 600 }, awakening: 0, bornAt: t, status: 'retired',
+        sireId: null, damId: sis!.id, sireName: st.name, damName: sis!.name, named: true,
+        studSire: { ownerId: PED_DEMO.owner, horseId: 'h1', sireName: st.sireName, damName: st.damName },
+        lineage: { v: 1, sire: lineageSnap(master, st, PED_DEMO.owner), dam: lineageSnap(master, sis!, s.id) },
+      };
+      s.horses.push(foal);
+    }
+    const id = (n: string) => named(n)!.id;
+    return { sireId: id(PED_DEMO.sire), damId: id('アカツキヒメ'), studFoalId: id(PED_DEMO.stud) };
+  });
 }
 
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
@@ -1354,6 +1393,18 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 23: 血統図と系統 (REQ-PED-*, contracts/protocol.md §71)
+  // GET /v1/horses/:id/pedigree, GET /v1/breeding/pedigree and GET /v1/bloodlines on the real pedigree.ts, in the screen's
+  // language (bloodline names and pair hints are picked from their JA + EN pair; other texts are the server's Japanese,
+  // translated by the prototype's catalog like an HTTP answer at the boundary). Read only: nothing is granted.
+  pedigree: {
+    view: (horseId: string, lang: 'ja' | 'en' = 'ja') => wrap(async () => finishPedigree(master, await svc.pedigreeMine(ID, horseId, lang), {}, lang)),
+    pair: (sireId: string, damId: string, lang: 'ja' | 'en' = 'ja') => wrap(async () => finishBreedingPedigree(await svc.pedigreePair(ID, sireId, damId, lang), {})),
+    bloodlines: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.bloodlines(ID, lang)),
+    /** A demo family: a brother and a sister bred from two retired template horses (an inbred pair), and a foal by another trainer's stallion. */
+    demo: () => wrap(() => pedigreeDemo()),
+    kpi: (name: 'pedigree_view' | 'bloodline_view', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  },
   // ---------------------------------------------------------------- round 21: トレーナーカード (REQ-SHOW-*, contracts/protocol.md §62)
   showcase: {
     /** GET /v1/showcase in the screen's language (phrases and background names are picked from their JA + EN pair). */

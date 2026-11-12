@@ -90,6 +90,8 @@ static class Program
         await TipsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 21: イベントカレンダー (CalendarModel: month / week lists, JST lines, paid rows dates only, marks with offline queue and rollback, KPI; REQ-CAL-*)");
         await CalendarChecks.Run(Check, Root);
+        Console.WriteLine("== round 23: 血統図と系統 (PedigreeModel: 15 slots, shared ancestors and the inbreeding line from the server, 記録なし, owner line, rev cache / 304 / offline, hidden horse, pair, bloodlines, reset, KPI; REQ-PED-*)");
+        await PedigreeChecks.Run(Check, Root);
         Console.WriteLine("== round 17: おすすめフレンド (cards, request / dismiss with rollback, fsug_view once, offline, setting; REQ-FSUG-*)");
         await FriendSuggestionsChecks.Run(Check, Root);
         Console.WriteLine("== round 19: 画質・省電力・通信量 (auto by device class, battery saver, data saver downloads, storage / clear cache; REQ-PERF-*)");

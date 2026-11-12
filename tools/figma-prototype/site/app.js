@@ -2568,22 +2568,24 @@ async function Settings(tab) {
   en.style.fontSize = '14px'; en.style.whiteSpace = 'nowrap'; en.style.padding = '0'; ja.dataset.name = 'Language';
   Hair(36, 162, 428, a);
   // 引き継ぎ (REQ-API-005): the same buttons as the prompt; the prompt itself shows once (REQ-UXS-073)
-  Txt('引き継ぎ（Apple・Google）', 36, 186, 428, 21, WHITE, a, { weight: 500 });
+  Txt('引き継ぎ（Apple・Google）', 36, 178, 428, 21, WHITE, a, { weight: 500 });
   const lp = linkedProvider();
-  Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 222, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
-  if (!lp) { Ghost('Apple', 36, 258, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 258, 120, 52, () => Link('google', Settings), a); }
+  Txt(lp ? `${lp === 'apple' ? 'Apple' : 'Google'}で登録済み` : '未登録（機種変更の前に登録してください）', 36, 212, 428, 15, lp ? OK : MUTED, a, { weight: 500 }).dataset.name = 'Link';
+  if (!lp) { Ghost('Apple', 36, 244, 120, 52, () => Link('apple', Settings), a); Ghost('Google', 166, 244, 120, 52, () => Link('google', Settings), a); }
   // round 19 (REQ-TRF-001): 引き継ぎコード — ID and password, with or without Apple / Google
-  Ghost('IDとパスワード', lp ? 36 : 296, 258, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
-  Hair(36, 336, 428, a);
+  Ghost('IDとパスワード', lp ? 36 : 296, 244, lp ? 220 : 168, 52, () => TransferIssue(), a, 'small').dataset.action = 'transfer-code';
+  // round 23 (REQ-DEV-*, §70.6): ログイン中の端末 on the account panel, under 引き継ぎ (その他 keeps its eight rows)
+  TextLink('ログイン中の端末 ›', 36, 302, 428, () => DeviceList(), a).dataset.action = 'devices';
+  Hair(36, 344, 428, a);
   // REQ-UXS-040 (UXP-007 preview): two-step deletion with a 14-day cancel window; purchases are blocked meanwhile
-  Txt('アカウント削除', 36, 360, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
+  Txt('アカウント削除', 36, 362, 428, 21, WHITE, a, { weight: 500 }).dataset.name = 'Delete';
   const d = player.deletion;
   if (d?.status === 'scheduled') {
-    Txt(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 36, 398, 428, 16, GOLD, a, { weight: 500, lh: 1.6 });
+    Txt(`削除予定：${jstDate(d.deleteAt)}\nそれまでは取り消せます。手続き中は購入できません。`, 36, 400, 428, 16, GOLD, a, { weight: 500, lh: 1.6 });
     Cta('アカウント削除の取り消し', 36, 480, 428, async () => { const r = await L.cancelDeletion(); toast(r.ok ? '削除を取り消しました' : r.message); Settings(); }, a, 'small');
   } else {
-    Txt('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 36, 398, 428, 15, MUTED, a, { lh: 1.6 });
-    Ghost('アカウントを削除する', 36, 462, 300, 56, async () => {
+    Txt('削除すると14日後に全てのデータが消えます。期間内は取り消せます。', 36, 400, 428, 15, MUTED, a, { lh: 1.6 });
+    Ghost('アカウントを削除する', 36, 464, 300, 56, async () => {
       const r = await L.requestDeletion(null);
       if (!r.ok) { toast(r.message); return; }
       ConfirmDeletion(r.value);
@@ -6598,7 +6600,7 @@ function GiftResult(c) {
 // link per row, mark read up to the newest shown entry on opening. Display + links only: a gift row leads to the gift box,
 // never a claim button. Every value comes from L.activity (the real PlayerService and the same name resolution as the route).
 // ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan labels, one skewed cyan CTA ».
-const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ' };
+const ACT_LABEL = { friend_request: 'フレンド', friend_accepted: 'フレンド', rival_week: 'ライバル', rival_record: 'ライバル', stable_like: 'マイ厩舎', team_cheer: '支部', tournament_result: '大会', gift_arrived: 'プレゼント', team_goal_tier: '支部', team_goal_week: '支部', replay_share: 'リプレイ', inquiry_answered: 'お問い合わせ', cup_invited: 'カップ', cup_started: 'カップ', cup_finished: 'カップ', cup_cancelled: 'カップ', recap_ready: '振り返り', ops_notice: '運営', qchat_mention: '支部', data_export_ready: 'データ', new_device: 'アカウント' };
 const ACT_PAGE = 7;
 const actState = { cursor: null, stack: [] };
 const actGo = (screen, id) => ({
@@ -6610,6 +6612,7 @@ const actGo = (screen, id) => ({
   recap: (rid) => (rid ? Recap(rid) : Recaps()), // round 16 (§43): the recap that became ready
   safety: () => BlockList(), // §47: support's request leads to 通報とブロック
   privacy: () => Privacy(), // round 18 (§51): the data export is ready
+  devices: () => DeviceList(), // round 23 (§70.4): a new device signed in → ログイン中の端末
 })[screen]?.(id);
 /** The home bell (under the gift envelope, clear of the rival strip) with the unread count from the player view (REQ-ACT-009). */
 function ActivityBell(x = 1088, y = 122) {
@@ -7195,6 +7198,134 @@ function TransferReplaced() {
   Txt('心当たりがないときは、ヘルプのお問い合わせから運営に知らせてください。', 82, 368, 860, 15, MUTED, undefined, { cls: 'tshadow', lh: 1.6 });
   Cta('引き継ぎコードを入力', 78, 440, 440, () => TransferRedeem({ back: 'title' })).classList.add('trf-replaced-redeem');
   Ghost('新しく始める', 542, 447, 260, 60, () => Title()).classList.add('trf-replaced-new');
+  EnToggle();
+}
+
+
+// ================================================================= round 23: ログイン中の端末とセキュリティ (REQ-DEV-*, contracts/protocol.md §70)
+// On the real PlayerService steps (L.devices: check-in, list, sign-outs, the log). Mirrors unity DeviceSessionsModel. ムチ一閃 tone:
+// photoreal art, translucent navy panels, small letter-spaced cyan labels, one skewed cyan CTA » (the confirm sheet's), sparse.
+// Neutral wording only — never 「不正」「危険」「今すぐ」.
+const DEV_OS = { ios: 'iOS', android: 'Android' };
+/** 「iPhone（iOS 18）」 / 「iOSの端末」 / 「端末」 — the same as C# DeviceLabel (EN: proto-en templates). Model names are never translated. */
+function devName(x) {
+  const os = DEV_OS[x?.platform] ? (x.osMajor != null ? `${DEV_OS[x.platform]} ${x.osMajor}` : DEV_OS[x.platform]) : null;
+  if (x?.model) return os ? `${x.model}（${os}）` : x.model;
+  return os ? `${os}の端末` : '端末';
+}
+const devRegion = (c) => (!c ? null : c === 'JP' ? '日本' : c);
+const devDay = (ms) => { const d = new Date(ms + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日`; };
+const devTooSoon = (h) => `この端末でログインしてから${h}時間たつと、前からある端末もログアウトできます`;
+const devKpi = (e) => { (globalThis.__muchiKpi ??= []).push(e); };
+async function DeviceList(state = {}) {
+  currentScreen = () => DeviceList(state);
+  const r = await L.devices.checkin();
+  Clear('devices'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('ログイン中の端末', 'このアカウントでログインしている端末とセキュリティの記録', { wallet: false });
+  if (!r.ok || !r.value.enabled) { Txt('この機能は現在ご利用いただけません', 82, 200, 900, 22, WHITE); Back(() => Settings(), 'BACK', 40, 834); return; }
+  const v = r.value;
+  devKpi({ name: 'device_list_view', screen: 'devices', count: v.sessions.length });
+  const lp = Glass('Devices', 36, 134, 960, 676, undefined, .9);
+  lp.classList.add('dev-list');
+  const cur = v.sessions.find((x) => x.current);
+  Kicker('この端末', 36, 30, lp);
+  if (cur) {
+    const row = el('dev-row dev-current', 36, 92, 888, 64, lp);
+    row.dataset.session = cur.sessionId;
+    Txt(devName(cur), 0, 4, 560, 21, WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Txt([devRegion(cur.region), `最後の利用：${devDay(cur.lastSeenAt)}`].filter(Boolean).join('・'), 0, 36, 600, 14, SOFT, row, { nowrap: true });
+    Txt('この端末', 712, 12, 176, 15, CYAN, row, { weight: 700, ls: '.14em', align: 'right', nowrap: true });
+  }
+  Hair(36, 176, 888, lp);
+  Kicker('ほかの端末', 36, 194, lp, { rule: false, size: 15 });
+  const others = v.sessions.filter((x) => !x.current);
+  if (!others.length) Txt('ほかにログインしている端末はありません', 36, 236, 888, 16, MUTED, lp).classList.add('dev-none');
+  others.slice(0, 5).forEach((x, i) => {
+    const row = el('dev-row', 36, 232 + i * 76, 888, 70, lp);
+    row.dataset.session = x.sessionId;
+    Txt(devName(x), 0, 4, 600, 19, WHITE, row, { weight: 700, nowrap: true, cls: 'keep-ja' });
+    Txt([devRegion(x.region), `最後の利用：${devDay(x.lastSeenAt)}`].filter(Boolean).join('・'), 0, 34, 600, 14, SOFT, row, { nowrap: true });
+    const b = Ghost('ログアウト', 688, 6, 200, 50, () => {
+      if (!x.canSignOut) { toast(devTooSoon(v.trustAfterHours)); return; }
+      DeviceConfirm(v, x, state);
+    }, row, 'small');
+    b.dataset.devSignout = x.sessionId; b.dataset.can = x.canSignOut ? '1' : '0';
+    Hair(0, 69, 888, row);
+  });
+  if (others.length > 5) Txt(`ほか${others.length - 5}台`, 36, 616, 888, 14, SOFT, lp, { nowrap: true });
+  Txt(`ログアウトは1日${v.revokesPerDay}回まで（今日 ${v.revokesToday}回）`, 36, 640, 888, 13, SOFT, lp, { nowrap: true });
+  const rp = Glass('Security', 1016, 134, 548, 676, undefined, .86);
+  rp.classList.add('dev-side');
+  Kicker('まとめて', 36, 30, rp);
+  const all = Ghost('この端末以外をすべてログアウト', 36, 92, 476, 56, () => {
+    if (!others.length) { toast('ログアウトする端末はありません'); return; }
+    if (!v.signOutOthers.allowed) { toast(devTooSoon(v.trustAfterHours)); return; }
+    DeviceConfirm(v, null, state);
+  }, rp, 'small');
+  all.dataset.action = 'devices-signout-others';
+  Txt(`この端末より後にログインした端末は、すぐにログアウトできます。前からある端末は、この端末でログインしてから${v.trustAfterHours}時間たつとログアウトできます。`, 36, 168, 476, 14, MUTED, rp, { lh: 1.6 });
+  Hair(36, 272, 476, rp);
+  TextLink('セキュリティの記録 ›', 36, 286, 476, () => SecurityLog(), rp).dataset.action = 'security-log';
+  TextLink('ログイン中の端末について（ヘルプ）', 36, 330, 476, () => HelpArticle(L.helpContext('devices'), 'context', () => DeviceList()), rp).dataset.helpContext = 'devices';
+  Hair(36, 386, 476, rp);
+  Kicker('デモ（レビュー用）', 36, 404, rp, { rule: false, size: 15, color: SOFT });
+  Ghost('新しい端末でログインする', 36, 448, 476, 52, async () => { await L.devices.demoNewDevice(); toast('新しい端末でログインがありました'); DeviceList(); }, rp, 'quiet small').dataset.action = 'devices-demo-new';
+  Ghost('ログアウトされた端末の画面', 36, 516, 476, 52, () => SessionRevoked(), rp, 'quiet small').dataset.action = 'devices-demo-revoked';
+  Txt('名前は機種の種類とOSの大きな番号、地域は国だけです。IPアドレスは記録しません。', 36, 590, 476, 13, SOFT, rp, { lh: 1.55 });
+  Back(() => Settings(), 'BACK', 40, 834);
+}
+/** The confirm sheet before a sign-out (`target` null = all the other devices). */
+function DeviceConfirm(v, target, state) {
+  Shade('dim heavy');
+  const box = Dialog('Device sign-out', 920, 460);
+  box.classList.add('dev-confirm');
+  Kicker('確認', 52, 44, box);
+  Txt(target ? `${devName(target)}をログアウトしますか？` : 'この端末以外をすべてログアウトしますか？', 52, 104, 816, 26, WHITE, box, { weight: 700, cls: 'keep-ja dev-confirm-title' });
+  Txt(target ? 'その端末は次に通信した時にログアウトされます。' : 'その端末は次に通信した時にログアウトされます。この端末より前にログインした端末も、一覧にない端末も、すべてログアウトされます。', 52, 158, 816, 16, MUTED, box, { lh: 1.6 });
+  if (v.anonymousOnly) Txt('その端末ではこのアカウントに戻れなくなります（Apple・Googleの連携か引き継ぎコードがあれば戻れます）。', 52, 236, 816, 15, GOLD, box, { weight: 500, lh: 1.6, cls: 'dev-anon' });
+  Cta('ログアウトする', 52, 330, 420, async () => {
+    const x = target ? await L.devices.signOut(target.sessionId) : await L.devices.signOutOthers();
+    if (x.ok) toast(x.value.signedOut > 0 ? 'ログアウトしました' : 'ログアウトする端末はありません');
+    else toast(x.code === 'DEVICE_SIGNOUT_TOO_SOON' ? devTooSoon(v.trustAfterHours) : x.code === 'RATE_LIMITED' ? '今日はこれ以上ログアウトできません' : 'ログアウトできませんでした。時間をおいてお試しください');
+    DeviceList(state);
+  }, box, 'small dev-confirm-yes');
+  Ghost('やめる', 496, 336, 220, 50, () => DeviceList(state), box, 'quiet').classList.add('dev-confirm-no');
+}
+const SEC_ICON = { new_device: '新', signout_device: '出', signout_others: '出', signout_support: '出', transfer_issued: '引', transfer_revoked: '引', transfer_redeemed: '引', link_added: '連', link_removed: '連' };
+/** セキュリティの記録 (newest first; view only). */
+async function SecurityLog() {
+  currentScreen = SecurityLog;
+  const r = await L.devices.log();
+  Clear('security-log'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('セキュリティの記録', '新しい端末でのログイン・ログアウト・引き継ぎコード・連携の追加と解除', { wallet: false });
+  const items = r.ok ? r.value.items : [];
+  devKpi({ name: 'device_list_view', screen: 'log', count: items.length });
+  const lp = Glass('Security log', 36, 134, 1528, 676, undefined, .9);
+  lp.classList.add('sec-log');
+  Kicker(r.ok ? `直近${r.value.logDays}日` : 'セキュリティの記録', 36, 30, lp);
+  if (!items.length) Txt('まだ記録はありません', 36, 96, 1400, 16, MUTED, lp).classList.add('sec-none');
+  items.slice(0, 8).forEach((x, i) => {
+    const row = el('sec-row', 36, 92 + i * 66, 1456, 60, lp);
+    row.dataset.kind = x.kind;
+    Txt(jstDate(x.at), 0, 6, 220, 15, SOFT, row, { nowrap: true, cls: 'num' });
+    Txt(x.text, 236, 4, 1000, 18, WHITE, row, { weight: 700, nowrap: true });
+    if (x.device) Txt([devName(x.device), devRegion(x.device.region)].filter(Boolean).join('・'), 236, 32, 1000, 14, SOFT, row, { nowrap: true, cls: 'keep-ja' });
+    Hair(0, 59, 1456, row);
+  });
+  if (items.length > 8) Txt(`ほか${items.length - 8}件`, 36, 626, 1400, 14, SOFT, lp, { nowrap: true });
+  Back(() => DeviceList(), 'BACK', 40, 834);
+}
+/** This device after 401 SESSION_REVOKED (signed out from another device or by support). Neutral; = unity MaintenanceScreen.SessionRevoked. */
+function SessionRevoked() {
+  deviceAccountChanged();
+  currentScreen = SessionRevoked;
+  Clear('session-revoked'); SetArt('Art/home-paddock', false); Shade('left');
+  Kicker('ログアウト', 82, 112, undefined, { size: 18 });
+  Txt('この端末はログアウトされました', 78, 176, 1100, 56, WHITE, undefined, { cls: 'tshadow', ls: '.04em', nowrap: true });
+  Txt('別の端末かサポートからログアウトの操作がありました。Apple・Googleで連携している場合は、もう一度ログインすると続きから遊べます。心当たりがない場合はお問い合わせください。', 82, 268, 860, 21, WHITE, undefined, { cls: 'tshadow', weight: 500, lh: 1.65 });
+  Cta('ログインする', 78, 440, 440, () => Title()).classList.add('dev-revoked-signin');
+  Ghost('新しく始める', 542, 447, 260, 60, () => Title()).classList.add('dev-revoked-new');
+  TextLink('お問い合わせ', 826, 459, 240, () => HelpCenter(Title)).classList.add('dev-revoked-contact');
   EnToggle();
 }
 
@@ -8981,7 +9112,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

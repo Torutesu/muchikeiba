@@ -629,6 +629,20 @@ await shot('diagnostics', 600);
   await shot('transfer-done', 300);
   await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', 400);
   assert.match(await page.locator('.screen.in').innerText(), /Moved to another device/);
+  // round 23: ログイン中の端末 in English (REQ-DEV-020): the list with a new phone, the confirm sheet, the security log and the
+  // signed-out device's screen
+  await show('DeviceList'); await waitScreen('devices', 30000); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-action="devices-demo-new"]').click(); await page.waitForTimeout(900);
+  await shot('devices', 300);
+  assert.match(await page.locator('.screen.in .dev-current').innerText(), /iPhone \(iOS 18\)[\s\S]*THIS DEVICE/i, 'devices: this device in English');
+  await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm', { timeout: 5000 });
+  await shot('devices-confirm', 300);
+  assert.match(await page.locator('.screen.in .dev-confirm-title').innerText(), /Sign out Pixel \(Android 15\)\?/, 'devices: the confirm title in English');
+  await page.locator('.screen.in .dev-confirm-yes').click(); await page.waitForTimeout(900);
+  await show('SecurityLog'); await waitScreen('security-log'); await page.waitForTimeout(300); await shot('security-log', 300);
+  assert.match(await page.locator('.screen.in .sec-log').innerText(), /Signed out another device[\s\S]*A new device signed in/, 'devices: the log in English');
+  await show('SessionRevoked'); await waitScreen('session-revoked'); await shot('session-revoked', 300);
+  assert.match(await page.locator('.screen.in').innerText(), /This device was signed out/);
   // round 21: ディープリンク・再戦 in English (REQ-LINK-024): the links hub, the share sheet, 「リンクを開く」 with a notice, the
   // confirmation, the friend-room result with 再戦 waiting and opened, the new room
   await show('Links'); await waitScreen('links', 30000); await page.waitForTimeout(300);

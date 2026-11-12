@@ -2451,6 +2451,45 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in').innerText(), /別の端末に引き継がれました/);
   await shot('transfer-replaced', 300);
 
+  // ------------------------------------------------------------------ round 23: ログイン中の端末 (REQ-DEV-*)
+  // その他 › 設定 (the account panel) › ログイン中の端末: this device first, the demo tablet; a new phone signs in (the activity
+  // entry links back here); the confirm sheet (やめる sends nothing), sign it out (its next request is SESSION_REVOKED), all the
+  // others, the security log, and the signed-out device's neutral screen (the device state is reset once). No 9th row on その他.
+  await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-name="More"] > .btn.row').count() <= 8, true, 'その他 keeps at most eight rows');
+  await page.locator('.screen.in .btn[data-action="devices"]').click(); await waitScreen('devices'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .dev-current').count(), 1, 'this device is listed first');
+  assert.match(await page.locator('.screen.in .dev-current').innerText(), /iPhone（iOS 18）[\s\S]*この端末/);
+  await page.locator('.screen.in [data-action="devices-demo-new"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .dev-row:not(.dev-current)').count(), 2, 'the tablet and the new phone');
+  await shot('devices', 400);
+  const devAct = await page.evaluate(async () => (await globalThis.__muchi.logic.activity()).value.items.filter((x) => x.kind === 'new_device').map((x) => x.text + '|' + x.link.screen));
+  assert.deepEqual(devAct, ['新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます|devices'], 'one neutral activity entry that links here');
+  const phoneRow = page.locator('.screen.in .dev-row', { hasText: 'Pixel' });
+  await phoneRow.locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm', { timeout: 5000 });
+  assert.match(await page.locator('.screen.in .dev-confirm-title').innerText(), /Pixel（Android 15）をログアウトしますか？/);
+  await shot('devices-confirm', 300);
+  await page.locator('.screen.in .dev-confirm-no').click(); await waitScreen('devices'); await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.devices.revoked('phone')).value), false, 'やめる sends nothing');
+  await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm');
+  await page.locator('.screen.in .dev-confirm-yes').click(); await page.waitForTimeout(900);
+  assert.equal(await page.evaluate(async () => (await globalThis.__muchi.logic.devices.revoked('phone')).value), true, 'the phone\'s next request is SESSION_REVOKED');
+  assert.equal(await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).count(), 0, 'the phone left the list');
+  await page.locator('.screen.in [data-action="devices-signout-others"]').click(); await page.waitForSelector('.screen.in .dev-confirm');
+  assert.match(await page.locator('.screen.in .dev-confirm').innerText(), /一覧にない端末も/);
+  await page.locator('.screen.in .dev-confirm-yes').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .dev-none').count(), 1, 'only this device is left');
+  assert.deepEqual(await page.evaluate(() => globalThis.__muchi.logic.devices.kpi().map((k) => k.name + ':' + k.s1)), ['new_device_notice:android', 'device_signout:one', 'device_signout:others'], 'KPI: essential rows, categories only');
+  await page.locator('.screen.in [data-action="security-log"]').click(); await waitScreen('security-log'); await page.waitForTimeout(300);
+  assert.deepEqual(await page.locator('.screen.in .sec-row').evaluateAll((els) => els.map((e) => e.dataset.kind)), ['signout_others', 'signout_device', 'new_device']);
+  await shot('security-log', 300);
+  const devChanges = await page.evaluate(() => globalThis.__muchiAccountChanges ?? 0);
+  await page.evaluate(() => globalThis.__muchi.show('SessionRevoked')); await waitScreen('session-revoked'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in').innerText(), /この端末はログアウトされました/);
+  assert.doesNotMatch(await page.locator('.screen.in').innerText(), /不正|危険|今すぐ/, 'neutral wording');
+  assert.equal(await page.evaluate(() => globalThis.__muchiAccountChanges), devChanges + 1, 'the signed-out device resets its device state once');
+  await shot('session-revoked', 300);
+
   // ------------------------------------------------------------------ round 21: ディープリンク・再戦 (REQ-LINK-*)
   // その他 › 見た目・お世話・仲間 › リンクで招待・共有: the share sheet (no id in the URL, one link per target), the links I
   // shared, 「リンクを開く」 → the screen behind a confirmation (a room joins only after the button), one neutral notice for a

@@ -65,8 +65,7 @@ import type { RematchView } from '../domain/rematch.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
-import { checkinBodySchema, providersOf, regionOf, sanitizeModel, type CheckinInput } from '../domain/devices.js';
-import { sha256Hex } from '../domain/transferCode.js';
+import { buildCheckinInput, checkinBodySchema, type CheckinInput } from '../domain/devices.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -401,23 +400,12 @@ const id = z.string().min(1).max(64);
  */
 const requestSessions = new WeakMap<Request, { authTime: number | null; identities?: Record<string, unknown> }>();
 const authTimeOf = (r: Request) => requestSessions.get(r)?.authTime ?? null;
-/** The per-account hash of the install id (16 hex): never the raw id (§70 minimisation). */
-async function deviceHashOf(uid: string, r: Request): Promise<string | null> {
-  const raw = r.headers.get('x-install-id');
-  if (raw === null) return null;
-  if (!installIdSchema.safeParse(raw).success) throw new AppError('BAD_REQUEST', 'bad x-install-id');
-  return (await sha256Hex(`device:${uid}:${raw}`)).slice(0, 16);
-}
 async function checkinInput(r: Request, uid: string): Promise<CheckinInput> {
   const b = await body(r, checkinBodySchema);
+  const raw = r.headers.get('x-install-id');
+  if (raw !== null && !installIdSchema.safeParse(raw).success) throw new AppError('BAD_REQUEST', 'bad x-install-id');
   const sess = requestSessions.get(r);
-  const authTime = sess?.authTime ?? null;
-  const device = await deviceHashOf(uid, r);
-  const sessionId = authTime === null ? null : `s_${(await sha256Hex(`session:${uid}:${authTime}:${device ?? ''}`)).slice(0, 16)}`;
-  return {
-    authTime, sessionId, device, platform: b.platform, osMajor: b.osMajor ?? null, model: sanitizeModel(b.model), appVersion: b.appVersion ?? null,
-    region: regionOf(r.headers.get('cf-ipcountry')), providers: providersOf(sess?.identities),
-  };
+  return buildCheckinInput(uid, sess?.authTime ?? null, raw, b, r.headers.get('cf-ipcountry'), sess?.identities);
 }
 const SESSION_ID_RE = /^s_[0-9a-f]{16}$/;
 const sessionParam = (x: string) => { if (!SESSION_ID_RE.test(x)) throw new AppError('NOT_FOUND', 'no such device'); return x; };
@@ -1476,7 +1464,7 @@ export const routes: Route[] = [
   { method: 'POST', path: '/v1/account/devices/signout-others', auth: 'player', handler: async (r, _p, c, u) => {
     await body(r, confirmSchema);
     const out = await c.player(u).invoke('devicesSignOutOthers', u, authTimeOf(r));
-    if (out.signedOut > 0) c.sessionForget?.(u);
+    c.sessionForget?.(u); // also when nobody was listed: unlisted older sessions may have been cut (REQ-DEV-005)
     return out;
   } },
   { method: 'POST', path: '/v1/account/devices/:sessionId/signout', auth: 'player', handler: async (r, p, c, u) => {

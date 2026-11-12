@@ -303,6 +303,15 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
     await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
+    // Round 23: ログイン中の端末 — the list (with a new phone), the confirm sheet, the security log, the signed-out screen (REQ-DEV-020)
+    await show('DeviceList'); await waitScreen('devices'); await page.waitForTimeout(300);
+    if (await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).count() === 0) { await page.locator('.screen.in [data-action="devices-demo-new"]').click(); await page.waitForTimeout(900); }
+    await shot('devices', english, 400);
+    await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).first().locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm', { timeout: 5000 });
+    await shot('devices-confirm', english, 300);
+    await page.locator('.screen.in .dev-confirm-no').click(); await waitScreen('devices');
+    await show('SecurityLog'); await waitScreen('security-log'); await shot('security-log', english, 400);
+    await show('SessionRevoked'); await waitScreen('session-revoked'); await shot('session-revoked', english, 400);
     // Round 20: the pre-prompt sheet, settings › privacy › ads and analytics and its help article (context privacy_choices)
     await show('ConsentPrompt'); await waitScreen('consent-prompt'); await page.waitForSelector('.screen.in [data-cns="continue"]', { timeout: 15000 }); await shot('consent-prompt', english, 500);
     await show('PrivacyChoices'); await waitScreen('privacy-choices'); await page.waitForSelector('.screen.in [data-cns-row="analytics"]', { timeout: 15000 }); await shot('privacy-choices', english, 500);

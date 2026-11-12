@@ -15,6 +15,7 @@ import { dayRule, gameDayKey } from './time.js';
 import { recordActivity } from './activity.js';
 import { sessionRevoked, type SessionRevocations } from './sessionRevocation.js';
 import type { KpiEvent } from './kpi.js';
+import { sha256Hex } from './transferCode.js';
 
 // ------------------------------------------------------------------------------------------------ configuration
 
@@ -143,6 +144,19 @@ export interface CheckinInput {
   providers: LinkProvider[] | null;
 }
 
+/** The per-account hash of an install id (16 hex): never the raw id (REQ-DEV-001). */
+export const deviceHashOf = async (uid: string, installId: string) => (await sha256Hex(`device:${uid}:${installId}`)).slice(0, 16);
+/** `s_` + 16 hex of the account, the sign-in and the device hash (§70.1 3.). */
+export const sessionIdOf = async (uid: string, authTime: number, device: string | null) => `s_${(await sha256Hex(`session:${uid}:${authTime}:${device ?? ''}`)).slice(0, 16)}`;
+/** What the Worker hands the player object for a check-in (hashes first; the raw install id stops here). */
+export async function buildCheckinInput(uid: string, authTime: number | null, installId: string | null, b: CheckinBody, country: string | null, identities: unknown): Promise<CheckinInput> {
+  const device = installId === null ? null : await deviceHashOf(uid, installId);
+  return {
+    authTime, sessionId: authTime === null ? null : await sessionIdOf(uid, authTime, device), device, platform: b.platform, osMajor: b.osMajor ?? null,
+    model: sanitizeModel(b.model), appVersion: b.appVersion ?? null, region: regionOf(country), providers: providersOf(identities),
+  };
+}
+
 const floorTo = (ms: number, minutes: number) => ms - (ms % (minutes * 60_000));
 
 // ------------------------------------------------------------------------------------------------ pruning
@@ -216,7 +230,7 @@ export function applyCheckin(m: Master, s: PlayerState, i: CheckinInput, now: nu
   if (!hit) {
     const knownDevice = i.device !== null ? d.known.includes(i.device) : d.sessions.some((x) => x.platform === i.platform && x.model === i.model);
     const firstDevice = d.known.length === 0 && d.sessions.length === 0;
-    const preExisting = i.authTime! * 1000 < d.since;
+    const preExisting = i.authTime! < Math.floor(d.since / 1000); // auth_time is in whole seconds
     hit = { id: i.sessionId!, authTime: i.authTime!, device: i.device, platform: i.platform, osMajor: i.osMajor, model: i.model, appVersion: i.appVersion, region: i.region, firstSeenAt: seen, lastSeenAt: seen, providers: null };
     d.sessions.push(hit);
     if (!knownDevice && !firstDevice && !preExisting) {
@@ -310,10 +324,12 @@ export function signOutOthers(m: Master, s: PlayerState, currentAuth: number | n
     const older = others.filter((x) => x.authTime <= currentAuth);
     if (older.length > 0) throw tooSoon(c, currentAuth * 1000 + c.trustAfterHours * HOUR);
   }
-  const prevOthers = peek(s)?.othersBefore ?? null;
-  // nothing to sign out: no listed session, and (trusted) the last 「すべて」 already covered everything before this session
-  const covered = prevOthers !== null && prevOthers.keep === currentAuth && others.length === 0;
-  if (others.length === 0 && (!trusted || covered)) return { signedOut: 0 };
+  if (others.length === 0) {
+    // nobody listed: 200, not counted, nothing logged (REQ-DEV-005). A trusted session still moves the cut so sessions the
+    // list never showed (an app that never checked in) are signed out too — silently, like the listed ones would be.
+    if (trusted) ensureDevices(s, now).othersBefore = { at: now, keep: currentAuth };
+    return { signedOut: 0 };
+  }
   limitCheck(m, peek(s), now);
   const d = ensureDevices(s, now);
   for (const x of others) revoke(d, x, now);

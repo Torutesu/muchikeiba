@@ -4195,7 +4195,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 ### 70.3 ログアウト `POST /v1/account/devices/:sessionId/signout`・`POST /v1/account/devices/signout-others`（要認証）
 - 本文 `{ "confirm": true }`。応答 `{ "signedOut": 1, "devices": <70.2> }`。
 - 1台：無い `sessionId` → `404 NOT_FOUND`、この端末 → `409 DEVICE_IS_CURRENT`、もうログアウト済み → 200 `signedOut: 0`、自分より前からある端末で `trustAfterHours` に足りない → `403 DEVICE_SIGNOUT_TOO_SOON`。
-- この端末以外すべて：一覧のこの端末以外を全部ログアウトし、さらに **今より前にログインした、この端末以外のすべてのセッション**（一覧にまだ出ていない端末も）を無効にする（`othersBefore = { at: 今, keep: この端末の auth_time }`）。一覧に自分より前からある端末があり `trustAfterHours` に足りなければ `403 DEVICE_SIGNOUT_TOO_SOON`。ログアウトする相手がいなくても 200（`signedOut: 0`、回数に数えない）。
+- この端末以外すべて：一覧のこの端末以外を全部ログアウトし、さらに **今より前にログインした、この端末以外のすべてのセッション**（一覧にまだ出ていない端末も）を無効にする（`othersBefore = { at: 今, keep: この端末の auth_time }`）。一覧に自分より前からある端末があり `trustAfterHours` に足りなければ `403 DEVICE_SIGNOUT_TOO_SOON`。一覧にログアウトする相手がいなくても 200（`signedOut: 0`、回数に数えない、記録にも残さない。`trustAfterHours` たったこの端末なら、一覧に無い前のセッションのための `othersBefore` だけは今に動かす）。`trustAfterHours` に足りないこの端末は、一覧にある自分より後の端末だけをログアウトし、`othersBefore` は動かさない（一覧に出ていない古いセッション＝チェックインしない古いアプリの持ち主の端末には届かない）。
 - 無効化の記録 `devices.revoked`：`{ authTime, at }` の新しい `revokedKeep`（既定200）件。Firebase の匿名のセッションは期限が無いので、件数で切る（1日 `revokesPerDay` 回の上限があるので、200件は20日以上の連続の操作でしか溢れない）。
 - この端末の `auth_time` が分からない要求（トークンに無い）は `400 BAD_REQUEST`（「この端末」を決められない）。
 

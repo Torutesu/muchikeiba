@@ -109,8 +109,44 @@ function playerDetail(v, reload) {
     { label: '増減', value: (l) => (l.delta > 0 ? `+${num(l.delta)}` : num(l.delta)), class: 'num' }, { label: '残高', value: (l) => num(l.balanceAfter), class: 'num' }, { label: '理由', value: (l) => l.reason },
   ], [...(s.ledger ?? [])].reverse())));
 
-  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, historyCard(id), h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), gifts, comps, ledger,
+  return h('div', { class: 'player' }, header, h('div', { class: 'cols' }, wallet, flags), purchases, historyCard(id), devicesCard(id), h('div', { class: 'cols' }, integrity, h('div', {}, deletion, referral)), gifts, comps, ledger,
     h('details', {}, h('summary', {}, '生データ（JSON）'), json(v)));
+}
+
+const DEVICE_OS = { ios: 'iOS', android: 'Android', other: 'その他' };
+const deviceName = (x) => [x.model, x.platform ? `${DEVICE_OS[x.platform] ?? x.platform}${x.osMajor != null ? ' ' + x.osMajor : ''}` : null].filter(Boolean).join(' / ') || '—';
+/**
+ * REQ-DEV-017 (contracts/protocol.md §70.7): ログイン中の端末 — the signed-in sessions (coarse labels, country, hour-rounded times;
+ * never auth_time or install id hashes) and the security log, for any viewer; signing a session out (one / all) is admin only,
+ * with the reason in the audit (player.devices.revoke). Confirm the player's identity through the inquiry first.
+ */
+function devicesCard(playerId) {
+  const out = h('div', { 'data-testid': 'devices-out' }, h('span', { class: 'muted small' }, '読み込み中…'));
+  const base = `/v1/admin/players/${encodeURIComponent(playerId)}/devices`;
+  const revoke = (label, body, summary) => h('button', { class: 'btn small danger', 'data-testid': body.all ? 'devices-revoke-all' : 'devices-revoke', onclick: async (e) => {
+    const reason = await confirmWrite({ title: `${playerId}：${label}`, summary, danger: true, confirmLabel: label });
+    if (!reason) return;
+    if (await run(e.currentTarget, () => post(`${base}/revoke`, { ...body, reason }), (o) => `${label}：${o.signedOut}台`)) load();
+  } }, label);
+  const load = async () => {
+    try {
+      const v = await get(base);
+      mount(out,
+        table([
+          { label: '端末', value: (x) => deviceName(x) }, { label: '版', value: (x) => x.appVersion ?? '—' }, { label: '地域', value: (x) => x.region ?? '—' },
+          { label: '最初', value: (x) => jst(x.firstSeenAt) }, { label: '最後', value: (x) => jst(x.lastSeenAt) },
+          ...(can('admin') ? [{ label: '', value: (x) => revoke('ログアウト', { sessionId: x.sessionId }, `${deviceName(x)} のセッションを無効にします。次の要求から SESSION_REVOKED。`) }] : []),
+        ], v.sessions, { empty: 'セッションの記録なし', testid: 'devices-table' }),
+        h('div', { class: 'row' },
+          h('span', { class: 'muted small' }, `無効化の記録 ${v.revokedCount} 件・覚えている端末 ${v.knownDevices} 台${v.othersBeforeAt ? `・「すべて」${jst(v.othersBeforeAt)}` : ''}`),
+          can('admin') ? revoke('すべてログアウト', { all: true }, '今より前にログインしたすべてのセッションを無効にします（本人の端末も）。本人確認の後に行ってください。') : null),
+        h('details', {}, h('summary', {}, `セキュリティの記録（${v.log.length} 件）`), table([
+          { label: '日時', value: (x) => jst(x.at) }, { label: '内容', value: (x) => x.text }, { label: '端末', value: (x) => (x.device ? deviceName(x.device) : '—') },
+        ], v.log, { empty: '記録なし', testid: 'devices-log' })));
+    } catch (err) { mount(out, errorBox(err)); }
+  };
+  load();
+  return card('ログイン中の端末', out);
 }
 
 /**

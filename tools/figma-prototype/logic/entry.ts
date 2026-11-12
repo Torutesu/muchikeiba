@@ -67,6 +67,8 @@ import {
 } from '../../../server/src/domain/cheer.js';
 import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
 import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
+import { buildCheckinInput, type CheckinBody } from '../../../server/src/domain/devices.js';
+import { sessionRevoked } from '../../../server/src/domain/sessionRevocation.js';
 import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
 import { formatToken, linksConfig, parseLink, LINK_SCREENS, type LinkType } from '../../../server/src/domain/deepLinks.js';
 import { Rematches } from '../../../server/src/domain/rematch.js';
@@ -429,6 +431,20 @@ const trfSvc = new TransferService({
   noteFail: (u, r) => svc.transferFailed(u, r), admin: (u) => svc.adminTransfer(u),
   redeemReplay: (u, k) => svc.transferRedeemReplay(u, k), redeemRemember: (u, k, pid, name) => svc.transferRedeemRemember(u, k, pid, name),
 }, trfDir, () => transferConfig(master), { sign: async (uid, t) => `proto-custom-token.${uid}.${Math.floor(t / 1000)}` }, { clock: now });
+
+// round 23 (REQ-DEV-*, contracts/protocol.md §70): ログイン中の端末 on the real PlayerService steps. The Worker's part (the install
+// id hash, the session id, auth_time from the ID token) is the real buildCheckinInput; this device signed in 3 days before the
+// first visit (kept in localStorage), the demo devices are an older tablet and, on demand, a new phone signing in now.
+const DEV_KEY = 'muchi.proto.devices.auth';
+const devThisAuth = (): number => {
+  try { const v = Number(localStorage.getItem(DEV_KEY)); if (Number.isInteger(v) && v > 0) return v; } catch { /* private mode */ }
+  const v = Math.floor((now() - 3 * DAY_MS) / 1000);
+  try { localStorage.setItem(DEV_KEY, String(v)); } catch { /* private mode */ }
+  return v;
+};
+const DEV_BODY: CheckinBody = { platform: 'ios', osMajor: 18, model: 'iPhone15,2', appVersion: '1.4.0' };
+const devCheckin = async (authTime: number, installId: string, b: CheckinBody, country = 'JP') => svc.devicesCheckin(ID, await buildCheckinInput(ID, authTime, installId, b, country, {}));
+let devDemoAuth: Record<string, number> = {};
 
 // round 21 (REQ-LINK-*, contracts/protocol.md §63): ディープリンク on the real LinkService (directory in memory: a reload forgets the
 // links, like a fresh demo) and 再戦 on the real Rematches + FriendRooms (the matchmaker's logic). The demo friend ミドリカワ owns
@@ -1567,6 +1583,36 @@ export const MuchiLogic = {
     kpi: () => serverKpi.filter((k) => k.name.startsWith('transfer_')),
     audit: () => trfDir.rows.map((r) => ({ ...r })),
     storedRecords: () => JSON.stringify([...trfDir.codes.values()]),
+  },
+  // ---------------------------------------------------------------- round 23: ログイン中の端末 (REQ-DEV-*, contracts/protocol.md §70)
+  // What POST /v1/account/devices/checkin, GET /v1/account/devices, the sign-outs and GET /v1/account/security-log answer.
+  devices: {
+    /** This device's check-in (launch / the screen opening); the first time also the demo tablet (signed in before this feature). */
+    checkin: () => wrap(async () => {
+      await devCheckin(devThisAuth(), 'proto-install-0001', DEV_BODY);
+      if (!devDemoAuth.tablet) {
+        devDemoAuth.tablet = devThisAuth() - 40 * 86_400;
+        await devCheckin(devDemoAuth.tablet, 'proto-install-tablet', { platform: 'ios', osMajor: 17, model: 'iPad13,1', appVersion: '1.3.2' });
+      }
+      return svc.devicesView(ID, devThisAuth());
+    }),
+    view: () => wrap(() => svc.devicesView(ID, devThisAuth())),
+    signOut: (sessionId: string) => wrap(() => svc.devicesSignOut(ID, sessionId, devThisAuth())),
+    signOutOthers: () => wrap(() => svc.devicesSignOutOthers(ID, devThisAuth())),
+    log: () => wrap(() => svc.securityLog(ID)),
+    /** Demo: a new phone signs in to this account now (the new-device notice in the activity list and the log). */
+    demoNewDevice: () => wrap(async () => {
+      devDemoAuth.phone = Math.floor(now() / 1000);
+      return devCheckin(devDemoAuth.phone, `proto-install-phone-${devDemoAuth.phone}`, { platform: 'android', osMajor: 15, model: 'Pixel 9', appVersion: '1.4.0' }, 'JP');
+    }),
+    /** The next request of a demo device: true = 401 SESSION_REVOKED (the check the Worker's session guard runs). */
+    revoked: (which: 'tablet' | 'phone') => wrap(async () => {
+      const at = devDemoAuth[which];
+      return at !== undefined && sessionRevoked((await svc.sessionState(ID)).revoked, at);
+    }),
+    kpi: () => serverKpi.filter((k) => k.name === 'device_signout' || k.name === 'new_device_notice'),
+    /** Test hook: forget the demo devices' sign-in times (a fresh demo). */
+    resetDemo: () => { devDemoAuth = {}; },
   },
   // ---------------------------------------------------------------- round 21: ディープリンク・再戦 (REQ-LINK-*, contracts/protocol.md §63)
   // What POST/GET/DELETE /v1/links and POST /v1/links/resolve answer, on the real LinkService.

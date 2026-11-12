@@ -160,6 +160,24 @@ namespace Muchi.Client
         /// <summary>Races simulated for the analysis (the actual one + one per shift).</summary>
         public int Simulations;
 
+        public const string BestLine = "仕掛けのタイミングは最善だった";
+        /// <summary>No shifted go did better, but the finish was poor or the debrief blames timing: the fact, not praise.</summary>
+        public const string UnchangedLine = "仕掛けを前後に動かしても、着順は変わらなかった";
+        /// <summary>「最善」 is said only for a finish this good or better.</summary>
+        public const int BestLinePlaceMax = 3;
+        /// <summary>The result's debrief reason is about timing (whips too early / too late / mashed): never call the timing best.</summary>
+        public bool TimingLoss;
+
+        /// <summary>The debrief reasons that are about timing.</summary>
+        public static bool IsTimingReason(DebriefReason? r) => r == DebriefReason.LossEarlyWhip || r == DebriefReason.LossLateWhip || r == DebriefReason.LossWhipMash;
+
+        /// <summary>Re-words the lesson against the result's debrief reason so the two lines never contradict each other.</summary>
+        public void Reconcile(DebriefReason? reason)
+        {
+            TimingLoss = IsTimingReason(reason);
+            Describe();
+        }
+
         public static GoCounterfactual Analyze(RaceConfig config, IList<InputRecord> inputs, int slot, int[] shifts = null)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
@@ -234,7 +252,9 @@ namespace Muchi.Client
                 string gain = ((ActualTimeMs - BestTimeMs) / 100 / 10.0).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture);
                 Line = "仕掛けがあと" + secs + "秒" + side + "ければ、" + gain + "秒速くゴールできた";
             }
-            else if (!NoDecision) Line = "仕掛けのタイミングは最善だった";
+            // quality integration: 「最善」 only when no shifted go did better AND the finish was good (≤ BestLinePlaceMax) AND the
+            // debrief's reason is not about timing (Reconcile); otherwise the honest fact the re-simulations show
+            else if (!NoDecision) Line = ActualPlace >= 1 && ActualPlace <= BestLinePlaceMax && !TimingLoss ? BestLine : UnchangedLine;
             else Line = null;
 
             if (!Tactics) { Tip = null; return; }

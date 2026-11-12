@@ -334,6 +334,7 @@ html[data-reduce-motion="on"] .btn.whip.gonow .bg { animation: none; box-shadow:
 .marker[data-level="Low"] .mini i { background: var(--a11y-gauge-low); }
 .marker[data-level="Critical"] .mini i, .marker[data-level="Empty"] .mini i { background: var(--a11y-gauge-critical); animation: blink .4s steps(2) infinite; }
 .marker.kakari .nm::after { content: " 掛"; color: var(--gold); }
+.marker.quiet .gap, .marker.quiet .wind { display: none; } /* integration: a coaching line is up — the tag says the name only */
 .marker .gap, .marker .wind { order: 3; font-size: 16px; color: var(--white); text-shadow: 0 2px 6px rgba(0, 0, 0, .9); white-space: nowrap; font-weight: 500; }
 .marker.slip::before { content: ""; position: absolute; left: -40px; right: -40px; top: 40px; height: 80px; pointer-events: none;
   background: repeating-linear-gradient(100deg, transparent 0 22px, rgba(255, 255, 255, .55) 22px 25px, transparent 25px 48px); animation: wind .35s linear infinite;
@@ -348,7 +349,12 @@ html[data-reduce-motion="on"] .btn.whip.gonow .bg { animation: none; box-shadow:
 .cutin b { font-size: 34px; color: var(--white); }
 .cutin.mine b { color: var(--gold); }
 .cutin em { font-style: normal; font-size: 18px; color: var(--text-2); }
-.cutin.gone { opacity: 0; transform: translateX(40px); }
+.cutin.gone { opacity: 0; transform: translateX(-40px); }
+/* integration (quality-1): one plate, in the left column (460 px), never over the go area */
+.cutins { align-items: stretch; }
+.cutins .cutin { min-width: 0; padding: 10px 22px; }
+.cutins .cutin b { font-size: 28px; overflow-wrap: anywhere; }
+.cutins .cutin em { font-size: 16px; }
 @keyframes cutin { from { opacity: 0; transform: translateX(-80px) skewX(-8deg); } to { opacity: 1; transform: none; } }
 
 /* ---------------------------------------------------------------- scout */

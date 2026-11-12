@@ -788,7 +788,8 @@ function BuildRaceScreen() {
   const hold = (v) => (e) => { e.preventDefault(); reinHeld = v; rein.classList.toggle('held', v); };
   rein.addEventListener('pointerdown', hold(true)); rein.addEventListener('pointerup', hold(false)); rein.addEventListener('pointerleave', hold(false)); rein.addEventListener('pointercancel', hold(false));
   // skill cut-ins (engine Skill events)
-  hud.skillBox = el('cutins', 540, 560, 520, 230);
+  // skill cut-ins (engine Skill events) — integration: the left column under the chips, clear of the go area (hint, pop, marker)
+  hud.skillBox = el('cutins', 33, 236, 460, 200);
   Btn('中断', 33, 120, 120, 40, () => { raceActive = false; if (raceCtx.lesson) Tips(); else Home(); }, 'quit');
   // round 15 (REQ-PHOTO-001): a solo race (time attack, weekly challenge) pauses for a photo; a race with other people never does
   const pb = Btn('フォト', 163, 120, 120, 40, () => (phShared() ? toast('このレースは走っている途中では撮れません。結果画面かリプレイから撮ってください。') : PhotoOpen('paused')), 'quit' + (phShared() ? ' ph-locked' : ''));
@@ -946,7 +947,13 @@ function paintHud(f) {
   const p = view.project(raceInfo.playerSlot, 3.1);
   if (p && f.horses[raceInfo.playerSlot]?.[6]) {
     hud.marker.style.display = '';
-    hud.marker.style.transform = `translate(${Math.round(p.x - 110)}px, ${Math.round(Math.max(250, p.y) - 120)}px)`;
+    // integration (quality-1): the name tag and the coaching line get separate slots — while a line is up (hintbox 541–1072 ×
+    // 175–246) a tag under it drops below the plate and shows its name only (the line is the one thing to read)
+    let mx = Math.round(p.x - 110), my = Math.round(Math.max(250, p.y) - 120);
+    const under = !!hint && mx < 1072 && mx + 220 > 541;
+    if (under) my = Math.max(my, 254);
+    hud.marker.classList.toggle('quiet', under);
+    hud.marker.style.transform = `translate(${mx}px, ${my}px)`;
     hud.marker.querySelector('.mini i').style.width = (f.stamina / 10) + '%';
     hud.marker.dataset.level = feel.level ?? 'Ok';
     hud.marker.classList.toggle('kakari', !!f.kakari);
@@ -972,14 +979,17 @@ function paintHud(f) {
   });
   const ds = f.progress.map((pr) => pr * f.distanceM), lead = Math.max(...ds), spread = Math.max(0, lead - Math.min(...ds));
   setText(hud.spread, `先頭から最後方 ${Math.round(spread)}m`);
-  // skill cut-ins: about 2 s each, the partner's own in gold
+  // skill cut-ins: about 2 s each, the partner's own in gold. Integration (quality-1): one plate at a time, in the left
+  // column clear of the go area — an opponent's plate is dropped while one is up; the partner's own replaces it
   for (const e of f.skillEvents ?? []) {
     const mine = e.slot === raceInfo.playerSlot;
+    const up = [...hud.skillBox.children].find((x) => !x.classList.contains('gone'));
+    if (up && !mine) continue;
+    hud.skillBox.replaceChildren();
     const c = document.createElement('div'); c.className = 'cutin' + (mine ? ' mine' : '');
     c.innerHTML = `<small>${mine ? '相棒の固有スキル' : e.rank + '番手'}</small><b></b><em></em>`;
     c.querySelector('b').textContent = '「' + e.name + '」'; c.querySelector('em').textContent = e.horse;
-    hud.skillBox.prepend(c);
-    while (hud.skillBox.children.length > 2) hud.skillBox.lastChild.remove();
+    hud.skillBox.append(c);
     setTimeout(() => c.classList.add('gone'), 2200); setTimeout(() => c.remove(), 2600);
     if (mine) haptic(30);
   }
@@ -1154,7 +1164,8 @@ async function RaceResult(f) {
   await refresh();
   const rewards = applied.ok ? applied.value : { coins: 0, seasonPoints: 0, firstWinBonus: 0 };
   const promoAfter = await L.promotion.view();
-  raceCtx.promo = promoAfter.ok ? { view: promoAfter.value, beforeId: promoBefore.ok ? promoBefore.value.series?.id ?? null : null } : null;
+  const pb = promoBefore.ok ? promoBefore.value.series : null;
+  raceCtx.promo = promoAfter.ok ? { view: promoAfter.value, beforeId: pb?.id ?? null, beforeN: pb ? pb.results.length : -1, beforeStatus: pb?.status ?? null } : null;
   show(ResultScreen, f, rewards, passAfter.xp - passBefore.xp, passAfter, missions.ok ? missions.value : []);
 }
 /** The left result panel of 10-race-result (kicker, big place, stats, one CTA); x/y are the panel's corner. */
@@ -1265,6 +1276,13 @@ function PromoResultCard(ctx) {
   const v = ctx.view, x = v?.series;
   if (!v?.enabled || !x) return null;
   const started = x.status === 'active' && x.results.length === 0 && x.id !== ctx.beforeId;
+  // quality integration: the card speaks only for a series this race started, counted or decided — a series settled in an
+  // earlier race no longer sits next to an unrelated 11着 (its unseen outcome sheet still shows once, below)
+  const touched = ctx.beforeN === undefined || x.id !== ctx.beforeId || x.results.length !== ctx.beforeN || x.status !== ctx.beforeStatus;
+  if (!touched) {
+    if (promoPending(v)) { if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {}); else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); } }
+    return null;
+  }
   const c = Glass('Promotion series', 900, 180, 520, started ? 340 : 300, undefined, .86); c.classList.add('pp-card', 'rise');
   c.dataset.status = started ? 'start' : x.status;
   Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
@@ -6062,7 +6080,7 @@ async function Training() {
   Txt('疲れ', 36, 214, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
   Txt(`${h.fatigue} / ${v.fatigue.max}`, 344, 212, 180, 18, h.fatigue >= v.fatigue.restAt ? WARN : GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-fatigue');
   const fg = Gauge(36, 246, 488, h.fatigue / v.fatigue.max, hp); if (h.fatigue >= v.fatigue.restAt) fg.classList.add('warn');
-  Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 13, SOFT, hp);
+  Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 16, SOFT, hp);
   const stg = qrStage(h.trainedTotal, h.potential);
   Txt(`素質　·　${QR_STAGES[stg.index]}`, 36, 306, 300, 16, WHITE, hp, { weight: 700, ls: '.06em' }).classList.add('tr-stage');
   Txt(`${h.trainedTotal} / ${h.potential}`, 344, 304, 180, 18, GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-potential');
@@ -6071,11 +6089,11 @@ async function Training() {
   TextLink('馬カード', 36, 346, 160, () => HorseCard(h.horseId, () => Training()), hp, '馬カード ›');
   TR_STAT_ORDER.forEach((k, j) => {
     const x = 36 + (j % 3) * 168, y = 396 + Math.floor(j / 3) * 46;
-    Txt(TR_STAT[k], x, y, 100, 14, MUTED, hp, { weight: 500 });
+    Txt(TR_STAT[k], x, y, 100, 16, MUTED, hp, { weight: 500 });
     Txt(`+${h.trained[k]}`, x + 92, y - 3, 60, 18, h.trained[k] > 0 ? WHITE : DIM, hp, { weight: 700, cls: 'num' });
   });
   const rs = L.trainingRaceStats(h.horseId);
-  if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 13, SOFT, hp).classList.add('tr-ranked');
+  if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 16, SOFT, hp).classList.add('tr-ranked');
   const apple = v.items.find((x) => x.owned > 0);
   if (apple && h.fatigue > 0) {
     const ab = Ghost(`${apple.name}（${apple.owned}）`, 36, 530, 300, 54, async () => {
@@ -6084,8 +6102,8 @@ async function Training() {
       Training();
     }, hp, 'small');
     ab.classList.add('tr-item');
-  } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 13, DIM, hp);
-  Txt(TR_RULES, 36, 600, 488, 12, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
+  } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 16, DIM, hp);
+  Txt(TR_RULES, 36, 600, 488, 14, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
   // ② the menus (2 × 2), one is chosen; then one CTA
   const mp = Glass('Training menus', 620, 134, 944, 676, undefined, .86);
   Kicker('メニュー', 36, 30, mp);
@@ -6098,11 +6116,11 @@ async function Training() {
     c.classList.add('tr-menu'); c.dataset.menu = m.id; c.dataset.state = why ? 'blocked' : m.id === trMenu ? 'sel' : 'ok';
     if (m.id === trMenu) c.classList.add('sel');
     Txt(m.name, 24, 24, 300, 30, why ? DIM : WHITE, c, { weight: 700, ls: '.06em' });
-    Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 14, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
+    Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 16, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
     Txt(trFocus(m), 24, 80, 380, 18, why ? DIM : GOLD, c, { weight: 700 });
-    Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 14, MUTED, c);
+    Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 16, MUTED, c);
     const ol = h.menus.find((x) => x.id === m.id)?.outlook;
-    if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 14, WARN, c, { weight: 500 });
+    if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 16, WARN, c, { weight: 500 });
     else if (ol) {
       // quality pass: what this menu gives this horse now (server computeGain, the same as the finish) and what moved it
       const range = ol.min === ol.max ? `+${ol.min}` : `+${ol.min}〜+${ol.max}`;
@@ -6116,7 +6134,7 @@ async function Training() {
   const go = Cta(trMenu ? `${v.menus.find((m) => m.id === trMenu).name}で調教` : 'メニューを選ぶ', 36, 576, 428, () => TrainingPlay(trHorse, trMenu), mp);
   go.classList.add('tr-go');
   if (!trMenu) disable(go);
-  Txt(`今日 ${v.usedToday} / ${v.slotsPerDay} 回　·　1頭 1日 ${v.perHorsePerDay} 回まで　·　4:00 に戻ります`, 490, 600, 420, 14, SOFT, mp);
+  Txt(`今日 ${v.usedToday} / ${v.slotsPerDay} 回　·　1頭 1日 ${v.perHorsePerDay} 回まで　·　4:00 に戻ります`, 490, 600, 420, 16, SOFT, mp);
   Back(Home, 'BACK', 40, 834);
 }
 /** The timing mini-game: the server's beats slide to the line; tap 「追う」 (or Space) as each one arrives. */
@@ -6131,7 +6149,7 @@ async function TrainingPlay(horseId, menuId) {
   Kicker(`調教　/　${menu.name}`, 22, 18, head, { rule: false, size: 17 });
   Txt('光る印が線に重なった瞬間に「追う」', 22, 52, 720, 26, WHITE, head, { weight: 700 });
   const pv = st.value.preview;
-  Txt(`見込み +${(pv.minMilli / 1000).toFixed(1)}〜+${(pv.maxMilli / 1000).toFixed(1)}　·　ミニゲームの上乗せは最大 +${t.maxScore * t.permillePerPoint / 10}%`, 22, 84, 720, 14, MUTED, head);
+  Txt(`見込み +${(pv.minMilli / 1000).toFixed(1)}〜+${(pv.maxMilli / 1000).toFixed(1)}　·　ミニゲームの上乗せは最大 +${t.maxScore * t.permillePerPoint / 10}%`, 22, 84, 720, 16, MUTED, head);
   // the beat lane: markers move right → left onto the hit line
   const lane = Glass('Beat lane', 36, 610, 1100, 120, undefined, .8);
   lane.classList.add('tr-lane');

@@ -52,7 +52,7 @@ const r = a.f.result;
 assert.ok(r && r.lesson && r.lesson.sims >= 2, 'the lesson comes from re-simulated races');
 assert.ok(r.lesson.goCharge >= 25, 'the go was a held one (一閃): ' + r.lesson.goCharge);
 assert.match(r.lesson.perfect, /^会心のムチ \d+\/\d+$/);
-assert.ok(r.lesson.line === '仕掛けのタイミングは最善だった' || /^仕掛けがあと\d\.\d秒(早|遅)ければ/.test(r.lesson.line), 'a data line: ' + r.lesson.line);
+assert.ok((r.lesson.line === '仕掛けのタイミングは最善だった' && r.place <= 3) || r.lesson.line === '仕掛けを前後に動かしても、着順は変わらなかった' || /^仕掛けがあと\d\.\d秒(早|遅)ければ/.test(r.lesson.line), 'a data line (「最善」 only for a top-3 finish): ' + r.lesson.line + ' at ' + r.place);
 console.log(`1.4: place ${r.place}, lesson "${r.lesson.line}" · ${r.lesson.perfect} (${r.lesson.sims} races)`);
 
 // the same seed without touching the button goes at the auto mark: the lesson says going yourself would have helped, or nothing

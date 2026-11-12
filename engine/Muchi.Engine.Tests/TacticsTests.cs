@@ -334,8 +334,31 @@ namespace Muchi.Engine.Tests
                 Assert.True(cf.BestPlace < cf.ActualPlace || cf.BestTimeMs < cf.ActualTimeMs);
                 Assert.Contains("仕掛け", cf.Line);
             }
-            else Assert.Equal("仕掛けのタイミングは最善だった", cf.Line);
+            else Assert.Equal(cf.ActualPlace <= GoCounterfactual.BestLinePlaceMax ? GoCounterfactual.BestLine : GoCounterfactual.UnchangedLine, cf.Line);
             Assert.NotNull(cf.PerfectLine);
+        }
+
+        [Theory]
+        // quality integration: 「最善」 only when no better go was found AND the finish was good AND the 敗因 is not about timing
+        [InlineData(2, null, "仕掛けのタイミングは最善だった")]
+        [InlineData(3, DebriefReason.LossOutpaced, "仕掛けのタイミングは最善だった")]
+        [InlineData(11, null, "仕掛けを前後に動かしても、着順は変わらなかった")]
+        [InlineData(2, DebriefReason.LossEarlyWhip, "仕掛けを前後に動かしても、着順は変わらなかった")]
+        [InlineData(3, DebriefReason.LossLateWhip, "仕掛けを前後に動かしても、着順は変わらなかった")]
+        [InlineData(2, DebriefReason.LossWhipMash, "仕掛けを前後に動かしても、着順は変わらなかった")]
+        public void TheBestTimingLineNeverContradictsThePlaceOrTheDebrief(int place, DebriefReason? reason, string expected)
+        {
+            var cf = new GoCounterfactual { Tactics = true, ActualPlace = place, BestPlace = place, ActualTimeMs = 120000, BestTimeMs = 120000 };
+            cf.Reconcile(reason);
+            Assert.Equal(expected, cf.Line);
+        }
+
+        [Fact]
+        public void ABetterGoIsAlwaysNamedWhateverTheDebrief()
+        {
+            var cf = new GoCounterfactual { Tactics = true, ActualPlace = 9, BestPlace = 5, BestShiftTicks = -20, ActualTimeMs = 121000, BestTimeMs = 120400 };
+            cf.Reconcile(DebriefReason.LossEarlyWhip);
+            Assert.Equal("仕掛けがあと1.0秒早ければ5着", cf.Line);
         }
 
         [Fact]

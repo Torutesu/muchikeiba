@@ -58,6 +58,7 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   // b) a 1.4 race on the trained partner: START on the gate, hold at the gold line, release (the go), whips on the ring
   await page.evaluate(() => globalThis.__muchi.demo('raising')); await page.waitForTimeout(2500); await toHome();
   await page.locator('.screen.in [data-label="レースへ"]').first().click(); await waitScreen('lobby');
+  const promoBefore = await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.promotion.view()).value; return v?.series ? { id: v.series.id, n: v.series.results.length, status: v.series.status } : null; });
   await page.locator('.screen.in [data-label="ランク戦に出る"]').click(); await waitScreen('race', 30000);
   await page.evaluate(() => {
     const q = globalThis.__qf = { fx: [], dups: [], straight: null, go: null };
@@ -76,6 +77,21 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
       }
       const hint = document.querySelector('.screen.in .hintbox:not(.empty) .hint')?.textContent, pop = document.querySelector('.screen.in .pop.flash')?.textContent;
       if (hint && pop && hint.replace(/[！!]$/, '') === pop.replace(/[！!]$/, '')) q.dups.push(hint);
+      // layout: the coaching line and the partner's name tag never intersect; at most one cut-in plate, never in the go area
+      const scr = document.querySelector('.screen.in'), sb = scr.getBoundingClientRect(), k = sb.width / 1600;
+      const stage = (b) => ({ l: (b.left - sb.left) / k, t: (b.top - sb.top) / k, r: (b.right - sb.left) / k, b: (b.bottom - sb.top) / k });
+      const hit = (a, b) => a.l < b.r - 1 && a.r > b.l + 1 && a.t < b.b - 1 && a.b > b.t + 1;
+      const shown = (n) => n && n.getClientRects().length && getComputedStyle(n).visibility !== 'hidden' && Number(getComputedStyle(n).opacity) > .05 && n.textContent.trim() !== '' || (n && n.classList.contains('tri'));
+      const hb = document.querySelector('.screen.in .hintbox:not(.empty)');
+      const mk = document.querySelector('.screen.in .marker');
+      if (hb && mk && mk.style.display !== 'none' && Number(getComputedStyle(mk).opacity) > .05) {
+        const h = stage(hb.getBoundingClientRect());
+        for (const part of mk.querySelectorAll('.nm, .gap, .wind')) if (shown(part) && hit(h, stage(part.getBoundingClientRect()))) { q.overlaps = (q.overlaps ?? 0) + 1; q.overlapEx ??= `${hb.textContent} × ${part.textContent}`; }
+      }
+      const plates = [...document.querySelectorAll('.screen.in .cutins > *')].filter((n) => n.getClientRects().length && Number(getComputedStyle(n).opacity) > .05);
+      q.maxPlates = Math.max(q.maxPlates ?? 0, plates.length);
+      const GO = { l: 500, t: 160, r: 1100, b: 560 };
+      for (const n of plates) if (hit(GO, stage(n.getBoundingClientRect()))) { q.platesInGo = (q.platesInGo ?? 0) + 1; }
       // sampled once the straight's fade has run (the --dur-slow transition)
       if (document.querySelector('.screen.in.fx-straight') && !q.straight && f.remainingM < 250 && f.remainingM > 60) {
         q.straight = { gobar: op('.gobar'), phase: document.querySelector('.screen.in .gobar')?.dataset.phase, banner: op('.chip.banner'), minimap: op('.minimap'), wind: op('.marker .wind'), whip: op('.btn.whip'), whipDisabled: !!document.querySelector('.screen.in .btn.whip.disabled'), hint: op('.hintbox') };
@@ -88,6 +104,9 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.ok(race.fx.includes('count') && race.fx.includes('finish'), 'quality b: the gate count and the finish stamp fire on a 1.4 race: ' + race.fx);
   assert.ok(race.fx.includes('straight'), 'quality b: the final straight cut-in fires on a 1.4 race');
   assert.deepEqual(race.dups, [], 'quality b: the coaching line never repeats the pop');
+  assert.ok(!race.overlaps, `quality b: the coaching line never covers the name tag (${race.overlaps} samples, e.g. ${race.overlapEx})`);
+  assert.ok((race.maxPlates ?? 0) <= 1, `quality b: at most one skill cut-in plate on screen (${race.maxPlates})`);
+  assert.ok(!race.platesInGo, `quality b: cut-in plates stay out of the go area (${race.platesInGo} samples)`);
   assert.ok(race.go && race.go.whip === 1, 'quality b: the whip button at full strength at the go');
   assert.ok(race.straight, 'quality b: the final straight sampled');
   assert.ok(race.straight.whip === 1 || race.straight.whipDisabled, 'quality b: the whip button stays at full strength in the straight (dimmed only when no whips are left): ' + JSON.stringify(race.straight));
@@ -102,12 +121,18 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
     const labels = [...document.querySelectorAll('.screen.in .glass .label')].filter((n) => n !== l && n.textContent.trim());
     const overlaps = l ? labels.filter((n) => { const a = box(n), b = box(l); return n.offsetParent && a.top < b.bottom - 2 && a.bottom > b.top + 2 && Math.abs(n.getBoundingClientRect().left - l.getBoundingClientRect().left) < 300; }).map((n) => n.textContent) : [];
     return { lesson: l?.textContent ?? null, stagger: !!l && l.classList.contains('fx-stat') && parseFloat(l.style.animationDelay) > parseFloat(document.querySelectorAll('.screen.in .fx-stat')[2]?.style.animationDelay ?? '0'),
-      lessonBox: box(l), cta: box(document.querySelector('.screen.in .btn.cta')), overlaps, quiet: document.querySelectorAll('.screen.in .btn.quiet').length, place: document.querySelector('.screen.in').dataset.place };
+      debrief: document.querySelector('.screen.in [data-debrief]')?.textContent ?? '', lessonBox: box(l), cta: box(document.querySelector('.screen.in .btn.cta')), overlaps, quiet: document.querySelectorAll('.screen.in .btn.quiet').length, place: document.querySelector('.screen.in').dataset.place };
   });
   assert.ok(res.lesson && /^振り返り：/.test(res.lesson), 'quality c: the 1.4 lesson on the result: ' + res.lesson);
+  if (/最善/.test(res.lesson)) assert.ok(Number(res.place) <= 3 && !/早すぎ|遅すぎ|連打/.test(res.debrief), `quality c: 「最善」 never next to a poor finish or a timing 敗因 (${res.place}着, ${res.debrief})`);
   assert.ok(res.stagger, 'quality c: the lesson arrives in the stagger, after the numbers');
   assert.ok(res.lessonBox.bottom <= res.cta.top, 'quality c: the lesson sits above the CTA');
   assert.deepEqual(res.overlaps, [], 'quality c: the lesson overlaps no other line');
+  // the promotion card speaks only for a series this race was part of (started, counted or decided it)
+  const promoAfter = await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.promotion.view()).value; return v?.series ? { id: v.series.id, n: v.series.results.length, status: v.series.status } : null; });
+  const promoCard = await page.locator('.screen.in .pp-card').count();
+  const promoChanged = !!promoAfter && (!promoBefore || promoAfter.id !== promoBefore.id || promoAfter.n !== promoBefore.n || promoAfter.status !== promoBefore.status);
+  assert.equal(promoCard > 0, promoChanged, `quality: the promotion card only for a series this race touched (before ${JSON.stringify(promoBefore)}, after ${JSON.stringify(promoAfter)})`);
   assert.equal(res.quiet, 4, 'quality c: the quiet keepsake row (highlights, photo, keep, share) is intact');
   await shot('result', 2200);
 

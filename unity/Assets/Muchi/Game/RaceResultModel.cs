@@ -209,6 +209,7 @@ namespace Muchi.Game
             if (config == null || inputs == null || slot < 0 || !config.Ruleset.HasTacticsKeys || config.Mode == RaceMode.Tutorial) return;
             var cf = GoCounterfactual.Analyze(config, inputs, slot);
             if (cf.ActualPlace != Place) return; // the lesson must explain the place shown
+            cf.Reconcile(Reason); // quality integration: never 「最善」 next to a timing 敗因 or a poor finish
             Counterfactual = cf;
             GoLesson = cf.Line;
             PerfectLine = cf.PerfectLine;

@@ -1541,6 +1541,7 @@
   "仕掛けがあと{v}秒遅ければ、{p}秒速くゴールできた": "Going {v}s later would have finished {p}s faster",
   "自分で{v}秒早く仕掛けていれば{n}着": "Going yourself {v}s earlier would have finished {n:ord}",
   "仕掛けのタイミングは最善だった": "Your go was the best timing",
+  "仕掛けを前後に動かしても、着順は変わらなかった": "Going earlier or later would not have changed your place",
   "会心のムチ {n}/{m}": "Perfect whips {n}/{m}",
   "金の線で長押しして溜め、離して仕掛ける": "At the gold line, hold to gather and release to go",
   "ムチは金の輪が光った瞬間に：会心": "Whip the moment the gold ring lights up: perfect",

@@ -533,7 +533,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'failed')); await waitScreen('result'); await waitIn('.pp-sheet.fail');
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /昇級ならず/, 'promo: the fail sheet');
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /ptに戻りました/, 'promo: the setback');
-    const text = await page.locator('.screen.in').innerText();
+    const text = await page.locator('.screen.in:not(.out)').innerText(); // the result screen, not home still leaving
     for (const w of ['今だけ', '残りわずか', 'お得', '倍']) assert.ok(!text.includes(w), 'promo: no urgency / shop word: ' + w);
     await shot('promotion-fail', 600);
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
@@ -1443,7 +1443,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-product="coin_10000"] [data-label="購入を確認"]').click(); await waitScreen('purchase');
   assert.equal(await page.locator('.screen.in .pstate').getAttribute('data-state'), 'unregistered');
   await shot('purchase-unregistered', 400);
-  const year = new Date().getFullYear();
+  const year = await page.evaluate(() => new Date(globalThis.__muchi.logic.now() + 9 * 3_600_000).getUTCFullYear()); // the JST year of the rules' clock
   await page.selectOption('.screen.in select[aria-label="年"]', String(year - 31)); await page.selectOption('.screen.in select[aria-label="月"]', '1');
   await click('登録して確認する');
   await page.waitForFunction(() => document.querySelector('.screen.in .pstate')?.dataset.state === 'registered');
@@ -1843,7 +1843,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const kpis = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().map((e) => e.name + ':' + e.props.offerId + ':' + e.props.trigger));
   assert.deepEqual(kpis.slice(kpi0), ['offer_view:shortfall:T6', 'offer_click:shortfall:T6'], 'KPI once each');
   if (await page.locator('.screen.in .pstate').getAttribute('data-state') === 'unregistered') {
-    const y = new Date().getFullYear();
+    const y = await page.evaluate(() => new Date(globalThis.__muchi.logic.now() + 9 * 3_600_000).getUTCFullYear());
     await page.selectOption('.screen.in select[aria-label="年"]', String(y - 31)); await page.selectOption('.screen.in select[aria-label="月"]', '1');
     await click('登録して確認する');
   }

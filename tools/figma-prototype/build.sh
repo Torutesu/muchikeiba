@@ -81,6 +81,7 @@ node "$HERE/test/round21-deep-links.test.mjs" # round 21: ディープリンク�
 node "$HERE/test/round21-release-notes.test.mjs" # round 21: アップデートのお知らせ — a new install never, the updater once (skipped count, numbers from data, never the shop), seen idempotent, the past list JA / EN, KPI, nothing granted
 node "$HERE/test/quality-race.test.mjs" # quality pass (docs/quality/race-play.md): ruleset 1.4 in WASM — the hold / release go, 会心 on the gold ring, the tactics HUD, the re-simulated lesson; 1.3 untouched
 node "$HERE/test/quality-raising.test.mjs"       # quality pass: raising & breeding — 馬カード (layers, stage, leaning, career, read-only), the training outlook = the start preview, exact foal rarity odds, the foal's generation
+node "$HERE/test/demo-clock.test.mjs"   # the demo clock: a day offset is whole game days (12:00 JST of the day), whatever the time of day — around the 04:00 JST rollover and its 2026-12-01 switch too
 node "$HERE/test/quality-integration.test.mjs"   # quality integration: home says each thing once (the next line vs the goal ladder, one link), the ladder cap = the horse card cap
 node "$HERE/test/round22-promotion.test.mjs" # round 22: 昇級戦 — start on the line (not counted), pips, pass early, fail → setback, ack once, grace, kill switch, English
 node "$HERE/test/round22-surveys.test.mjs" # round 22: ゲーム内アンケート — none in the FTUE / without a live survey, the demo survey at home and after a result, strict check, once per player, scrub, skip → cool-down, results without ids, nothing granted, English

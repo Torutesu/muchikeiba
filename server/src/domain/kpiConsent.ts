@@ -69,6 +69,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'link_create', 'link_resolve', 'link_revoke', 'rematch', 'deep_link_open',
   'release_notes_view', 'release_notes_target', 'release_notes_history',
   'calendar_view', 'calendar_entry_open', 'calendar_mark',
+  // R23 §72 レースの見どころ — engagement only (no race, player or tick in the rows)
+  'highlight_view', 'highlight_share',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

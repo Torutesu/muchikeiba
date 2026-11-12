@@ -1538,6 +1538,9 @@ export const handle: Handler = async (req, _p, ctx) => {
  * REQ-LINK-003/007: what each link type needs from the rest of the server, built from the app context per request. `prepare`
  * checks the sharer may share the target (NOT_FOUND otherwise); `open` checks the target is still there for the viewer.
  */
+/** REQ-HL-013 (§72.4): the largest start tick a replay link may carry (the engine's tick ceiling). */
+export const REPLAY_LINK_MAX_START_TICK = 72000;
+
 export function linkTargetsFrom(c: AppContext): LinkTargets {
   const gone = () => new AppError('NOT_FOUND', 'nothing to share');
   const str = (t: Record<string, unknown>, k: string, re: RegExp) => {
@@ -1562,9 +1565,14 @@ export function linkTargetsFrom(c: AppContext): LinkTargets {
         }
         case 'replay': {
           const raceId = str(t, 'raceId', /^[\w-]{1,64}$/);
+          // REQ-HL-013 (§72.4): an optional start tick (the sharer's top highlight); a different tick is a different target
+          const st = t.startTick;
+          if (st !== undefined && st !== null && (typeof st !== 'number' || !Number.isInteger(st) || st < 0 || st > REPLAY_LINK_MAX_START_TICK)) {
+            throw new AppError('BAD_REQUEST', `target.startTick must be an integer 0..${REPLAY_LINK_MAX_START_TICK}`);
+          }
           const v = (await myReplays(c).view(uid)) as unknown as { saved?: SavedRow[] };
           if (!v.saved?.some((x) => x.raceId === raceId && x.public)) throw gone();
-          return { targetKey: raceId, data: { raceId } };
+          return typeof st === 'number' ? { targetKey: `${raceId}@${st}`, data: { raceId, startTick: String(st) } } : { targetKey: raceId, data: { raceId } };
         }
         case 'invite': {
           const v = await invite(c).view(uid, null);
@@ -1602,7 +1610,9 @@ export function linkTargetsFrom(c: AppContext): LinkTargets {
             rows = (await myReplays(c).friendList(viewer, rec.ownerId)).replays as { raceId: string; replayTitle: string | null }[];
           }
           const r = rows.find((x) => x.raceId === d.raceId);
-          return r ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle } } : null;
+          if (!r) return null;
+          const startTick = d.startTick !== undefined ? Number(d.startTick) : undefined; // REQ-HL-013: where the shared highlight starts
+          return { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle, ...(startTick !== undefined ? { startTick } : {}) } };
         }
         case 'invite':
           return { state: 'ok', target: { code: d.code } };

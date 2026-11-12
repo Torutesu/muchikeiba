@@ -3902,7 +3902,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 |---|---|---|---|---|---|
 | `room` | `{ "passphrase": "123456" }` | その部屋の参加者 | `{ "passphrase" }`（参加は見る人が馬を選んで `POST /v1/friend-rooms/:passphrase/join`） | `friend_room_join` | `ranked` |
 | `cup` | `{ "cupId": "…" }` | 主催者・参加者（コードが見える人） | `{ "code", "preview": CupPreview }`（参加は `POST /v1/cups/join`、§42。コードの試行回数に数える） | `cup_join` | `cups` |
-| `replay` | `{ "raceId": "…" }` | 自分の**公開**した保存リプレイ（§37） | `{ "ownerId", "raceId", "replayTitle" }`（フレンドだけ。フレンドでなければ `state: "friends_only"`） | `friend_replay` | `social` |
+| `replay` | `{ "raceId": "…", "startTick"?: 0〜72000 }`（`startTick` は §72.4 の見どころの始まり、R23） | 自分の**公開**した保存リプレイ（§37） | `{ "ownerId", "raceId", "replayTitle", "startTick"? }`（フレンドだけ。フレンドでなければ `state: "friends_only"`） | `friend_replay` | `social` |
 | `invite` | `{}` | 誰でも（自分の招待コード） | `{ "code" }`（§19 の入力画面に入れるだけ。入力の条件・報酬は §19 のまま） | `invite_redeem` | `social` |
 | `friend` | `{}` | 誰でも（自分のフレンドコード） | `{ "friendCode", "displayName" }`（申請は見る人が押す。自分のリンクは `self: true`） | `friend_request` | `social` |
 | `team` | `{}` | 支部の仲間 | `{ "teamId", "teamName" }`（参加の申請は §18 のまま） | `team_view` | `teams` |

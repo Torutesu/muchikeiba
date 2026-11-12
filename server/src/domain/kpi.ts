@@ -159,6 +159,9 @@ export const CALENDAR_KPI_KINDS = [
   'tournament_registration', 'tournament', 'cup', 'maintenance', 'comeback',
 ] as const;
 export const CALENDAR_VIEWS = ['month', 'week'] as const;
+/** REQ-HL-015 (§72.5): where a highlight reel was opened and the moment kinds (C# HighlightKinds / AnalyticsEvent.HighlightSurfaces, a test keeps them equal). */
+export const HIGHLIGHT_SURFACES = ['result', 'my_replays', 'friend_replay', 'link'] as const;
+export const HIGHLIGHT_KINDS = ['photo_finish', 'near_miss', 'lead_change', 'whip_burst', 'comeback', 'unique_skill', 'finish'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
@@ -242,6 +245,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-CAL-015 (§65): the calendar shown (month / week and how many rows) and a row opened (its kind). Marks are server events (calendar_mark).
   z.object({ name: z.literal('calendar_view'), at: z.number().int(), props: z.object({ view: z.enum(CALENDAR_VIEWS), entries: z.number().int().min(0).max(200) }).strict() }),
   z.object({ name: z.literal('calendar_entry_open'), at: z.number().int(), props: z.object({ kind: z.enum(CALENDAR_KPI_KINDS) }).strict() }),
+  // REQ-HL-015 (§72.5): the highlight reel started (surface, the top moment's kind, how many) / handed to the OS share sheet
+  // (card image or replay link). No race, player or tick.
+  z.object({ name: z.literal('highlight_view'), at: z.number().int(), props: z.object({ surface: z.enum(HIGHLIGHT_SURFACES), top: z.enum(HIGHLIGHT_KINDS), moments: z.number().int().min(1).max(3) }).strict() }),
+  z.object({ name: z.literal('highlight_share'), at: z.number().int(), props: z.object({ surface: z.enum(HIGHLIGHT_SURFACES), via: z.enum(['card', 'link']) }).strict() }),
   // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
@@ -312,6 +319,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'release_notes_history': return { name: e.name, s1: e.props.source };
     case 'calendar_view': return { name: e.name, s1: e.props.view, value: e.props.entries };
     case 'calendar_entry_open': return { name: e.name, s1: e.props.kind };
+    case 'highlight_view': return { name: e.name, s1: e.props.surface, s2: e.props.top, value: e.props.moments };
+    case 'highlight_share': return { name: e.name, s1: e.props.surface, s2: e.props.via };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
     case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };

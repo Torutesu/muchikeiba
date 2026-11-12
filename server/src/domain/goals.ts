@@ -18,15 +18,24 @@
  *     invented numbers); deadlines are real times (game day start, week end, month end), never a countdown.
  *   - no purchasable thing appears as a way up (ranked fairness, REQ-RATE-003): the power line is the class cap only.
  *   - §68 (promotion series, Round 22) plugs in through `extras.promotion` (the GET /v1/promotion brief) when integrated.
+ *
+ * First week (quality pass 2, docs/quality/first-week.md, REQ-GOAL-013..016) — three reads on the same ladder:
+ *   today.tomorrow  what the next game day brings, as facts only: tomorrow's login bonus, the features that open by day
+ *                   count tomorrow, the training slots that refill (REQ-GOAL-013). Never a countdown.
+ *   partner         the partner's growth: stage of five, trained total, gained today / the game day before (from the
+ *                   training log), sessions left today (REQ-GOAL-014). The same stage function as the 馬カード.
+ *   path.current    `screen` (fixed in code per kind, never a shop / purchase) and `open` (its feature is unlocked) so the
+ *                   next first step is one tap away (REQ-GOAL-015).
  */
 import type { ClassDef, Master, Reward } from './master.js';
 import type { PlayerState } from './player.js';
 import { addJstDays, dayRule, gameDayKey, gameDayStartMs, jstMonthEndMs, sameGameDay } from './time.js';
-import { beginnerMissionsView, claimBeginnerMission, claimSeasonMission, seasonMissionsView, unlocksView } from './onboarding.js';
+import { beginnerMissionsView, claimBeginnerMission, claimSeasonMission, playerDay, seasonMissionsView, unlocksView } from './onboarding.js';
 import { claimMission, firstWinBonusView, missionsView } from './rewards.js';
 import { levelOf } from './pass.js';
 import { STAT_KEYS } from './master.js';
-import { raceStats } from './training.js';
+import { potentialOf, raceStats, trainedTotal, trainingConfig } from './training.js';
+import { GROWTH_STAGES, GROWTH_THRESHOLDS_PERMILLE, growthStage } from './horseProfile.js';
 import { weekAt, weeklyChallengeConfig } from './weeklyChallenge.js';
 import { rivalConfig, weekEndMs, weekIdAt } from './rival.js';
 import type { TeamGoalBrief } from './nextAction.js';
@@ -110,6 +119,51 @@ export function nextLoginBonus(m: Master, s: PlayerState) {
   return d ? { track: 'normal' as const, day, days: cycle.length, reward: strip(d) } : null;
 }
 
+/**
+ * REQ-GOAL-015: where each first step is done (fixed in code; never the shop, a purchase or a paid scout — the scout step is
+ * the scout screen the player already used in the FTUE) and the feature that has to be open for it.
+ */
+export const PATH_SCREENS: Record<string, { screen: string; feature: string | null }> = {
+  gacha: { screen: 'scout', feature: null }, silks: { screen: 'silks', feature: null }, care: { screen: 'care', feature: 'bond' },
+  ranked_top3: { screen: 'race', feature: null }, ranked_races: { screen: 'race', feature: null }, races: { screen: 'race', feature: null },
+  breed: { screen: 'breeding', feature: 'breeding' }, friends: { screen: 'friends', feature: 'friends' }, team: { screen: 'teams', feature: 'teams' },
+  ta_finish: { screen: 'time_attack', feature: 'time_attack' }, collect: { screen: 'collection', feature: null },
+};
+
+/** REQ-GOAL-014: the partner's growth for home (null without an active partner or with training switched off). */
+function partnerGrowth(m: Master, s: PlayerState, now: number, trainingOpen: boolean) {
+  const tc = trainingConfig(m);
+  const h = s.horses.find((x) => x.id === s.flags.partnerHorseId && x.status === 'active');
+  if (!tc || !h) return null;
+  const rule = dayRule(m);
+  const today = gameDayKey(now, rule);
+  const yesterday = addJstDays(today, -1);
+  const tt = trainedTotal(h);
+  const potential = potentialOf(tc, h);
+  const st = growthStage(tt, potential);
+  const rec = s.training?.horses[h.id];
+  let gainedToday = 0, gainedYesterday = 0;
+  for (const e of rec?.log ?? []) {
+    const d = gameDayKey(e.at, rule);
+    if (d === today) gainedToday += e.gain; else if (d === yesterday) gainedYesterday += e.gain;
+  }
+  const t = s.training;
+  const usedToday = t && sameGameDay(t.day, today) ? t.used : 0;
+  const horseToday = rec && sameGameDay(rec.day, today) ? rec.dayCount : 0;
+  const full = potential > 0 && tt >= potential;
+  return {
+    horseId: h.id, name: h.name,
+    stage: st.index, stageKey: st.key, stages: GROWTH_STAGES.length,
+    /** The trained total where this stage started (the gauge runs from here to nextStageAt). */
+    stageFrom: Math.ceil((GROWTH_THRESHOLDS_PERMILLE[st.index]! * potential) / 1000), nextStageAt: st.nextAt,
+    trainedTotal: tt, potential, gainedToday, gainedYesterday,
+    trainingOpen,
+    /** Sessions this horse can still train today (0 once the account's slots or the horse's daily limit are used, or it is full). */
+    sessionsLeft: !trainingOpen || full ? 0 : Math.max(0, Math.min(tc.slotsPerDay - usedToday, tc.perHorsePerDay - horseToday)),
+    full,
+  };
+}
+
 /** REQ-GOAL-001: GET /v1/home/goals. Reads only (no writes). */
 export function goalLadderView(m: Master, s: PlayerState, now: number, extras: GoalExtras = {}) {
   const rule = dayRule(m);
@@ -140,7 +194,24 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
     complete: items.length > 0 && items.every((i) => i.claimed || (i.table === 'first_win' && i.progress >= i.target)),
     resetAt,
     loginBonus: { open: open('login_bonus'), claimedToday: sameGameDay(s.loginBonus.lastClaimDate, day), next: nextLoginBonus(m, s) },
+    /** 1 on the install day, 2 the next game day, … (the first week reads it). */
+    playerDay: playerDay(s, now, rule),
+    tomorrow: null as null | { playerDay: number; at: number; loginBonus: ReturnType<typeof nextLoginBonus>; opens: string[]; trainingSlots: number | null },
   };
+  // REQ-GOAL-013: tomorrow, facts only. The login bonus once today's is received (before that, today's is the news); the
+  // features whose day count is reached tomorrow (they may open earlier by races — then they are simply open today);
+  // the training slots that refill (training open now or opening tomorrow).
+  {
+    const pday = today.playerDay;
+    const opens = (m.progression.unlocks ?? []).filter((u) => u.days === pday + 1 && !open(u.key)).map((u) => u.key);
+    const tc = trainingConfig(m);
+    const trainingTomorrow = !!tc && (open('training') || opens.includes('training'));
+    today.tomorrow = {
+      playerDay: pday + 1, at: resetAt,
+      loginBonus: today.loginBonus.claimedToday ? today.loginBonus.next : null,
+      opens, trainingSlots: trainingTomorrow ? tc!.slotsPerDay : null,
+    };
+  }
 
   // ---- the beginner path (REQ-GOAL-003): the next step and the last reward, while the list lasts
   const bv = beginnerMissionsView(m, s);
@@ -149,7 +220,9 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
     const last = bv.steps[bv.steps.length - 1]!;
     return {
       step: cur.step, steps: bv.steps.length, done: bv.steps.filter((x) => x.claimed).length,
-      current: { id: cur.id, table: 'beginner' as const, kind: cur.kind, progress: cur.progress, target: cur.target, reward: cur.reward, claimed: false, claimable: cur.claimable },
+      current: { id: cur.id, table: 'beginner' as const, kind: cur.kind, progress: cur.progress, target: cur.target, reward: cur.reward, claimed: false, claimable: cur.claimable,
+        // REQ-GOAL-015: one tap to where the step is done, and whether that screen is open yet
+        screen: PATH_SCREENS[cur.kind]?.screen ?? null, open: PATH_SCREENS[cur.kind]?.feature ? open(PATH_SCREENS[cur.kind]!.feature!) : true },
       finalReward: last.reward,
     };
   })();
@@ -220,7 +293,7 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
   };
 
   const claimable = today.claimable + (path?.current.claimable ? 1 : 0) + seasonItems.filter((x) => x.claimable).length;
-  return { day, now, today, path, week, season, claimable };
+  return { day, now, today, path, week, season, partner: partnerGrowth(m, s, now, open('training')), claimable };
 }
 export type GoalLadderView = ReturnType<typeof goalLadderView>;
 

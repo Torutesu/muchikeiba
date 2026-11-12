@@ -3418,6 +3418,9 @@ async function Demo(kind) {
   if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
   // round 21 (REQ-CAL-019): a week of play with 28 races — events, tournaments, the weekly challenge and seasons are open
   if (kind === 'calendar') { await L.seedDemo(7, [4, 4, 4, 4, 4, 4, 4]); ftue = false; await refresh(); calState.mode = 'month'; calState.weekStart = null; return Calendar(); }
+  // quality pass (raising & breeding): 12 days of training on the partner → its 馬カード; a retired pair → the breeding screen
+  if (kind === 'raising') { await L.seedRaising(12); await refresh(); return HorseCard(player.flags.partnerHorseId, () => Stable()); }
+  if (kind === 'breeding') { await L.seedBreeding(); await refresh(); qrSire = null; qrDam = null; return Breeding(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -3916,24 +3919,33 @@ function Stable() {
   Kicker(`厩舎　/　${horses.length}頭中 1頭`, 43, 49, d);
   Txt(p?.name ?? horseName, 43, 120, 500, 44, WHITE, d, { ls: '.06em', nowrap: true });
   Txt(p ? `${p.rarity}　/　${STYLE_JA[p.style] ?? p.style}` : '—', 43, 186, 500, 19, GOLD, d, { weight: 700, ls: '.12em' });
-  const st = p?.base ?? { speed: 560, stamina: 540, burst: 580 };
-  [['スピード', stat100(st.speed)], ['スタミナ', stat100(st.stamina)], ['瞬発', stat100(st.burst)]].forEach(([k, v], i) => {
-    const y = 258 + i * 89;
-    Txt(k, 43, y, 300, 17, WHITE, d, { weight: 700, ls: '.06em' });
-    Txt(String(v), 430, y - 3, 76, 20, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
-    Gauge(43, y + 34, 463, v / 100, d);
-  });
+  // quality pass: the five stats as the horse races with them (base → awakening → training, gold), from the 馬カード
+  const statsAt = (prof) => {
+    if (!d.isConnected) return;
+    TR_STAT_ORDER.forEach((k, i) => {
+      const s = prof?.stats.find((x) => x.key === k) ?? { base: p?.base?.[k] ?? 0, awakening: 0, trained: 0, race: p?.base?.[k] ?? 0 };
+      const y = 240 + i * 54;
+      Txt(TR_STAT[k], 43, y, 200, 16, prof?.leaning?.stat === k ? GOLD : WHITE, d, { weight: 700, ls: '.06em' });
+      if (s.trained > 0) Txt(`+${s.trained}`, 330, y, 90, 14, GOLD, d, { weight: 700, align: 'right', cls: 'num' }).classList.add('st-trained');
+      Txt(fmt(s.race), 430, y - 3, 76, 19, WHITE, d, { weight: 700, align: 'right', cls: 'num' });
+      qrLayerBar(43, y + 26, 463, s, d);
+    });
+    if (prof?.growth) { const g = qrStage(prof.growth.trainedTotal, prof.growth.potential); Txt(QR_STAGES[g.index], 300, 189, 120, 16, GOLD, d, { weight: 700, align: 'right' }).classList.add('st-stage'); }
+  };
+  if (p) L.horseProfile(p.id).then((r) => statsAt(r.ok ? r.value : null)); else statsAt(null);
+  if (p) Ghost('馬カード', 430, 180, 150, 42, () => HorseCard(p.id), d, 'small').classList.add('st-card');
   Kicker('適性', 43, 528, d, { rule: false, size: 17 });
   Txt(p ? `${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${L.horseSkill(p) ? '　/　「' + L.horseSkill(p).name + '」' : ''}` : '—', 43, 562, 500, 18, WHITE, d, { weight: 700 });
   Cta('この馬で出走', 43, 640, 464, RaceLobby, d);
   TextLink('所属馬の一覧', 43, 734, 240, () => Roster(), d, `所属馬の一覧（${horses.length}頭）`); // round 16: 厩舎の整理 (REQ-ORG-*)
   TextLink('お世話', 300, 734, 120, Care, d, 'お世話・餌');
   TextLink('調教', 440, 734, 100, () => { trHorse = p?.id ?? null; Training(); }, d, '調教');
-  // round 19 (REQ-TUT-008): the breeding card (the prototype has no breeding screen; the stable is where breeding starts)
+  // round 19 (REQ-TUT-008): the breeding card (the breeding screen opens from the stable's 「配合」)
   TipQ('breeding', 517, 516, d, () => Stable()); // beside 適性, clear of the language toggle at the largest text size
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
+  if (unlock('breeding').unlocked) Ghost('配合', 548, 36, 150, 46, () => Breeding(), undefined, 'quiet small').classList.add('br-entry'); // quality pass: the breeding screen
   EnToggle();
   GoalsPanel(p); // round 18 (REQ-HGOAL-*): the horse's goals, bottom left over the art
 }
@@ -5004,11 +5016,14 @@ async function Training() {
   Txt(`${h.fatigue} / ${v.fatigue.max}`, 344, 212, 180, 18, h.fatigue >= v.fatigue.restAt ? WARN : GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-fatigue');
   const fg = Gauge(36, 246, 488, h.fatigue / v.fatigue.max, hp); if (h.fatigue >= v.fatigue.restAt) fg.classList.add('warn');
   Txt(`1日休むと ${v.fatigue.recoveryPerDay} 回復。疲れていると伸びが落ちます（レースには影響しません）`, 36, 262, 488, 13, SOFT, hp);
-  Txt('素質', 36, 306, 200, 16, WHITE, hp, { weight: 700, ls: '.06em' });
+  const stg = qrStage(h.trainedTotal, h.potential);
+  Txt(`素質　·　${QR_STAGES[stg.index]}`, 36, 306, 300, 16, WHITE, hp, { weight: 700, ls: '.06em' }).classList.add('tr-stage');
   Txt(`${h.trainedTotal} / ${h.potential}`, 344, 304, 180, 18, GOLD, hp, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-potential');
   Gauge(36, 338, 488, h.potential ? h.trainedTotal / h.potential : 0, hp, { gold: true });
+  if (stg.nextAt !== null) Txt(`${QR_STAGES[stg.index + 1]}まで あと${Math.max(0, stg.nextAt - h.trainedTotal)}`, 324, 352, 200, 12, SOFT, hp, { align: 'right' });
+  TextLink('馬カード', 36, 346, 160, () => HorseCard(h.horseId, () => Training()), hp, '馬カード ›');
   TR_STAT_ORDER.forEach((k, j) => {
-    const x = 36 + (j % 3) * 168, y = 380 + Math.floor(j / 3) * 52;
+    const x = 36 + (j % 3) * 168, y = 396 + Math.floor(j / 3) * 46;
     Txt(TR_STAT[k], x, y, 100, 14, MUTED, hp, { weight: 500 });
     Txt(`+${h.trained[k]}`, x + 92, y - 3, 60, 18, h.trained[k] > 0 ? WHITE : DIM, hp, { weight: 700, cls: 'num' });
   });
@@ -5039,7 +5054,15 @@ async function Training() {
     Txt(m.fatigue >= 0 ? `疲れ +${m.fatigue}` : `疲れ −${-m.fatigue}（回復）`, 220, 34, 184, 14, m.fatigue >= 0 ? MUTED : OK, c, { align: 'right', weight: 500 });
     Txt(trFocus(m), 24, 80, 380, 18, why ? DIM : GOLD, c, { weight: 700 });
     Txt(m.bondMultiplier > 1 ? `絆が効く ×${m.bondMultiplier}　·　伸び ${m.baseGain}` : `伸び ${m.baseGain}`, 24, 116, 380, 14, MUTED, c);
+    const ol = h.menus.find((x) => x.id === m.id)?.outlook;
     if (why) Txt(TR_BLOCKED[why] ?? '選べません', 24, 156, 380, 14, WARN, c, { weight: 500 });
+    else if (ol) {
+      // quality pass: what this menu gives this horse now (server computeGain, the same as the finish) and what moved it
+      const range = ol.min === ol.max ? `+${ol.min}` : `+${ol.min}〜+${ol.max}`;
+      Txt(`この馬なら ${range}`, 24, 146, 380, 20, WHITE, c, { weight: 700, cls: 'num' }).classList.add('tr-outlook');
+      const why2 = [ol.efficiencyPermille < 1000 ? `疲れ −${(1000 - ol.efficiencyPermille) / 10}%` : null, ol.bondPermille > 0 ? `絆 +${ol.bondPermille / 10}%` : null, ol.softPermille < 1000 ? `伸びしろ ${ol.softPermille / 10}%` : null].filter(Boolean);
+      if (why2.length) Txt(why2.join('・'), 24, 180, 380, 13, ol.efficiencyPermille < 1000 ? WARN : MUTED, c, { weight: 500 });
+    }
     c.style.cursor = why ? 'not-allowed' : 'pointer';
     c.addEventListener('click', () => { if (why) { toast(TR_BLOCKED[why] ?? '選べません'); return; } trMenu = m.id; Training(); });
   });
@@ -5139,27 +5162,363 @@ function trScore(t, beats, taps) {
 }
 async function TrainingResult(res) {
   await refresh();
+  const tv = await L.training();
+  const th = tv.ok && tv.value.enabled ? tv.value.horses.find((x) => x.horseId === res.horseId) : null;
+  const cap = th?.perStatCap ?? Math.floor((res.potential ?? 0) * 0.4);
   currentScreen = Training; Clear('training-result'); SetArt('Art/home-paddock'); Shade('left');
-  const d = Glass('Training result', 36, 134, 760, 676, undefined, .88);
+  const d = Glass('Training result', 36, 110, 800, 720, undefined, .9);
   d.classList.add('rise', 'tr-result'); d.dataset.grade = res.grade; d.dataset.total = String(res.total);
-  Kicker(`調教　/　${res.settled === 'done' ? '結果' : 'ミニゲームなし'}`, 40, 34, d);
-  Txt(TR_GRADE[res.grade] ?? res.grade, 40, 100, 680, 30, WHITE, d, { weight: 700, ls: '.06em' });
-  Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 150, 300, 96, GOLD, d, { weight: 700, cls: 'num' }).classList.add('tr-total');
-  Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 40, 270, 680, 22, WHITE, d, { weight: 700 });
-  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 40, 318, 680, 17, MUTED, d).classList.add('tr-timing');
-  Txt('素質', 40, 384, 200, 16, WHITE, d, { weight: 700, ls: '.06em' });
-  Txt(`${res.trainedTotal} / ${res.potential}`, 520, 382, 200, 18, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
-  Gauge(40, 416, 680, res.potential ? res.trainedTotal / res.potential : 0, d, { gold: true });
-  Txt(`疲れ ${res.fatigue}${res.capped ? '　·　素質いっぱいまで伸びました' : ''}`, 40, 446, 680, 15, SOFT, d);
+  Kicker(`調教　/　${res.settled === 'done' ? '結果' : 'ミニゲームなし'}`, 40, 30, d);
+  Txt(TR_GRADE[res.grade] ?? res.grade, 40, 92, 700, 28, WHITE, d, { weight: 700, ls: '.06em' });
+  const big = Txt(res.total > 0 ? `+${res.total}` : '±0', 40, 132, 240, 88, GOLD, d, { weight: 700, cls: 'num' }); big.classList.add('tr-total');
+  if (res.total > 0) qrCount(big, res.total);
+  Txt(res.total > 0 ? trGain(res.gain) : '小さな伸びは次回に加わります', 270, 150, 490, 20, WHITE, d, { weight: 700 });
+  Txt(res.settled === 'done' ? `ミニゲーム ◎${res.timing.perfect} ○${res.timing.good} ×${res.timing.miss}（+${res.timing.bonusPermille / 10}%）` : 'ミニゲームなし（伸びの上乗せなし）', 270, 186, 490, 15, MUTED, d).classList.add('tr-timing');
+  // the growth stage: before → after; a stage up is the moment
+  const before = res.trainedTotal - res.total;
+  const s0 = qrStage(before, res.potential), s1 = qrStage(res.trainedTotal, res.potential);
+  if (s1.index > s0.index) {
+    const up = el('qr-stageup', 40, 236, 720, 56, d); up.dataset.stage = String(s1.index);
+    Txt('成長段階が上がりました', 22, 8, 340, 13, GOLD, up, { weight: 700, ls: '.14em' });
+    Txt(`${QR_STAGES[s0.index]}　→　${QR_STAGES[s1.index]}`, 22, 26, 500, 20, WHITE, up, { weight: 700 });
+    qrPips(560, 22, s1.index, up);
+  } else Txt(`成長段階　${QR_STAGES[s1.index]}${s1.nextAt !== null ? `　·　${QR_STAGES[s1.index + 1]}まで あと${Math.max(0, s1.nextAt - res.trainedTotal)}` : ''}`, 40, 252, 720, 15, MUTED, d, { weight: 500 }).classList.add('tr-stage-line');
+  // each stat's training growth against its cap, growing from before to after
+  Txt('調教の伸び', 40, 306, 200, 13, MUTED, d, { weight: 500, ls: '.14em' });
+  TR_STAT_ORDER.forEach((k, i) => {
+    const y = 334 + i * 38, after = res.trained?.[k] ?? 0, gain = res.gain?.[k] ?? 0;
+    Txt(TR_STAT[k], 40, y, 120, 15, gain > 0 ? WHITE : MUTED, d, { weight: 700 });
+    qrMeter(170, y + 6, 420, after, cap, d, after - gain);
+    Txt(`${after} / ${cap}`, 600, y - 2, 90, 15, MUTED, d, { align: 'right', cls: 'num' });
+    if (gain > 0) Txt(`+${gain}`, 700, y - 3, 60, 17, GOLD, d, { weight: 700, align: 'right', cls: 'num' }).classList.add('tr-gain');
+  });
+  Txt('素質', 40, 536, 200, 15, WHITE, d, { weight: 700, ls: '.06em' });
+  Txt(`${res.trainedTotal} / ${res.potential}`, 560, 534, 200, 17, GOLD, d, { weight: 700, align: 'right', cls: 'num' });
+  const pg = Gauge(40, 562, 720, res.potential ? before / res.potential : 0, d, { gold: true });
+  if (res.potential) setTimeout(() => { const i = pg.querySelector('i'); if (i) { i.style.transition = reduced() ? 'none' : 'width .9s cubic-bezier(.2,.7,.2,1)'; i.style.width = Math.round(100 * clamp(res.trainedTotal / res.potential, 0, 1)) + '%'; } }, reduced() ? 0 : 450);
   const bd = res.breakdown;
-  if (bd) Txt(`内訳：調子 ${bd.efficiencyPermille / 10}%　·　絆 +${bd.bondPermille / 10}%　·　ミニゲーム +${bd.timingPermille / 10}%　·　伸びしろ ${bd.softPermille / 10}%`, 40, 486, 680, 13, DIM, d);
-  Cta('つづける', 40, 560, 360, Training, d);
+  Txt(`疲れ ${res.fatigue}${res.capped ? '　·　素質いっぱいまで伸びました' : ''}${bd ? `　·　調子 ${bd.efficiencyPermille / 10}%　·　絆 +${bd.bondPermille / 10}%　·　ミニゲーム +${bd.timingPermille / 10}%　·　伸びしろ ${bd.softPermille / 10}%` : ''}`, 40, 578, 720, 12, DIM, d);
+  Cta('つづける', 40, 616, 360, Training, d);
   const ms = await L.missions();
   const m = ms.ok ? ms.value.find((x) => x.kind === 'training' && x.progress >= x.target && !x.claimed) : null;
-  if (m) Ghost('ミッション報酬を受け取る', 420, 570, 300, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
+  if (m) Ghost('ミッション報酬を受け取る', 430, 626, 330, 56, async () => { const c = await L.claimMission(m.id); toast(c.ok ? 'りんごのおやつ を受け取りました' : c.message); TrainingResult(res); }, d, 'small').classList.add('tr-claim');
+  else TextLink('馬カード', 430, 636, 200, () => HorseCard(res.horseId, () => Training()), d, '馬カード ›');
   EnToggle();
   // round 20 (REQ-LNOTIF-010): after the first training, the reminders pre-permission card (inline, at most maxAsks times)
   await LnotifPrePromptCard(() => TrainingResult(res));
+}
+
+// ================================================================= quality pass: raising & breeding (docs/quality/raising-breeding.md)
+// 馬カード (GET /v1/horses/:id/profile on the real horseProfile), the training outlook / growth bars, the breeding screen
+// (choose → outlook → reveal) on the real breedingPreview / breed. Mirrors unity/Assets/Muchi/Game/HorseProfileModel.cs and
+// BreedingModel (ParentGifts, RarityLine, Reveal). Read-only except the breeding itself; every chance shown is the server's.
+const QR_STAGES = ['新馬', '成長期', '充実期', '本格化', '完成'];
+const QR_STAGE_TH = [0, 100, 350, 650, 1000];
+/** growthStage (server horseProfile.ts / C# GrowthStages.Of, contracts/horse-profile.vectors.json). */
+function qrStage(trained, potential) {
+  if (!(potential > 0)) return { index: 0, nextAt: null };
+  const t = clamp(Math.trunc(trained), 0, potential);
+  let index = 0;
+  for (let i = 1; i < QR_STAGE_TH.length; i++) if (t * 1000 >= QR_STAGE_TH[i] * potential) index = i;
+  const next = QR_STAGE_TH[index + 1];
+  return { index, nextAt: next === undefined ? null : Math.ceil((next * potential) / 1000) };
+}
+const QR_FROM = { own: '生まれつき', sire: '父から', dam: '母から', both: '父と母から' };
+const QR_COAT = { bay: 0, chestnut: 1, grey: 2, dapple_grey: 2, gray: 2, black: 3, palomino: 4 };
+const qrArt = (h) => partnerPreview(QR_COAT[h?.appearance?.coat] ?? ([...(h?.id ?? 'x')].reduce((a, c) => a + c.charCodeAt(0), 0) % 5));
+const qrPct = (ppm) => (ppm <= 0 ? '0%' : ppm < 500 ? '<0.1%' : `${(Math.round(ppm / 1000) / 10).toFixed(1)}%`);
+const qrPermille = (p) => `${(p / 10).toFixed(1)}%`;
+const qrTrait = (t) => (t.trait === 'style' ? STYLE_JA[t.value] ?? t.value : t.value === 'heavy' ? '重馬場巧者' : t.value === 'fast' ? '良馬場巧者' : '馬場不問');
+const qrSex = (s) => (s === 'female' ? '牝馬' : '牡馬');
+const RAR_COLOR = (r) => (r === 'SSR' ? GOLD : r === 'SR' ? CYAN : MUTED);
+
+/** The growth pips: five steps, the reached ones gold, the current one ringed. */
+function qrPips(x, y, stage, parent) {
+  const row = el('qr-pips', x, y, 5 * 30, 14, parent);
+  for (let i = 0; i < 5; i++) { const p = document.createElement('i'); if (i <= stage) p.className = 'on'; if (i === stage) p.classList.add('cur'); row.appendChild(p); }
+  row.dataset.stage = String(stage);
+  return row;
+}
+/**
+ * One stat on the engine's 0..1000 scale: base (cyan) → +awakening (light cyan) → +training (gold). `from` (a smaller trained value)
+ * draws the gold segment growing from there to `trained` (the result screen); reduce motion shows the end at once.
+ */
+function qrLayerBar(x, y, w, s, parent, from = null) {
+  const bar = el('qr-bar', x, y, w, 10, parent);
+  const seg = (cls, left, width) => { const i = document.createElement('i'); i.className = cls; i.style.left = (left / 10) + '%'; i.style.width = (width / 10) + '%'; bar.appendChild(i); return i; };
+  seg('b', 0, s.base); if (s.awakening > 0) seg('a', s.base, s.awakening);
+  const g = seg('t', s.base + s.awakening, from ?? s.trained);
+  if (from !== null && from !== s.trained) {
+    if (reduced()) g.style.width = (s.trained / 10) + '%';
+    else setTimeout(() => { g.style.width = (s.trained / 10) + '%'; }, 450);
+  }
+  return bar;
+}
+/** A thin meter of a stat's training growth against its own cap (moves visibly every session). */
+function qrMeter(x, y, w, have, cap, parent, from = null) {
+  const b = Gauge(x, y, w, cap ? (from ?? have) / cap : 0, parent, { gold: true });
+  b.classList.add('qr-meter');
+  if (from !== null && from !== have) {
+    const i = b.querySelector('i');
+    if (reduced()) i.style.width = Math.round(100 * clamp(have / cap, 0, 1)) + '%';
+    else setTimeout(() => { i.style.transition = 'width .9s cubic-bezier(.2,.7,.2,1)'; i.style.width = Math.round(100 * clamp(have / cap, 0, 1)) + '%'; }, 450);
+  }
+  return b;
+}
+/** Counts a number up (reduce motion: the end at once). */
+function qrCount(node, to, prefix = '+') {
+  if (reduced() || to <= 0) { node.textContent = to > 0 ? prefix + to : node.textContent; return; }
+  const t0 = performance.now(), dur = 650;
+  const step = (t) => { const k = clamp((t - t0) / dur, 0, 1); node.textContent = prefix + Math.round(to * (1 - (1 - k) ** 3)); if (k < 1 && document.body.contains(node)) requestAnimationFrame(step); };
+  node.textContent = prefix + '0'; requestAnimationFrame(step);
+}
+
+// ---------------------------------------------------------------- 馬カード
+async function HorseCard(horseId, back = () => Stable()) {
+  const r = await L.horseProfile(horseId);
+  if (!r.ok) { toast(r.message); return back(); }
+  const p = r.value;
+  currentScreen = () => HorseCard(horseId, back);
+  Clear('horse-card'); SetArt('Art/partner-naming', false); Shade('left');
+  // ① growth: stage, potential, the five stats in layers
+  const g = Glass('Horse card growth', 36, 110, 800, 700, undefined, .9);
+  g.classList.add('rise', 'qr-card'); g.dataset.horse = p.horseId;
+  Kicker(`馬カード　/　第${p.lineage.generation}世代`, 36, 26, g);
+  Txt(p.name, 36, 92, 560, 42, WHITE, g, { ls: '.06em', nowrap: true });
+  Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 36, 148, 560, 16, RAR_COLOR(p.rarity), g, { weight: 700, ls: '.06em', nowrap: true });
+  if (p.growth) {
+    const st = qrStage(p.growth.trainedTotal, p.growth.potential);
+    Txt('成長段階', 560, 34, 200, 13, MUTED, g, { weight: 500, ls: '.14em', align: 'right' });
+    const sn = Txt(QR_STAGES[st.index], 560, 56, 204, 30, GOLD, g, { weight: 700, align: 'right' }); sn.classList.add('qr-stage'); sn.dataset.stage = String(st.index);
+    qrPips(614, 106, st.index, g);
+    Txt(st.nextAt === null ? '素質いっぱいまで伸びました' : `${QR_STAGES[st.index + 1]}まで あと${Math.max(0, st.nextAt - p.growth.trainedTotal)}`, 460, 130, 304, 13, SOFT, g, { align: 'right' });
+  }
+  Hair(36, 190, 728, g);
+  Txt('能力', 36, 206, 120, 13, MUTED, g, { weight: 500, ls: '.14em' });
+  Txt('調教の伸び', 560, 206, 204, 13, MUTED, g, { weight: 500, ls: '.14em', align: 'right' });
+  const cap = p.growth?.perStatCap ?? 0;
+  TR_STAT_ORDER.forEach((k, i) => {
+    const s = p.stats.find((x) => x.key === k); if (!s) return;
+    const y = 238 + i * 58;
+    const lean = p.leaning?.stat === k;
+    Txt(TR_STAT[k] + (lean ? '　得意' : ''), 36, y, 200, 16, lean ? GOLD : WHITE, g, { weight: 700, ls: '.04em', nowrap: true });
+    Txt(fmt(s.race), 300, y - 4, 90, 22, WHITE, g, { weight: 700, align: 'right', cls: 'num' }).dataset.stat = k;
+    qrLayerBar(36, y + 28, 354, s, g);
+    if (cap) {
+      qrMeter(430, y + 30, 230, s.trained, cap, g);
+      Txt(s.trained > 0 ? `+${s.trained}` : '+0', 670, y + 18, 94, 18, s.trained > 0 ? GOLD : DIM, g, { weight: 700, align: 'right', cls: 'num' });
+    }
+  });
+  const t = p.totals;
+  Txt(`能力合計 ${fmt(t.race)}`, 36, 540, 300, 18, WHITE, g, { weight: 700, cls: 'num' });
+  if (p.growth) Txt(`素質 ${p.growth.trainedTotal} / ${p.growth.potential}`, 430, 540, 334, 18, GOLD, g, { weight: 700, align: 'right', cls: 'num' });
+  const rk = Txt(t.capped ? `ランク戦（${t.classId}級 上限 ${fmt(t.cap)}）：合計は上限にそろえ、配分はそのまま` : `ランク戦（${t.classId}級 上限 ${fmt(t.cap)}）まで あと ${fmt(t.toCap)}`, 36, 574, 728, 14, MUTED, g, { weight: 500 });
+  rk.classList.add('qr-ranked');
+  if (p.leaning) Txt(`得意：${TR_STAT[p.leaning.stat]}（${qrPermille(p.leaning.sharePermilleBefore)} → ${qrPermille(p.leaning.sharePermilleNow)}）`, 36, 600, 728, 14, GOLD, g, { weight: 500 }).classList.add('qr-leaning');
+  Txt('調教の伸びはレースで使われます。ランク戦は能力の合計をクラスの上限にそろえますが、能力の配分（得意）はそのまま残ります。伸びは課金で増えず、仔には受け継がれません。成長段階は表示だけです。', 36, 632, 728, 11, SOFT, g, { lh: 1.5 }).classList.add('qr-rules');
+  // ② the story: career, lineage, recent training; one CTA
+  const s = Glass('Horse card story', 860, 110, 704, 700, undefined, .88);
+  s.classList.add('rise', 'd1');
+  Kicker('戦績', 36, 26, s);
+  const c = p.career;
+  Txt(c.races === 0 ? 'まだ走っていません' : `${c.races}戦${c.wins}勝`, 36, 92, 400, 30, WHITE, s, { weight: 700, cls: 'num' });
+  const extra = [c.rivalWins > 0 ? `ライバルに${c.rivalWins}回先着` : null, c.tournamentWins > 0 ? `大会優勝${c.tournamentWins}回` : null, c.places > 0 ? `3着以内${c.places}回` : null].filter(Boolean);
+  if (extra.length) Txt(extra.join('・'), 36, 138, 632, 15, GOLD, s, { weight: 700 });
+  Kicker('血統', 36, 182, s, { rule: false, size: 15 });
+  const lin = p.lineage;
+  Txt(`第${lin.generation}世代${lin.bred ? '' : '（スカウト・配布の馬）'}`, 36, 212, 632, 17, WHITE, s, { weight: 700 }).classList.add('qr-gen');
+  Txt(`父 ${lin.sireName ?? '—'}${lin.studSire ? '（借りた種牡馬）' : ''}　·　母 ${lin.damName ?? '—'}`, 36, 244, 632, 14, MUTED, s, { nowrap: true });
+  let ly = 274;
+  if (lin.skill) { Txt(`固有スキル「${lin.skill.name}」${lin.skillFrom ? '：' + QR_FROM[lin.skillFrom] : ''}`, 36, ly, 632, 15, CYAN, s, { weight: 700 }); ly += 28; }
+  if (lin.atavism) { Txt(`隔世遺伝：${qrTrait(lin.atavism)}（${lin.atavism.from}）`, 36, ly, 632, 15, GOLD, s, { weight: 700 }); ly += 28; }
+  Kicker('最近の調教', 36, 352, s, { rule: false, size: 15 });
+  const tvw = await L.training();
+  const menus = tvw.ok && tvw.value.enabled ? tvw.value.menus : [];
+  if (!p.recentTraining.length) Txt('まだ調教していません', 36, 384, 632, 14, DIM, s);
+  p.recentTraining.slice(0, 4).forEach((e, i) => {
+    const y = 384 + i * 36;
+    Txt(menus.find((m) => m.id === e.menuId)?.name ?? e.menuId, 36, y, 200, 15, WHITE, s, { weight: 700 });
+    Txt(TR_GRADE[e.grade] ?? e.grade, 220, y, 300, 14, MUTED, s, { nowrap: true });
+    Txt(e.gain > 0 ? `+${e.gain}` : '±0', 560, y - 2, 108, 17, e.gain > 0 ? GOLD : DIM, s, { weight: 700, align: 'right', cls: 'num' });
+  });
+  if (p.status === 'active') Cta('調教する', 36, 560, 400, () => { trHorse = p.horseId; trMenu = null; Training(); }, s).classList.add('qr-go');
+  else Cta('配合へ', 36, 560, 400, () => Breeding(), s).classList.add('qr-go');
+  TextLink('目標', 470, 578, 100, () => HorseGoals(p.horseId), s, '目標 ›');
+  Back(back, 'BACK', 40, 834);
+  EnToggle(1435, 40);
+}
+
+// ---------------------------------------------------------------- 配合: choose → outlook → reveal
+let qrSire = null, qrDam = null;
+async function Breeding() {
+  currentScreen = Breeding;
+  await refresh();
+  Clear('breeding'); SetArt('Art/home-paddock', false); Shade('left');
+  const retired = (player?.horses ?? []).filter((h) => h.status === 'retired');
+  const sires = retired.filter((h) => h.sex === 'male'), dams = retired.filter((h) => h.sex === 'female');
+  if (!sires.some((h) => h.id === qrSire)) qrSire = sires[0]?.id ?? null;
+  if (!dams.some((h) => h.id === qrDam)) qrDam = dams[0]?.id ?? null;
+  const pv = qrSire && qrDam ? await L.breedingPreview(qrSire, qrDam) : null;
+  const v = pv?.ok ? pv.value : null;
+  const left = v ? Math.max(0, v.today.perDay - v.today.used) : 0;
+  TopBar(v ? `配合　/　今日あと${left}回` : '配合', '父と母を選ぶ　→　見込みを確かめる　→　仔を迎える');
+  // ① parents
+  const lp = Glass('Breeding parents', 36, 134, 440, 676, undefined, .88);
+  TipQ('breeding', 364, 24, lp, () => Breeding());
+  // each candidate against the other chosen parent: the same preview (nick, SR-or-better chance) so the player can aim
+  const against = async (sireId, damId) => { if (!sireId || !damId) return null; const r = await L.breedingPreview(sireId, damId); return r.ok ? r.value : null; };
+  const pick = async (title, list, sel, y0, first, set, pair) => {
+    Kicker(title, 36, y0, lp, { rule: first, size: 15 });
+    const top = y0 + (first ? 72 : 36);
+    if (!list.length) { Txt('引退した馬がいません', 36, top, 368, 14, DIM, lp); return; }
+    for (const [i, h] of list.slice(0, 3).entries()) {
+      const y = top + i * 80;
+      const c = Card('Parent ' + h.id, 36, y, 368, 70, lp, h.id === sel ? CYAN : 'var(--text-4)');
+      c.classList.add('qr-parent'); c.dataset.horse = h.id; if (h.id === sel) c.classList.add('sel');
+      Txt(h.name, 18, 14, 210, 18, WHITE, c, { weight: 700, nowrap: true });
+      Txt(`${h.rarity}　${STYLE_JA[h.style] ?? ''}`, 200, 16, 150, 14, RAR_COLOR(h.rarity), c, { weight: 700, align: 'right' });
+      const o = await pair(h.id);
+      if (o?.rarity) {
+        const up = o.rarity.SR + o.rarity.SSR;
+        Txt(`SR以上 ${qrPct(up)}${o.nick ? '　·　◎ ニックス' : ''}${o.inbreedingCount > 0 ? '　·　近親' : ''}`, 18, 42, 332, 13, up > 0 || o.nick ? GOLD : MUTED, c, { weight: 500, nowrap: true }).classList.add('qr-aim');
+      }
+      c.style.cursor = 'pointer';
+      c.addEventListener('click', () => { set(h.id); Breeding(); });
+    }
+  };
+  await pick('父（引退した牡馬）', sires, qrSire, 26, true, (id) => { qrSire = id; }, (id) => against(id, qrDam));
+  await pick('母（引退した牝馬）', dams, qrDam, 344, false, (id) => { qrDam = id; }, (id) => against(qrSire, id));
+  if (!sires.length || !dams.length) {
+    Txt('牡馬と牝馬を1頭ずつ引退させると配合できます。引退は所属馬の一覧から。', 36, 600, 368, 13, MUTED, lp, { lh: 1.5 });
+    TextLink('所属馬の一覧', 36, 632, 240, () => Roster(), lp, '所属馬の一覧 ›');
+  }
+  // ② the outlook: stat ranges, rarity odds, compatibility
+  const mp = Glass('Breeding outlook', 496, 134, 560, 676, undefined, .88);
+  mp.classList.add('qr-outlook');
+  Kicker('仔の見込み', 36, 26, mp);
+  if (!v) { Txt(pv && !pv.ok ? pv.message : '父と母を選ぶと、生まれる仔の見込みが出ます', 36, 100, 488, 16, MUTED, mp, { lh: 1.5 }); }
+  else {
+    Txt((v.nick ? '◎ ニックス（相性がよい）' : '○ 通常の相性') + (v.inbreedingCount > 0 ? `　·　近親 ${v.inbreedingCount}（能力 −${v.inbreedingCount * 50}）` : ''), 36, 92, 488, 15, v.nick ? GOLD : WHITE, mp, { weight: 700 });
+    const LO = 400, HI = 1000, W = 300, X = 150;
+    const at = (n) => X + Math.round((clamp(n, LO, HI) - LO) / (HI - LO) * W);
+    TR_STAT_ORDER.forEach((k, i) => {
+      const r = v.stats[k], y = 136 + i * 40;
+      Txt(TR_STAT[k], 36, y, 110, 14, WHITE, mp, { weight: 700 });
+      el('qr-track', X, y + 6, W, 8, mp);
+      const band = el('qr-band', at(r.min), y + 3, Math.max(4, at(r.max) - at(r.min)), 14, mp); band.dataset.stat = k;
+      Txt(`${r.min}〜${r.max}`, X + W + 14, y, 110, 13, MUTED, mp, { cls: 'num', nowrap: true });
+    });
+    Txt(`能力は幅の中で決まります（各能力 ±${L.master.breedRules.variation}）`, 36, 340, 488, 12, SOFT, mp);
+    // the rarity odds: one stacked bar, exact from the breeding rules
+    Kicker('仔のレア度の見込み', 36, 374, mp, { rule: false, size: 15 });
+    const ro = v.rarity;
+    if (ro) {
+      const bar = el('qr-rar', 36, 410, 488, 22, mp); bar.dataset.ssr = String(ro.SSR); bar.dataset.sr = String(ro.SR);
+      [['R', ro.R], ['SR', ro.SR], ['SSR', ro.SSR]].forEach(([k, n]) => { if (n <= 0) return; const i = document.createElement('i'); i.className = k.toLowerCase(); i.style.width = (n / 10000) + '%'; bar.appendChild(i); });
+      Txt(`SSR ${qrPct(ro.SSR)}　·　SR ${qrPct(ro.SR)}　·　R ${qrPct(ro.R)}`, 36, 444, 488, 18, WHITE, mp, { weight: 700, cls: 'num' }).classList.add('qr-rarity-line');
+      Txt('能力の合計 3,200 以上で SR、3,700 以上で SSR。実際の配合と同じ計算で出しています', 36, 474, 488, 12, SOFT, mp, { lh: 1.5 });
+    }
+    Txt(`距離 ${fmt(v.distance.minM)}〜${fmt(v.distance.maxM)}m　·　${v.surface === 'turf' ? '芝' : v.surface === 'dirt' ? 'ダート' : '芝・ダートのどちらか'}`, 36, 512, 488, 14, MUTED, mp);
+    // how to aim higher, from the breeding rules themselves (horses.ts BREED and nicks.json)
+    Kicker('見込みを上げるには', 36, 552, mp, { rule: false, size: 14 });
+    const br = L.master.breedRules;
+    Txt(`仔の能力の基準は父母の平均の${br.basePermille / 10}%。父母の覚醒1段ごとに +${br.perAwakeningPermille / 10}%、ニックスの血統なら全能力 +${L.master.nickBonus}、近親は1つごとに −${br.inbreedingPenalty}。`, 36, 580, 488, 13, MUTED, mp, { lh: 1.6 }).classList.add('qr-aim-rules');
+  }
+  // ③ what each parent can pass on; the one CTA
+  const rp = Glass('Breeding gifts', 1076, 134, 488, 676, undefined, .88);
+  Kicker('受け継げるもの', 36, 26, rp);
+  if (v) {
+    const sire = sires.find((h) => h.id === qrSire), dam = dams.find((h) => h.id === qrDam);
+    let y = 92;
+    for (const [who, h] of [['sire', sire], ['dam', dam]]) {
+      Txt(`${who === 'sire' ? '父' : '母'}　${h.name}`, 36, y, 416, 16, WHITE, rp, { weight: 700, nowrap: true }); y += 30;
+      const sp = v.styles[h.style];
+      if (sp != null) { Txt(`脚質 ${STYLE_JA[h.style]} ${sp}%`, 52, y, 400, 14, MUTED, rp).classList.add('qr-gift'); y += 24; }
+      for (const c of v.skill.candidates.filter((x) => x.from.includes(who))) { Txt(`固有スキル「${c.name}」 ${qrPermille(c.permille / c.from.length)}`, 52, y, 400, 14, CYAN, rp, { weight: 700 }).classList.add('qr-gift'); y += 24; }
+      y += 10;
+    }
+    for (const a of v.atavism.candidates.slice(0, 3)) { Txt(`隔世遺伝 ${qrPermille(a.permille)}　${qrTrait(a)} ← ${a.from}`, 36, y, 416, 13, GOLD, rp); y += 22; }
+    const apt = Object.entries(v.goingAptitude).filter(([k, n]) => k !== 'any' && n > 0);
+    if (apt.length) Txt(apt.map(([k, n]) => `${k === 'heavy' ? '重馬場巧者' : '良馬場巧者'} ${qrPermille(n)}`).join('・'), 36, y + 4, 416, 13, MUTED, rp);
+    const go = Cta('配合する', 36, 530, 416, async () => {
+      const b = await L.breed(qrSire, qrDam, left <= 0);
+      if (!b.ok) { toast(b.code === 'BREEDING_DAILY_LIMIT' ? '今日の配合はおしまい。4:00に戻ります' : b.message); return; }
+      FoalReveal(b.value, v, sire, dam);
+    }, rp);
+    go.classList.add('qr-breed');
+    const mat = v.today.materialOwned >= v.today.materialCost && v.today.extraUsed < v.today.extraPerDay;
+    if (left <= 0 && !mat) disable(go);
+    Txt(left > 0 ? `今日あと${left}回` : mat ? `配合素材を${v.today.materialCost}個使って、もう1回` : '今日の配合はおしまい。4:00に戻ります', 36, 612, 416, 13, SOFT, rp);
+  }
+  Txt('見込みの確率はすべて実際の配合と同じ計算です。調教の伸びは受け継がれません。', 36, 640, 416, 11, SOFT, rp, { lh: 1.5 });
+  Back(Stable, 'BACK', 40, 834);
+}
+
+/** The foal reveal: sex and style → the five stats landing in their ranges → rarity against its chance → skill, 隔世遺伝, generation. */
+async function FoalReveal(res, pv, sire, dam) {
+  await refresh();
+  const foal = res.foal;
+  const prof = await L.horseProfile(foal.id);
+  const gen = prof.ok ? prof.value.lineage.generation : null;
+  currentScreen = Breeding;
+  Clear('breeding-reveal'); SetArt('Art/scout-reveal', false); Shade('left');
+  const d = Glass('Foal reveal', 36, 80, 1060, 740, undefined, .9);
+  d.classList.add('qr-reveal'); d.dataset.foal = foal.id; d.dataset.rarity = foal.rarity;
+  Kicker('新しい命', 40, 30, d);
+  Txt('仔馬が生まれました', 40, 92, 700, 34, WHITE, d, { weight: 700 });
+  const steps = [];
+  const step = (nodes) => { nodes.forEach((n) => n.classList.add('qr-hide')); steps.push(nodes); };
+  // 1: sex and style (where it came from)
+  const styleFrom = foal.atavism?.trait === 'style' ? '隔世遺伝' : foal.style === sire.style && foal.style === dam.style ? '父と母から' : foal.style === sire.style ? '父から' : foal.style === dam.style ? '母から' : '新しい脚質';
+  step([Txt(`${qrSex(foal.sex)}　·　脚質 ${STYLE_JA[foal.style]}：${styleFrom}`, 40, 150, 700, 20, WHITE, d, { weight: 700 })]);
+  // 2: the five stats against the preview ranges
+  const statNodes = [];
+  let high = 0;
+  const LO = 400, HI = 1000, W = 420, X = 150;
+  const at = (n) => X + Math.round((clamp(n, LO, HI) - LO) / (HI - LO) * W);
+  TR_STAT_ORDER.forEach((k, i) => {
+    const r = pv.stats[k], val = foal.base[k], y = 210 + i * 44;
+    const pos = r.max > r.min ? (val - r.min) / (r.max - r.min) : .5;
+    const mark = pos >= .75 ? 'high' : pos <= .25 ? 'low' : 'mid';
+    if (mark === 'high') high++;
+    statNodes.push(Txt(TR_STAT[k], 40, y, 110, 15, WHITE, d, { weight: 700 }));
+    const tr = el('qr-track', X, y + 6, W, 8, d); statNodes.push(tr);
+    const band = el('qr-band dim', at(r.min), y + 3, Math.max(4, at(r.max) - at(r.min)), 14, d); statNodes.push(band);
+    const pin = el('qr-pin', at(r.min) - 2, y - 1, 4, 22, d); pin.dataset.stat = k; statNodes.push(pin);
+    pin.dataset.to = String(at(val) - 2);
+    const num = Txt(String(val), X + W + 16, y - 3, 70, 19, mark === 'high' ? GOLD : WHITE, d, { weight: 700, cls: 'num' }); statNodes.push(num);
+    if (mark === 'high') statNodes.push(Txt('期待以上', X + W + 90, y, 110, 13, GOLD, d, { weight: 700 }));
+  });
+  step(statNodes);
+  // 3: rarity against the chance the preview gave it
+  const chance = pv.rarity ? pv.rarity[foal.rarity] : null;
+  const rar = Txt(foal.rarity, 40, 446, 200, 64, RAR_COLOR(foal.rarity), d, { weight: 700, cls: 'num' }); rar.classList.add('qr-rar-big');
+  step([rar, Txt(`${high > 0 ? `期待以上が${high}つ` : '見込みどおり'}　·　能力合計 ${fmt(TR_STAT_ORDER.reduce((a, k) => a + foal.base[k], 0))}${chance != null ? `　·　見込み ${qrPct(chance)}` : ''}`, 150, 474, 860, 17, WHITE, d, { weight: 700 })]);
+  // 4: gifts and the line
+  const gifts = [];
+  const sk = foal.skillId ? pv.skill.candidates.find((c) => c.id === foal.skillId) : null;
+  if (sk) gifts.push(Txt(`固有スキル「${sk.name}」を${sk.from.length > 1 ? '父と母から' : sk.from[0] === 'sire' ? '父から' : '母から'}受け継ぎました`, 40, 548, 980, 17, CYAN, d, { weight: 700 }));
+  if (foal.atavism) gifts.push(Txt(`隔世遺伝：${qrTrait(foal.atavism)}（${foal.atavism.from}）`, 40, sk ? 580 : 548, 980, 17, GOLD, d, { weight: 700 }));
+  gifts.push(Txt(`${gen ? `第${gen}世代　·　` : ''}父 ${sire.name}　·　母 ${dam.name}`, 40, 620, 980, 15, MUTED, d));
+  step(gifts);
+  let shown = 0;
+  const show = () => {
+    if (shown >= steps.length) return;
+    for (const n of steps[shown]) n.classList.add('qr-show');
+    if (shown === 1) for (const pin of d.querySelectorAll('.qr-pin')) setTimeout(() => { pin.style.left = pin.dataset.to + 'px'; }, reduced() ? 0 : 120);
+    shown++;
+    d.dataset.step = String(shown);
+    if (shown >= steps.length) { nextBtn.remove(); allBtn.remove(); done(); }
+  };
+  const nextBtn = Cta('めくる', 40, 650, 360, show, d); nextBtn.classList.add('qr-next');
+  const allBtn = Ghost('すべて見る', 430, 660, 220, 56, () => { while (shown < steps.length) show(); }, d, 'quiet');
+  const done = () => {
+    Cta('馬カードを見る', 40, 650, 360, () => HorseCard(foal.id, () => Breeding()), d).classList.add('qr-to-card');
+    Ghost('配合へ戻る', 430, 660, 220, 56, () => Breeding(), d, 'quiet');
+  };
+  if (globalThis.__muchi) globalThis.__muchi.lastFoal = { foal, rarity: pv.rarity, high };
+  show(); // the first step at once: the birth is the moment
+  EnToggle(1435, 40);
 }
 
 // ================================================================= round 12: ライバル (REQ-RIVAL-*, contracts/protocol.md §28)
@@ -8981,7 +9340,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

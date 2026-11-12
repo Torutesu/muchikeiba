@@ -758,3 +758,32 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
   background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .7); transform: skewX(-10deg); white-space: nowrap; }
 .cal-mark.on { color: var(--navy); background: var(--cyan); box-shadow: none; }
 .cal-go { font-size: 26px; color: var(--cyan); line-height: 1; }
+
+/* quality pass: raising & breeding (docs/quality/raising-breeding.md) — 馬カード, growth bars, the breeding outlook and the foal reveal.
+   Scoped to these screens (qr-*); the shared tokens only. */
+.qr-pips { position: absolute; display: flex; gap: 8px; }
+.qr-pips i { width: 22px; height: 6px; border-radius: 3px; background: var(--track); }
+.qr-pips i.on { background: var(--gold); }
+.qr-pips i.cur { box-shadow: 0 0 0 2px rgba(255, 211, 79, .35), 0 0 12px rgba(255, 211, 79, .55); }
+.qr-bar { position: absolute; border-radius: 5px; background: var(--track); overflow: hidden; pointer-events: none; }
+.qr-bar i { position: absolute; top: 0; bottom: 0; }
+.qr-bar i.b { background: var(--cyan); }
+.qr-bar i.a { background: #8beaf6; }
+.qr-bar i.t { background: var(--gold); box-shadow: 0 0 8px rgba(255, 211, 79, .7); transition: width .9s cubic-bezier(.2, .7, .2, 1); }
+.bar.qr-meter { height: 6px; border-radius: 3px; }
+.qr-track { position: absolute; border-radius: 4px; background: var(--track); }
+.qr-band { position: absolute; border-radius: 7px; background: rgba(0, 210, 237, .35); box-shadow: inset 0 0 0 2px var(--cyan); }
+.qr-band.dim { background: rgba(0, 210, 237, .14); box-shadow: inset 0 0 0 1px rgba(0, 210, 237, .6); }
+.qr-pin { position: absolute; border-radius: 2px; background: var(--gold); box-shadow: 0 0 10px rgba(255, 211, 79, .9); transition: left .8s cubic-bezier(.2, .7, .2, 1); }
+.qr-rar { position: absolute; display: flex; border-radius: 4px; overflow: hidden; background: var(--track); }
+.qr-rar i { display: block; height: 100%; min-width: 3px; }
+.qr-rar i.r { background: #5b7488; } .qr-rar i.sr { background: var(--cyan); } .qr-rar i.ssr { background: var(--gold); }
+.qr-stageup { position: absolute; border-radius: var(--radius); background: linear-gradient(90deg, rgba(255, 211, 79, .22), rgba(255, 211, 79, .04)); box-shadow: inset 3px 0 0 var(--gold); animation: rise .6s cubic-bezier(.2, .7, .2, 1) .5s both; }
+.card.qr-parent { transition: box-shadow .15s ease; }
+.card.qr-parent.sel { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 22px rgba(0, 210, 237, .25); }
+.qr-hide { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s cubic-bezier(.2, .7, .2, 1); }
+.qr-hide.qr-show { opacity: 1; transform: none; }
+.qr-rar-big.qr-show { text-shadow: 0 0 24px currentColor; }
+.img.qr-foal-art { object-fit: contain; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, .5)); }
+html[data-reduce-motion="on"] .qr-hide, html[data-reduce-motion="on"] .qr-pin, html[data-reduce-motion="on"] .qr-bar i.t { transition: none; }
+html[data-reduce-motion="on"] .qr-stageup { animation: fade .15s ease both; }

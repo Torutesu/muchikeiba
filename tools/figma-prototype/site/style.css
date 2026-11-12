@@ -278,8 +278,8 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 .whipdots i { width: 21px; height: 21px; border-radius: 50%; background: #435368; }
 .whipdots i.on { background: var(--gold); }
 /* ruleset 1.4 (docs/quality/race-play.md §5): the hold's charge ring and the rhythm ring around the whip button, the 仕掛けバー */
-.btn.whip .ring { position: absolute; inset: -12px; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .15s;
-  -webkit-mask: radial-gradient(circle, transparent 60%, #000 61%, #000 70%, transparent 71%); mask: radial-gradient(circle, transparent 60%, #000 61%, #000 70%, transparent 71%); }
+.btn.whip .ring { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0; transition: opacity .15s; /* inside the button: never widens it (the overflow audit) */
+  -webkit-mask: radial-gradient(circle closest-side, transparent 82%, #000 83%, #000 99%, transparent 100%); mask: radial-gradient(circle closest-side, transparent 82%, #000 83%, #000 99%, transparent 100%); }
 .btn.whip .ring i { position: absolute; inset: 0; border-radius: 50%; }
 .btn.whip .ring .arc { background: conic-gradient(transparent 0 calc(var(--g0, .7) * 1turn), rgba(255, 211, 79, .95) calc(var(--g0, .7) * 1turn) calc(var(--g1, .9) * 1turn), transparent calc(var(--g1, .9) * 1turn)); opacity: 0; }
 .btn.whip .ring .prog { background: conic-gradient(var(--cyan) 0 calc(var(--p, 0) * 1turn), rgba(25, 54, 75, .85) calc(var(--p, 0) * 1turn)); }

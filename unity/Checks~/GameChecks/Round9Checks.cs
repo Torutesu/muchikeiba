@@ -125,8 +125,8 @@ static class Round9Checks
         check(!lp.ShouldShow(LinkPromptContext.Race, true, 3, true, true) && !lp.ShouldShow(LinkPromptContext.Other, true, 3, true, true), "never in a race / matching / result screen or on other screens");
         check(!lp.ShouldShow(LinkPromptContext.Home, true, 3, true, false) && !lp.ShouldShow(LinkPromptContext.Home, true, 3, true, true, deletionScheduled: true), "not offline, not while an account deletion is scheduled");
         check(!lp.ShouldShow(LinkPromptContext.Home, anonymous: false, 3, true, true), "already linked (not anonymous): never");
-        check(lp.ShouldShow(LinkPromptContext.Home, true, 3, true, true) && lp.ShouldShow(LinkPromptContext.ResultClosed, true, 3, true, true) && lp.TriggerFor(3, false) == LinkPromptTrigger.Day3,
-            "day 3, FTUE done: shown on home or after closing a result");
+        check(!lp.ShouldShow(LinkPromptContext.Home, true, 3, true, true) && lp.ShouldShow(LinkPromptContext.ResultClosed, true, 3, true, true) && lp.ShouldShow(LinkPromptContext.Home, true, 4, true, true) && lp.TriggerFor(3, false) == LinkPromptTrigger.Day3,
+            "day 3, FTUE done: shown after closing a result, not on opening home that day (from day 4 home too)");
         var view = lp.Show(LinkPromptTrigger.Day3, ios: true);
         check(view.Title == "機種変更でも相棒を引き継げます" && view.Providers[0] == "apple" && view.LaterLabel == "あとで" && lp.Shown, "prompt screen: one title, Apple first on iOS, 「あとで」; marked shown when displayed");
         check(!lp.ShouldShow(LinkPromptContext.Home, true, 4, true, true) && !new AccountLinkPrompt(kv).ShouldShow(LinkPromptContext.PurchaseComplete, true, 9, true, true, purchased: true),

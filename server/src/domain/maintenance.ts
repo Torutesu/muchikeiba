@@ -187,7 +187,8 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history;
  *   - the ad / analytics choices (§58: GET/PUT /v1/privacy/choices, PUT /v1/privacy/platform, POST /v1/privacy/prompt-shown);
  *   - client error reports (§60);
- *   - the player's own spending limit and play-time reminder (§67, /v1/self-limits*).
+ *   - the player's own spending limit and play-time reminder (§67, /v1/self-limits*);
+ *   - the signed-in devices, their sign-out and the security log (§70).
  */
 export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/health', 'GET /v1/config', 'GET /v1/maintenance', 'GET /v1/assets/catalog', 'GET /v1/visuals',
@@ -226,6 +227,12 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 22 (§67, REQ-LIMIT-014): the player's own limits — lowering must work whenever a purchase can (store receipts are
   // exempt above); a raise only starts the cool-off. Moves no coins. Not under /v1/shop so a `shop` window never closes it.
   'GET /v1/self-limits', 'PUT /v1/self-limits/spending', 'DELETE /v1/self-limits/spending/pending', 'PUT /v1/self-limits/playtime',
+  // Round 23 (§70, REQ-DEV-013): ログイン中の端末 — signing out a device is the response to an account takeover, like the
+  // transfer code it is account access: never closed by a window or an old app. Moves no coins; ops stop it with progression.devices.enabled.
+  'GET /v1/account/devices', 'POST /v1/account/devices/checkin', 'POST /v1/account/devices/:sessionId/signout', 'POST /v1/account/devices/signout-others',
+  'GET /v1/account/security-log',
+  // Round 23 (§73.9, REQ-TKT-013): the player's reply in a support thread — the same support route as sending an inquiry
+  'POST /v1/help/inquiries/:ticketId/messages',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

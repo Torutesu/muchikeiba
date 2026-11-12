@@ -45,6 +45,18 @@ export interface HorseInstance {
   skillId?: string;
   /** REQ-TRAIN-003: stat points gained from training (training.ts). Counts in races (normalised in ranked), not in breeding. */
   trained?: Stats;
+  /**
+   * REQ-PED-001 (§71): the parents as they were when this foal was born (bred foals only; written once by breedWith, never
+   * changed). Never holds another player's id (a borrowed stallion's owner stays in studSire).
+   */
+  lineage?: { v: 1; sire: LineageSnap; dam: LineageSnap };
+}
+
+/** REQ-PED-001: one parent at the foal's birth (effective stats incl. awakening at that time). */
+export interface LineageSnap {
+  name: string; named?: true; templateId: string | null; rarity: Rarity; sex: Sex; style: Style; goingAptitude?: GoingAptitude;
+  surface: 'turf' | 'dirt' | 'both'; line: string; skillId?: string; appearance: Appearance; stats: Stats;
+  sireName: string | null; damName: string | null;
 }
 
 export interface PurchaseRecord {
@@ -262,6 +274,8 @@ export interface PlayerState {
   calendar?: import('./calendar.js').CalendarState;
   /** REQ-TRF-*: 引き継ぎコード — the current code (no password, no hash), daily issues, the old-device cut-off, history (transferCode.ts). */
   transfer?: import('./transferCode.js').TransferState;
+  /** REQ-DEV-* (§70): ログイン中の端末 — sessions (coarse labels, hour-rounded times), devices seen (hashes), revocations, the security log (devices.ts). */
+  devices?: import('./devices.js').DevicesState;
   /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
   privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
   /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 — the player's own monthly spending limit (and a pending raise), play-time reminder settings, history (selfLimits.ts). */

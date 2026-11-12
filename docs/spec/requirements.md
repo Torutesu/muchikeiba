@@ -1551,3 +1551,95 @@
 - REQ-SURVEY-022 Unity のゲーム層 `SurveyModel`（お知らせの行と未読の点・シート・問い・ありがとう・あとで・スキップ・FTUE・オフライン・`SURVEY_CLOSED`）。描画は docs/handoff-codex-round22-surveys.md。プロトタイプ（お知らせの行・シート 4 種類・ありがとう、日本語・英語、文字の大きさ、e2e・en-flow・a11y-flow）と運営の画面（console e2e）。
 - REQ-SURVEY-023 ヘルプ：記事 `surveys`「アンケートについて」。
 - REQ-SURVEY-024 法務：景品・抽選を付けない（経路が無い）。煽り・賭けの言葉なし。
+
+## 70. ログイン中の端末とセキュリティ（TS＋C#、`src/domain/devices.ts`・`src/domain/sessionRevocation.ts`・`Muchi.Client/Devices.cs`・`Muchi.Game.DeviceSessionsModel`、`contracts/protocol.md` §70）
+拘束条件：何も配らない・何も売らない（E番号なし）。IP を保存しない。トークン・端末の ID そのものを一覧・記録・KPI・データの開示に出さない。怖がらせる文言を使わない。
+- REQ-DEV-001 セッション：Firebase の1回のサインイン＝ID トークンの `auth_time`。端末はインストール ID をアカウントごとの塩で SHA-256 にした先頭16桁だけ。IP は持たない。地域は `cf-ipcountry` の国の2文字だけ。
+- REQ-DEV-002 チェックイン：`POST /v1/account/devices/checkin`（起動・復帰・サインイン・連携の後）。粗い名前（`platform`・OS の大きい番号・機種の系統（英字と空白だけ）・アプリの版）と時刻（1時間に切り捨て）。変化が無ければ書かない。アカウントが無い・削除の手続き中・`auth_time` が無い・無効の設定では書かない。
+- REQ-DEV-003 一覧：`GET /v1/account/devices`。「この端末」が先、あとは最後に見た順。セッションは `maxSessions` 件まで（古いものから落とす）。各行に今ログアウトできるか。
+- REQ-DEV-004 ログアウト（1台）：`POST /v1/account/devices/:sessionId/signout`、`confirm: true` が要る。サーバー側の無効化で、そのセッションの次の要求は `401 SESSION_REVOKED`。無い → 404、この端末 → 409 `DEVICE_IS_CURRENT`、済み → 200 `signedOut: 0`。
+- REQ-DEV-005 この端末以外すべて：`POST /v1/account/devices/signout-others`。一覧に無い古いセッションも含め、今より前にログインしたこの端末以外のすべてを無効にする。この端末は決して無効にしない。相手がいなければ 200 `signedOut: 0`。
+- REQ-DEV-006 再認証の代わり：確認（`confirm`）＋自分より後にログインした端末はすぐ、自分より前からある端末はこの端末のログインから `trustAfterHours`（既定24時間）後（`403 DEVICE_SIGNOUT_TOO_SOON`、`availableAt`）。
+- REQ-DEV-007 回数：ログアウトはゲーム日ごとに `revokesPerDay` 回（実際にログアウトした操作だけ数える、超えたら `429 RATE_LIMITED`、再試行しない）。
+- REQ-DEV-008 判定の場所：全てのプレイヤーの口で、§54.6 の `SESSION_REPLACED` の後に1回（`sessionGuard`）。isolate ごとに30秒持ち、ログアウトした isolate はすぐ覚える。無効の設定でも判定は効く。
+- REQ-DEV-009 新しい端末のお知らせ：覚えていない端末の新しいセッションで、覚えている端末があり、記録の始まりより後のログインのとき、アクティビティ `new_device`（`account`・画面 `devices`）とセキュリティの記録。最初の端末・この機能より前からのセッションには出さない。プッシュは送らない（合う種類が無い。理由は §70.4）。割り込みのシートなし。
+- REQ-DEV-010 連携の変化：ID トークンの `firebase.identities`（`apple.com`・`google.com`）を前回と比べて `link_added`／`link_removed` を記録する。クライアントの申告は使わない。
+- REQ-DEV-011 セキュリティの記録：`GET /v1/account/security-log`。新しい端末・ログアウト（1台・すべて・サポート）・引き継ぎコード（発行（パスワードを設定）・取り消し・引き継いだ）・連携の追加と解除。新しい `logMax` 件、`logDays` 日まで。見るだけ。
+- REQ-DEV-012 引き継ぎとの関係：引き継ぎコードで移ったら一覧・覚えている端末・無効化の記録を空にし（古いセッションは `SESSION_REPLACED` が止める）、記録に `transfer_redeemed`。移った後の最初の端末にはお知らせを出さない。
+- REQ-DEV-013 ゲート：`/v1/account/devices*`・`/v1/account/security-log` は §46 の `EXEMPT_ROUTES`（乗っ取りへの対応はどの窓でも古いアプリからでも止めない）。止めるのはリモート設定の `progression.devices.enabled`。
+- REQ-DEV-014 削除：削除の手続き中・消えたアカウントには書かない（ログアウトは `409 DELETION_PENDING`）。予約中（取り消し期間）は使える。状態 `devices` はアカウント削除の wipe で消える。
+- REQ-DEV-015 データ：新しい PlayerState のキー `devices` はデータの開示（§51）で `account`。名前・地域・時刻と記録だけを出し、`auth_time`・端末のハッシュ・無効化の記録は出さない。
+- REQ-DEV-016 KPI：クライアント `device_list_view`（optional）、サーバー `device_signout`（essential：アカウントへの入口の監査）・`new_device_notice`（essential：同じ理由）。端末のハッシュ・セッションの ID・地域・機種は入れない。
+- REQ-DEV-017 運用：`GET /v1/admin/players/:playerId/devices`（viewer）で一覧と記録を見る。`POST …/devices/revoke`（admin、理由つき、監査 `player.devices.revoke`）で1台かすべてをログアウトする。
+- REQ-DEV-018 ヘルプとヒント：記事 `signed_in_devices`（一覧の見方・ログアウト・24時間の決まり・お知らせ・連携の無いアカウントの注意）、コンテキスト `devices`、ヒントのカード `devices_tip`。
+- REQ-DEV-019 クライアント：C# の API・モデル（`DeviceSessionList`・`SecurityLog`・`DeviceLabel`）、`SESSION_REVOKED` の例外とイベント（再試行しない）、Unity `DeviceSessionsModel`・`MaintenanceScreen.SessionRevoked`・`AccountChangeReset.Devices`。
+- REQ-DEV-020 プロトタイプと引き継ぎ：その他 › 設定（アカウントのパネル）から一覧・確認シート・記録・ログアウトされた画面（ムチ一閃の調子、日英、最大の文字、e2e・英語の流れ・アクセシビリティの流れ）。Codex 向け docs/handoff-codex-round23-devices.md。
+
+## 71. 血統図と系統（TS＋C#、`src/domain/pedigree.ts`・`server/master/bloodlines.json`・`Muchi.Client/Pedigree.cs`・`Muchi.Game.PedigreeModel`、`contracts/protocol.md` §71）
+拘束条件：読むだけ。既存の配合の規則が返す数・確率だけを見せる（新しい乱数・新しい仕組みなし）。何も配らない・何も売らない（E番号なし）。系統の収集に報酬を付けない（コンプガチャにしない）。レースの結果・ゴールデンは変わらない。
+- REQ-PED-001 写し：配合で生まれた仔に、生まれた時の父母の写し `lineage`（名前・見た目・脚質・適性・系統・固有スキル・能力）を 1 回だけ書く。乱数を使わず、その後は変えない。他のプレイヤーの ID を入れない。
+- REQ-PED-002 読む順：今の馬 → 写し → 名前だけ → 無し。名前だけの祖先は「記録なし」。移行なし（写しの無い前の借りた種牡馬は名前と持ち主だけ）。
+- REQ-PED-003 血統図：`GET /v1/horses/:horseId/pedigree` の答えに欄を足す（既存の欄はそのまま）。各頭に名前・見た目・脚質・適性・固有スキル・一番の成績（§34 の通算記録）。自分の馬は 5 代、他人の馬は 3 代。画面は 3 代。
+- REQ-PED-004 近親：既存の規則（3代以内の同じ祖先1頭につき −`inbreedingPenalty`）を見せ、共通の祖先を強調する。祖先の識別は既存の `pedigree()` と同じで、配合の計算といつも一致する。新しい規則は足さない。
+- REQ-PED-005 借りた種牡馬：持ち主の表示名は本人かフレンド（ブロックなし・公開プロフィールあり・停止中でない）の時だけ。それ以外は「他のトレーナーの馬」。持ち主の ID は返さない。
+- REQ-PED-006 他人の馬：`?playerId=`。相手のマイ厩舎の公開の写しかトレーナーカードの愛馬に今出ている馬だけ。ブロック（どちらでも）・停止中・削除の予約中・公開されていない → 404（理由を言わない）。
+- REQ-PED-007 13歳未満：他の人が見る図に持ち主が付けた名前を出さない（「名前は非公開」）。マスターの名前はそのまま。
+- REQ-PED-008 キャッシュ：中身のハッシュ `rev` を ETag にし、`If-None-Match` が合えば 304。`cache-control: private, no-cache`。
+- REQ-PED-009 組み合わせ：`GET /v1/breeding/pedigree?sireId&damId`。両方の 3 代・共通の祖先（`inbreedingCount` と同じ数）・近親の罰・ニックス。
+- REQ-PED-010 受け継ぎやすさ：`previewFor` の答えから作るヒント（系統・ニックス・基準の高い能力・脚質・馬場の適性・固有スキル・隔世遺伝・近親）。確率はデータにあるものだけ。
+- REQ-PED-011 系統：父系（`line`）ごと。名前はマスター `bloodlines.json`（日英、創始の馬の名前、説明）。起動時に検証。
+- REQ-PED-012 系統の一覧：`GET /v1/bloodlines`。系統ごとの頭数（現役・引退）・ニックスの相手と基準の加算・厩舎の馬。いない系統も 0 頭で出す。
+- REQ-PED-013 収集に報酬なし：系統の数・揃い具合に報酬・称号・実績・「達成」の表示を結び付けない（`notice`）。
+- REQ-PED-014 ゲート：`/v1/horses/*`・`/v1/breeding/*`・`/v1/bloodlines` は `core`。
+- REQ-PED-015 データの開示・削除：新しい状態のキーなし。`lineage` は `horses` の節に入り、馬と一緒に消える。
+- REQ-PED-016 KPI：クライアント `pedigree_view`（入口・関係・共通の祖先の数）・`bloodline_view`（入口・系統の数）。どちらも `optional`。相手の ID を持たない。
+- REQ-PED-017 画面：馬の詳細の「血統」、配合の「血統を見る」と共通の祖先の強調、「系統 ›」、厩舎の訪問・トレーナーカードから相手の馬。その他の行には置かない。新しい割り込みのシートなし。ディープリンクなし。
+- REQ-PED-018 プロトタイプ：血統図（写真の馬の絵・半透明の紺のパネル・シアンの線）、系統の一覧、配合の組み合わせの強調。ムチ一閃の調子。日本語と英語、文字「特大」で木が流し直る。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+- REQ-PED-019 ヘルプ：記事 `pedigree`（トークン `inbreeding_penalty`・`nick_bonus`）、文脈 `pedigree`、画面 `bloodlines`、ヒントのカード `pedigree_tip`。
+- REQ-PED-020 クライアント：C# `GetPedigreeViewAsync`・`GetBreedingPedigreeAsync`・`GetBloodlinesAsync`・`PedigreeTree`、Unity `PedigreeModel`（系統の一覧も）、Codex への引き継ぎ docs/handoff-codex-round23-pedigree.md。
+
+## 72. レースの見どころ（automatic race highlights、C#＋TS（リンクだけ）、`Muchi.Client/Highlights.cs`・`Muchi.Game.HighlightsModel`・`src/domain/deepLinks.ts`／`src/http/app.ts`（リンクの `startTick`）、`contracts/protocol.md` §72）
+拘束条件：読むだけ。レースの結果・チェックサム・ゴールデンを変えない。何も配らない・何も売らない（E番号なし）。他の人の名前・プレイヤー ID を出さない。
+- REQ-HL-001 決定論：見どころはリプレイログ（設定＋確定入力）をエンジンで再計算して選ぶ純粋な関数（`HighlightDetector.Detect`）。整数だけ。同じログ・同じ `focusSlot` なら端末と検証サーバー（`Muchi.Verifier highlights`）で同じ答え（共有ベクター `contracts/highlights.vectors.json`、ゴールデンのリプレイで確かめる）。
+- REQ-HL-002 種類：`photo_finish`（差 0.5 m 未満）・`near_miss`（0.5〜1.5 m）・`lead_change`（残り 400 m 以下で先頭交代）・`whip_burst`（ムチから 3 秒で2つ以上上がる）・`comeback`（残り 600 m で後ろ3分の1 → 3着以内）・`unique_skill`（固有スキル）・`finish`（いつも1つ）。
+- REQ-HL-003 点数：§72.1 の表の式。自分の馬（`focusSlot`）が主役か相手なら＋30。
+- REQ-HL-004 上限：同じ種類は2つまで、`whip_burst` は同じ馬で1つまで。窓はレースの中（0〜`EndTick`）。
+- REQ-HL-005 選び方：点数 → 鍵の tick → 種類 → slot の全順序で、重ならない窓を3つまで。時間の順に並べ、合計 15 秒未満なら前・後ろへ広げる（重ねない）。1つの窓は 10 秒まで（窓が1つだけなら 15 秒、合計 30 秒まで）。
+- REQ-HL-006 結果を変えない：検出はレースの状態・結果ハッシュ・チェックサム・ゴールデンを変えない（ゴールデンの検査で差なし）。走っているレースの `RaceSim` に触らない。
+- REQ-HL-007 速さ：12頭のレースで 50 ms 未満（中位の端末の目安。テストは `WallClockSerial` の中で、負荷のある CI のために余裕を持った上限で測る）。
+- REQ-HL-008 再生：`HighlightReel` が `ReplayPlayer` の上で窓を続けて再生（同じ再計算・ハッシュの確認・カメラ）。窓ごとに主役の馬にカメラ。ハッシュが合わなければ出さない（「再生できません」）。
+- REQ-HL-009 スキップ：「次へ」（次の窓）・「スキップ」（終わり）。合計 15〜30 秒。
+- REQ-HL-010 字幕と実況：窓ごとに1行の字幕（日英、馬の名前だけ、他の人の名前なし）。実況は装備中のパック（§36、チュートリアルは標準）で、窓の中に始まる行だけ。
+- REQ-HL-011 入口：結果画面の「見どころ」（チュートリアル以外）、マイリプレイ（§37）の再生画面と行。その他の行は増やさない。
+- REQ-HL-012 共有カード：`ShareCard` に1位の字幕（`highlight_image`）。名前・ID なし。
+- REQ-HL-013 リンク：§63 の `replay` に任意の `startTick`（0〜72000 の整数）。自分の公開した保存リプレイだけ（それ以外は `404`、画面は保存・公開の案内）。`startTick` が違えば別の行き先。開いた人に `startTick` を返す。URL にプレイヤー ID・tick を入れない。見られる人・ブロック・期限は §63 のまま。
+- REQ-HL-014 オフライン：結果画面の見どころと共有カードはオフラインでも動く。リンクだけオンライン。
+- REQ-HL-015 KPI：クライアント `highlight_view`（入口・1位の種類・数）・`highlight_share`（入口・`card`／`link`）。§58 で `optional`。レース・プレイヤー・tick を入れない。
+- REQ-HL-016 保存しない：瞬間の一覧はサーバーにも端末にも残さない（毎回計算）。プレイヤーの状態の新しいキーなし（§51 の分類の追加なし）、wrangler の移行なし。リンクの `startTick` は §63 の行と一緒に消える。
+- REQ-HL-017 ゲート：新しい口なし。ログは `/v1/replays*`（`core`）・`/v1/friends/*`（`social`）、リンクは `/v1/links`（`social`）。
+- REQ-HL-018 ヘルプ：記事 `race_highlights`（`races`）とヒント `highlights_tip`。
+- REQ-HL-019 クライアント：C# `HighlightDetector`・`HighlightReel`・`HighlightCaptions`・`HighlightShare`・`AnalyticsEvent.HighlightView`／`HighlightShare`、Unity `HighlightsModel`。プロトタイプ（結果画面の「見どころ」、字幕つきの見どころの再生（WASM の本物のエンジン）、共有シート、ムチ一閃の調子、日英、最大の文字、e2e／en-flow／a11y-flow）。
+- REQ-HL-020 Codex への引き継ぎ：docs/handoff-codex-round23-highlights.md（つなぎのカメラ・字幕の見せ方）。
+
+## 73. お問い合わせの状況確認（support tickets & replies、TS＋C#、`src/domain/supportTickets.ts`・`src/domain/help.ts`・`src/ops/inquiries.ts`・`Muchi.Client/Help.cs`・`Muchi.Game.HelpCenterModel`、`contracts/protocol.md` §73）
+拘束条件：§48 の問い合わせを拡張する（新しい Durable Object・マイグレーションなし）。何も配らない（E番号なし）：お詫びは既存の補填（§22・プレゼントボックス §26）だけで配り、その id を結ぶ。有償コインは配らない。
+- REQ-TKT-001 状態：受付済み `received`・確認中 `in_progress`・返信あり `answered`・解決 `resolved`・クローズ `closed`（日本語・英語）。返信あり・解決のままプレイヤーの返信が `autoCloseDays` 日無ければ自動でクローズ。クローズから `reopenDays` 日はプレイヤーの返信で再開。クローズから `retentionDays` 日で消す。
+- REQ-TKT-002 設定：`help.config.tickets`（範囲を起動時・リモート設定で検査、無い版は既定）と返信のひな形 `replyTemplates`（日本語・英語、§48 のトークン＋`{{ticket_id}}`・`{{category}}`、言葉の検査）。
+- REQ-TKT-003 送信：診断情報は同意したときだけ（`shareDiagnostics`）。トークン・パスワードは送らない。本文は個人情報と秘密らしいもの（§60 の秘密の規則・パスワードの値・URL のクエリ）を置き換えるが読める形で残す。削除済み・削除中のアカウントは送れない（削除の問い合わせはサポートサイト）。
+- REQ-TKT-004 プレイヤーの返信：`POST /v1/help/inquiries/:id/messages`（キー必須・同じキーは同じ結果）。返信できる状態だけ・長さ・間隔・1日の数・1件の上限。解決・クローズからは再開。
+- REQ-TKT-005 表示：詳細に `canReply`・`replyUntil`・`autoCloseAt`・`compensation`・プレイヤーと運営の発言。内部メモ・担当は見せない。
+- REQ-TKT-006 運営の一覧：種類・状態（`open` を含む）・言語・担当・待ち時間で絞る。待ち時間と SLA 超え。本文なし。
+- REQ-TKT-007 CSV：本文・返信・メモなしの列だけ。監査に残る。
+- REQ-TKT-008 運営の詳細：プレイヤーの文脈（作成日・削除・制裁・購入の件数）・内部メモ・担当（viewer が見る、閲覧は監査）。
+- REQ-TKT-009 運営の操作（operator・理由必須・監査）：返信（ひな形はチケットの言語でトークンを埋める）・状態・担当・内部メモ・補填を結ぶ。どれも `opKey` で1回。
+- REQ-TKT-010 補填：同じプレイヤーの既存の補填依頼（却下・期限切れ以外）だけ結べる。ここでは配らない。
+- REQ-TKT-011 お知らせ：返信ごとにアクティビティ `inquiry_answered`、プッシュ `inquiry_reply`（カテゴリ `gifts`、本文を入れない、持ち主 `server`）。状態の変更は知らせない。
+- REQ-TKT-012 KPI：`inquiry_submit`・`inquiry_answered`・`ticket_player_reply`・`ticket_reopen`・`ticket_resolved` は essential（サポートの記録）、`ticket_reply_view` は optional。
+- REQ-TKT-013 ゲート：プレイヤーの返信の口は止めない（`EXEMPT_ROUTES`、サポートへの道）。
+- REQ-TKT-014 データ：§51 は本人の発言と運営の返信（運営の id なし）・状態・補填の id。内部メモ・担当は出さない。削除で索引・担当・メモも消す。
+- REQ-TKT-015 C#：`SendInquiryMessageAsync`・状態の文字・`Inquiry` の新しい項目・`InquiryDraft.ShareDiagnostics`。
+- REQ-TKT-016 Unity：`HelpCenterModel` のスレッド・状態のチップ・返信（オフラインで残す・同じキーで再送）・再開の期限・お詫びからプレゼントボックスへ。
+- REQ-TKT-017 入口：その他 › 設定・サポート › ヘルプ › お問い合わせ履歴（9行目なし）。未読はヘルプの行のバッジ。通報はチケットではない。
+- REQ-TKT-018 コンソール：一覧（絞り込み・待ち時間・CSV）・詳細（文脈・やりとり・内部メモ・担当・状態・ひな形・補填）。e2e。
+- REQ-TKT-019 プロトタイプ：お問い合わせ履歴・スレッド・返信・状態のチップ（ムチ一閃の調子、日本語と英語、文字「特大」、e2e・英語の流れ・アクセシビリティの流れ）。ヘルプの記事 `support_tickets`。
+- REQ-TKT-020 Codex への引き継ぎ：docs/handoff-codex-round23-support-tickets.md。

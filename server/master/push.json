@@ -33,6 +33,7 @@
     "ta_beaten": { "category": "friends", "title": "記録を抜かれました", "body": "{name}さんがタイムアタックであなたの記録を抜きました。取り返しに行こう", "ttlSec": 86400, "timeSensitive": false },
     "lapse_3d": { "category": "comeback", "title": "相棒が待っています", "body": "ランク戦は今日も開催中。1レース90秒から遊べます", "ttlSec": 43200, "timeSensitive": false },
     "gift_arrived": { "category": "gifts", "title": "プレゼントが届いています", "body": "運営からのお詫びの品をプレゼントボックスに入れました", "ttlSec": 86400, "timeSensitive": false },
+    "inquiry_reply": { "category": "gifts", "title": "お問い合わせに返信がありました", "body": "運営からの返信をアプリで確認できます", "ttlSec": 172800, "timeSensitive": false },
     "lapse_7d": { "category": "comeback", "title": "おかえりボーナスを用意しています", "body": "次に遊ぶと、7日間の復帰ログインボーナスと復帰ミッションが受け取れます", "ttlSec": 43200, "timeSensitive": false }
   }
 }

@@ -67,6 +67,7 @@ node "$HERE/test/round17-friend-suggestions.test.mjs" # round 17: おすすめ�
 node "$HERE/test/round18-practice.test.mjs" # round 18: 練習レース — the catalog, a device race in PracticeSession, the whip band, slow = same race, same seed + ghost, new seed, photo pause, KPI, nothing granted
 node "$HERE/test/round18-quick-chat.test.mjs"   # round 18: 支部の定型チャット — picker JA / EN, a checked value, the 15 s rule, phrases in the shared feed, a mention, both-way block
 node "$HERE/test/round19-tips.test.mjs" # round 19: ヒント — index (JA/EN), numbers from data, unlocks, seen marks, the 「？」 contexts, KPI, the whip lesson = the FTUE tutorial race in WASM (never assisted), no first-time reward touched
+node "$HERE/test/round23-pedigree.test.mjs" # round 23: 血統図と系統 — template parents 記録なし, the demo family by the real breedWith (shared = inbreeding count, hints = preview), another trainer's stallion (no id), bloodlines (no reward), English, KPI
 node "$HERE/test/round21-calendar.test.mjs" # round 21: 予定表 — rows from each feature's own data, paid rows dates only, JST in English, marks (idempotent, no push), KPI
 node "$HERE/test/round19-cheer.test.mjs" # round 19: 観戦中の応援 — the 2 s pace, windows fanned out with the block list, no ids, moments, one KPI row per race, English
 node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコード — issue (rules, generated once, hash only), redeem with confirm / one key / replay, single use, the old-device cut-off, no oracle, KPI, English
@@ -83,4 +84,7 @@ node "$HERE/test/quality-raising.test.mjs"       # quality pass: raising & breed
 node "$HERE/test/quality-integration.test.mjs"   # quality integration: home says each thing once (the next line vs the goal ladder, one link), the ladder cap = the horse card cap
 node "$HERE/test/round22-promotion.test.mjs" # round 22: 昇級戦 — start on the line (not counted), pips, pass early, fail → setback, ack once, grace, kill switch, English
 node "$HERE/test/round22-surveys.test.mjs" # round 22: ゲーム内アンケート — none in the FTUE / without a live survey, the demo survey at home and after a result, strict check, once per player, scrub, skip → cool-down, results without ids, nothing granted, English
+node "$HERE/test/round23-devices.test.mjs" # round 23: ログイン中の端末 — check-in, the new-device notice (activity, log, essential KPI), sign out one / all others (SESSION_REVOKED, idempotent, never this device), the log, English
+node "$HERE/test/round23-highlights.test.mjs" # round 23: レースの見どころ — WASM = the verifier's vectors on the goldens, the reel (1×, cuts, next / skip, 15–30 s), captions, KPI through the ingest, card + link at the top moment (public saved only), a wrong hash, English
+node "$HERE/test/round23-support-tickets.test.mjs" # round 23: お問い合わせ履歴 — demo threads (返信あり / 確認中 / 解決 + apology gift), one reply per key reopens, the reply interval, diagnostics only with consent, KPI without text, English
 echo "built $SITE ($(du -sh "$SITE" | cut -f1))"

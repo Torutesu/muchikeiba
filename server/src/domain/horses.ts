@@ -1,6 +1,6 @@
 import { AppError, assert } from './errors.js';
 import { STAT_KEYS, type HorseTemplate, type Master, type Rarity, type Sex, type Stats, type Style } from './master.js';
-import type { HorseInstance, PlayerState } from './player.js';
+import type { HorseInstance, LineageSnap, PlayerState } from './player.js';
 import type { GoingAptitude } from './schemas.js';
 import { randInt, randRange, type Rng } from './rng.js';
 import { dayRule, gameDayKey, sameGameDay } from './time.js';
@@ -145,6 +145,22 @@ export function inbreedingCount(s: PlayerState, sire: HorseInstance, dam: HorseI
   let n = 0;
   for (const k of a) if (b.has(k)) n++;
   return n;
+}
+
+/**
+ * REQ-PED-001 (§71): a parent's record at the foal's birth. For a borrowed stallion `h` is the owner's snapshot view (its id is
+ * the stud key), so nothing here names the owner: only the horse's own traits and its parents' names.
+ */
+export function lineageSnap(m: Master, h: HorseInstance, ownerId: string): LineageSnap {
+  const out: LineageSnap = {
+    name: h.name, templateId: h.templateId, rarity: h.rarity, sex: h.sex, style: h.style, surface: h.surface, line: h.line,
+    appearance: appearanceOf(h, ownerId), stats: effectiveStats(m, h), sireName: h.sireName, damName: h.damName,
+  };
+  if (h.named) out.named = true;
+  if (h.goingAptitude && h.goingAptitude !== 'any') out.goingAptitude = h.goingAptitude;
+  const sk = horseSkillId(m, h);
+  if (sk) out.skillId = sk;
+  return out;
 }
 
 // ---------- Breeding (REQ-HORSE-005..008) ----------
@@ -401,6 +417,8 @@ export function breedWith(m: Master, s: PlayerState, sire: HorseInstance, dam: H
     const sk = rollInheritedSkill(skillOdds, rng);
     if (sk) foal.skillId = sk;
   }
+  // REQ-PED-001 (§71): the parents as they are now, written once after every roll (no RNG, no effect on the foal)
+  foal.lineage = { v: 1, sire: lineageSnap(m, sire, s.id), dam: lineageSnap(m, dam, s.id) };
   s.horses.push(foal);
   if (!usedMaterial) s.breeding.count += 1;
   assert(foal.distMinM <= foal.distMaxM, 'CONFIG_INVALID');

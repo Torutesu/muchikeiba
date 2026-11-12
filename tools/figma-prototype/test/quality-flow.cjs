@@ -108,7 +108,7 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.ok(res.stagger, 'quality c: the lesson arrives in the stagger, after the numbers');
   assert.ok(res.lessonBox.bottom <= res.cta.top, 'quality c: the lesson sits above the CTA');
   assert.deepEqual(res.overlaps, [], 'quality c: the lesson overlaps no other line');
-  assert.equal(res.quiet, 3, 'quality c: the quiet keepsake row (photo, keep, share) is intact');
+  assert.equal(res.quiet, 4, 'quality c: the quiet keepsake row (highlights, photo, keep, share) is intact');
   await shot('result', 2200);
 
   // d) the raising screens: the type floor; the reveal under reduce motion

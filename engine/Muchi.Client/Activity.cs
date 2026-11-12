@@ -32,9 +32,11 @@ namespace Muchi.Client
             // Round 18: the personal data export is ready (§51; Category "account", LinkId = requestId)
             DataExportReady = "data_export_ready",
             // Round 22: a promotion at the season close (§68; Category "season", Screen recap, LinkId = season:YYYY-MM)
-            ClassPromoted = "class_promoted";
+            ClassPromoted = "class_promoted",
+            // Round 23: a new device signed in (§70.4; Category "account", LinkId = sessionId, no push)
+            NewDevice = "new_device";
         public static readonly string[] All = { FriendRequest, FriendAccepted, RivalWeek, RivalRecord, StableLike, TeamCheer, TournamentResult, GiftArrived, TeamGoalTier, TeamGoalWeek, ReplayShare, InquiryAnswered,
-            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention, DataExportReady, ClassPromoted };
+            CupInvited, CupStarted, CupFinished, CupCancelled, RecapReady, OpsNotice, QchatMention, DataExportReady, ClassPromoted, NewDevice };
     }
 
     /// <summary>Where an entry leads (`link.screen`).</summary>
@@ -47,8 +49,10 @@ namespace Muchi.Client
             /// <summary>REQ-RPT-011: 通報とブロック (block list + what a block does + guidelines).</summary>
             Safety = "safety",
             /// <summary>Round 18: settings › privacy (the data export, §51).</summary>
-            Privacy = "privacy";
-        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, HelpInquiry, Cups, Recap, Safety, Privacy };
+            Privacy = "privacy",
+            /// <summary>Round 23: settings › ログイン中の端末 (§70; LinkId = the new session).</summary>
+            Devices = "devices";
+        public static readonly string[] All = { Friends, Rival, Stable, TeamFeed, Tournaments, GiftBox, TeamGoal, Replay, WhatsNew, HelpInquiry, Cups, Recap, Safety, Privacy, Devices };
     }
 
     public sealed class ActivityActor

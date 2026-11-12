@@ -12,7 +12,7 @@ import { linksConfig } from './domain/deepLinks.js';
 import { maintenanceOf } from './domain/maintenance.js';
 import { dayRule } from './domain/time.js';
 import type { RematchResult } from './http/app.js';
-import { SessionGuard, transferConfig } from './domain/transferCode.js';
+import { SessionGuard, transferConfig, type SessionLookup } from './domain/transferCode.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
 import { loadMaster } from './domain/master.js';
@@ -55,6 +55,7 @@ import { practiceProblems } from './domain/practice.js';
 import { careerProblems } from './domain/career.js';
 import { tipsProblems } from './domain/tips.js';
 import { showcaseProblems } from './domain/showcase.js';
+import { bloodlineProblems } from './domain/pedigree.js';
 import { releaseNotesProblems } from './domain/releaseNotes.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
@@ -129,7 +130,7 @@ const baseMaster = loadMaster();
  * half minute). The isolate that served a redeem learns the new cut-off at once.
  */
 let sessionGuard: SessionGuard | null = null;
-const sessionGuardFor = (env: Env) => (sessionGuard ??= new SessionGuard(async (uid) => unwrap(await (stub(env.PLAYER, uid) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> }).invoke("transferCutoff", [uid])) as number | null));
+const sessionGuardFor = (env: Env) => (sessionGuard ??= new SessionGuard(async (uid) => unwrap(await (stub(env.PLAYER, uid) as unknown as { invoke(m: string, a: unknown[]): Promise<Envelope<unknown>> }).invoke("sessionState", [uid])) as SessionLookup)); // REQ-TRF-010 + REQ-DEV-008
 validateGacha(baseMaster); // fail fast on a broken gacha/master definition (REQ-GACHA-003/008)
 validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banners, cosmetics reference real assets/patterns
 { const sp = stampsProblems(baseMaster); if (sp.length) throw new Error('master/stamps.json: ' + sp.join('; ')); } // REQ-TEAMFEED-002
@@ -141,6 +142,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const cp = careerProblems(baseMaster); if (cp.length) throw new Error('master/career.json: ' + cp.join('; ')); } // REQ-CAREER-002
 { const tp = tipsProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (tp.length) throw new Error('master/tips.json: ' + tp.join('; ')); } // REQ-TUT-010
 { const sp = showcaseProblems(baseMaster); if (sp.length) throw new Error('master/showcase.json: ' + sp.join('; ')); } // REQ-SHOW-002
+{ const bp = bloodlineProblems(baseMaster); if (bp.length) throw new Error('master/bloodlines.json: ' + bp.join('; ')); } // REQ-PED-011
 { const rp = releaseNotesProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (rp.length) throw new Error('master/release-notes.json: ' + rp.join('; ')); } // REQ-NEW-002
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
@@ -394,6 +396,10 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       upsert: (items) => call(ops().inqUpsert!(items)),
       list: (q) => call(ops().inqList!(q)),
       forgetPlayer: (pid) => call(ops().inqForget!(pid)),
+      exportCsv: (q) => call(ops().inqExport!(q)),
+      desk: (p, t) => call(ops().inqDesk!(p, t)),
+      assign: (p, t, a, now) => call(ops().inqAssign!(p, t, a, now)),
+      addNote: (p, t, n, max) => call(ops().inqNote!(p, t, n, max)),
     },
   };
 }
@@ -475,7 +481,10 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     const devUser = req.headers.get('x-dev-user');
     if (dev && devUser) {
       const t = req.headers.get('x-dev-auth-time');
-      return { uid: devUser, authTime: t && /^\d{1,12}$/.test(t) ? Number(t) : Math.floor(Date.now() / 1000) };
+      // REQ-DEV-010: x-dev-providers (comma list, e.g. "apple.com") stands in for the token's firebase.identities claim
+      const pv = req.headers.get('x-dev-providers');
+      const identities = pv === null ? undefined : Object.fromEntries(pv.split(',').map((x) => x.trim()).filter((x) => /^[a-z.]{1,32}$/.test(x)).map((x) => [x, []]));
+      return { uid: devUser, authTime: t && /^\d{1,12}$/.test(t) ? Number(t) : Math.floor(Date.now() / 1000), ...(identities ? { identities } : {}) };
     }
     return verifyFirebaseSession(bearer(req), env.FIREBASE_PROJECT_ID);
   };
@@ -484,6 +493,7 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     authenticate: async (req) => (await authenticateSession(req)).uid,
     authenticateSession,
     sessionGuard: (uid, authTime) => sessionGuardFor(env).check(uid, authTime),
+    sessionForget: (uid) => sessionGuardFor(env).forget(uid), // REQ-DEV-008: this isolate refuses a signed-out session at once
     // REQ-TRF-*: 引き継ぎコード (directory shards + player objects + the custom token key; no key = enabled: false)
     transfer: new TransferService({
       view: (u) => player(u).invoke('transferView', u),

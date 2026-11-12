@@ -4,8 +4,11 @@ import { AppError } from '../domain/errors.js';
 const GOOGLE_JWKS = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 let remote: JWTVerifyGetKey | undefined;
 
-/** A verified ID token: the account and when it signed in to Firebase (`auth_time`, seconds; null when absent). */
-export interface FirebaseSession { uid: string; authTime: number | null }
+/**
+ * A verified ID token: the account and when it signed in to Firebase (`auth_time`, seconds; null when absent).
+ * REQ-DEV-010 (§70): `identities` = the token's `firebase.identities` claim (linked providers; undefined when absent).
+ */
+export interface FirebaseSession { uid: string; authTime: number | null; identities?: Record<string, unknown> }
 
 /**
  * REQ-API-001: verifies a Firebase Auth ID token (RS256, issuer/audience = project, not expired,
@@ -21,7 +24,9 @@ export async function verifyFirebaseSession(token: string, projectId: string, ke
     });
     if (typeof payload.sub !== 'string' || payload.sub.length === 0 || payload.sub.length > 128) throw new Error('bad sub');
     if (typeof payload.auth_time === 'number' && payload.auth_time * 1000 > Date.now() + 60_000) throw new Error('auth_time in future');
-    return { uid: payload.sub, authTime: typeof payload.auth_time === 'number' ? payload.auth_time : null };
+    const fb = payload.firebase as { identities?: unknown } | undefined;
+    const identities = fb && typeof fb.identities === 'object' && fb.identities !== null ? fb.identities as Record<string, unknown> : undefined;
+    return { uid: payload.sub, authTime: typeof payload.auth_time === 'number' ? payload.auth_time : null, ...(identities ? { identities } : {}) };
   } catch {
     throw new AppError('UNAUTHORIZED');
   }

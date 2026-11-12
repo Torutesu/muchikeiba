@@ -188,6 +188,8 @@ namespace Muchi.Client
         public string OwnerId => J.Str(Target, "ownerId");
         public string RaceId => J.Str(Target, "raceId");
         public string ReplayTitle => J.Str(Target, "replayTitle");
+        /// <summary>REQ-HL-013 (§72.4): where a replay link opens (the sharer's top highlight), null = from the start.</summary>
+        public int? StartTick => J.IntN(Target, "startTick");
         public JsonNode CupPreview => J.Opt(Target, "preview");
 
         public static ResolvedLink Parse(JsonNode o)

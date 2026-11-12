@@ -541,7 +541,12 @@ await shot('diagnostics', 600);
   // round 17: ヘルプセンター in English (REQ-HELP-020): articles come in English from the master, typed text and replies stay as written
   await page.evaluate(() => globalThis.__muchi.demo('help')); await waitScreen('my-inquiries', 60000);
   await shot('help-my-inquiries', 500);
-  assert.match(await page.locator('.screen.in').innerText(), /Answered/, 'my inquiries: the status in English');
+  assert.match(await page.locator('.screen.in').innerText(), /Replied/, 'my inquiries: the status in English (R23 §73.1)');
+  // round 23 (REQ-TKT-019): the resolved thread with its apology gift and the auto-close note, in English
+  await page.locator('.screen.in .inq-list [data-status="resolved"]').first().click(); await waitScreen('my-inquiries'); await page.waitForTimeout(400);
+  await shot('ticket-thread', 500);
+  assert.match(await page.locator('.screen.in .inq-detail').innerText(), /Resolved[\s\S]*apology gift[\s\S]*Closes by itself/, 'thread: status, gift and the auto-close note in English');
+  assert.match(await page.locator('.screen.in .inq-list').innerText(), /Checking/, 'list: the 確認中 chip in English');
   await show('HelpCenter'); await waitScreen('help'); await shot('help-center', 500);
   assert.match(await page.locator('.screen.in').innerText(), /Scout \(rates & pity\)/, 'help: the categories in English');
   await page.locator('.screen.in input.field').fill('pity'); await click('検索'); await waitScreen('help-search'); await shot('help-search', 400);
@@ -585,6 +590,24 @@ await shot('diagnostics', 600);
   assert.match(await page.locator('.screen.in .cal-list').innerText(), / JST/, 'calendar: the times say JST in English');
   await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', 400);
   await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+
+  // round 23: 血統図と系統 in English (REQ-PED-018): the tree, the pair (hints from their JA + EN pair), the bloodline list
+  await page.evaluate(async () => { await globalThis.__muchi.logic.pedigree.demo(); });
+  await show('Pedigree'); await waitScreen('pedigree'); await shot('pedigree', 500);
+  await show('BreedingPair'); await waitScreen('pedigree-pair'); await shot('pedigree-pair', 500);
+  assert.match(await page.locator('.screen.in .ped-hints').innerText(), /takes its sire's line/, 'pedigree pair: hints in English');
+  await show('Bloodlines'); await waitScreen('bloodlines'); await shot('bloodlines', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Akatsuki line/, 'bloodlines: line names in English');
+
+  // round 23: レースの見どころ in English (REQ-HL-010): the captions (Muchi.Client HighlightCaptions through ui-en.json), the
+  // counter, the end screen and the share sheet
+  await show('HighlightsDemo'); await waitScreen('highlights', 60000);
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 });
+  await shot('highlights', 600);
+  assert.match(await page.locator('.screen.in .hl-counter').innerText(), /^Highlight \d \/ \d$/, 'highlights: the counter in English');
+  assert.ok(!/[぀-ヿ一-鿿]/.test(await page.locator('.screen.in .hl-caption').innerText()), 'highlights: the caption in English');
+  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000); await shot('highlights-end', 400);
+  await page.locator('.screen.in .hl-share').click(); await page.waitForSelector('.screen.in .hl-share-sheet'); await shot('highlights-share', 400);
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
 
@@ -706,6 +729,20 @@ await shot('diagnostics', 600);
   await shot('transfer-done', 300);
   await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', 400);
   assert.match(await page.locator('.screen.in').innerText(), /Moved to another device/);
+  // round 23: ログイン中の端末 in English (REQ-DEV-020): the list with a new phone, the confirm sheet, the security log and the
+  // signed-out device's screen
+  await show('DeviceList'); await waitScreen('devices', 30000); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-action="devices-demo-new"]').click(); await page.waitForTimeout(900);
+  await shot('devices', 300);
+  assert.match(await page.locator('.screen.in .dev-current').innerText(), /iPhone \(iOS 18\)[\s\S]*THIS DEVICE/i, 'devices: this device in English');
+  await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm', { timeout: 5000 });
+  await shot('devices-confirm', 300);
+  assert.match(await page.locator('.screen.in .dev-confirm-title').innerText(), /Sign out Pixel \(Android 15\)\?/, 'devices: the confirm title in English');
+  await page.locator('.screen.in .dev-confirm-yes').click(); await page.waitForTimeout(900);
+  await show('SecurityLog'); await waitScreen('security-log'); await page.waitForTimeout(300); await shot('security-log', 300);
+  assert.match(await page.locator('.screen.in .sec-log').innerText(), /Signed out another device[\s\S]*A new device signed in/, 'devices: the log in English');
+  await show('SessionRevoked'); await waitScreen('session-revoked'); await shot('session-revoked', 300);
+  assert.match(await page.locator('.screen.in').innerText(), /This device was signed out/);
   // round 21: ディープリンク・再戦 in English (REQ-LINK-024): the links hub, the share sheet, 「リンクを開く」 with a notice, the
   // confirmation, the friend-room result with 再戦 waiting and opened, the new room
   await show('Links'); await waitScreen('links', 30000); await page.waitForTimeout(300);

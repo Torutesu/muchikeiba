@@ -16,6 +16,9 @@ import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
 import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS } from './lnotifKinds.js';
 
 /** REQ-LINK-021: how a link reached the app (universal / app link, the custom scheme, the Android install referrer, typed). */
+/** REQ-PED-016 (§71): where a pedigree tree / the bloodline list was opened from (C# PedigreeSources / BloodlineSources). */
+export const PEDIGREE_SOURCES = ['horse', 'breeding', 'stable', 'showcase', 'bloodlines'] as const;
+export const BLOODLINE_SOURCES = ['breeding', 'pedigree', 'help'] as const;
 export const DEEP_LINK_ENTRIES = ['universal', 'scheme', 'referrer', 'typed'] as const;
 export const DEEP_LINK_KPI_TYPES = ['room', 'cup', 'replay', 'invite', 'friend', 'team', 'help', 'none'] as const;
 const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
@@ -120,8 +123,8 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready', 'class_promoted'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready', 'class_promoted', 'new_device'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy', 'devices'] as const;
 /** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
 export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
 export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
@@ -159,6 +162,9 @@ export const CALENDAR_KPI_KINDS = [
   'tournament_registration', 'tournament', 'cup', 'maintenance', 'comeback',
 ] as const;
 export const CALENDAR_VIEWS = ['month', 'week'] as const;
+/** REQ-HL-015 (§72.5): where a highlight reel was opened and the moment kinds (C# HighlightKinds / AnalyticsEvent.HighlightSurfaces, a test keeps them equal). */
+export const HIGHLIGHT_SURFACES = ['result', 'my_replays', 'friend_replay', 'link'] as const;
+export const HIGHLIGHT_KINDS = ['photo_finish', 'near_miss', 'lead_change', 'whip_burst', 'comeback', 'unique_skill', 'finish'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
@@ -244,7 +250,13 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('release_notes_history'), at: z.number().int(), props: z.object({ source: z.enum(RELEASE_HISTORY_SOURCES) }).strict() }),
   // REQ-CAL-015 (§65): the calendar shown (month / week and how many rows) and a row opened (its kind). Marks are server events (calendar_mark).
   z.object({ name: z.literal('calendar_view'), at: z.number().int(), props: z.object({ view: z.enum(CALENDAR_VIEWS), entries: z.number().int().min(0).max(200) }).strict() }),
+  // REQ-DEV-016 (§70.9): ログイン中の端末 / セキュリティの記録 opened (how many rows). Sign-outs and new-device notices are server events.
+  z.object({ name: z.literal('device_list_view'), at: z.number().int(), props: z.object({ screen: z.enum(['devices', 'log']), count: z.number().int().min(0).max(200) }).strict() }),
   z.object({ name: z.literal('calendar_entry_open'), at: z.number().int(), props: z.object({ kind: z.enum(CALENDAR_KPI_KINDS) }).strict() }),
+  // REQ-HL-015 (§72.5): the highlight reel started (surface, the top moment's kind, how many) / handed to the OS share sheet
+  // (card image or replay link). No race, player or tick.
+  z.object({ name: z.literal('highlight_view'), at: z.number().int(), props: z.object({ surface: z.enum(HIGHLIGHT_SURFACES), top: z.enum(HIGHLIGHT_KINDS), moments: z.number().int().min(1).max(3) }).strict() }),
+  z.object({ name: z.literal('highlight_share'), at: z.number().int(), props: z.object({ surface: z.enum(HIGHLIGHT_SURFACES), via: z.enum(['card', 'link']) }).strict() }),
   // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
@@ -261,6 +273,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('playtime_reminder_shown'), at: z.number().int(), props: z.object({
     reasons: z.string().regex(PLAYTIME_REASONS_RE), sessionMin: playMin, dayMin: playMin, choice: z.enum(['continue', 'stop', 'settings']),
   }).strict() }),
+  // REQ-PED-016 (§71): a pedigree tree opened (where from, whose, how many shared ancestors it highlighted) / the bloodline list
+  // opened (where from, how many lines). Never a player or horse id (strict).
+  z.object({ name: z.literal('pedigree_view'), at: z.number().int(), props: z.object({ source: z.enum(PEDIGREE_SOURCES), relation: z.enum(['self', 'friend', 'other']), shared: z.number().int().min(0).max(14) }).strict() }),
+  z.object({ name: z.literal('bloodline_view'), at: z.number().int(), props: z.object({ source: z.enum(BLOODLINE_SOURCES), lines: z.number().int().min(0).max(64) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -319,7 +335,10 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'release_notes_target': return { name: e.name, s1: e.props.appVersion, s2: e.props.kind, s3: e.props.target, value: e.props.page };
     case 'release_notes_history': return { name: e.name, s1: e.props.source };
     case 'calendar_view': return { name: e.name, s1: e.props.view, value: e.props.entries };
+    case 'device_list_view': return { name: e.name, s1: e.props.screen, value: e.props.count };
     case 'calendar_entry_open': return { name: e.name, s1: e.props.kind };
+    case 'highlight_view': return { name: e.name, s1: e.props.surface, s2: e.props.top, value: e.props.moments };
+    case 'highlight_share': return { name: e.name, s1: e.props.surface, s2: e.props.via };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
     case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };
@@ -328,6 +347,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'showcase_share': return { name: e.name, count: e.props.pins, value: e.props.records, s1: e.props.horse ? 'horse' : 'none' };
     case 'deep_link_open': return { name: e.name, s1: e.props.entry, s2: e.props.type };
     case 'playtime_reminder_shown': return { name: e.name, s1: e.props.reasons, s2: e.props.choice, value: e.props.sessionMin, count: e.props.dayMin };
+    case 'pedigree_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, count: e.props.shared };
+    case 'bloodline_view': return { name: e.name, s1: e.props.source, value: e.props.lines };
   }
 }
 

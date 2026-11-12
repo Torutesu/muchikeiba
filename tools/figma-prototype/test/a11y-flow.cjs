@@ -265,7 +265,11 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('HelpCenter'); await waitScreen('help'); await shot('help-center', english, 500);
     await show('HelpArticle', 'pity', 'list'); await waitScreen('help-article'); await shot('help-article', english, 500);
     await show('InquiryForm'); await waitScreen('inquiry-form'); await shot('inquiry-form', english, 500);
+    if (!english) await page.evaluate(() => globalThis.__muchi.logic.seedInquiries()); // R23: the demo threads (answered, checking, resolved)
     await show('MyInquiries'); await waitScreen('my-inquiries'); await shot('my-inquiries', english, 500);
+    // round 23 (REQ-TKT-019): the thread of the resolved ticket (chips, gift line, notes, the reply box) at the largest size
+    if (await page.locator('.screen.in .inq-list [data-status="resolved"]').count()) { await page.locator('.screen.in .inq-list [data-status="resolved"]').first().click(); await waitScreen('my-inquiries'); }
+    await shot('ticket-thread', english, 500);
     // Round 19: ヒント (the library, a card, a tour page, a lesson briefing) at the largest size (REQ-TUT-018)
     await show('Tips'); await waitScreen('tips'); await shot('tips', english, 500);
     await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);
@@ -287,6 +291,20 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', english, 400);
     await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
     await show('Settings', 'looks'); await waitScreen('settings'); await shot('settings-looks', english, 400);
+    // Round 23: 血統図と系統 at the largest size (REQ-PED-018): the tree flows into a list by generation; the pair; the lines
+    await page.evaluate(async () => { await globalThis.__muchi.logic.pedigree.demo(); });
+    await show('Pedigree'); await waitScreen('pedigree'); await shot('pedigree', english, 500);
+    assert.equal(await page.locator('.screen.in .ped-panel').getAttribute('data-flow'), 'rows', 'pedigree: the tree reflows at the largest text size');
+    await show('BreedingPair'); await waitScreen('pedigree-pair'); await shot('pedigree-pair', english, 500);
+    await show('Bloodlines'); await waitScreen('bloodlines'); await shot('bloodlines', english, 500);
+    // Round 23: レースの見どころ (the caption panel and controls, the end screen, the share sheet) at the largest size (REQ-HL-019);
+    // reduce motion is on here: a plain cut between moments
+    await show('HighlightsDemo'); await waitScreen('highlights', 60000);
+    await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index >= 0, null, { timeout: 15000 });
+    assert.equal(await page.evaluate(() => globalThis.__muchi.highlight.transition), 'cut', 'highlights: reduce motion cuts');
+    await shot('highlights', english, 600);
+    if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000); await shot('highlights-end', english, 400);
+    await page.locator('.screen.in .hl-share').click(); await page.waitForSelector('.screen.in .hl-share-sheet'); await shot('highlights-share', english, 400);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 22: 騎手の道 (the map, the race detail, the pre-race) at the largest size (REQ-CAREER-022)
@@ -341,6 +359,15 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);
     await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', english, 500);
+    // Round 23: ログイン中の端末 — the list (with a new phone), the confirm sheet, the security log, the signed-out screen (REQ-DEV-020)
+    await show('DeviceList'); await waitScreen('devices'); await page.waitForTimeout(300);
+    if (await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).count() === 0) { await page.locator('.screen.in [data-action="devices-demo-new"]').click(); await page.waitForTimeout(900); }
+    await shot('devices', english, 400);
+    await page.locator('.screen.in .dev-row', { hasText: 'Pixel' }).first().locator('[data-dev-signout]').click(); await page.waitForSelector('.screen.in .dev-confirm', { timeout: 5000 });
+    await shot('devices-confirm', english, 300);
+    await page.locator('.screen.in .dev-confirm-no').click(); await waitScreen('devices');
+    await show('SecurityLog'); await waitScreen('security-log'); await shot('security-log', english, 400);
+    await show('SessionRevoked'); await waitScreen('session-revoked'); await shot('session-revoked', english, 400);
     // Round 20: the pre-prompt sheet, settings › privacy › ads and analytics and its help article (context privacy_choices)
     await show('ConsentPrompt'); await waitScreen('consent-prompt'); await page.waitForSelector('.screen.in [data-cns="continue"]', { timeout: 15000 }); await shot('consent-prompt', english, 500);
     await show('PrivacyChoices'); await waitScreen('privacy-choices'); await page.waitForSelector('.screen.in [data-cns-row="analytics"]', { timeout: 15000 }); await shot('privacy-choices', english, 500);

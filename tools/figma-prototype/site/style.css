@@ -1058,3 +1058,62 @@ html[data-reduce-motion="on"] .pp-pip.top { box-shadow: none; }
 .btn.cr-node.next .bg { box-shadow: inset 0 0 0 2px var(--gold); }
 .label.cr-story { border-left: 3px solid var(--gold); padding-left: 14px; box-sizing: border-box; }
 .label.cr-obj, .label.cr-pre-obj { letter-spacing: .03em; }
+
+/* round 23: 血統図と系統 (REQ-PED-*): navy boxes on the tree, thin cyan elbow lines, a shared ancestor framed in cyan with
+   「共通」; at the largest text size the tree flows into a list by generation (rows that wrap) inside its panel */
+.el.ped-box { background: rgba(var(--navy-rgb), .78); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .3); border-radius: 3px; overflow: hidden; }
+.el.ped-box.norec { background: rgba(var(--navy-rgb), .5); }
+.el.ped-box.shared { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 14px rgba(var(--cyan-rgb), .35); }
+.el.ped-empty { box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .14); border-radius: 3px; }
+.el.ped-line-seg { background: rgba(var(--cyan-rgb), .45); }
+.el.ped-line-seg.on { background: var(--cyan); }
+.img.ped-thumb { object-fit: cover; border-radius: 3px; }
+.el.ped-thumb.none { background: rgba(150, 173, 187, .12); border-radius: 3px; }
+.ped-list { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(var(--cyan-rgb), .5) transparent; padding-right: 8px; }
+.ped-gen { flex: none; font-size: 14px; font-weight: 700; letter-spacing: .18em; color: var(--cyan); padding: 10px 0 6px; border-bottom: 1px solid rgba(150, 173, 187, .28); }
+.ped-row-wrap { flex: none; display: flex; flex-wrap: wrap; gap: 8px; }
+.ped-row { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 4px; padding: 10px 16px; background: rgba(var(--navy-rgb), .72); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .26); }
+.ped-row.shared { box-shadow: inset 3px 0 0 var(--cyan), inset 0 0 0 1px rgba(var(--cyan-rgb), .6); }
+.ped-row.empty { opacity: .5; }
+.ped-row .ped-rel { font-size: 12px; font-weight: 700; letter-spacing: .14em; color: var(--cyan); }
+.ped-row .ped-name { font-size: 18px; font-weight: 700; color: var(--white); overflow-wrap: anywhere; line-height: 1.35; }
+.ped-row .ped-traits { font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.ped-row .ped-under { font-size: 13px; font-weight: 700; color: var(--gold); overflow-wrap: anywhere; }
+.ped-row .ped-badge { font-size: 12px; font-weight: 700; letter-spacing: .1em; color: var(--cyan); }
+.ped-hints { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; overflow-x: hidden; }
+.ped-hint { flex: none; font-size: 14px; color: var(--white); line-height: 1.45; padding: 6px 12px; background: rgba(var(--navy-rgb), .6); box-shadow: inset 2px 0 0 rgba(var(--cyan-rgb), .7); overflow-wrap: anywhere; }
+.ped-hint.inbreeding { color: var(--gold); box-shadow: inset 2px 0 0 var(--gold); }
+.ped-line-row { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 12px 18px; background: rgba(var(--navy-rgb), .72); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .26); }
+.ped-line-row.none { opacity: .72; }
+.ped-line-top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px; }
+.ped-line-name { font-size: 20px; font-weight: 700; color: var(--white); letter-spacing: .04em; }
+.ped-line-count { font-size: 14px; font-weight: 700; color: var(--gold); }
+.ped-line-founder { font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; line-height: 1.5; }
+.ped-line-nick { font-size: 13px; font-weight: 700; color: var(--cyan); overflow-wrap: anywhere; }
+.ped-line-horses { font-size: 13px; color: var(--text-3); overflow-wrap: anywhere; }
+
+/* round 23: レースの見どころ (REQ-HL-*) — the cut between moments: a short navy sweep (no flash, none with reduce motion) */
+.el.hl-wipe { pointer-events: none; background: linear-gradient(100deg, transparent 0%, rgba(8, 26, 54, .72) 40%, rgba(8, 26, 54, .72) 60%, transparent 100%); animation: hl-wipe .42s ease-out both; z-index: 30; }
+@keyframes hl-wipe { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+html[data-reduce-motion="on"] .el.hl-wipe { display: none; }
+
+/* round 23: お問い合わせ履歴とスレッド (REQ-TKT-*, protocol §73): status chips in four tones, the thread in translucent navy
+   blocks (support replies carry the cyan rule on the left), notes in the soft grey; the thread scrolls inside its panel
+   (text grows with the text size, never shrinks), the reply box under it and the one skewed cyan CTA */
+.tkt-chip { font-size: 12px; font-weight: 700; letter-spacing: .14em; padding: 3px 12px; border-radius: 3px; white-space: nowrap; line-height: 1.4;
+  color: var(--text-2); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .45); background: rgba(var(--navy-rgb), .6); }
+.tkt-chip.warn { color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255, 211, 79, .7); }
+.tkt-chip.info { color: var(--cyan); box-shadow: inset 0 0 0 1px rgba(var(--cyan-rgb), .6); }
+.tkt-chip.ok { color: var(--navy); background: var(--cyan); box-shadow: none; }
+.tkt-chip.muted { color: var(--text-3); }
+.tkt-thread { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(var(--cyan-rgb), .5) transparent; padding: 4px 10px 4px 12px; }
+.tkt-msg { flex: none; padding: 10px 16px 12px; background: rgba(var(--navy-rgb), .72); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .22); }
+.tkt-msg.support { box-shadow: inset 3px 0 0 var(--cyan), inset 0 0 0 1px rgba(var(--cyan-rgb), .35); }
+.tkt-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.tkt-who { font-size: 13px; font-weight: 700; letter-spacing: .14em; color: var(--text-2); }
+.tkt-msg.support .tkt-who { color: var(--cyan); }
+.tkt-at { font-size: 12px; font-weight: 500; color: var(--text-3); white-space: nowrap; }
+.tkt-text { font-size: 16px; line-height: 1.6; color: var(--white); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tkt-note { flex: none; font-size: 13px; font-weight: 500; line-height: 1.6; color: var(--text-3); letter-spacing: .04em; overflow-wrap: anywhere; }
+.tkt-gift { flex: none; font: inherit; cursor: pointer; border: 0; text-align: left; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 10px 16px;
+  color: var(--gold); background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 1px rgba(255, 211, 79, .55); }

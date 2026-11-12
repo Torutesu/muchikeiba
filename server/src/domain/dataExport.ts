@@ -14,6 +14,7 @@
  * the export is decided in DEX_CLASSIFICATION — a test fails when a new key is added without a decision.
  */
 import { surveysExport } from './surveys.js';
+import { exportDevices as devicesExport } from './devices.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { HorseInstance, LedgerEntry, PlayerState } from './player.js';
@@ -421,6 +422,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   career: x('play'),
   // R22 §69 (REQ-SURVEY-014): surveys shown / skipped / answered and the player's own (scrubbed) answers
   surveys: x('analytics'),
+  // Round 23 (§70, REQ-DEV-015): signed-in devices (labels, regions, times) and the security log — never auth_time or hashes
+  devices: x('account'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -524,6 +527,9 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
         issuesToday: clone(s.transfer.issues), lastTransferredAt: s.transfer.lastRedeemedAt, oldDeviceCutoffAt: s.transfer.cutoffAt,
         history: clone(s.transfer.history),
       } : null,
+      // §70 (Round 23): ログイン中の端末 — the coarse label, region and hour-rounded times of each signed-in session, and the
+      // security log. Never the sign-in time (auth_time), the install id hash, the revocations or the devices seen (internal keys)
+      ...devicesExport(s),
     },
     profile: {
       displayName: s.profile.displayName, titleId: s.profile.titleId, titles: [...s.titles], silks: clone(s.profile.silks) ?? null,
@@ -673,6 +679,10 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
         attachments: t.attachments.map((a) => ({ kind: a.kind, ref: a.ref, at: a.at, title: a.title, detail: a.detail })),
         diagnostics: clone(t.diagnostics),
         messages: t.messages.map((x) => ({ from: x.from, content: x.content, at: x.at })),
+        // §73.10 (REQ-TKT-014): the thread's state and the compensation ids linked to it; the desk (assignee, internal
+        // notes) lives in the OpsDO and is never exported
+        closedAt: t.closedAt ?? null, shareDiagnostics: t.shareDiagnostics ?? true, reopens: t.reopens ?? 0,
+        compensation: (t.compensation ?? []).map((c) => ({ ref: c.ref, at: c.at })),
       })) as unknown[],
       articleVotes: Object.entries(help?.votes ?? {}).map(([articleId, v]) => ({ articleId, helpful: v.helpful, at: v.at })),
     },

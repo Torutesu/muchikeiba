@@ -26,7 +26,9 @@ const INTERNAL_SECTIONS = new Set(['ng', 'bannedSilks', 'assetCatalog', 'nicks',
   // REQ-NEW-002: the release notes carry their own English side by side (checked by releaseNotes.ts releaseNotesProblems)
   'releaseNotes',
   // REQ-CAREER-010: 騎手の道 titles and story lines carry their own English side by side (checked by career.ts careerProblems)
-  'career']);
+  'career',
+  // REQ-PED-011 (§71): bloodline names, founders and notes are JA + EN pairs of their own (checked by pedigree.ts bloodlineProblems)
+  'bloodlines']);
 
 /** Every Japanese text of the player-facing master data, with where it is. */
 export function masterTexts(m: Master, v: VisualsMaster = VISUALS): { path: string; text: string }[] {

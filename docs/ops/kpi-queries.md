@@ -1640,3 +1640,103 @@ ORDER BY survey, placement
 ```
 
 - 2回目に出した行（`double5 = 2`）が多いのに答えも スキップもしない人が多いなら、`maxShowsPerSurvey` を下げる。報酬が無いので、答えた人の偏りは「答えたい人」だけ（景品で増やさない、§69）。
+
+## ログイン中の端末：お知らせ・ログアウト・一覧（REQ-DEV-016、contracts/protocol.md §70.9、Round 23）
+
+**新しい端末のお知らせがどれだけ出て、どれだけログアウトにつながるか、乗っ取りの波が無いか**。`new_device_notice`（サーバー、essential、`blob8` = `ios` / `android` / `other`）、`device_signout`（サーバー、essential、`blob8` = `one` / `others` / `support`、`double5` = ログアウトした数、実際にログアウトした時だけ）、`device_list_view`（クライアント、optional、`blob8` = `devices` / `log`、`double9` = 行の数）。端末のハッシュ・セッションの ID・地域・機種は入らない（§70.9）。
+
+```sql
+-- 日ごとの新しい端末のお知らせと、プレイヤー自身・サポートのログアウト（急に増えた日は乗っ取りの波を疑う）
+SELECT toDate(timestamp) AS day,
+  sum(if(blob1 = 'new_device_notice', _sample_interval, 0)) AS new_devices,
+  sum(if(blob1 = 'device_signout' AND blob8 = 'one', _sample_interval, 0)) AS signout_one,
+  sum(if(blob1 = 'device_signout' AND blob8 = 'others', _sample_interval, 0)) AS signout_others,
+  sum(if(blob1 = 'device_signout' AND blob8 = 'support', _sample_interval, 0)) AS signout_support,
+  sum(if(blob1 = 'device_signout', double5 * _sample_interval, 0)) AS sessions_signed_out
+FROM muchi_kpi
+WHERE blob1 IN ('new_device_notice', 'device_signout') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day
+```
+
+```sql
+-- 一覧と記録が開かれた回数と、平均の行の数
+SELECT blob8 AS screen, sum(_sample_interval) AS views, sum(double9 * _sample_interval) / sum(_sample_interval) AS avg_rows
+FROM muchi_kpi
+WHERE blob1 = 'device_list_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY screen
+```
+
+- `device_list_view` は分析がオフのプレイヤーからは来ない（optional）。`new_device_notice`・`device_signout` は分析の選択に関係なく残る（アカウントへの入口の監査、§58.7）。
+- お知らせ（`new_device_notice`）のあと24時間以内の `device_signout` の割合が高い日は、知らない端末からのログインが増えている。運用はヘルプのお問い合わせ（カテゴリ「アカウント」）と合わせて見る。
+
+## 血統図と系統：見た・系統の一覧（REQ-PED-016、contracts/protocol.md §71.6、Round 23）
+
+**血統図がどこから開かれ、近親の強調がどれくらい出ているか、系統の一覧が見られているか**。`pedigree_view`（クライアント、`blob8` = 入口：`horse`・`breeding`・`stable`・`showcase`・`bloodlines`、`blob9` = `self` / `friend` / `other`、`double5` = 強調した共通の祖先の数 0〜14）、`bloodline_view`（クライアント、`blob8` = 入口：`breeding`・`pedigree`・`help`、`double9` = 系統の数）。どちらもプレイヤー・馬の ID を持たない。§58 では `optional`。
+
+```sql
+-- 入口と関係ごとの血統図の回数、共通の祖先が出ていた割合
+SELECT blob8 AS source, blob9 AS relation, sum(_sample_interval) AS views,
+  sum(if(double5 > 0, _sample_interval, 0)) / sum(_sample_interval) AS with_shared
+FROM muchi_kpi
+WHERE blob1 = 'pedigree_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source, relation ORDER BY views DESC
+```
+
+```sql
+-- 系統の一覧の入口
+SELECT blob8 AS source, sum(_sample_interval) AS views
+FROM muchi_kpi
+WHERE blob1 = 'bloodline_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source ORDER BY views DESC
+```
+
+- 配合（`breeding`）から開いた図で `with_shared` が高いのに配合の数が変わらないなら、近親の罰の説明（ヘルプ `pedigree`）が届いているかを見る。系統の数は目標にしない（報酬・達成の表示は無い）。
+
+## レースの見どころ：見た・共有した（REQ-HL-015、contracts/protocol.md §72.5、Round 23）
+
+**見どころがどこから見られているか、どの瞬間がいちばんに選ばれているか、共有につながるか**。どちらもクライアントのイベントで §58 の `optional`（分析をオフにした人の行は無い）。`highlight_view`（`blob8` = 入口：`result`・`my_replays`・`friend_replay`・`link`、`blob9` = 1位の瞬間の種類：`photo_finish`・`near_miss`・`lead_change`・`whip_burst`・`comeback`・`unique_skill`・`finish`、`double9` = 瞬間の数 1〜3）、`highlight_share`（`blob8` = 入口、`blob9` = `card`（画像）／`link`（§63 のリプレイのリンク））。レース・プレイヤー・tick は入らない。
+
+```sql
+-- 入口ごとの再生と共有（共有率）
+SELECT blob8 AS surface,
+  sum(if(blob1 = 'highlight_view', _sample_interval, 0)) AS views,
+  sum(if(blob1 = 'highlight_share', _sample_interval, 0)) AS shares
+FROM muchi_kpi
+WHERE blob1 IN ('highlight_view', 'highlight_share') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY surface ORDER BY views DESC
+```
+
+```sql
+-- 1位に選ばれた瞬間の種類（`finish` ばかりなら判定の版を見直す目安）
+SELECT blob9 AS top, sum(_sample_interval) AS views, sum(double9 * _sample_interval) / sum(_sample_interval) AS avg_moments
+FROM muchi_kpi
+WHERE blob1 = 'highlight_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY top ORDER BY views DESC
+```
+
+- リンクで送れるのは公開した保存リプレイだけ（§72.4）。`link` の共有が少なく `card` が多いのは、保存・公開の前に共有しているため。リンクを開いた側は §63 の `link_resolve`（`s1 = replay`）と、ここの `highlight_view`（`link`）。
+
+## お問い合わせの状況：返信・再開・解決（REQ-TKT-012、contracts/protocol.md §73.8、Round 23）
+
+**サポートがどれだけ早く・何回のやりとりで解決しているか**。どれもサーバーのイベントで本文は入らない。`ticket_player_reply`（`blob8` = 種類、`blob9` = 返信の前の状態、`double9` = 置き換えた数）・`ticket_reopen`（`blob8` = 種類、`blob9` = `resolved` / `closed`）・`ticket_resolved`（`blob8` = 種類、`blob9` = `resolved` / `closed` / `auto_closed`、`double6` = 受付からの ms）は **essential**（サポートの記録、同意に関係なく残る）。`ticket_reply_view`（`blob8` = 種類、運営の返信を開いた）は optional。チケットを作る・最初の返信は §48 の `inquiry_submit`・`inquiry_answered`。
+
+```sql
+-- 種類ごとの解決までの時間（中央値）と、閉じ方の内訳
+SELECT blob8 AS category, blob9 AS how, sum(_sample_interval) AS n, quantileWeighted(0.5)(double6, _sample_interval) / 3600000 AS median_hours
+FROM muchi_kpi
+WHERE blob1 = 'ticket_resolved' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category, how ORDER BY n DESC
+```
+
+```sql
+-- 再開の割合（解決・クローズにしたのにプレイヤーが戻ってきた）
+SELECT blob8 AS category,
+  sum(if(blob1 = 'ticket_reopen', _sample_interval, 0)) AS reopens,
+  sum(if(blob1 = 'ticket_resolved', _sample_interval, 0)) AS resolved
+FROM muchi_kpi
+WHERE blob1 IN ('ticket_reopen', 'ticket_resolved') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY category ORDER BY reopens DESC
+```
+
+- `auto_closed` が多い種類は、返信の文がそのまま答えになっているか（追加の質問が要らないか）を見直す。
+- `ticket_reopen` の多い種類はひな形（`help.replyTemplates`）か記事を見直す。

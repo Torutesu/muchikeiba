@@ -33,12 +33,12 @@ static class FirstWeekChecks
             m.Use(GoalLadderView.FromJson(Day1));
             check(m.TomorrowLines.Count == 3 && m.TomorrowLines[0] == "ログインボーナス 2日目：繁殖牝馬1頭" && m.TomorrowLines[1] == "配合・フレンド・フレンド部屋が開きます" && m.TomorrowLines[2] == "調教がまた3回できます",
                 "first week: tomorrow's facts on the sheet (" + string.Join(" | ", m.TomorrowLines) + ")");
-            check(m.TomorrowLine == "明日：繁殖牝馬1頭・配合・フレンドが開く", "first week: one home line, two features at most (" + m.TomorrowLine + ")");
+            check(m.TomorrowLine == "明日：繁殖牝馬1頭　·　配合が開く", "first week: one short home line, one feature at most (" + m.TomorrowLine + ")");
             check(m.TomorrowAt != null && System.Text.RegularExpressions.Regex.IsMatch(m.TomorrowAt, "^(今日|明日) [0-9]{1,2}:00$"), "first week: tomorrow starts at the game day's start, a time not a countdown (" + m.TomorrowAt + ")");
             check(m.Rungs[0].Key == "today" && m.Rungs[0].Main != m.TomorrowLine, "first week: while today's set is open the rung keeps today's line");
             var done = new GoalLadderModel(b, () => Now);
             done.Use(GoalLadderView.FromJson(Day1.Replace("\"complete\":false", "\"complete\":true")));
-            check(done.Rungs[0].Main == done.TomorrowLine, "first week: once today is done the today rung says what tomorrow brings (" + done.Rungs[0].Main + ")");
+            check(done.Rungs[0].Main == done.TomorrowLine && done.Rungs[0].Figure == null, "first week: once today is done the today rung says what tomorrow brings, on its whole width (" + done.Rungs[0].Main + ")");
 
             var p = m.Partner;
             check(p != null && p.StageName == "新馬" && p.Stage == 0 && p.Stages == 5, "first week: the partner's stage of five");

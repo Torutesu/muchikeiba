@@ -1250,7 +1250,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     // round 12: the one-time かんたん操作 suggestion (REQ-ASSIST-010) on the way out, only when no offer was shown
     Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace(), () => AssistThen(() => StartRace())), p);
     // round 22 (§69): on the way home a due survey shows as a sheet (after the offer / assist suggestion, through the gate)
-    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(Home)), p);
+    // quality pass 2: the account-link prompt of day 3 waits for a closed result (AccountLinkPrompt, ResultClosed)
+    TextLink('ホーム', 44, 734, 90, () => { linkFromResult = true; OfferThen(Home, () => AssistThen(Home)); }, p);
   }
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
@@ -1698,11 +1699,23 @@ async function Home() {
   const pc = Glass('Partner', 33, 598, 470, 192, undefined, .62);
   pc.classList.add('partner-plate');
   Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
-  Txt(p ? p.name : '—', 29, 82, 420, 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
-  if (p) {
+  const pg = goals.ok && p ? glPartner(goals.value) : null;
+  // quality pass 2: with the growth rows the name is a step smaller so the plate keeps its size
+  Txt(p ? p.name : '—', 29, pg ? 76 : 82, 420, pg ? 44 : 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
+  if (p && pg) {
+    // quality pass 2 (REQ-GOAL-014): the partner grows where the player looks every day — its stage of five, the training
+    // it has had, what today (or yesterday) added, and how far the next stage is. Tapping opens its 馬カード.
+    pc.dataset.stage = String(pg.stage);
+    const pips = el('gl-pips pp-stage', 29, 141, 92, 6, pc);
+    for (let i = 0; i < 5; i++) { const d = document.createElement('i'); if (i < pg.stage) d.className = 'on'; else if (i === pg.stage) d.className = 'now'; pips.appendChild(d); }
+    Txt(`${p.rarity}　·　${pg.line}`, 134, 132, 210, 16, WHITE, pc, { weight: 700, nowrap: true }).classList.add('pp-growth');
+    if (pg.delta) Txt(pg.delta, 344, 132, 96, 16, GOLD, pc, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).classList.add('pp-delta');
+    const g = Gauge(29, 160, 411, pg.fill, pc, { gold: !!pg.delta }); g.style.height = '3px'; g.classList.add('pp-gauge');
+    Txt(pg.trainingOpen ? (pg.next ?? '') : `${pg.stageName}　·　調教は${unlockText('training')}`, 29, 168, 411, 14, MUTED, pc, { weight: 500, nowrap: true }).classList.add('pp-next');
+  } else if (p) {
     Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 150, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
   } else Txt('無料スカウトで相棒を迎えよう', 29, 150, 420, 16, WHITE, pc);
-  pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
+  pc.style.cursor = 'pointer'; pc.addEventListener('click', () => (p && pg ? HorseCard(p.id, () => Home()) : Stable()));
   // ② race: the largest, bottom right
   // round 22 (§68, REQ-PROMO-017): over the race button 「昇級戦 2/3」 with the pips, or the grace window, in place of the caption
   if (promoHomeLabel(promo)) Caption(`${promoHomeLabel(promo)}　${promoMarks(promo.series)}`, 1134, 602, undefined, 17, GOLD).classList.add('tshadow', 'pp-home');
@@ -1717,7 +1730,8 @@ async function Home() {
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion_outcome')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
-  MaybeLinkPrompt('Home', Home);
+  const ctx = linkFromResult ? 'ResultClosed' : 'Home'; linkFromResult = false;
+  MaybeLinkPrompt(ctx, Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
 function Missions(ms, fw, bonus) {
@@ -2365,6 +2379,7 @@ function linkArgs(context) {
   };
 }
 /** Home / after a result / after a purchase: shows the prompt when the rules say so; returns true when it did. */
+let linkFromResult = false; // set by the result screen's 「ホーム」 (the next home is ResultClosed for the account-link prompt)
 function MaybeLinkPrompt(context, next) {
   if (!sessionPrompt.can('account_link')) return false; // §58.11 = §64.6 (R21 integration): another prompt took this session
   const r = linkOp('eval', linkArgs(context));
@@ -4112,14 +4127,58 @@ function glPurpose(r) {
   if (r?.freeCoins) return 'スカウト・覚醒に使える無償コイン';
   return '';
 }
+// ---- quality pass 2: the first week (docs/quality/first-week.md, REQ-GOAL-013..015; = GoalLadderModel.BuildFirstWeek)
+const GL_FEATURE = { breeding: '配合', friends: 'フレンド', friend_rooms: 'フレンド部屋', teams: '支部', spectate: '観戦', time_attack: 'タイムアタック', weekly_challenge: '週替わりチャレンジ', events: 'イベント', tournaments: '大会', my_stable: 'マイ厩舎', training: '調教', missions: 'ミッション', login_bonus: 'ログインボーナス', bond: '絆・飼い葉', season: 'シーズン・ランキング', rival: 'ライバル', stud: '種牡馬の貸し借り' };
+const GL_STAGE = ['新馬', '成長期', '充実期', '本格化', '完成'];
+/** Tomorrow as facts: { home: 「明日：繁殖牝馬1頭・配合・フレンドが開く」, lines: [...], at: 「明日 4:00」 } or null. */
+function glTomorrow(v) {
+  const t = v.today?.tomorrow;
+  if (!t) return null;
+  const home = [], lines = [];
+  if (t.loginBonus) {
+    const r = glReward(t.loginBonus.reward);
+    home.push(r); lines.push((t.loginBonus.track === 'beginner' ? `ログインボーナス ${t.loginBonus.day}日目：` : 'ログインボーナス：') + r);
+  }
+  const names = (t.opens ?? []).map((k) => GL_FEATURE[k]).filter(Boolean);
+  if (names.length) { home.push(names[0] + 'が開く'); lines.push(names.join('・') + 'が開きます'); }
+  if (t.trainingSlots != null) { if (!home.length) home.push(`調教 ${t.trainingSlots}回`); lines.push(`調教がまた${t.trainingSlots}回できます`); }
+  if (!lines.length) return null;
+  const a = new Date(t.at + 9 * 3600e3), n = new Date(L.now() + 9 * 3600e3);
+  const at = `${a.getUTCDate() === n.getUTCDate() ? '今日' : '明日'} ${a.getUTCHours()}:${String(a.getUTCMinutes()).padStart(2, '0')}`;
+  return { home: home.length ? '明日：' + home.join('　·　') : null, lines, at };
+}
+/** The partner's growth: stage, gauge, 「新馬　調教 +10」, 「今日 +10」, 「成長期まで あと14」 (null without one). */
+function glPartner(v) {
+  const p = v.partner;
+  if (!p) return null;
+  const i = Math.max(0, Math.min(4, p.stage));
+  const span = p.nextStageAt != null ? Math.max(1, p.nextStageAt - p.stageFrom) : 1;
+  return {
+    horseId: p.horseId, stage: i, stageName: GL_STAGE[i],
+    fill: p.nextStageAt != null ? clamp((p.trainedTotal - p.stageFrom) / span, 0, 1) : 1,
+    line: `${GL_STAGE[i]}　調教 +${fmt(p.trainedTotal)}`,
+    delta: p.gainedToday > 0 ? `今日 +${fmt(p.gainedToday)}` : p.gainedYesterday > 0 ? `昨日 +${fmt(p.gainedYesterday)}` : null,
+    next: p.full ? '完成' : p.nextStageAt != null ? `${GL_STAGE[Math.min(i + 1, 4)]}まで あと${fmt(Math.max(0, p.nextStageAt - p.trainedTotal))}` : null,
+    trainingOpen: p.trainingOpen, sessionsLeft: p.sessionsLeft,
+  };
+}
+/** Where the current first step is done (the server's fixed screen) — never the shop. */
+const GL_STEP_GO = { scout: () => Scout(), silks: () => SilksEditor(), care: () => Care(), race: () => RaceLobby(), breeding: () => Breeding(), friends: () => Friends(), teams: () => TeamFeed(), time_attack: () => TimeAttack(), collection: () => Collection() };
+function glStepLock(v) {
+  const c = v.path?.current;
+  if (!c || c.open !== false) return null;
+  const f = { breed: 'breeding', friends: 'friends', team: 'teams', ta_finish: 'time_attack', care: 'bond' }[c.kind];
+  return f && (v.today?.tomorrow?.opens ?? []).includes(f) ? '明日開きます' : 'レースを重ねると開きます';
+}
 /** The rungs of home, the same rules as GoalLadderModel.Rebuild. */
 function glRungs(v) {
   const out = [];
   const t = v.today;
   if (t.open) {
     const next = t.items.find((i) => i.progress < i.target);
-    out.push({ key: 'today', label: '今日', main: t.complete ? '今日の目標は完了' : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
-      figure: `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
+    // quality pass 2: once the set is done, the rung says what tomorrow brings (facts: the login bonus, what opens, training)
+    out.push({ key: 'today', label: '今日', main: t.complete ? (glTomorrow(v)?.home ?? '今日の目標は完了') : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
+      figure: t.complete && glTomorrow(v)?.home ? null : `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
   }
   if (v.path) out.push({ key: 'path', label: `はじめの${v.path.steps}歩`, main: v.path.current.claimable ? '受け取れる報酬があります' : glTitle(v.path.current.kind), figure: `${v.path.done}/${v.path.steps}`, fill: v.path.done / Math.max(1, v.path.steps), ready: v.path.current.claimable });
   if (v.week) {
@@ -4157,6 +4216,13 @@ function GoalLadderPanel(v) {
     if (x.figure) Txt(x.figure, 344, 6, 100, 17, GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
     const g = Gauge(118, 36, 326, x.fill, row, { gold: x.ready }); g.style.height = '3px';
     if (x.ready) { el('gl-dot', 10, 16, 6, 6, row); row.dataset.ready = '1'; }
+    // quality pass 2 (REQ-GOAL-015): the next first step is one tap away — the path rung opens where it is done
+    const c = v.path?.current;
+    if (x.key === 'path' && !x.ready && c?.screen && c.open !== false && GL_STEP_GO[c.screen]) {
+      row.dataset.go = c.screen; row.setAttribute('role', 'button');
+      row.querySelector('.gl-main').textContent = x.main + ' ›';
+      row.addEventListener('click', (e) => { e.stopPropagation(); GL_STEP_GO[c.screen](); });
+    }
   });
   if (anyReady) {
     const c = el('gl-rung gl-home-claim', 0, 8 + rungs.length * 50, GL_BOX.w, 50, p); c.dataset.rung = 'claim';
@@ -4175,6 +4241,7 @@ async function Goals() {
   await refresh();
   if (!r.ok) { toast('目標を読み込めませんでした'); return Home(); }
   const v = r.value;
+  globalThis.__glLast = v; // quality pass 2: the step's lock text reads tomorrow's openings
   Clear('goals'); SetArt('Art/home-paddock', false); Shade('left');
   TopBar('目標　/　今日 → 今週 → シーズン', `今日の分は ${jstDate(v.today.resetAt).slice(-5)} に更新　·　報酬は1回でまとめて受け取れます`);
   const COL = [{ x: 36 }, { x: 555 }, { x: 1074 }], W = 490, Y = 134, H = 600;
@@ -4182,14 +4249,21 @@ async function Goals() {
   const c1 = Glass('Goals today', COL[0].x, Y, W, H, undefined, .88); c1.dataset.col = 'today'; c1.classList.add('gl-col');
   Kicker('今日', 32, 24, c1, { size: 16 });
   const lb = v.today.loginBonus;
-  if (lb?.open && lb.next) {
+  const tmr = glTomorrow(v);
+  if (tmr?.home && v.today.open) {
+    // quality pass 2 (REQ-GOAL-013): what tomorrow brings, one line (the full list is in the claim moment)
+    const l = Txt(tmr.home, 32, 92, 300, 13, GOLD, c1, { weight: 700, nowrap: true }); l.classList.add('gl-login', 'gl-tomorrow'); l.title = tmr.lines.join(' / ');
+  } else if (lb?.open && lb.next) {
     const line = `${lb.claimedToday ? '明日' : '今日'}のログインボーナス：${glReward(lb.next.reward) || (lb.next.reward.broodmare ? '繁殖牝馬1頭' : '')}`;
     Txt(line, 32, 92, 300, 13, MUTED, c1, { weight: 500, nowrap: true }).classList.add('gl-login');
   }
   if (v.today.open) {
     Txt(`${v.today.done}/${v.today.total}`, 330, 56, 128, 34, GOLD, c1, { align: 'right', cls: 'num' });
     v.today.items.forEach((it, i) => GlRow(c1, it, 32, 118 + i * 94, W - 64));
-  } else Txt('デイリーミッションは' + unlockText('missions') + '。まずは「はじめの10歩」から。', 32, 120, W - 64, 16, MUTED, c1, { lh: 1.7 });
+  } else {
+    Txt('デイリーミッションは' + unlockText('missions') + '。まずは「はじめの10歩」から。', 32, 120, W - 64, 16, MUTED, c1, { lh: 1.7 });
+    if (tmr) GlTomorrowBlock(c1, tmr, 32, 236, W - 64);
+  }
   // ② 今週 / はじめの10歩
   const c2 = Glass('Goals week', COL[1].x, Y, W, H, undefined, .88); c2.dataset.col = v.path && v.week ? 'path,week' : v.path ? 'path' : 'week'; c2.classList.add('gl-col');
   let wy = 118;
@@ -4281,14 +4355,35 @@ function GlPath(parent, path, y, compact) {
     Txt(`${path.step}. ${glTitle(it.kind)}`, 0, 0, 300, 16, WHITE, row, { weight: 700, nowrap: true });
     Txt(`${Math.min(it.progress, it.target)}/${it.target}`, 300, 0, 126, 16, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
     Txt(`${glReward(it.reward)}　·　最後に ${glReward(path.finalReward)}`, 0, 28, W, 13, GOLD, row, { weight: 700, nowrap: true });
-    Hair(0, 70, W, row);
+    GlStepLink(row, path, 0, 40, W);
+    Hair(0, 76, W, row);
     return;
   }
   GlRow(parent, path.current, 32, y + 36, W, `${path.step}. `);
+  GlStepLink(parent, path, 32, y + 110, W);
   Hair(32, y + 142, W, parent);
   Txt('最後の歩の報酬', 32, y + 164, 300, 13, CYAN, parent, { weight: 700, ls: '.16em' });
   Txt(glReward(path.finalReward), 32, y + 188, W, 20, GOLD, parent, { weight: 700 });
   Txt(glPurpose(path.finalReward), 32, y + 220, W, 14, SOFT, parent);
+}
+/** quality pass 2 (REQ-GOAL-015): 「勝負服を変える ›」 to where the step is done, or why it is not open yet (right-aligned). */
+function GlStepLink(parent, path, x, y, w) {
+  const c = path.current;
+  if (c.claimable) return null;
+  const lock = c.open === false ? (globalThis.__glLast ? glStepLock(globalThis.__glLast) : 'レースを重ねると開きます') : null;
+  if (lock) { const t = Txt(lock, x + w - 260, y + 8, 260, 13, MUTED, parent, { align: 'right', nowrap: true }); t.classList.add('gl-step-lock'); return t; }
+  if (!c.screen || !GL_STEP_GO[c.screen]) return null;
+  const b = TextLink('やってみる', x + w - 180, y, 180, () => GL_STEP_GO[c.screen](), parent, 'やってみる ›');
+  b.dataset.action = 'gl-step'; b.dataset.go = c.screen; b.style.textAlign = 'right';
+  return b;
+}
+/** quality pass 2 (REQ-GOAL-013): 「明日 4:00」 and one fact per line. */
+function GlTomorrowBlock(parent, tmr, x, y, w) {
+  const b = el('gl-tomorrow-block', x, y, w, 40 + tmr.lines.length * 28, parent); b.dataset.lines = String(tmr.lines.length);
+  Txt('明日', 0, 0, 120, 12, CYAN, b, { weight: 700, ls: '.16em' });
+  Txt(tmr.at, w - 160, 0, 160, 12, MUTED, b, { align: 'right', nowrap: true });
+  tmr.lines.forEach((l, i) => Txt(l, 0, 26 + i * 28, w, 15, WHITE, b, { weight: 500, nowrap: true }));
+  return b;
 }
 /** A goal row: title and progress, the gauge, the reward and what it does. */
 function GlRow(parent, it, x, y, w, prefix = '') {
@@ -4323,8 +4418,13 @@ async function GlClaim() {
   if (!r.ok) { toast(r.error?.message ?? '受け取れませんでした'); return Goals(); }
   const t = r.value.total;
   const lines = [...(t.freeCoins ? [['無償コイン', `◎ ${fmt(t.freeCoins)}`]] : []), ...(t.items ?? []).map((it) => [glItemName(it.itemId), `×${it.qty}`]), ...(t.passXp ? [['パスXP', `+${fmt(t.passXp)}`]] : [])];
-  const d = Dialog('Goals claimed', 640, 200 + lines.length * 56);
+  // quality pass 2 (REQ-GOAL-013): when today's set is done, the moment ends on what tomorrow brings
+  const after = r.value.ladder ?? (await L.goals()).value;
+  const tmr = after?.today?.complete ? glTomorrow(after) : null;
+  const extra = tmr ? 52 + tmr.lines.length * 28 : 0;
+  const d = Dialog('Goals claimed', 640, 200 + lines.length * 56 + extra);
   d.classList.add('gl-moment'); d.dataset.claimed = String(r.value.claimed.length);
+  if (tmr) { const tb = GlTomorrowBlock(d, tmr, 48, 106 + lines.length * 56 + 8, 544); tb.classList.add('gl-line'); tb.style.animationDelay = `${120 + lines.length * 110}ms`; }
   Kicker(`${r.value.claimed.length}件受け取りました`, 48, 40, d, { size: 16 });
   lines.forEach(([k, val], i) => {
     const row = el('gl-line', 48, 106 + i * 56, 544, 48, d); row.style.animationDelay = `${120 + i * 110}ms`;
@@ -4332,7 +4432,7 @@ async function GlClaim() {
     Txt(val, 300, 4, 244, 28, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
   });
   await refresh();
-  Ghost('OK', 640 - 48 - 200, 200 + lines.length * 56 - 84, 200, 56, () => Goals(), d).dataset.action = 'gl-ok';
+  Ghost('OK', 640 - 48 - 200, 200 + lines.length * 56 + extra - 84, 200, 56, () => Goals(), d).dataset.action = 'gl-ok';
 }
 /** クラスの階段: every class with its cap (how much of a horse ranked uses), its line and its top reward. */
 function ClassLadder(v) {

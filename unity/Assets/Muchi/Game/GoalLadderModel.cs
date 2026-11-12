@@ -124,7 +124,7 @@ namespace Muchi.Game
         public string PathScreen { get; private set; }
         public string PathLockText { get; private set; }
         /// <summary>At most this many features in the one home line (the sheet lists them all).</summary>
-        public const int TomorrowHomeFeatures = 2;
+        public const int TomorrowHomeFeatures = 1;
 
         public static readonly IReadOnlyDictionary<string, string> KindTitles = new Dictionary<string, string>
         {
@@ -260,7 +260,8 @@ namespace Muchi.Game
                 {
                     Key = "today", Label = "今日",
                     Main = v.Today.Complete ? TomorrowLine ?? "今日の目標は完了" : v.Today.Claimable > 0 ? "受け取れる報酬があります" : NextToday(v),
-                    Figure = v.Today.Done + "/" + v.Today.Total, Fill = v.Today.Total == 0 ? 0 : (float)v.Today.Done / v.Today.Total,
+                    // once done the tomorrow line takes the whole rung (the figure would only repeat 「5/5」)
+                    Figure = v.Today.Complete && TomorrowLine != null ? null : v.Today.Done + "/" + v.Today.Total, Fill = v.Today.Total == 0 ? 0 : (float)v.Today.Done / v.Today.Total,
                     Sub = v.Today.Complete ? GameDay.NextResetLabel(_now()) + " に更新" : null, Ready = v.Today.Claimable > 0,
                 });
             // はじめの10歩 (a new player) or 今週
@@ -351,7 +352,7 @@ namespace Muchi.Game
                     if (home.Count == 0) home.Add("調教 " + t.TrainingSlots.Value + "回");
                     TomorrowLines.Add("調教がまた" + t.TrainingSlots.Value + "回できます");
                 }
-                if (home.Count > 0) TomorrowLine = "明日：" + string.Join("・", home);
+                if (home.Count > 0) TomorrowLine = "明日：" + string.Join("　·　", home);
                 if (TomorrowLines.Count > 0) TomorrowAt = AtLabel(t.At);
             }
 

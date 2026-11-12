@@ -21,6 +21,10 @@ import { CareerService } from '../src/race/career.js';
 import { careerOf } from '../src/domain/career.js';
 import { createHorseFromTemplate } from '../src/domain/horses.js';
 import { scrubFreeText } from '../src/domain/surveys.js';
+import { CALENDAR_KINDS } from '../src/domain/calendar.js';
+import { LINK_TYPES } from '../src/domain/deepLinks.js';
+import { DEX_CLASSIFICATION } from '../src/domain/dataExport.js';
+import { DELETION_STEPS } from '../src/domain/accountDeletion.js';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
@@ -334,5 +338,26 @@ describe('deploy §7.1: one Round 22 row (no migration, v9 still reserved; the b
     const wr = read('server/wrangler.toml');
     expect(wr).not.toMatch(/tag = "v9"/);
     expect(wr.match(/tag = "v\d+"/g)!.at(-1)).toBe('tag = "v7"');
+  });
+});
+
+describe('Round 22 × §65 calendar / §63 links / §51 export / deletion / §62 showcase: the decisions hold', () => {
+  it('career has no time window → no calendar kind; no career link target (not trivial: server tokens, parser, prototype)', () => {
+    expect((CALENDAR_KINDS as readonly string[]).filter((k) => /career|promo|survey|limit/.test(k))).toEqual([]);
+    expect((LINK_TYPES as readonly string[]).includes('career')).toBe(false);
+  });
+  it('§51: career play, selfLimits settings, promotion play, surveys analytics; the deletion runs the surveys step before finalize', () => {
+    expect(DEX_CLASSIFICATION).toMatchObject({ career: { section: 'play' }, selfLimits: { section: 'settings' }, promotion: { section: 'play' }, surveys: { section: 'analytics' } });
+    expect(DELETION_STEPS.indexOf('surveys')).toBeGreaterThan(-1);
+    expect(DELETION_STEPS.indexOf('surveys')).toBeLessThan(DELETION_STEPS.indexOf('finalize'));
+  });
+  it('§62 showcase and §68 promotion do not read each other (pins and records are unaffected by a series)', () => {
+    expect(read('server/src/domain/showcase.ts')).not.toMatch(/promotion/);
+    expect(read('server/src/domain/promotion.ts')).not.toMatch(/showcase/);
+  });
+  it('protocol §69.12 lists what the Round 22 integration decided', () => {
+    const p = read('contracts/protocol.md');
+    const s = p.slice(p.indexOf('### 69.12'));
+    for (const w of ['promotion_outcome', 'playtime_reminder', 'お知らせ', '§65', '§63', 'SELF_LIMIT_EXCEEDED', 'シーズンポイント', 'AccountChangeReset', '§60']) expect(s, w).toContain(w);
   });
 });

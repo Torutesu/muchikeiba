@@ -91,6 +91,25 @@ function rewardBands(m: Master, classId: string) {
   return { top: top ? { maxRank: top.maxRank, reward: top.reward } : null, floor: floor ? floor.reward : null };
 }
 
+/**
+ * REQ-GOAL-011: what the next login bonus claim gives (today's if not claimed yet, else tomorrow's) — the same tables and
+ * order as claimLoginBonus (the beginner week once, then the 7-day cycle). A fact for "come back tomorrow", never a countdown.
+ */
+export function nextLoginBonus(m: Master, s: PlayerState) {
+  const beginner = m.progression.beginnerLoginBonus ?? [];
+  const bDay = s.loginBonus.beginnerDay ?? (s.loginBonus.lastClaimDate === null ? 0 : beginner.length);
+  const strip = (d: { day: number } & Reward): Reward => { const { day: _d, ...r } = d; return r; };
+  if (bDay < beginner.length) {
+    const d = beginner.find((x) => x.day === bDay + 1);
+    return d ? { track: 'beginner' as const, day: bDay + 1, days: beginner.length, reward: strip(d) } : null;
+  }
+  const cycle = m.progression.loginBonus;
+  if (!cycle.length) return null;
+  const day = (s.loginBonus.streakDay % cycle.length) + 1;
+  const d = cycle.find((x) => x.day === day);
+  return d ? { track: 'normal' as const, day, days: cycle.length, reward: strip(d) } : null;
+}
+
 /** REQ-GOAL-001: GET /v1/home/goals. Reads only (no writes). */
 export function goalLadderView(m: Master, s: PlayerState, now: number, extras: GoalExtras = {}) {
   const rule = dayRule(m);
@@ -120,7 +139,7 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
     claimable: items.filter((i) => i.claimable).length,
     complete: items.length > 0 && items.every((i) => i.claimed || (i.table === 'first_win' && i.progress >= i.target)),
     resetAt,
-    loginBonus: { open: open('login_bonus'), claimedToday: sameGameDay(s.loginBonus.lastClaimDate, day) },
+    loginBonus: { open: open('login_bonus'), claimedToday: sameGameDay(s.loginBonus.lastClaimDate, day), next: nextLoginBonus(m, s) },
   };
 
   // ---- the beginner path (REQ-GOAL-003): the next step and the last reward, while the list lasts

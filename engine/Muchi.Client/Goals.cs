@@ -30,17 +30,22 @@ namespace Muchi.Client
     public sealed class GoalToday
     {
         public bool Open, Complete, LoginBonusOpen, LoginBonusClaimedToday;
+        /// <summary>REQ-GOAL-011: the next login bonus claim (today's if not claimed, else tomorrow's): beginner | normal, its day of Days, its reward. Null when none.</summary>
+        public string LoginNextTrack;
+        public int LoginNextDay, LoginNextDays;
+        public Reward LoginNextReward;
         public List<GoalItem> Items = new List<GoalItem>();
         public int Done, Total, Claimable;
         /// <summary>Start of the next game day (the daily set renews). A real time, shown as a time of day, never a countdown.</summary>
         public long ResetAt;
         internal static GoalToday Parse(JsonNode o)
         {
-            var lb = J.Opt(o, "loginBonus");
+            var lb = J.Opt(o, "loginBonus"); var nx = J.Opt(lb, "next");
             return new GoalToday
             {
                 Open = J.Bool(o, "open"), Complete = J.Bool(o, "complete"), Items = J.List(o, "items", GoalItem.Parse), Done = J.Int(o, "done"), Total = J.Int(o, "total"),
                 Claimable = J.Int(o, "claimable"), ResetAt = J.Long(o, "resetAt"), LoginBonusOpen = J.Bool(lb, "open"), LoginBonusClaimedToday = J.Bool(lb, "claimedToday"),
+                LoginNextTrack = J.Str(nx, "track"), LoginNextDay = J.Int(nx, "day"), LoginNextDays = J.Int(nx, "days"), LoginNextReward = nx == null ? null : Reward.Parse(J.Opt(nx, "reward")),
             };
         }
     }

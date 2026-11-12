@@ -105,6 +105,22 @@ describe('目標の階段 — the ladder (REQ-GOAL-001..008)', () => {
     expect(reached.season.pace.racesToLine).toBeNull();
   });
 
+  it('the next login bonus: today\'s when not claimed, tomorrow\'s after the claim (beginner week first, REQ-GOAL-011)', async () => {
+    const w = world();
+    await w.player('p', [3, 3]);
+    let v = await w.svc.goals('p') as GoalLadderView;
+    const b = m.progression.beginnerLoginBonus!;
+    expect(v.today.loginBonus.next).toMatchObject({ track: 'beginner', day: 1, days: b.length });
+    await w.svc.claimLogin('p', w.key());
+    v = await w.svc.goals('p') as GoalLadderView;
+    expect(v.today.loginBonus.claimedToday).toBe(true);
+    const { day: _d, ...r2 } = b[1]!;
+    expect(v.today.loginBonus.next).toEqual({ track: 'beginner', day: 2, days: b.length, reward: r2 });
+    const st = await w.svc.state('p');
+    const after = goalLadderView(m, { ...st, loginBonus: { streakDay: 6, lastClaimDate: st.loginBonus.lastClaimDate, beginnerDay: b.length } }, w.now());
+    expect(after.today.loginBonus.next).toMatchObject({ track: 'normal', day: 7 });
+  });
+
   it('reads only: the ladder never changes the wallet or claims anything', async () => {
     const w = world();
     await w.player('p', [1, 1, 1]);

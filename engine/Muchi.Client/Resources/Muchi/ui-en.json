@@ -1499,6 +1499,8 @@
   "チャレンジ {n}/{m}": "Challenges {n}/{m}",
   "ライバル {n}-{m}": "Rival {n}-{m}",
   "支部 {n}/{m}段": "Branch tier {n}/{m}",
-  "{t} {n}/{m}": "{t} {n}/{m}"
+  "{t} {n}/{m}": "{t} {n}/{m}",
+  "明日のログインボーナス：{r}": "Tomorrow's login bonus: {r}",
+  "今日のログインボーナス：{r}": "Today's login bonus: {r}"
  }
 }

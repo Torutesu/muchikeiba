@@ -72,6 +72,8 @@ namespace Muchi.Game
         public string PowerLine { get; private set; }
         /// <summary>Why climb: 「B級なら 3,200 まで出せます」 / 「いまのクラスで相棒の力をすべて出せています」.</summary>
         public string WhyClimbLine { get; private set; }
+        /// <summary>REQ-GOAL-011: 「明日のログインボーナス：繁殖牝馬1頭」 after today's claim (a fact, not a countdown), null when closed.</summary>
+        public string LoginLine { get; private set; }
         /// <summary>The pace line, only from the server's own estimate: 「いまのペースで あと約9戦」.</summary>
         public string PaceLine { get; private set; }
         /// <summary>「まとめて受け取る（4件）」, null when nothing is claimable.</summary>
@@ -219,11 +221,11 @@ namespace Muchi.Game
             if (v.Path != null)
                 Rungs.Add(new GoalRung
                 {
-                    Key = "path", Label = "はじめの" + v.Path.Steps + "歩", Main = Title(v.Path.Current.Kind),
+                    Key = "path", Label = "はじめの" + v.Path.Steps + "歩", Main = v.Path.Current.Claimable ? "受け取れる報酬があります" : Title(v.Path.Current.Kind),
                     Figure = v.Path.Done + "/" + v.Path.Steps, Fill = (float)v.Path.Done / Math.Max(1, v.Path.Steps),
                     Sub = "最後に " + UxText.Reward(v.Path.FinalReward, _itemName), Ready = v.Path.Current.Claimable,
                 });
-            else if (v.Week != null)
+            if (v.Week != null)
             {
                 var parts = new List<string>();
                 if (v.Week.HasChallenge) parts.Add("チャレンジ " + v.Week.ChallengeCleared + "/" + v.Week.ChallengeTotal);
@@ -252,6 +254,10 @@ namespace Muchi.Game
             if (s.PromotionStatus == "active" && s.PromotionNext.HasValue) rung.Sub = "昇級戦 " + s.PromotionNext.Value + "/" + s.PromotionRaces;
             Rungs.Add(rung);
 
+            var t = v.Today;
+            if (!t.LoginBonusOpen || t.LoginNextReward == null) LoginLine = null;
+            else if (t.LoginBonusClaimedToday) LoginLine = "明日のログインボーナス：" + UxText.Reward(t.LoginNextReward, _itemName);
+            else LoginLine = "今日のログインボーナス：" + UxText.Reward(t.LoginNextReward, _itemName);
             PaceLine = s.RacesToLine.HasValue ? "いまのペースで あと約" + s.RacesToLine.Value + "戦" : null;
             if (s.HasPower)
             {

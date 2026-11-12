@@ -4207,6 +4207,20 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - 次にやること（§45）の `missions_claim` の件数は、初心者の段とシーズンミッションの受け取れる数も含む（開く画面は同じ）。
 - 品質の統合（claude/quality-1）：`season.promotion` はサーバーが同じプレイヤーの状態の §68 から埋める（`status`・`next`・`races`・`needTop`・`tops`・`misses`、昇級戦が無ければ null）。ホームの「次にやること」は、ホームの他の要素が言っていない項目だけを1行で出す（`missions_claim`・`missions_close`・`pass_claim`・`login_bonus`・`race`・`first_race`・`first_win`・`rival_week`・`weekly_challenge`・`team_goal_near`・`horse_goal_near`・`training_slots` は出さない。無ければ行ごと出さない。リンクは「今日は閉じる」の1つまで）。シーズンの段の受け取りの印は、シーズンミッションに加えてパスの無料の報酬（`pass.freeClaimable`）でも付く。端末：`Muchi.Game.NextActionModel.HomeLine`／`HomeLinks`、`GoalLadderModel.PassLine`・`CapCardHorseId`（クラスの上限の行から馬カードへ）。
 - メンテナンスの区分は `core`。データのダウンロード・削除：新しい状態は無い（読むだけ）。
+- **はじめの1週間（品質パス2、REQ-GOAL-013〜015、docs/quality/first-week.md）**：応答に項目を足す（古いクライアントは無視してよい、読むだけ・何も配らない）。
+  ```json
+  "today": { "…": "…", "playerDay": 1,
+             "tomorrow": { "playerDay": 2, "at": 1796756400000, "loginBonus": { "track": "beginner", "day": 2, "days": 7, "reward": { "broodmare": "t_broodmare" } },
+                           "opens": ["breeding", "friends", "friend_rooms"], "trainingSlots": 3 } },
+  "path": { "current": { "…": "…", "screen": "scout", "open": true } },
+  "partner": { "horseId": "h1", "name": "アカツキ", "stage": 0, "stageKey": "debut", "stages": 5, "stageFrom": 0, "nextStageAt": 24, "trainedTotal": 10, "potential": 240,
+               "gainedToday": 10, "gainedYesterday": 0, "trainingOpen": true, "sessionsLeft": 0, "full": false }
+  ```
+  - `today.playerDay`：インストールのゲーム日を 1 とする日数（`unlocks` と同じ）。`today.tomorrow`：`at` は次のゲーム日の始まり（実時刻。カウントダウンにしない）。`loginBonus` は今日の分を受け取った後だけ（`loginBonus.next` と同じ順番）、まだなら `null`。`opens` は明日 `unlocks[].days` に届く、まだ開いていない機能（表の順。レース数で先に開いた物は出さない）。`trainingSlots` は調教が開いている（か明日開く）時の1日の回数、それ以外は `null`。
+  - `path.current.screen`：その段をやる画面（種類ごとにコードで固定：`scout`・`silks`・`care`・`race`・`breeding`・`friends`・`teams`・`time_attack`・`collection`。ショップ・購入・有償スカウトは無い）。`open`：その画面の機能が開いているか。
+  - `partner`：相棒（いなければ・引退していれば・調教が無効なら `null`）の成長。段階は Q1 の `growthStage`（馬カードと同じ）、`stageFrom` はいまの段階が始まった伸びの合計。`gainedToday`／`gainedYesterday` は調教日誌（§25 `log`）の今日／前のゲーム日の伸びの合計。`sessionsLeft` はこの馬が今日あと何回調教できるか（アカウントの残りと馬ごとの上限の小さい方、素質いっぱいなら 0）。**表示だけで報酬は付かない**。
+  - 端末：C# `GoalTomorrow`・`GoalPartner`・`GoalItem.Screen/Open`、Unity `GoalLadderModel.TomorrowLine`（今日のセットが終わったら今日の段の文、数字は出さない）・`TomorrowLines`・`TomorrowAt`・`Partner`（`PartnerGrowthLine`）・`PathScreen`・`PathLockText`。
+  - アカウント引き継ぎの案内（REQ-UXS-073）：3日目の当日はホームを開いた時には出さず、レース結果を閉じた後に出す（4日目以降はホームでも）。1回だけ・FTUE 中なし・§58.11 の1セッション1つは同じ。
 
 ## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
 番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。

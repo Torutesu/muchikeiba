@@ -1698,10 +1698,11 @@ async function Home() {
   // Quality pass (home): a lighter plate with the gold rule, no second caption row; the details live in 厩舎.
   const pc = Glass('Partner', 33, 598, 470, 192, undefined, .62);
   pc.classList.add('partner-plate');
-  Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
   const pg = goals.ok && p ? glPartner(goals.value) : null;
-  // quality pass 2: with the growth rows the name is a step smaller so the plate keeps its size
-  Txt(p ? p.name : '—', 29, pg ? 76 : 82, 420, pg ? 44 : 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
+  // quality pass 2: with the growth rows the plate keeps its size — the gold rule stays, the 「あなたの相棒」 caption gives
+  // way (the stage pips and 調教 +N say whose plate it is), and the name sits right under the rule
+  if (pg) { const r = el('rule gold', 29, 18, 56, 3, pc); r.dataset.name = 'partner-rule'; } else Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
+  Txt(p ? p.name : '—', 29, pg ? 52 : 82, 420, pg ? 48 : 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
   if (p && pg) {
     // quality pass 2 (REQ-GOAL-014): the partner grows where the player looks every day — its stage of five, the training
     // it has had, what today (or yesterday) added, and how far the next stage is. Tapping opens its 馬カード.

@@ -99,7 +99,7 @@ assert.strictEqual(pass.maxLevel, 30);
 assert.ok(pass.purchasable.includes('season_pass') && pass.purchasable.includes('season_pass_plus'));
 // purchase-intent states: unregistered → registered adult → under 18 (guardian) → over the monthly limit
 assert.strictEqual((await L.purchaseIntent('coin_160')).code, 'AGE_REQUIRED');
-const y = new Date().getFullYear();
+const y = new Date(L.now() + 9 * 3_600_000).getUTCFullYear(); // the JST year of the clock the age rules use (not the host's local year)
 assert.ok((await L.setAge(y - 31, 1, false)).ok);
 const ok = await L.purchaseIntent('coin_160');
 assert.ok(ok.ok && ok.value.firstPurchaseBonus && !/倍/.test(ok.value.firstPurchaseBonus.label));

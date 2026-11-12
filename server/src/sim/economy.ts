@@ -154,6 +154,13 @@ export interface EconomyResult {
   teamGoalWeeks: number;
   teamGoalCoins: number;
   teamGoalMaterial: number;
+  /**
+   * REQ-CAREER-* (E20): 騎手の道 races first cleared, stars earned, and what they paid (free coins, breeding material). Upper bound: every open race is cleared with every star as soon as the persona has a horse.
+   */
+  careerClears: number;
+  careerStars: number;
+  careerCoins: number;
+  careerMaterial: number;
   /** Derived. */
   freeCoinsPerActiveDay: number;
   pullsPerMonth: number;
@@ -203,7 +210,8 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     pityExchanges: 0, firstPityDay: null, breedingMaterial: 0, gachaTickets: 0, ticketPulls: 0, firstWinCoins: 0, allowanceCoins: 0, beginnerCoins: 0, beginnerSteps: 0, seasonMissionXp: 0, inviteCoins: 0, inviteTickets: 0, comebackWindows: 0, comebackValue: 0, comebackXp: 0, adViews: 0, adCoins: 0, adTaAttempts: 0, achievementTiers: 0, achievementCoins: 0, trainingSessions: 0, trainedPoints: 0, giftsClaimed: 0, giftsExpired: 0, rivalWeeks: 0, rivalWins: 0, rivalCoins: 0, rankedTotalByClass: {},
     eventRaces: 0, eventPoints: 0, exchangeCoins: 0, exchangeTickets: 0, exchangeHorses: 0, exchangeMaterial: 0, exchangeCosmetics: 0, leftoverMaterial: 0,
     challengeClears: 0, challengeCoins: 0, challengeMaterial: 0, challengeBadges: 0,
-    teamGoalWeeks: 0, teamGoalCoins: 0, teamGoalMaterial: 0, freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
+    teamGoalWeeks: 0, teamGoalCoins: 0, teamGoalMaterial: 0, careerClears: 0, careerStars: 0, careerCoins: 0, careerMaterial: 0,
+    freeCoinsPerActiveDay: 0, pullsPerMonth: 0, ssrPerMonth: 0,
   };
   await svc.bootstrap(id);
   await svc.setAge(id, 1990, 1, false);
@@ -351,6 +359,33 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
       if (res.badge.newlyEarned) r.challengeBadges++;
     }
   };
+  /**
+   * REQ-CAREER-* (E20), the upper bound: on its first active day with an active horse the persona clears every open 騎手の道
+   * race with every star (win, no whips), through the real start → prepare → record path (the verifier's re-simulation is
+   * replaced by that output). Rewards are once ever, so this is the whole career's lifetime grant on one day.
+   */
+  const careerDay = async () => {
+    for (;;) {
+      const v = await svc.careerView(id);
+      if (!v.enabled || v.nextRaceId === null) return;
+      const horse = (await svc.state(id)).horses.find((h) => h.status === 'active');
+      if (!horse) return;
+      const st = await svc.careerStart(id, v.nextRaceId, horse.id, k());
+      const hash = 'c'.repeat(64);
+      const prep = await svc.careerPrepare(id, st.sessionId, [[Number(st.config.ruleset.gateOpenTick), st.playerSlot, 1]], hash, undefined);
+      if (prep.kind !== 'verify') return;
+      const tick = Number(st.config.ruleset.gateOpenTick) + 1800;
+      const order = [st.playerSlot, ...st.config.entrants.map((e) => e.slot).filter((x) => x !== st.playerSlot)];
+      const before = await svc.state(id);
+      const res = await svc.careerRecord(id, st.sessionId, { resultHash: hash, order, finishTicks: order.map((_, i) => tick + i * 3), finishFracs: order.map(() => 0), checksums: {} }, hash);
+      if ('rejected' in res || !res.cleared) throw new Error(`sim career race not cleared: ${JSON.stringify(res)}`);
+      const after = await svc.state(id);
+      if (res.firstClear) r.careerClears++;
+      r.careerStars += res.newStars.length;
+      r.careerCoins += after.wallet.free - before.wallet.free;
+      r.careerMaterial += (after.items['breeding_material'] ?? 0) - (before.items['breeding_material'] ?? 0);
+    }
+  };
   /** REQ-TGOAL-007 (E19): the week-close payout of the persona's team (top milestone reached: the upper bound). */
   const goalCfg = master.progression.teamGoal;
   const goalMin = goalCfg ? Math.min(...goalCfg.goals.filter((g) => g.kind === 'races').map((g) => g.minContribution)) : 0;
@@ -465,6 +500,8 @@ export async function simulate(master: Master, persona: Persona, days = 90, seed
     await rivalDay(); // REQ-RIVAL-006: the home rival card syncs (an ended week settles and pays here)
     // REQ-WCH-* (E18): the week's 3 challenges, all cleared (upper bound; small fixed rewards once a week)
     await challengeDay();
+    // REQ-CAREER-* (E20): the whole 騎手の道 with every star (once ever; after that this is a no-op)
+    await careerDay();
     // REQ-CB-004/005: a returner claims the comeback login day and every comeback mission it can
     const cb = await svc.comeback(id);
     if (cb.window) {
@@ -596,6 +633,8 @@ export async function simulateAll(master: Master, days = 90, seeds = [1, 2, 3], 
       exchangeCosmetics: avg((x) => x.exchangeCosmetics), leftoverMaterial: avg((x) => x.leftoverMaterial),
       challengeClears: avg((x) => x.challengeClears), challengeCoins: avg((x) => x.challengeCoins), challengeMaterial: avg((x) => x.challengeMaterial), challengeBadges: avg((x) => x.challengeBadges),
       teamGoalWeeks: avg((x) => x.teamGoalWeeks), teamGoalCoins: avg((x) => x.teamGoalCoins), teamGoalMaterial: avg((x) => x.teamGoalMaterial),
+      careerClears: avg((x) => x.careerClears), careerStars: avg((x) => x.careerStars), careerCoins: avg((x) => x.careerCoins),
+      careerMaterial: avg((x) => x.careerMaterial),
       rankedTotalByClass: Object.fromEntries(master.progression.classes.map((c) => [c.id, {
         trained: avg((x) => x.rankedTotalByClass[c.id]!.trained), untrained: avg((x) => x.rankedTotalByClass[c.id]!.untrained),
       }])),

@@ -1263,7 +1263,7 @@
 - REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
 - REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
 - REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
-- REQ-CNS-021 R20・R21 統合：お願いの画面は1セッションに1つ、FTUE と §46 の画面の間は出さない。重なる時の順は protocol §58.11 の1つの表（推奨の更新 → 同意の事前の画面 → 復帰の歓迎 → アップデートのお知らせ → 通知の前置き → 引き継ぎの案内 → レビュー）。仕組みは1つ：`Muchi.Client.SessionPrompts`（Unity の各モデルの `Prompts` に同じものを渡す）、プロトタイプ `sessionPrompt`／`PROMPT_PRIORITY`、テスト（C#・GameChecks・プロトタイプ・`r21-integration.test.ts` が表の一致を確かめる）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッション・待っているディープリンク（§63）・アップデートのお知らせの「このセッションで出した」（§64）とこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
+- REQ-CNS-021 R20・R21 統合：お願いの画面は1セッションに1つ、FTUE と §46 の画面の間は出さない。重なる時の順は protocol §58.11 の1つの表（推奨の更新 → 同意の事前の画面 → 復帰の歓迎 → アップデートのお知らせ → 昇級戦の結果（R22）→ 通知の前置き → 引き継ぎの案内 → レビュー → アンケート（R22）。遊ぶ時間のお知らせ §67 は表の外）。仕組みは1つ：`Muchi.Client.SessionPrompts`（Unity の各モデルの `Prompts` に同じものを渡す）、プロトタイプ `sessionPrompt`／`PROMPT_PRIORITY`、テスト（C#・GameChecks・プロトタイプ・`r21-integration.test.ts` が表の一致を確かめる）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッション・待っているディープリンク（§63）・アップデートのお知らせの「このセッションで出した」（§64）とこの規則を最初に戻す（`AccountChangeReset`）。R22 統合：遊ぶ時間の時計と上限の表示（§67）・待っている昇級戦の結果のシートと写し（§68）・騎手の道の地図と開始の鍵（§66）・アンケートの行（§69）も捨てる。protocol §58.10・§58.11。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、TS＋C#、`src/domain/reviewPrompt.ts`・`progression.reviewPrompt`・`Muchi.Client/ReviewPrompt.cs`・`Muchi.Game.ReviewPromptModel`、`contracts/protocol.md` §59、docs/planning/03「レビュー依頼」）
 拘束条件：レビューには何も配らない（Apple 5.6.1・Google Play のポリシー。E 番号なし）。OS の標準のアプリ内レビュー API だけを使い、独自の★の画面を作らない。負け・購入・エラー・返金・メンテナンスのお知らせの直後と FTUE の途中には頼まない。1セッションに1回まで。
@@ -1423,3 +1423,105 @@
 - REQ-CAL-018 クライアント：C# `ApiClient.GetCalendarAsync`・`MarkCalendarAsync`、Unity `CalendarModel`（月・週・日ごとの行・JST の表示・印の切り替えとオフラインの貯め置き・行き先）。
 - REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。
+
+## 66. 騎手の道（single-player career、TS＋C#、`src/domain/career.ts`・`src/race/career.ts`・`server/master/career.json`・`Muchi.Client/Career.cs`・`Muchi.Game.CareerModel`、`contracts/protocol.md` §66、balance-targets 4.20・E20）
+
+- REQ-CAREER-001 目的：マッチングを待たずに遊べる、章立てのひとりモード。FTUE の後で深さ（ムチ・手綱・重い馬場・ナイター・相手の脚質・頭数）を順に教える。
+- REQ-CAREER-002 マスター `server/master/career.json`（章 1〜10、1章 3〜5 戦。コース・馬場・ナイター・頭数・CPU の段・能力・脚質、前後の物語、クリアの目標、追加の目標 0〜2、報酬）。起動時に `careerProblems` で検査し、違えば起動しない。
+- REQ-CAREER-003 `GET /v1/career`：章・レース・物語・目標の1行・報酬・自分の進み（開いた・クリア・星・挑戦回数・最高の着順とタイム・払った報酬）・次のレース・決まり（スキルなし・能力そろえ・ランク戦・ランキング・ミッションに数えない・スタミナなし・有料のコンティニュー／スキップなし・報酬は一度）。
+- REQ-CAREER-004 開始 `POST /v1/career/races/:raceId/start`（`Idempotency-Key` 必須）：サーバーが設定を決める（`mode: challenge`、`raceId` `car_…`、CPU の補充 REQ-RACE-060〜063、固有スキルなし、その日の調子なし）。同じ鍵の再送は同じセッション。
+- REQ-CAREER-005 進み方：1つ前のレースをクリアすると次が開く（章をまたいでも同じ）。一度クリアしたレースは開いたまま。開いていないレースは `409 CAREER_LOCKED`。
+- REQ-CAREER-006 公平性：全出走馬を章の `statCap` にそろえる（ランク戦と同じ正規化）。`statCap` は相棒の能力合計以下（検査）なので、無料の相棒も買った馬も同じ上限で走る。課金で能力・回数・判定は変わらない。
+- REQ-CAREER-007 送信 `POST /v1/career/submit`：入力だけを送り、サーバーが発行した設定で C# 検証サーバーが計算し直す（§31・§8.1 と同じ道）。ハッシュが違えば `422 CAREER_RESULT_MISMATCH`、検証サーバーが届かなければ `503`（同じ走りを送り直せる）。
+- REQ-CAREER-008 目標：星1 = クリア（必ず着順）、星2・星3 = 追加の目標（着順・ムチの回数・タイム）で同じ走りでクリアもしたときだけ。判定は検証の結果と送られた入力から決まる（§31.7 `evaluateChallenge`、C# `ChallengeEvaluator` と同じ）。目標と報酬は開始の時の写し。
+- REQ-CAREER-009 冪等：同じセッション・同じハッシュの再送は保存した結果を返す。報酬はレースごとの印（`clear`・`star2`・`star3`）で一度ずつ（二重送信・再送・別セッションの再クリア・並んだ送信で2回払わない）。削除の実行中は `DELETION_PENDING`、削除済み（墓標）は `404` で状態を作り直さない。
+- REQ-CAREER-010 文言：題・副題・物語は日本語と英語を並べて持つ（長さの上限、英語に日本語なし）。ムチ一閃の語り口。ショップの言葉・急かし・共通の賭けの言葉（`bettingWords.ts`）を使わない（検査）。
+- REQ-CAREER-011 報酬（E20）：初クリアと星ごとに一度だけ。無償コイン・配合素材だけ（有償コイン・券・ランダムなもの・調教のりんごなし、コンプの報酬なし）。1回 ≤ 無償コイン100・¥200、アイテム 2個まで。一生分の上限 無償コイン 300・配合素材 60（コードの上限 `CAREER_HARD_LIMITS`、起動時に検査）。経済シミュレーションで E1〜E19 が範囲内（4.20）。
+- REQ-CAREER-012 数えないもの：レーティング・クラスの点・シーズンpt・ランキング・戦績・殿堂・振り返り・ライバル・共同目標・交換所・デイリーミッション・パスの XP・図鑑・馬の目標・絆・実績（`applyRace` を通らない）。マイリプレイには保存しない。
+- REQ-CAREER-013 KPI（サーバー）：`career_start`・`career_clear`・`career_star`。§58 の分類は `optional`（`kpiConsent.ts`）。
+- REQ-CAREER-014 メンテナンス：`/v1/career*` はグループ `time_attack`（§46.2）。送信は `EXEMPT_ROUTES`（走り終えた走りは確定させる）。
+- REQ-CAREER-015 個人データ：状態のキー `career` は §51 の `play`。開示に進み・星・払った印・最近の走りの結果を出す。アカウント削除で消える。マイグレーションなし。
+- REQ-CAREER-016 ヘルプ・ヒント：ヘルプの記事 `career_mode`（画面・文脈 `career`）、ヒントのカード `career_stars`。アクティビティ（§40）には入れない（その場で結果を見るため）。割り込むシート・カードは出さない（§58.11）。
+- REQ-CAREER-017 クライアント SDK：`ApiClient.GetCareerAsync`・`StartCareerRaceAsync`・`SubmitCareerRaceAsync`、モデル（`CareerView` など）、`CareerRun`（星ごとの端末の判定）、`CareerRun.IsCareer`、エラーコード5つ。
+- REQ-CAREER-018 Unity ゲーム層 `CareerModel`：地図・詳細・開始（鍵の再送）・HUD の目標・送信（一時的な失敗は送り直し）・結果（星・新しい星・報酬・開いたレース・物語の後半）。描画は `docs/handoff-codex-round22-career.md`。
+- REQ-CAREER-019 端末の判定と同じ：出荷の全レースの設定で、端末（`CareerRun`）の判定と検証サーバーの出力からの判定が一致し、ハッシュも一致する（`engine/Muchi.Engine.Tests/CareerTests.cs`、設定は `contracts/career-configs.sample.json`）。章1のクリアは素直な乗り方で届く。
+- REQ-CAREER-020 入口：レースの画面（ロビー）の「騎手の道」（FTUE の後）。その他の一覧には足さない。ホームの案内（§45）にしない。
+- REQ-CAREER-021 プロトタイプ：地図（章を写真の縦の道で）・レースの詳細（物語・目標・報酬）・出走前・レース（HUD の目標）・結果（星）。ムチ一閃の見た目、日本語・英語、最大の文字ではみ出さない。e2e・en-flow・a11y-flow。
+- REQ-CAREER-022 アクセシビリティ（§41）：星は形と文字（「星 2/3」）でも示し、色だけに頼らない。文字の大きさに従う。動きを減らす設定では星の演出を止める。
+- REQ-CAREER-023 オフライン：地図は最後に取れた写しを出せるが、開始・送信はオンラインだけ（「騎手の道はオンラインで遊べます。練習レースはオフラインでも遊べます」）。
+- REQ-CAREER-024 停止：`config.enabled: false` で `GET` は `{ enabled: false }`、開始・送信は `404`。
+
+## 67. 使いすぎ・遊びすぎの防止（自分で決める上限、TS＋C#、`src/domain/selfLimits.ts`・`Muchi.Client/SelfLimits.cs`・`Muchi.Game.SelfLimitsModel`、`contracts/protocol.md` §67、docs/planning/03「自分で決める上限」）
+
+- REQ-LIMIT-001 自分で決める月の購入上限：設定の選択肢（`spendingChoicesYen`）・自分で入力（`customStepYen` 刻み、`customMinYen`〜`customMaxYen`）・上限なし。年齢帯の上限（REQ-PUR-002）より高い額は決められない（400）。年齢未登録でも決められる。
+- REQ-LIMIT-002 下げる（上限なし→額を含む）はすぐ効き、待っている引き上げを取り消す。上げる・外すは `coolOffHours`（既定72時間）の後に効き、その間はいつでも取り消せる。待っている間の別の引き上げは時計を最初から。同じ額をもう一度送っても何も変わらない（冪等）。
+- REQ-LIMIT-003 効いている上限 = min(年齢帯の上限, 自分の上限)。期間の過ぎた引き上げは読む時・買う時に効き、次の書き込みで履歴に `raise_applied` を残す。
+- REQ-LIMIT-004 月の境目は年齢帯の上限と同じ JST の暦月（`jstMonthKey`）、数えるのは同じ `monthlySpendYen`。
+- REQ-LIMIT-005 購入の確認（`checkPurchaseIntent`）が今月の支払い＋価格 > 自分の上限で `409 SELF_LIMIT_EXCEEDED`（`details`：`selfLimitYen`・`monthSpentYen`・`priceYen`・`month`・`settings: "self_limits"`）。自分の上限が年齢帯の上限と同じなら `AGE_LIMIT_EXCEEDED`。確認の応答に `selfLimitYen`・`effectiveLimitYen`・`selfLimitPending`。
+- REQ-LIMIT-006 同じ判定（`productBlock`）を使う全部の経路で守る：コイン不足の案内（§29）は自分の上限を超えるパックを勧めない（買えるものが無ければ `blockedCode: "SELF_LIMIT_EXCEEDED"`）、1回限りの案内（§13.3）は `showPopup: false`・`selfLimitBlocked: true`。
+- REQ-LIMIT-007 ストアから届いた購入は上限を超えていても付与して今月の支払いに数え、記録に `selfLimitBreach: true`（資金決済法：支払い済みの購入を失わない）。その月の以降の確認は断る。
+- REQ-LIMIT-008 履歴（§33 `GET /v1/history/summary`）に `selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`。年齢帯の `limitText` の横に並べる。
+- REQ-LIMIT-009 遊ぶ時間のお知らせ：既定オフ。1回の時間・1日の合計・「◯時を過ぎたら」（端末の時刻）をそれぞれ選択肢から、または使わない。設定はサーバーに保存し端末どうしで同じ。
+- REQ-LIMIT-010 時間は端末で測る（前面の時間だけ、背面30分以上で新しいセッション、1日は端末の時刻の4:00で切り替え）。時間はサーバーに送らない。
+- REQ-LIMIT-011 出すのはレースの結果の後とホームだけ。レース中・マッチング中・購入の途中・チュートリアルでは出さず、次の区切りまで持ち越す。同じ区切りの複数の理由は1枚のシートに。セッションの区切りごと・1日1回ずつ。純粋な関数 `decidePlaytimeReminder`（TS）＝ `PlaytimeReminderPolicy.Decide`（C#）、共有ベクター `contracts/self-limits.vectors.json`。
+- REQ-LIMIT-012 シートは本人が頼んだお知らせなので §58.11 の「1セッションに1つ」の枠を使わない・取られない（同じ区切りではこのシートが先）。§61 の通知ではない（アプリ内だけ）。ボタンは同じ大きさの「続ける」「今日はここまで」、何ももらえない・何も失わない。
+- REQ-LIMIT-013 API：`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`（本文は厳密、内容で冪等）。ブートストラップ・`GET /v1/player` に `selfLimits` の写し。
+- REQ-LIMIT-014 §46：4つとも `EXEMPT_ROUTES`（下げることは購入ができる間いつでもできる。上げるのは冷却期間の後。コインを動かさない）。
+- REQ-LIMIT-015 状態 `selfLimits`（PlayerState のトップレベル）。§51 の分類は `settings`、開示の `settings.selfLimits`。削除の `wipe` で消える。
+- REQ-LIMIT-016 KPI：`self_limit_set`（essential：本人が決めた支払いの上限の記録）・`self_limit_block`・`playtime_setting_change`・`playtime_reminder_shown`（optional、クライアント）。
+- REQ-LIMIT-017 運用コンソールは見るだけ（`viewer`）：今の上限・効いている上限・待っている変更・遊ぶ時間・履歴、購入の `selfLimitBreach` の印。上げる・外す・早める管理 API は作らない（テスト）。
+- REQ-LIMIT-018 入口：購入履歴の画面（その他 › 設定・サポート の左の面）・購入の確認のシート「上限を設定」・断られた時と不足の案内のリンク・シートの「お知らせの設定」。その他のページに行を足さない。ヘルプの記事 `self_limits`（冷却期間はトークン）とヒント `self_limits`。
+- REQ-LIMIT-019 設定 `progression.selfLimits`（`selfLimitsProblems`、起動時と各版で検証）。停止スイッチは無い（無ければ既定値）。
+- REQ-LIMIT-020 クライアント SDK：`SelfLimitsView`・`SelfLimitsDigest`・`PlaytimeReminderPolicy`・`PlaytimeClock`・`ApiClient` の4つの呼び出し・`ApiErrorCode.SelfLimitExceeded`・`AnalyticsEvent.PlaytimeReminderShown`。
+- REQ-LIMIT-021 Unity のゲーム層 `SelfLimitsModel`（設定の行・断られた時の文とリンク・シートの判断・KPI）。描画は `docs/handoff-codex-round22-self-limits.md`。
+- REQ-LIMIT-022 法務・文言：急かす言い回し・「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉を使わない（テスト）。上限の変更・お知らせの答えに報酬・罰は無い。プロトタイプ（設定・断られた状態・シート、日本語・英語、文字の大きさ §41、e2e・en-flow・a11y-flow）。
+
+## 68. 昇級戦と降級の猶予（ranked promotion series & demotion protection、TS＋C#、`src/domain/promotion.ts`・`progression.promotion`・`Muchi.Client/Promotion.cs`・`Muchi.Game.PromotionModel`、`contracts/protocol.md` §68）
+拘束条件：クラスが変わるのはシーズンの締めだけ（REQ-RATE-002 が上位）。何も配らない（E 番号なし）。買える物は判定・盾・猶予に関係しない（REQ-RATE-003）。Glicko-2 のレート更新とマッチングは変えない。
+- REQ-PROMO-001 規則 `progression.promotion`：`enabled`・`races`（1〜5）・`needTop`（1〜races）・`topPlace`（1〜着順ポイント表の長さ）・`setbackPoints`（1〜、全クラスで戻した後も降級の線以上）・`graceRaces`（0〜100）。知らないキー（報酬の項目を含む）は落ちる。起動時と各リモート設定の版で検証。
+- REQ-PROMO-002 止めるスイッチ：`enabled: false`（または区分なし）は前の動き（ラインに届けば締めで昇級、盾なし）。昇級戦を始めず・進めない。
+- REQ-PROMO-003 数えるレース：確定したランク戦（`void` でない）、`suspect` でない、隔離・停止中でない、同じレース ID は1回。削除中・削除済みには結果が届かない。
+- REQ-PROMO-004 開始：昇級戦が無く、次のクラスがあり、ポイント ≥ `promotePoints`、このシーズン・クラスで突破済みでない時、数えるレースの後に始まる（始めたレースは入らない）。始まった時の規則を持ち続ける。
+- REQ-PROMO-005 進行：`top` = 着順 ≤ `topPlace` かつ CPU の引き継ぎなし。切断は `miss`。昇級戦を始めたレースより前に始まったレースは入らない（遅れて届いても）。
+- REQ-PROMO-006 突破：`top` ≥ `needTop`。その月の昇級が確定（締めで昇級）。そのシーズン・クラスで二度と始まらない。
+- REQ-PROMO-007 届かず：`miss` > `races − needTop`。ポイントを `min(今, promotePoints − setbackPoints)` に戻す。もう一度ラインに届けば次の回が始まる。
+- REQ-PROMO-008 締め：判定の式は変えない。進行中の昇級戦はその時のポイントで解決（`season_end`）し、持ち越さない。
+- REQ-PROMO-009 記録：閉じたシーズンの記録に `promo`（`series`／`series_open`）と `shielded`。
+- REQ-PROMO-010 猶予：締めで昇級したら新しいクラスで `graceRaces` レースの猶予。数えるレースで減る。
+- REQ-PROMO-011 盾：猶予中に締めで降級になるはずならクラスに残る。1シーズン・1クラスに1回、1回の昇級に1回。シーズン報酬は変えない。
+- REQ-PROMO-012 戻した分：シーズンのミッションの `points`・`promotion_line` はこのシーズンに稼いだポイント（戻した分を足す）で数える。
+- REQ-PROMO-013 `GET /v1/promotion`：規則・今の昇級戦（印 `pips`・次の戦 `next`）・猶予・盾。止めた間は null。
+- REQ-PROMO-014 `POST /v1/promotion/ack`：結果のシートを見た印、冪等。メンテナンスの区分は2つとも `core`。
+- REQ-PROMO-015 KPI：`promo_series_start`・`promo_series_end`（pass／fail／season_end）・`demotion_shield_used`。§58 の分類は `optional`。
+- REQ-PROMO-016 状態 `promotion`：§51 の分類は `play`。削除の `wipe` で消える。
+- REQ-PROMO-017 端末：ホームの「昇級戦 2/3」、結果画面の印・始まりの帯・突破／届かずのシート（1セッション1つの案内 §58.11 を通す）。プッシュ・ローカル通知は足さない。
+- REQ-PROMO-018 振り返り（§43）に昇級戦の突破、アクティビティ（§40）に `class_promoted`。ヘルプの記事 `promotion_series` とヒント `promotion_series_tip`。
+- REQ-PROMO-019 クライアント SDK：`PromotionView`・`PromotionPips`・`ApiClient.GetPromotion`／`AckPromotion`。Unity のゲーム層 `PromotionModel`。描画は `docs/handoff-codex-round22-promotion.md`。
+- REQ-PROMO-020 プロトタイプ：始まりの帯・結果画面の印・突破／届かずのシート・ホームの表示（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
+
+## 69. ゲーム内アンケート（ops-run in-app surveys、TS＋C#、`src/domain/surveys.ts`・`src/ops/surveys.ts`（OpsDO）・`Muchi.Client/Surveys.cs`・`Muchi.Game.SurveyModel`、`contracts/protocol.md` §69）
+拘束条件：答えても何も配らない（偏り・景表法の懸賞を避ける。E 番号なし）。スキップは1タップで、そのアンケートは二度と聞かない。FTUE の間は出さない。**目立つ場所に出さず割り込まない**（R22 統合での変更：入口はお知らせの中の静かな1行だけ。§58.11 の表に入らない）。新しい Durable Object・wrangler の移行は無い（OpsDO の表を足す）。
+- REQ-SURVEY-001 定義：id・題・前置き・1〜5 問（`single`・`multi`・`scale` 1〜5・`text` 200 字までの任意の文）・日本語と英語の両方・`targeting`（ランク戦の数・インストールからの日数・プラットフォーム・アプリの版の範囲・クラス・安定したハッシュでの抽出率）。知らないキーは問題。
+- REQ-SURVEY-002 文言の検査：共通の賭けの言葉・煽りの言葉・NG の名前に当たる文言、報酬を思わせるキーは問題（`surveyDefProblems`）。運営の作成・編集・検査の API で同じ検査。
+- REQ-SURVEY-003 公開：`draft` → `publish { startAt, endAt }`（90 日まで、`maxLive` 本まで）→ `scheduled`／`live`／`ended`、`close`。公開後は定義を変えない。保存は OpsDO の表（移行なし）。プレイヤーの経路は 30 秒キャッシュ。
+- REQ-SURVEY-004 設定 `progression.surveys`（`enabled`・`coolDownHours`・`maxShowsPerSurvey`・`maxLive`・`textMax`）。起動時と各リモート設定の版で検査。報酬のキー・知らないキーは問題。
+- REQ-SURVEY-005 出す判断（`GET /v1/surveys/current`）：§69.4 の順（disabled → account_closing → ftue → 続きの1本 → cool_down → 最初に当たる1本 → none）。読むだけ。同時に1本だけ。
+- REQ-SURVEY-006 出す場所（R22 統合で変更）：お知らせ（ホームのベル）の画面の中の「アンケートにご協力ください ›」の1行だけ（`placement=inbox`。`home`・`result` は 400）。まだ開いていなければその画面で行の横に小さな点（`unread`）。ホームのカード・レース結果の後のシート・バッジ・ベルの数・プッシュは無い。§58.11 の表に入らない（割り込まない・枠を使わない）。FTUE の間は端末もサーバーも出さない。
+- REQ-SURVEY-007 `shown`：回数と `current`。`maxShowsPerSurvey` 回出して答えがなければもう出さない。
+- REQ-SURVEY-008 `skip`：1タップ。二度と出さない。間隔が始まる。何度送っても同じ。
+- REQ-SURVEY-009 `answers`：冪等キー必須。厳しい検査（知らない問い・型・選択肢・必須・長さ → 400）。1人1回（違うキーの2回目は 409）。終わったアンケートは 409 `SURVEY_CLOSED`、未公開・知らない id は 404。削除済みは 404、削除の予約中・対象外は 409 `NOT_ELIGIBLE`。
+- REQ-SURVEY-010 報酬なし：答え・スキップ・出したのどれでもウォレット・アイテム・ミッション・称号・XP が変わらない（テスト。§59 と同じ形）。
+- REQ-SURVEY-011 書く順と再送：PlayerDO → OpsDO（`(surveyId, playerId)` で1回）→ 送った印。届かなかった答えは次の `current` で再送。
+- REQ-SURVEY-012 自由な文：サーバーで §60.3 の規則（メール・トークン・URL・長い id・長い数字、電話番号。R22 統合で §63 の共有リンクのトークンも）でスクラブし、長さで切る。日本語の文はそのまま。
+- REQ-SURVEY-013 分析の選択（§58）：オフでも答えられる。オフなら区分（segment）を付けない。KPI は optional。
+- REQ-SURVEY-014 開示・削除：状態のキー `surveys`（分類 `analytics`）、開示の `analytics.surveys`。削除の段 `surveys`：OpsDO の行を匿名化し、自由な文を消す。
+- REQ-SURVEY-015 運営の一覧・詳細・検査とプレビュー（viewer）。
+- REQ-SURVEY-016 下書きの作成・編集（operator、`rev` で競合を防ぐ）、公開・早く閉じる（admin）。監査ログ。
+- REQ-SURVEY-017 結果（viewer）：合計、区分のある数、プラットフォーム別、問いごとの数と割合、1〜5 の平均、自由な文の一覧（プレイヤー id なし）。CSV（id なし、隠した文は `(hidden)`、式の注入を防ぐ）。
+- REQ-SURVEY-018 モデレーション：自由な文を隠す・戻す（operator）。隠した文は結果と CSV に出ない。
+- REQ-SURVEY-019 KPI：`survey_shown`・`survey_skip`・`survey_answer`（optional、`kpiConsent.ts`）。答えの中身は入れない。
+- REQ-SURVEY-020 メンテナンス：`/v1/surveys*` は `core`。
+- REQ-SURVEY-021 クライアント SDK：`SurveyAnswerBuilder`・`SurveyRules`・`ApiClient` の4メソッド（冪等キーは答えの組ごとに1回）。
+- REQ-SURVEY-022 Unity のゲーム層 `SurveyModel`（お知らせの行と未読の点・シート・問い・ありがとう・あとで・スキップ・FTUE・オフライン・`SURVEY_CLOSED`）。描画は docs/handoff-codex-round22-surveys.md。プロトタイプ（お知らせの行・シート 4 種類・ありがとう、日本語・英語、文字の大きさ、e2e・en-flow・a11y-flow）と運営の画面（console e2e）。
+- REQ-SURVEY-023 ヘルプ：記事 `surveys`「アンケートについて」。
+- REQ-SURVEY-024 法務：景品・抽選を付けない（経路が無い）。煽り・賭けの言葉なし。

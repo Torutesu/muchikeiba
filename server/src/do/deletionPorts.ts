@@ -86,6 +86,8 @@ export function deletionPortsFromEnv(env: Env, ctx: DurableObjectState, svc: Pla
     ...(env.INTEGRITY ? { reports: { forget: async (uid: string) => { await call(stub(env.INTEGRITY!, 'global').prForget!(uid)); } } } : {}),
     // REQ-HELP-018: the inquiry index rows in the OpsDO singleton (the ticket text lives in the wiped state)
     ...(env.OPS ? { inquiries: { forget: async (uid: string) => { await call(stub(env.OPS!, 'global').inqForget!(uid)); } } } : {}),
+    // REQ-SURVEY-014: survey answer rows in the OpsDO singleton (anonymised; free texts removed)
+    ...(env.OPS ? { surveys: { forget: async (uid: string) => { await call(stub(env.OPS!, 'global').svForget!(uid)); } } } : {}),
     // REQ-CERR-018: client error samples in the ClientErrorsDO singleton (player id → null)
     ...(env.CLIENT_ERRORS ? { clientErrors: { forget: async (uid: string) => { await call(stub(env.CLIENT_ERRORS!, 'global').ceForget!(uid)); } } } : {}),
     dataExports: { deleteAll: async (keys) => { for (let i = 0; i < keys.length; i += 1000) await env.REPLAYS.delete(keys.slice(i, i + 1000)); } }, // REQ-DEX-013

@@ -14,9 +14,11 @@
  *
  * Pure functions on master + state; the PlayerService runs the state changes inside its transaction.
  */
+import { selfLimitsConfig } from './selfLimits.js';
 import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
 import { CALENDAR_LIMITS } from './calendar.js';
 import helpJson from '../../master/help.json';
+import { promotionRulesOf } from './promotion.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
@@ -56,6 +58,10 @@ export const HELP_SCREENS = [
   'showcase',
   // Round 21 (§65): the 予定表 (event calendar)
   'calendar',
+  // Round 22: 使いすぎ・遊びすぎの防止 (the own spending limit and the play-time reminder, §67)
+  'self_limits',
+  // Round 22 (§66): 騎手の道, the career map
+  'career',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -70,7 +76,11 @@ export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_
   // Round 21 (§62): the トレーナーカード editor
   'showcase',
   // Round 21 (§65): the 予定表 (event calendar)
-  'calendar'] as const;
+  'calendar',
+  // Round 22 (§67): the self-limits screen, the refused purchase and the play-time sheet
+  'self_limits',
+  // Round 22 (§66): the 騎手の道 map's ? link
+  'career'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -109,6 +119,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   home: { ja: 'ホームを開く', en: 'Open the home screen' },
   settings: { ja: '設定を開く', en: 'Open the settings' },
   notifications: { ja: '通知の設定を開く', en: 'Open the notification settings' },
+  self_limits: { ja: '上限の設定を開く', en: 'Open the limit settings' },
   race_lobby: { ja: 'レースを開く', en: 'Open races' },
   tutorial: { ja: 'チュートリアルを開く', en: 'Open the tutorial' },
   training: { ja: '調教を開く', en: 'Open training' },
@@ -135,6 +146,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
   showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
   calendar: { ja: '予定表を開く', en: 'Open the calendar' },
+  career: { ja: '騎手の道を開く', en: "Open Jockey's Road" },
 };
 /** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
 export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }
@@ -211,6 +223,14 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'calendar_days': return String(CALENDAR_LIMITS.maxRangeDays);
     case 'calendar_marks': return String(CALENDAR_LIMITS.marksMax);
     case 'day_rollover_hour': return String(dayRule(m).hourJst);
+    // Round 22: §67 the cool-off before a raised / removed own spending limit applies (remote config)
+    case 'self_limit_cooloff_hours': return String(selfLimitsConfig(m).coolOffHours);
+    // Round 22: §68 the promotion series rules (remote config; the article reads them, never a number in its text)
+    case 'promo_races': return String(promotionRulesOf(m).races);
+    case 'promo_need': return String(promotionRulesOf(m).needTop);
+    case 'promo_place': return String(promotionRulesOf(m).topPlace);
+    case 'promo_setback': return fmtInt(promotionRulesOf(m).setbackPoints);
+    case 'promo_grace': return String(promotionRulesOf(m).graceRaces);
     default: throw new Error(`unknown token ${name}`);
   }
 }

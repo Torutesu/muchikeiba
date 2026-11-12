@@ -145,6 +145,18 @@ namespace Muchi.Client
         SessionReplaced,
         /// <summary>REQ-LINK-003: 429 — too many links made today (the same target again is not counted).</summary>
         LinkLimit,
+        /// <summary>REQ-LIMIT-005: 409 — over the player's own monthly limit; see <see cref="SelfLimitExceededException"/> (open the setting).</summary>
+        SelfLimitExceeded,
+        /// <summary>REQ-CAREER-005: 409 — the race before this one is not cleared yet.</summary>
+        CareerLocked,
+        /// <summary>REQ-CAREER-004: 429 — the hidden anti-abuse ceiling of career starts for the game day.</summary>
+        CareerLimitReached,
+        CareerSessionExpired,
+        CareerSessionUsed,
+        /// <summary>REQ-CAREER-007: 422 — the server's re-simulation differs from the device's run.</summary>
+        CareerResultMismatch,
+        /// <summary>REQ-SURVEY-009 (§69): 409 — the survey has ended; close the sheet quietly (a neutral message, no retry).</summary>
+        SurveyClosed,
     }
 
     public static class ApiErrorCodes
@@ -267,6 +279,13 @@ namespace Muchi.Client
             ["TRANSFER_ISSUE_LIMIT"] = ApiErrorCode.TransferIssueLimit,
             ["SESSION_REPLACED"] = ApiErrorCode.SessionReplaced,
             ["LINK_LIMIT"] = ApiErrorCode.LinkLimit,
+            ["SELF_LIMIT_EXCEEDED"] = ApiErrorCode.SelfLimitExceeded,
+            ["CAREER_LOCKED"] = ApiErrorCode.CareerLocked,
+            ["CAREER_LIMIT_REACHED"] = ApiErrorCode.CareerLimitReached,
+            ["CAREER_SESSION_EXPIRED"] = ApiErrorCode.CareerSessionExpired,
+            ["CAREER_SESSION_USED"] = ApiErrorCode.CareerSessionUsed,
+            ["CAREER_RESULT_MISMATCH"] = ApiErrorCode.CareerResultMismatch,
+            ["SURVEY_CLOSED"] = ApiErrorCode.SurveyClosed,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;
@@ -306,6 +325,8 @@ namespace Muchi.Client
                 case ApiErrorCode.UnsettledDebt:
                 case ApiErrorCode.DeletionPending:
                     return new PurchaseBlockedException(code, wire, message, status);
+                case ApiErrorCode.SelfLimitExceeded:
+                    return new SelfLimitExceededException(wire, message, status, details);
                 case ApiErrorCode.InsufficientCoins:
                     return new InsufficientCoinsException(wire, message, status, CoinShortfall.Parse(J.Opt(details, "shortfall")));
                 case ApiErrorCode.RateLimited:
@@ -373,7 +394,7 @@ namespace Muchi.Client
     }
 
     /// <summary>The purchase must not start: age not registered, consent missing, monthly limit, once-only product, unsettled refund.</summary>
-    public sealed class PurchaseBlockedException : ApiException
+    public class PurchaseBlockedException : ApiException
     {
         public PurchaseBlockedException(ApiErrorCode c, string wire, string message, int status) : base(c, wire, message, status) { }
     }

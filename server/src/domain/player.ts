@@ -66,6 +66,8 @@ export interface PurchaseRecord {
   passSeasonId?: string;
   /** REQ-UXS-018/021: free coins granted later because of this purchase (daily pack, pass rewards); held from stud fees like the bonus. */
   linkedFree?: number;
+  /** REQ-LIMIT-007 (§67.2): a store purchase that arrived over the player's own monthly limit (granted and counted anyway). */
+  selfLimitBreach?: true;
 }
 
 /** REQ-STAT-001: per-player race statistics (ranked + friend races; tutorial excluded). */
@@ -82,7 +84,13 @@ export interface PlayerStats {
 }
 
 /** Closed season record kept for rewards (REQ-SEASON-002). */
-export interface SeasonRecord { seasonId: string; classId: string; points: number; races: number; nextClassId: string; rank: number | null; rewarded: boolean }
+export interface SeasonRecord {
+  seasonId: string; classId: string; points: number; races: number; nextClassId: string; rank: number | null; rewarded: boolean;
+  /** REQ-PROMO-009: the promotion followed a passed series (`series`) or a series still running at the close (`series_open`). */
+  promo?: 'series' | 'series_open';
+  /** REQ-PROMO-011: the demotion shield kept the class at this close. */
+  shielded?: boolean;
+}
 
 export interface FriendsState {
   ids: string[];
@@ -222,6 +230,8 @@ export interface PlayerState {
   activity?: import('./activity.js').ActivityState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
+  /** REQ-CAREER-*: 騎手の道 — per-race progress (stars, first clear, rewards paid once), recent sessions, the anti-abuse day count (career.ts careerState). */
+  career?: import('./career.js').CareerState;
   /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */
   hall?: import('./hallOfFame.js').HallState;
   /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */
@@ -238,6 +248,8 @@ export interface PlayerState {
   horseGoals?: import('./horseGoals.js').HorseGoalsState;
   /** REQ-REV-*: レビュー依頼 — when the store review was asked, the pre-question answer, the last session (reviewPrompt.ts). Nothing is ever granted. */
   reviewPrompt?: import('./reviewPrompt.js').ReviewPromptState;
+  /** REQ-PROMO-*: 昇級戦と降級の猶予 — the running / last series, passed keys, setback this season, grace window, shields (promotion.ts). */
+  promotion?: import('./promotion.js').PromotionState;
   /** REQ-DEX-*: 個人データの開示・ダウンロード — the current request, cooldown start, audit log, R2 keys still to delete (dataExport.ts). */
   dataExport?: import('./dataExport.js').DataExportState;
   /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */
@@ -252,6 +264,10 @@ export interface PlayerState {
   transfer?: import('./transferCode.js').TransferState;
   /** REQ-CNS-*: 広告・分析の同意 — personalised ads / analytics choices, policy version, ATT / CMP status, history (privacyChoices.ts). */
   privacyChoices?: import('./privacyChoices.js').PrivacyChoicesState;
+  /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 — the player's own monthly spending limit (and a pending raise), play-time reminder settings, history (selfLimits.ts). */
+  selfLimits?: import('./selfLimits.js').SelfLimitsState;
+  /** REQ-SURVEY-* (§69): surveys shown / answered / skipped and the player's own answers (surveys.ts). Nothing is ever granted. */
+  surveys?: import('./surveys.js').SurveysState;
 }
 
 export interface StudListing { horseId: string; visibility: 'friends' | 'public'; fee: number; dailyLimit: number; listedAt: number }

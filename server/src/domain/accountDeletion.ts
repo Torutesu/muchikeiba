@@ -86,7 +86,7 @@ export interface RetainedRecord {
   };
 }
 
-export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'rival', 'replays', 'cups', 'reports', 'inquiries', 'client_errors', 'data_export', 'finalize', 'retain', 'wipe'] as const;
+export const DELETION_STEPS = ['friends', 'invites', 'team', 'stud', 'stable', 'leaderboards', 'events', 'tournaments', 'rival', 'replays', 'cups', 'reports', 'inquiries', 'client_errors', 'surveys', 'data_export', 'finalize', 'retain', 'wipe'] as const;
 export type DeletionStep = typeof DELETION_STEPS[number];
 export const DELETED_PLAYER_NAME = '退会したプレイヤー';
 const RETRY_MS = [60_000, 600_000, 3_600_000, 6 * 3_600_000];
@@ -347,6 +347,8 @@ export interface DeletionPorts {
   inquiries?: { forget(uid: string): Promise<unknown> };
   /** REQ-CERR-018 (§60.9): client error samples lose the player id (anonymised), the hourly rate row goes. */
   clientErrors?: { forget(uid: string): Promise<unknown> };
+  /** REQ-SURVEY-014 (§69.6): survey answer rows lose the player id, the segment and the free texts (OpsDO). */
+  surveys?: { forget(uid: string): Promise<unknown> };
   /** REQ-DEX-013: the data export files in R2 (`private/data-export/<playerId>/…`). */
   dataExports?: { deleteAll(keys: string[]): Promise<void> };
   finalize(uid: string): Promise<RetainedRecord>;
@@ -420,6 +422,7 @@ export async function runAccountDeletion(p: DeletionPorts, uid: string, now: num
   await step('reports', async () => { await p.reports?.forget(uid); }); // REQ-RPT-016
   await step('inquiries', async () => { await p.inquiries?.forget(uid); }); // REQ-HELP-018
   await step('client_errors', async () => { await p.clientErrors?.forget(uid); }); // REQ-CERR-018
+  await step('surveys', async () => { await p.surveys?.forget(uid); }); // REQ-SURVEY-014
   await step('data_export', async () => { if (snap.dataExportKeys?.length) await p.dataExports?.deleteAll(snap.dataExportKeys); }); // REQ-DEX-013
   await step('finalize', () => p.finalize(uid));
   // finalize again right before storing: a purchase granted since then is given up and included (same anonId)

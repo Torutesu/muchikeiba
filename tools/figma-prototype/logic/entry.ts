@@ -3,6 +3,8 @@
 // wallet paid/free ordering, purchase-intent age checks, season pass), odds disclosure from the same tables.
 // State lives in localStorage (one player, "local"). No server, no billing.
 import { COMMENTARY_PACKS } from '../../../server/src/domain/commentaryPacks.js';
+import { normalizeSurveyDef, surveysConfig, surveyView, validateSurveyAnswers, type SurveyDef, type SurveyLang, type SurveyPlacement } from '../../../server/src/domain/surveys.js';
+import { MemorySurveyRepo, SurveysCore } from '../../../server/src/ops/surveys.js';
 import { loadMaster } from '../../../server/src/domain/master.js';
 import { PlayerService, type PlayerRepo, type ShortfallQuery } from '../../../server/src/domain/service.js';
 import { clientBatchSchema, clientToKpi, type ClientBatch } from '../../../server/src/domain/kpi.js';
@@ -84,12 +86,14 @@ import { compileCatalogWith, translateText, romanizeName } from '../../../server
 import { CODE_EN } from '../../../server/src/i18n/en.js';
 import uiEn from '../../../engine/Muchi.Client/Resources/Muchi/ui-en.json';
 import protoEn from './proto-en.json';
+import { decidePlaytimeReminder, type PlaytimeSnapshot } from '../../../server/src/domain/selfLimits.js';
 import { diffLocalNotifications, localNotifyRows, planLocalNotifications, type LocalNotifySnapshot, type LocalRemindersView } from '../../../server/src/domain/localNotify.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
 
 const KEY = 'muchi.proto.player';
 const ID = 'local';
+let promoRace = 0; // round 22: demo race ids (§68)
 
 class LocalRepo implements PlayerRepo {
   get(id: string): PlayerState | null {
@@ -120,6 +124,25 @@ const repo = new LocalRepo();
 const serverKpi: { name: string; s1?: string; s2?: string; s3?: string }[] = [];
 // round 20 (REQ-REV-005): each review check carries its own idempotency key (two checks in one millisecond must not share one)
 let revKeySeq = 0;
+// round 22 (§69): the ops survey store in memory (OpsDO tables on the server) and the one demo survey ops would publish
+let surveyRepo = new MemorySurveyRepo();
+let surveyCore = new SurveysCore(surveyRepo);
+const SURVEY_FACTS = { platform: 'ios', appVersion: '1.4.0' };
+const DEMO_SURVEY: SurveyDef = {
+  id: 'sv_whip_feel', title: { ja: 'ムチの手ごたえについて', en: 'How the whip feels' },
+  intro: { ja: '4つの短い質問です。答えなくてもかまいません。', en: 'Four short questions. You do not have to answer.' },
+  targeting: { minRankedRaces: 1 },
+  questions: [
+    { id: 'feel', kind: 'scale', required: true, text: { ja: 'ムチを入れた時の手ごたえはどうですか？', en: 'How does it feel when you use the whip?' },
+      labels: { low: { ja: '物足りない', en: 'Too little' }, high: { ja: 'ちょうどいい', en: 'Just right' } } },
+    { id: 'mode', kind: 'single', required: true, text: { ja: 'いちばんよく遊ぶのは？', en: 'What do you play most?' },
+      options: [{ id: 'ranked', text: { ja: 'ランク戦', en: 'Ranked races' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }, { id: 'training', text: { ja: '調教・配合', en: 'Training and breeding' } }, { id: 'friends', text: { ja: 'フレンドとのレース', en: 'Races with friends' } }] },
+    { id: 'wish', kind: 'multi', required: false, maxChoices: 2, text: { ja: 'これから増えてほしいものは？', en: 'What would you like more of?' },
+      options: [{ id: 'tracks', text: { ja: 'コース', en: 'Tracks' } }, { id: 'silks', text: { ja: '勝負服のデザイン', en: 'Silks designs' } }, { id: 'events', text: { ja: 'イベント', en: 'Events' } }, { id: 'stable', text: { ja: '厩舎の飾り', en: 'Stable decorations' } }] },
+    { id: 'free', kind: 'text', required: false, maxLength: 200, text: { ja: 'ほかに、ひとことあればどうぞ', en: 'Anything else you would like to tell us?' } },
+  ],
+};
+let surveyKeySeq = 0;
 const svc = new PlayerService(repo, {
   master, rng: cryptoRng, clock: now, verifiers: { fake: store },
   onTeamPoints: async (p) => { await teams.reportPoints(p.teamId, p.playerId, p.seasonId, p.points, p.displayName).catch(() => undefined); },
@@ -647,6 +670,7 @@ export const MuchiLogic = {
     dayOffset = 0;
     delete master.maintenance; // round 17: no maintenance demo
     master.progression.consent = SHIPPED_CONSENT; // round 20: the shipped privacy policy version
+    surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo); // round 22: no live survey
   },
 
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
@@ -701,6 +725,22 @@ export const MuchiLogic = {
       catch (e) { await svc.wchAbort(ID, sessionId); throw new AppError('VERIFIER_UNAVAILABLE', String((e as Error)?.message ?? e)); }
       const rec = await svc.wchRecord(ID, sessionId, out, resultHash);
       if ('rejected' in rec) throw new AppError('CHALLENGE_RESULT_MISMATCH', 'the server re-simulation does not match the submitted run');
+      return rec;
+    });
+  },
+  // round 22 (REQ-CAREER-*, §66): 騎手の道 on the real service — the map, a keyed start (the issued config with the CPU field at
+  // the chapter cap), and the submit: the "server" re-simulates its own replay log in the WASM verifier and judges the stars
+  career: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.careerView(ID, lang)),
+  careerStart: (raceId: string, horseId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.careerStart(ID, raceId, horseId, key(), undefined, lang)),
+  async careerSubmit(sessionId: string, inputs: number[][], resultHash: string, verify: (logJson: string) => string) {
+    return wrap(async () => {
+      const prep = await svc.careerPrepare(ID, sessionId, inputs, resultHash, undefined);
+      if (prep.kind === 'done') return prep.result;
+      let out;
+      try { out = JSON.parse(verify(JSON.stringify(prep.log))); }
+      catch (e) { await svc.careerAbort(ID, sessionId); throw new AppError('VERIFIER_UNAVAILABLE', String((e as Error)?.message ?? e)); }
+      const rec = await svc.careerRecord(ID, sessionId, out, resultHash);
+      if ('rejected' in rec) throw new AppError('CAREER_RESULT_MISMATCH', 'the server re-simulation does not match the submitted run');
       return rec;
     });
   },
@@ -1403,6 +1443,79 @@ export const MuchiLogic = {
       return true;
     }),
   },
+  // ---------------------------------------------------------------- round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
+  // The real PlayerService / promotion.ts rules on the local player: GET /v1/promotion, POST /v1/promotion/ack, and a demo state
+  // reached through real ranked results (settleRace → applyRace): just below the line, a series started, one race in, passed,
+  // failed, or a grace window after a promotion (the close is a month away in the demo, so that one is set directly).
+  promotion: {
+    view: () => wrap(() => svc.promotion(ID)),
+    ack: (seriesId: string) => wrap(() => svc.promotionAck(ID, seriesId)),
+    /** The kill switch (progression.promotion.enabled) on the local master; the walkthroughs that race for other reasons turn it off. */
+    setEnabled: (on: boolean) => { const prog = master.progression as { promotion?: { enabled: boolean } }; if (prog.promotion) prog.promotion.enabled = on; return on; },
+    demo: (state: 'near' | 'start' | 'one' | 'passed' | 'failed' | 'grace' | 'off') => wrap(async () => {
+      const prog = master.progression as { promotion?: { enabled: boolean } };
+      if (prog.promotion) prog.promotion.enabled = state !== 'off';
+      const line = classDef(master, (await svc.state(ID)).season.classId).promotePoints ?? 300;
+      await svc.tx(ID, null, (st) => { delete st.promotion; st.season.points = line - 12; st.flags.tutorialGachaUsed = true; });
+      const race = (place: number) => svc.applyRace(ID, { raceId: `proto_promo_${Date.now().toString(36)}_${++promoRace}`, mode: 'ranked', place, fieldSize: 12, newRating: null, void: false, humans: 4,
+        details: { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, startReactionTicks: null, whips: 3, whipMashed: false, cpuAssisted: false } });
+      if (state === 'near' || state === 'off') return true;
+      if (state === 'grace') {
+        await svc.tx(ID, null, (st) => { st.promotion = { series: null, history: [], passed: [], attempts: {}, setback: null, grace: { classId: st.season.classId, races: 3, since: 'demo' }, shields: [] }; st.season.points = 20; });
+        return true;
+      }
+      await race(2); // reaches the line: the series starts (this race is not part of it)
+      if (state === 'start') return true;
+      await race(state === 'failed' ? 6 : 1);
+      if (state === 'one') return true;
+      await race(state === 'failed' ? 9 : 3);
+      return true;
+    }),
+  },
+  // ---------------------------------------------------------------- round 22: ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69)
+  // The real PlayerService / surveys.ts rules on the local player and the real ops store (SurveysCore, in memory here): the
+  // offer (FTUE, cool-down, one at a time), shown, skip (one tap, never again), the strict answer check + free-text scrub, once
+  // per player, the ops table and its results. The prototype plays an iOS 1.4.0 device. Nothing is granted for answering.
+  surveys: {
+    offer: (placement: SurveyPlacement, lang: SurveyLang) => wrap(async () => {
+      const { pending, ...o } = await svc.surveyOffer(ID, surveyCore.live(now()), SURVEY_FACTS, placement, lang);
+      if (pending.length) {
+        surveyCore.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: ID, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
+        await svc.surveySynced(ID, pending.map((x) => x.surveyId));
+      }
+      return o;
+    }),
+    /** The texts of one language for a survey on screen (the language toggle redraws the sheet). */
+    view: (id: string, lang: SurveyLang, placement: SurveyPlacement) => { const l = surveyCore.one(id); return l ? surveyView(l, lang, placement) : null; },
+    shown: (id: string, placement: SurveyPlacement) => wrap(() => svc.surveyShown(ID, surveyCore.one(id), placement)),
+    skip: (id: string, placement: SurveyPlacement) => wrap(() => svc.surveySkip(ID, surveyCore.one(id), placement)),
+    /** The HTTP route's order: unknown / closed first, then the strict check (400) before anything is written, once per player. */
+    answer: (id: string, placement: SurveyPlacement, answers: Record<string, unknown>, key: string | null) => wrap(async () => {
+      const l = surveyCore.one(id);
+      if (!l || now() < l.startAt) throw new AppError('NOT_FOUND', 'unknown survey');
+      const clean = validateSurveyAnswers(l.def, answers, surveysConfig(master)); // an ended survey: SURVEY_CLOSED from the player (after its key check)
+      const { pending, ...out } = await svc.surveyAnswer(ID, l, { placement, answers: clean, facts: SURVEY_FACTS }, key ?? `c:/v1/surveys/answers:${id}:${++surveyKeySeq}`);
+      surveyCore.ingest(pending.map((x) => ({ surveyId: x.surveyId, playerId: ID, rev: x.rev, at: x.at, answers: x.answers, segment: x.segment })));
+      await svc.surveySynced(ID, pending.map((x) => x.surveyId));
+      return out;
+    }),
+    /** What ops would see (no player ids). */
+    results: (id: string) => wrap(() => surveyCore.results(id, now())),
+    close: (id: string) => wrap(() => surveyCore.close(id, 'ops', now())),
+    /**
+     * Demo state: ops published the demo survey (live for a week) and the player is settled (FTUE done, a few ranked races,
+     * no earlier survey). The store starts over.
+     */
+    demo: () => wrap(async () => {
+      surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo);
+      surveyCore.create(normalizeSurveyDef(DEMO_SURVEY), 'ops', now() - 1000);
+      surveyCore.publish(DEMO_SURVEY.id, now() - 1000, now() + 7 * DAY_MS, surveysConfig(master).maxLive, 'ops', now() - 1000);
+      await svc.tx(ID, null, (st) => { st.flags.tutorialGachaUsed = true; st.rating.rankedRaces = Math.max(st.rating.rankedRaces, 3); delete st.surveys; });
+      return true;
+    }),
+    /** No live survey (the store starts empty — what every other demo state sees). */
+    clear: () => { surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo); },
+  },
   // ---------------------------------------------------------------- round 20: 端末のローカル通知 (REQ-LNOTIF-*, contracts/protocol.md §61)
   // The real digest (bootstrap / GET /v1/player localReminders), the shared planner (= C# LocalNotificationPlanner), the push
   // preferences the settings screen switches (one screen for push and local) and a demo state with every source present.
@@ -1430,6 +1543,30 @@ export const MuchiLogic = {
       return this.digest();
     },
     seedDemoDays: () => MuchiLogic.seedDemo(4, [3, 3, 3, 3]),
+  },
+  // ---------------------------------------------------------------- round 22: 使いすぎ・遊びすぎの防止 (REQ-LIMIT-*, contracts/protocol.md §67)
+  // The real selfLimits rules on the local player (own limit, cool-off, cancel, play-time settings) and the shared reminder rule
+  // (= C# PlaytimeReminderPolicy). The device clock lives in the page (it counts foreground time; the demo adds minutes).
+  selfLimits: {
+    view: () => wrap(() => svc.selfLimits(ID)),
+    setSpending: (limitYen: number | null) => wrap(() => svc.setSpendingLimit(ID, limitYen)),
+    cancel: () => wrap(() => svc.cancelSpendingRaise(ID)),
+    setPlaytime: (b: { sessionMin?: number | null; dailyMin?: number | null; quietAfterHour?: number | null }) => wrap(() => svc.setPlaytime(ID, b)),
+    decide: (snapshot: PlaytimeSnapshot) => decidePlaytimeReminder(snapshot),
+    /** Demo: an adult who already spent ¥2,400 this month with an own limit of ¥3,000 (a ¥800 pack is then refused). */
+    async seedDemo() {
+      const s = await svc.state(ID);
+      if (!s.age) await wrap(() => svc.setAge(ID, 1990, 1, false));
+      const st = await svc.state(ID);
+      const month = new Date(now() + 9 * 3600_000).toISOString().slice(0, 7);
+      st.monthlySpendYen[month] = Math.max(st.monthlySpendYen[month] ?? 0, 2400);
+      // demo state written directly (whatever was set before): own limit ¥3,000 in effect, nothing waiting
+      st.selfLimits ??= { spending: { limitYen: null, setAt: null, pending: null }, playtime: { sessionMin: null, dailyMin: null, quietAfterHour: null, updatedAt: null }, rev: 0, history: [] };
+      st.selfLimits.spending = { limitYen: 3000, setAt: now(), pending: null };
+      st.selfLimits.rev++;
+      await repo.put(st);
+      return wrap(() => svc.selfLimits(ID));
+    },
   },
   // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
   // ---------------------------------------------------------------- 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)

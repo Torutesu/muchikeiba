@@ -1,0 +1,280 @@
+{
+  "_note": "REQ-CAREER-*: 騎手の道 (single-player career, contracts/protocol.md §66). Chapters of 3–5 races against CPU on fixed conditions, ridden with the player's own horse normalised to the chapter's statCap (never above the partner's stat total, so the free partner always reaches it; no unique skills). Story lines and titles carry their own English side by side. A race clears on its `clear` objective (star 1, unlocks the next race); `stars` are the optional objectives (stars 2 and 3, each needs the clear in the same run). Rewards: first clear and each star once ever, free coins / breeding material only (career.ts careerProblems checks ids, courses, the partner fit, objectives inside the field, the CPU style pool, wording, per-grant and lifetime ceilings = economy E20), at boot.",
+  "version": 1,
+  "config": { "enabled": true, "sessionTtlMs": 900000, "maxInputs": 400, "startsPerDay": 200, "keepSessions": 30 },
+  "chapters": [
+    {
+      "id": "c1", "art": "dawn", "statCap": 2800,
+      "title": { "ja": "はじめての一閃", "en": "The First Strike" },
+      "subtitle": { "ja": "見習い騎手、最初の三戦", "en": "An apprentice's first three races" },
+      "races": [
+        {
+          "id": "c1_debut", "trackId": "aoba_turf_1600", "cpuCount": 5, "cpuLevel": 1, "cpuStatPermille": 800,
+          "title": { "ja": "デビュー戦", "en": "Debut" },
+          "story": {
+            "before": { "ja": "厩舎の朝は早い。相棒の首をなでて、ゲートへ向かう。まずは最後まで走り切ろう。", "en": "Mornings at the stable start early. A pat on your partner's neck, and off to the gate. First, just ride it to the end." },
+            "after": { "ja": "鞍を下ろすと、調教師がうなずいた。「悪くない。次は直線の長いコースだ」", "en": "As you unsaddle, the trainer nods. \"Not bad. Next, a course with a longer straight.\"" }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c1_straight", "trackId": "kirameki_turf_2000", "cpuCount": 5, "cpuLevel": 1, "cpuStatPermille": 850,
+          "title": { "ja": "長い直線", "en": "The Long Straight" },
+          "story": {
+            "before": { "ja": "直線が長いぶん、ムチを入れる時間もある。焦らず、光るまで待つ。", "en": "A long straight gives you time to use the whip. Stay calm and wait for the glow." },
+            "after": { "ja": "最後の一完歩まで脚が残っていた。待てば、馬は応えてくれる。", "en": "There was still something left at the final stride. Wait, and the horse answers." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 2, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c1_firstwin", "trackId": "kirameki_turf_2000", "cpuCount": 6, "cpuLevel": 1, "cpuStatPermille": 850,
+          "title": { "ja": "初勝利をつかめ", "en": "Grab the First Win" },
+          "story": {
+            "before": { "ja": "今日は勝ちにいく。スタートを決めて、直線で一閃。", "en": "Today you race to win. Nail the start, then strike in the straight." },
+            "after": { "ja": "初めての勝利。相棒が鼻を鳴らした。騎手の道は、ここから始まる。", "en": "Your first win. Your partner snorts. The jockey's road starts here." }
+          },
+          "clear": { "maxPlace": 1 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1, "maxWhips": 4 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c2", "art": "rain", "statCap": 2800,
+      "title": { "ja": "雨の日の手綱", "en": "Reins in the Rain" },
+      "subtitle": { "ja": "重い馬場で、脚をためる", "en": "Saving the legs on heavy ground" },
+      "races": [
+        {
+          "id": "c2_drizzle", "trackId": "aoba_turf_1600", "going": "yielding", "cpuCount": 6, "cpuLevel": 2, "cpuStatPermille": 950,
+          "title": { "ja": "小雨の青葉", "en": "Drizzle at Aoba" },
+          "story": {
+            "before": { "ja": "芝が水を含んでいる。いつもより早く疲れる。手綱を引いて、息を入れよう。", "en": "The turf is holding water. Horses tire sooner today. Take a hold and let your horse breathe." },
+            "after": { "ja": "息を入れた分だけ、最後に伸びた。重い馬場では手綱がものを言う。", "en": "The breather paid off at the end. On heavy ground, the reins do the talking." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c2_frontrunners", "trackId": "kirameki_turf_2000", "going": "soft", "cpuCount": 6, "cpuLevel": 2, "cpuStatPermille": 950, "cpuStyles": ["nige", "senko"],
+          "title": { "ja": "前が速い", "en": "A Fast Pace Up Front" },
+          "story": {
+            "before": { "ja": "今日の相手は前へ行きたい馬ばかり。無理に追いかけず、後ろで構える。", "en": "Today's rivals all want the lead. Don't chase them. Sit back and wait." },
+            "after": { "ja": "前の馬たちは重い馬場で脚を使い切った。待った者が笑う日もある。", "en": "The leaders burned out on the heavy ground. Some days belong to the patient." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c2_storm", "trackId": "minato_turf_2400", "going": "soft", "cpuCount": 7, "cpuLevel": 2, "cpuStatPermille": 950,
+          "title": { "ja": "嵐のみなと", "en": "Storm at Minato" },
+          "story": {
+            "before": { "ja": "2400mの重馬場。最後まで脚を残せるかは、道中の我慢しだい。", "en": "2400 m on soft ground. Whether anything is left at the end depends on your patience on the way." },
+            "after": { "ja": "ずぶ濡れの勝負服で引き上げる。雨の日の乗り方が、少しわかった。", "en": "You come back with your silks soaked through. Riding in the rain makes a little more sense now." }
+          },
+          "clear": { "maxPlace": 2 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c3", "art": "night", "statCap": 3200,
+      "title": { "ja": "ナイターの灯", "en": "Under the Floodlights" },
+      "subtitle": { "ja": "照明の下、追い込みの脚", "en": "Closing speed under the lights" },
+      "races": [
+        {
+          "id": "c3_lights", "trackId": "minato_turf_2400", "night": true, "cpuCount": 7, "cpuLevel": 3, "cpuStatPermille": 950,
+          "title": { "ja": "灯がともる", "en": "The Lights Come On" },
+          "story": {
+            "before": { "ja": "初めてのナイター。照明に浮かぶ芝は、昼とは違う顔をしている。", "en": "Your first night race. Under the lights, the turf wears a different face." },
+            "after": { "ja": "スタンドの灯が流れていく。夜の直線は、思ったより長い。", "en": "The stand lights stream past. The straight feels longer at night." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c3_closers", "trackId": "minato_turf_2400", "night": true, "going": "firm", "cpuCount": 7, "cpuLevel": 3, "cpuStatPermille": 950, "cpuStyles": ["sashi", "oikomi"],
+          "title": { "ja": "後ろから来る", "en": "They Come From Behind" },
+          "story": {
+            "before": { "ja": "今夜の相手は後ろから脚を使う馬たち。先に動くか、並んで待つか。", "en": "Tonight's rivals all close late. Move first, or wait alongside them?" },
+            "after": { "ja": "仕掛けどころは一つじゃない。相手を見て、乗り方を変える。", "en": "There's more than one moment to make your move. Read the field and ride to it." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c3_midnight", "trackId": "minato_turf_2400", "night": true, "going": "yielding", "cpuCount": 8, "cpuLevel": 3, "cpuStatPermille": 1000,
+          "title": { "ja": "真夜中の一閃", "en": "Midnight Strike" },
+          "story": {
+            "before": { "ja": "九頭立ての夜の大一番。照明の下で、一閃を見せてやれ。", "en": "A nine-runner night feature. Show them your strike under the lights." },
+            "after": { "ja": "夜空に歓声が響く。次は、海の向こうの競馬場だ。", "en": "Cheers ring into the night sky. Next stop: a course across the sea." }
+          },
+          "clear": { "maxPlace": 2 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c4", "art": "north", "statCap": 3200,
+      "title": { "ja": "遠征・北の競馬場", "en": "Road Trip North" },
+      "subtitle": { "ja": "ノルトハーフェンの長い直線", "en": "The long straight of Nordhaven" },
+      "races": [
+        {
+          "id": "c4_arrival", "trackId": "nordhaven_turf_2400", "cpuCount": 8, "cpuLevel": 3, "cpuStatPermille": 1000,
+          "title": { "ja": "北の風", "en": "The North Wind" },
+          "story": {
+            "before": { "ja": "冷たい風が吹く北の競馬場。知らないコースでも、やることは同じだ。", "en": "A cold wind sweeps the northern course. A new track, but the job is the same." },
+            "after": { "ja": "地元の騎手が声をかけてきた。「いい乗り方だ。明日は雨だぞ」", "en": "A local jockey calls over: \"Nice ride. Rain tomorrow, mind you.\"" }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c4_rain", "trackId": "nordhaven_turf_2400", "going": "soft", "cpuCount": 9, "cpuLevel": 3, "cpuStatPermille": 1000, "cpuStyles": ["nige", "senko"],
+          "title": { "ja": "北の雨", "en": "Northern Rain" },
+          "story": {
+            "before": { "ja": "予報どおりの雨。前に行く馬が多い。重い馬場の我慢を思い出せ。", "en": "The rain came as promised, and the front-runners are out in force. Remember the patience of heavy ground." },
+            "after": { "ja": "雨の日の手綱は、もう体が覚えている。", "en": "Your hands already know how to ride in the rain." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c4_homecoming", "trackId": "aoba_turf_1600", "going": "firm", "cpuCount": 9, "cpuLevel": 4, "cpuStatPermille": 1000,
+          "title": { "ja": "凱旋の青葉", "en": "Homecoming at Aoba" },
+          "story": {
+            "before": { "ja": "デビューした青葉に戻ってきた。あの日より、相手はずっと強い。", "en": "Back at Aoba, where you debuted. The rivals are far stronger than that day." },
+            "after": { "ja": "同じ1600mでも、見える景色が違った。成長は数字だけじゃない。", "en": "The same 1600 m, but a different view. Growth isn't only in the numbers." }
+          },
+          "clear": { "maxPlace": 2 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c4_trial", "trackId": "kirameki_turf_2000", "cpuCount": 9, "cpuLevel": 4, "cpuStatPermille": 1000,
+          "title": { "ja": "頂への試金石", "en": "The Touchstone" },
+          "story": {
+            "before": { "ja": "勝てば、頂の舞台への招待が届く。十頭立て、勝つしかない。", "en": "Win, and the invitation to the summit arrives. Ten runners. Only a win will do." },
+            "after": { "ja": "封筒が届いた。差出人は「頂の一閃」の主催者だった。", "en": "An envelope arrives, from the organisers of the Summit Strike." }
+          },
+          "clear": { "maxPlace": 1 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "c5", "art": "summit", "statCap": 3200,
+      "title": { "ja": "一閃の頂へ", "en": "To the Summit" },
+      "subtitle": { "ja": "十二頭立て、最後の四戦", "en": "Full fields, the final four" },
+      "races": [
+        {
+          "id": "c5_gate", "trackId": "kirameki_turf_2000", "cpuCount": 11, "cpuLevel": 4, "cpuStatPermille": 1000,
+          "title": { "ja": "フルゲート", "en": "Full Gate" },
+          "story": {
+            "before": { "ja": "十二頭が並ぶゲート。内も外も馬だらけだ。進路は自分で作る。", "en": "Twelve in the gate, horses inside and out. You'll have to make your own path." },
+            "after": { "ja": "馬群を抜けた先に、まっすぐな道があった。", "en": "Past the pack, a clear road opened up." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c5_nightgate", "trackId": "minato_turf_2400", "night": true, "cpuCount": 11, "cpuLevel": 5, "cpuStatPermille": 1000,
+          "title": { "ja": "夜のフルゲート", "en": "Full Gate at Night" },
+          "story": {
+            "before": { "ja": "最強の相手たちが夜のみなとに集まった。照明の下、もう一度。", "en": "The strongest rivals gather at Minato by night. Under the lights, once more." },
+            "after": { "ja": "相手の騎手たちが、こちらを見る目が変わった。", "en": "The other riders look at you differently now." }
+          },
+          "clear": { "maxPlace": 3 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 3, "maxWhips": 2 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c5_north", "trackId": "nordhaven_turf_2400", "going": "firm", "cpuCount": 11, "cpuLevel": 5, "cpuStatPermille": 1000,
+          "title": { "ja": "北の頂", "en": "Northern Summit" },
+          "story": {
+            "before": { "ja": "硬い馬場、速い流れ。北の長い直線で、最後の試験が待つ。", "en": "Firm ground, a fast pace. The final test waits on the long northern straight." },
+            "after": { "ja": "残るは一戦。デビューした青葉の舞台だ。", "en": "One race left, back at Aoba where it all began." }
+          },
+          "clear": { "maxPlace": 2 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } }
+          ]
+        },
+        {
+          "id": "c5_summit", "trackId": "aoba_turf_1600", "cpuCount": 11, "cpuLevel": 5, "cpuStatPermille": 1000,
+          "title": { "ja": "頂の一閃", "en": "The Summit Strike" },
+          "story": {
+            "before": { "ja": "すべてはこの一戦のために。光ったら、ムチ。それだけだ。", "en": "Everything led to this race. When it glows, the whip. That's all." },
+            "after": { "ja": "頂に立った。それでも、相棒はもう次のゲートを見ている。", "en": "You reached the summit. Even so, your partner is already looking at the next gate." }
+          },
+          "clear": { "maxPlace": 1 },
+          "reward": { "items": [ { "itemId": "breeding_material", "qty": 2 } ] },
+          "stars": [
+            { "objective": { "maxPlace": 1, "maxWhips": 3 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] } },
+            { "objective": { "maxPlace": 1, "maxWhips": 1 }, "reward": { "items": [ { "itemId": "breeding_material", "qty": 2 } ] } }
+          ]
+        }
+      ]
+    }
+  ]
+}

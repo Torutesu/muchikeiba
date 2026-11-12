@@ -44,8 +44,10 @@ namespace Muchi.Client
             /// <summary>Round 20: settings › notifications (the device reminders article, §61).</summary>
             Notifications = "notifications",
             /// <summary>Round 21 (§65): the calendar's ? link → calendar.</summary>
-            Calendar = "calendar";
-        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications, Calendar };
+            Calendar = "calendar",
+            /// <summary>Round 22: the self-limits screen, a purchase refused by the own limit and the play-time sheet (§67).</summary>
+            SelfLimits = "self_limits";
+        public static readonly string[] All = { GachaOdds, CoinShortfall, Purchase, RaceWhip, RaceResult, Training, Breeding, History, GiftBox, AccountLink, Deletion, Accessibility, Privacy, Storage, Practice, PrivacyChoices, Notifications, Calendar, SelfLimits };
     }
 
     /// <summary>Inquiry categories (the first four are the §33 ticket topics).</summary>

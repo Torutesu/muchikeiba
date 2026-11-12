@@ -1461,14 +1461,13 @@ async function Home() {
   });
   // ① partner — the hero: the horse in the art, and its nameplate at the bottom left (name large, one line under it).
   // Quality pass (home): a lighter plate with the gold rule, no second caption row; the details live in 厩舎.
-  const pc = Glass('Partner', 33, 610, 470, 176, undefined, .62);
+  const pc = Glass('Partner', 33, 598, 470, 192, undefined, .62);
   pc.classList.add('partner-plate');
-  Kicker('あなたの相棒', 29, 22, pc, { size: 16, gold: true, ruleW: 56 });
-  Txt(p ? p.name : '—', 29, 78, 420, 52, WHITE, pc, { ls: '.08em', nowrap: true });
+  Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
+  Txt(p ? p.name : '—', 29, 82, 420, 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
   if (p) {
-    const bondLine = unlock('bond').unlocked && bond?.ok ? `　·　絆 Lv${bond.value.level}` : '';
-    Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${bondLine}`, 29, 140, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
-  } else Txt('無料スカウトで相棒を迎えよう', 29, 140, 420, 16, WHITE, pc);
+    Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 150, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
+  } else Txt('無料スカウトで相棒を迎えよう', 29, 150, 420, 16, WHITE, pc);
   pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
   // ② race: the largest, bottom right
   Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');

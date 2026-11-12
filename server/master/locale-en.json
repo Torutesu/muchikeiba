@@ -81,6 +81,7 @@
   "フレンド成立": "New friend", "{name}さんとフレンドになりました": "You and {name} are now friends",
   "招待コードが使われました": "Your invite code was used", "{name}さんがあなたの招待コードで参加しました": "{name} joined with your invite code",
   "プレゼントが届いています": "A gift has arrived", "運営からのお詫びの品をプレゼントボックスに入れました": "We put an apology gift from the team in your gift box",
+  "お問い合わせに返信がありました": "Support replied to your inquiry", "運営からの返信をアプリで確認できます": "Open the app to read the reply from the team",
   "招待ボーナス": "Invite reward", "{name}さんが目標に到達しました。招待ボーナスが届いています": "{name} reached a goal. Your invite reward has arrived",
   "レースのお誘い": "Race invitation", "{name}さんがフレンド部屋に招待しています": "{name} is inviting you to a friend room",
   "カップへのお誘い": "Cup invitation", "{name}さんが主催するカップに招待されました": "{name} invited you to a cup they are hosting",

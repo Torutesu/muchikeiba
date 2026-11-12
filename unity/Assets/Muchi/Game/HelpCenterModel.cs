@@ -26,7 +26,16 @@ namespace Muchi.Game
     }
 
     /// <summary><see cref="IHelpApi"/> over the real client.</summary>
-    public sealed class ApiHelp : IHelpApi
+    /// <summary>
+    /// §73.4 (REQ-TKT-004/016): the player's reply in a support thread. A separate interface so existing IHelpApi
+    /// implementations keep compiling; HelpCenterModel offers the reply box only when its API implements this.
+    /// </summary>
+    public interface IInquiryThreadApi
+    {
+        Task<Inquiry> SendInquiryMessageAsync(string ticketId, string content, string idempotencyKey = null, CancellationToken ct = default);
+    }
+
+    public sealed class ApiHelp : IHelpApi, IInquiryThreadApi
     {
         private readonly ApiClient _api;
         public ApiHelp(ApiClient api) { _api = api ?? throw new ArgumentNullException(nameof(api)); }
@@ -38,6 +47,7 @@ namespace Muchi.Game
         public Task<Inquiry> GetInquiryAsync(string ticketId, CancellationToken ct = default) => _api.GetInquiryAsync(ticketId, ct);
         public Task<Inquiry> SubmitInquiryAsync(InquiryDraft draft, string idempotencyKey = null, CancellationToken ct = default) => _api.SubmitInquiryAsync(draft, idempotencyKey, ct);
         public Task<InquiryReadResult> MarkInquiryReadAsync(string ticketId, CancellationToken ct = default) => _api.MarkInquiryReadAsync(ticketId, ct);
+        public Task<Inquiry> SendInquiryMessageAsync(string ticketId, string content, string idempotencyKey = null, CancellationToken ct = default) => _api.SendInquiryMessageAsync(ticketId, content, idempotencyKey, ct);
     }
 
     /// <summary>
@@ -62,7 +72,20 @@ namespace Muchi.Game
         public const string HelpfulNo = "役に立たなかった";
         public const string ThanksText = "ご意見ありがとうございます";
         public const string ContactCta = "問い合わせる";
-        public const string MyInquiriesTitle = "自分の問い合わせ";
+        /// <summary>§73.11: the entry under ヘルプ・お問い合わせ (was 「自分の問い合わせ」).</summary>
+        public const string MyInquiriesTitle = "お問い合わせ履歴";
+        // §73 (REQ-TKT-016): the thread
+        public const string ReplyPlaceholder = "返信を書く（パスワード・メールアドレスは書かないでください）";
+        public const string ReplyCta = "返信する";
+        public const string ReplySentText = "返信を送りました";
+        public const string ReplyClosedText = "このお問い合わせはクローズしました。新しく問い合わせてください";
+        public const string ReplyLimitText = "いまは返信できません。時間をおいてください";
+        public const string ReplyOfflineText = "オフラインのため返信していません。入力した内容は残っています";
+        public const string YouLabel = "あなた";
+        public const string CompensationText = "お詫びの品をプレゼントボックスに入れました";
+        public const string OpenGiftBoxCta = "プレゼントボックスを開く";
+        public const string ShareDiagnosticsLabel = "診断情報を添える";
+        public const string NewInquiryCta = "新しく問い合わせる";
         public const string SentText = "問い合わせを受け付けました。返信はアクティビティでお知らせします";
         public const string OfflineDraftText = "オフラインのため送信していません。入力した内容は残っています";
         public const string TooShortText = "内容をもう少し詳しく書いてください";
@@ -115,6 +138,12 @@ namespace Muchi.Game
         // ---- the form
         public InquiryDraft Draft { get; private set; }
         public bool Sending { get; private set; }
+
+        // ------------------------------------------------------------------------------------------- §73 thread state
+        /// <summary>The reply box text of the open thread (kept while offline or refused).</summary>
+        public string ReplyDraft { get; private set; } = "";
+        public bool Replying { get; private set; }
+        private string _replyKey, _replyTicket;
 
         public void SetBadge(HelpBadge b) { if (b != null) UnreadReplies = Math.Max(0, b.UnreadReplies); }
 
@@ -238,8 +267,14 @@ namespace Muchi.Game
             return null;
         }
 
+        /// <summary>§73.3 (REQ-TKT-003): the 「診断情報を添える」 switch of the form (on by default; off sends none of the rows).</summary>
+        public void SetShareDiagnostics(bool on) { StartInquiry().ShareDiagnostics = on; }
+        public bool ShareDiagnostics => Draft?.ShareDiagnostics ?? true;
+
         /// <summary>What the form says is attached automatically (REQ-HELP-011), as label / value rows (show Loc.T of both); the server's note goes under them.</summary>
-        public IReadOnlyList<(string Label, string Value)> DiagnosticsRows() => new List<(string, string)>
+        public IReadOnlyList<(string Label, string Value)> DiagnosticsRows() => !ShareDiagnostics
+            ? new List<(string, string)> { ("アプリの版", "送りません"), ("端末の種類", "送りません"), ("プレイヤーID", "自動で添えます"), ("直近のレースID", "送りません") }
+            : new List<(string, string)>
         {
             ("アプリの版", _appVersion),
             ("端末の種類", _platform == "ios" ? "iOS" : _platform == "android" ? "Android" : "Editor"),
@@ -310,5 +345,83 @@ namespace Muchi.Game
         }
 
         public static string When(long at) => DateTimeOffset.FromUnixTimeMilliseconds(at).ToOffset(TimeSpan.FromHours(9)).ToString("MM/dd HH:mm", CultureInfo.InvariantCulture);
+
+        // ------------------------------------------------------------------------------------------- §73 thread (REQ-TKT-016)
+
+        /// <summary>
+        /// The status chip of a ticket: the words (statusText from the server, else InquiryStatuses.TextOf) and a tone for
+        /// the colour token — warn = waiting for support, info = checking, ok = a reply to read, muted = resolved / closed.
+        /// </summary>
+        public static (string Text, string Tone) StatusChip(Inquiry t)
+        {
+            if (t == null) return (InquiryStatuses.TextOf(InquiryStatuses.Received), "warn");
+            var text = string.IsNullOrEmpty(t.StatusText) ? InquiryStatuses.TextOf(t.Status) : t.StatusText;
+            switch (t.Status)
+            {
+                case InquiryStatuses.InProgress: return (text, "info");
+                case InquiryStatuses.Answered: return (text, "ok");
+                case InquiryStatuses.Resolved: case InquiryStatuses.Closed: return (text, "muted");
+                default: return (text, "warn");
+            }
+        }
+
+        /// <summary>The thread in time order: who (運営からの返信 / あなた), when (JST) and the person's words (never translated).</summary>
+        public IReadOnlyList<(string Who, string When, string Text, bool Support)> Thread()
+        {
+            var rows = new List<(string, string, string, bool)>();
+            if (Inquiry == null) return rows;
+            rows.Add((YouLabel, When(Inquiry.CreatedAt), Inquiry.InquiryText ?? "", false));
+            foreach (var m in Inquiry.Messages.OrderBy(x => x.At))
+                rows.Add((m.From == "support" ? SupportLabel : YouLabel, When(m.At), m.MessageText ?? "", m.From == "support"));
+            return rows;
+        }
+
+        /// <summary>The reply box shows (the API can reply and the server says the thread takes a reply).</summary>
+        public bool CanReply => Inquiry != null && Inquiry.CanReply && _api is IInquiryThreadApi;
+        /// <summary>Under a closed ticket that can still be reopened: until when (JST).</summary>
+        public string ReopenNote => Inquiry?.Status == InquiryStatuses.Closed && Inquiry.ReplyUntil.HasValue && Inquiry.CanReply ? "{date} まで返信できます（返信するとお問い合わせを続けられます）".Replace("{date}", When(Inquiry.ReplyUntil.Value)) : null;
+        /// <summary>Under a replied / resolved ticket: when it closes by itself.</summary>
+        public string AutoCloseNote => Inquiry?.AutoCloseAt.HasValue == true ? "返信がないまま {date} を過ぎると自動でクローズします".Replace("{date}", When(Inquiry.AutoCloseAt.Value)) : null;
+        /// <summary>The compensation line (open the gift box from it; the item itself is in the gift box).</summary>
+        public bool HasCompensation => Inquiry?.Compensation.Count > 0;
+        public string ReplyCounter => CharCount((ReplyDraft ?? "").Trim()).ToString(CultureInfo.InvariantCulture) + " / " + ReplyMax.ToString(CultureInfo.InvariantCulture);
+        public int ReplyMax { get; set; } = 1000;
+
+        public void SetReply(string text)
+        {
+            ReplyDraft = text ?? "";
+            if (_replyTicket != Inquiry?.TicketId) { _replyTicket = Inquiry?.TicketId; _replyKey = null; }
+        }
+
+        /// <summary>
+        /// Sends the reply with one key kept until the server accepted it (a retry returns the same thread). Offline: nothing
+        /// is sent and the text stays. A closed ticket past its window: the box closes with ReplyClosedText.
+        /// </summary>
+        public async Task<Inquiry> SendReplyAsync(CancellationToken ct = default)
+        {
+            if (Replying || Inquiry == null) return null;
+            var text = (ReplyDraft ?? "").Trim();
+            if (text.Length == 0) return null;
+            if (CharCount(text) > ReplyMax) { Message = TooLongText; return null; }
+            if (!(_api is IInquiryThreadApi thread)) return null;
+            if (!_online()) { Message = ReplyOfflineText; return null; }
+            if (_replyTicket != Inquiry.TicketId) { _replyTicket = Inquiry.TicketId; _replyKey = null; }
+            _replyKey ??= _newKey();
+            Replying = true;
+            try
+            {
+                var t = await thread.SendInquiryMessageAsync(Inquiry.TicketId, text, _replyKey, ct);
+                Inquiry = t;
+                ReplyDraft = ""; _replyKey = null;
+                Message = ReplySentText;
+                var row = Inquiries?.Items.FirstOrDefault(x => x.TicketId == t.TicketId);
+                if (row != null) { row.Status = t.Status; row.StatusText = t.StatusText; row.CanReply = t.CanReply; }
+                return t;
+            }
+            catch (RateLimitedException) { Message = ReplyLimitText; return null; }
+            catch (ConflictException) { Message = ReplyClosedText; if (Inquiry != null) Inquiry.CanReply = false; _replyKey = null; return null; }
+            catch (ApiException e) { Message = UxText.For(e); return null; }
+            finally { Replying = false; }
+        }
     }
 }

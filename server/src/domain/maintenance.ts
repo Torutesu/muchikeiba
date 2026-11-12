@@ -224,6 +224,8 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // transfer code it is account access: never closed by a window or an old app. Moves no coins; ops stop it with progression.devices.enabled.
   'GET /v1/account/devices', 'POST /v1/account/devices/checkin', 'POST /v1/account/devices/:sessionId/signout', 'POST /v1/account/devices/signout-others',
   'GET /v1/account/security-log',
+  // Round 23 (§73.9, REQ-TKT-013): the player's reply in a support thread — the same support route as sending an inquiry
+  'POST /v1/help/inquiries/:ticketId/messages',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

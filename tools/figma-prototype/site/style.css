@@ -796,3 +796,24 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
 .el.hl-wipe { pointer-events: none; background: linear-gradient(100deg, transparent 0%, rgba(8, 26, 54, .72) 40%, rgba(8, 26, 54, .72) 60%, transparent 100%); animation: hl-wipe .42s ease-out both; z-index: 30; }
 @keyframes hl-wipe { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 html[data-reduce-motion="on"] .el.hl-wipe { display: none; }
+
+/* round 23: お問い合わせ履歴とスレッド (REQ-TKT-*, protocol §73): status chips in four tones, the thread in translucent navy
+   blocks (support replies carry the cyan rule on the left), notes in the soft grey; the thread scrolls inside its panel
+   (text grows with the text size, never shrinks), the reply box under it and the one skewed cyan CTA */
+.tkt-chip { font-size: 12px; font-weight: 700; letter-spacing: .14em; padding: 3px 12px; border-radius: 3px; white-space: nowrap; line-height: 1.4;
+  color: var(--text-2); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .45); background: rgba(var(--navy-rgb), .6); }
+.tkt-chip.warn { color: var(--gold); box-shadow: inset 0 0 0 1px rgba(255, 211, 79, .7); }
+.tkt-chip.info { color: var(--cyan); box-shadow: inset 0 0 0 1px rgba(var(--cyan-rgb), .6); }
+.tkt-chip.ok { color: var(--navy); background: var(--cyan); box-shadow: none; }
+.tkt-chip.muted { color: var(--text-3); }
+.tkt-thread { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: rgba(var(--cyan-rgb), .5) transparent; padding: 4px 10px 4px 12px; }
+.tkt-msg { flex: none; padding: 10px 16px 12px; background: rgba(var(--navy-rgb), .72); box-shadow: inset 0 0 0 1px rgba(150, 173, 187, .22); }
+.tkt-msg.support { box-shadow: inset 3px 0 0 var(--cyan), inset 0 0 0 1px rgba(var(--cyan-rgb), .35); }
+.tkt-head { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.tkt-who { font-size: 13px; font-weight: 700; letter-spacing: .14em; color: var(--text-2); }
+.tkt-msg.support .tkt-who { color: var(--cyan); }
+.tkt-at { font-size: 12px; font-weight: 500; color: var(--text-3); white-space: nowrap; }
+.tkt-text { font-size: 16px; line-height: 1.6; color: var(--white); white-space: pre-wrap; overflow-wrap: anywhere; }
+.tkt-note { flex: none; font-size: 13px; font-weight: 500; line-height: 1.6; color: var(--text-3); letter-spacing: .04em; overflow-wrap: anywhere; }
+.tkt-gift { flex: none; font: inherit; cursor: pointer; border: 0; text-align: left; font-size: 15px; font-weight: 700; letter-spacing: .04em; padding: 10px 16px;
+  color: var(--gold); background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 1px rgba(255, 211, 79, .55); }

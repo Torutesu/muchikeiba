@@ -662,6 +662,10 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
         attachments: t.attachments.map((a) => ({ kind: a.kind, ref: a.ref, at: a.at, title: a.title, detail: a.detail })),
         diagnostics: clone(t.diagnostics),
         messages: t.messages.map((x) => ({ from: x.from, content: x.content, at: x.at })),
+        // §73.10 (REQ-TKT-014): the thread's state and the compensation ids linked to it; the desk (assignee, internal
+        // notes) lives in the OpsDO and is never exported
+        closedAt: t.closedAt ?? null, shareDiagnostics: t.shareDiagnostics ?? true, reopens: t.reopens ?? 0,
+        compensation: (t.compensation ?? []).map((c) => ({ ref: c.ref, at: c.at })),
       })) as unknown[],
       articleVotes: Object.entries(help?.votes ?? {}).map(([articleId, v]) => ({ articleId, helpful: v.helpful, at: v.at })),
     },

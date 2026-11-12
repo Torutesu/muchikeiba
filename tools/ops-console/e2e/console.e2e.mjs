@@ -218,6 +218,55 @@ try {
     assert.equal(mine.messages[0].messageText, 'ストアの支払いを確認し、コインを付与しました。');
   });
 
+  await step('operator: support tickets (§73) — the player replies, queue filters and SLA, internal notes kept from the player, assignee, template, status, CSV without text', async () => {
+    await new Promise((r) => setTimeout(r, 61_000)); // the §48 interval since the step above's inquiry (help.config.inquiry.minIntervalSec)
+    const t = await asPlayer('POST', '/v1/help/inquiries', { category: 'bug', description: 'レースの結果画面が固まります。秘密の本文 e2e です。', shareDiagnostics: false });
+    assert.equal(t.diagnostics.appVersion, null, 'no diagnostics without consent');
+    await login('operator');
+    await page.locator('#nav a[data-view=inquiries]').click();
+    await tid('inq-table').waitFor();
+    await tid('inq-lang').selectOption('ja');
+    await tid(`inq-open-${t.ticketId}`).first().waitFor();
+    assert.ok(!(await tid('inq-table').innerText()).includes('秘密の本文'), 'the queue has no text');
+    await tid(`inq-open-${t.ticketId}`).first().click();
+    await tid('inq-context').waitFor();
+    assert.match(await tid('inq-context').innerText(), /添えない/, 'the player did not share diagnostics');
+    // an internal note: shown to ops, never to the player
+    await tid('inq-note').fill('e2e: 端末のログを確認中（内部メモ）');
+    await tid('inq-note-add').click();
+    await confirmWith('e2e: note');
+    await tid('inq-notes').getByText('内部メモ', { exact: false }).waitFor();
+    await tid('inq-assign-me').click();
+    await confirmWith('e2e: take it');
+    await tid('inq-summary').getByText('operator', { exact: false }).waitFor();
+    await tid('inq-status-in_progress').click();
+    await confirmWith('e2e: checking');
+    await page.getByText('状態を変えました').waitFor();
+    await page.locator('[data-testid="inq-status-in_progress"][disabled]').waitFor(); // the detail re-rendered with the new status
+    // a reply from a template (filled in the ticket's language, with the ticket id)
+    await tid('inq-template').selectOption('received_ack');
+    assert.match(await tid('inq-reply').inputValue(), new RegExp(t.ticketId), 'the template carries the ticket id');
+    await shot('05e-ticket-desk');
+    await tid('inq-send').click();
+    await confirmWith('e2e: template reply');
+    await page.getByText('返信しました').waitFor();
+    const seen = await asPlayer('GET', `/v1/help/inquiries/${t.ticketId}`);
+    assert.equal(seen.status, 'answered');
+    assert.ok(!JSON.stringify(seen).includes('内部メモ') && !('assignee' in seen), 'the player never sees the notes or the assignee');
+    // the player replies (keyed) → back to received; the queue shows it waiting
+    await new Promise((r) => setTimeout(r, 31_000)); // the reply interval (help.config.tickets.replyIntervalSec)
+    const back = await asPlayer('POST', `/v1/help/inquiries/${t.ticketId}/messages`, { content: 'ありがとうございます。まだ固まります。' });
+    assert.equal(back.status, 'received');
+    const q = await asAdmin('viewer', 'GET', '/v1/admin/inquiries?status=open&assignee=operator');
+    assert.ok(q.body.items.some((x) => x.ticketId === t.ticketId && x.playerId === PLAYER && x.waitingMs >= 0), 'waiting again, assigned');
+    const csv = await asAdmin('viewer', 'GET', '/v1/admin/inquiries/export?status=open');
+    assert.ok(csv.body.csv.startsWith('ticket_id,player_id,category,status'), 'CSV header');
+    assert.ok(!csv.body.csv.includes('秘密の本文') && !csv.body.csv.includes('内部メモ'), 'CSV without text');
+    await page.locator('#nav a[data-view=inquiries]').click();
+    await tid('inq-csv').click();
+    await page.getByText('本文なし', { exact: false }).first().waitFor();
+  });
+
   await step('viewer: client errors (§60) — top errors by fingerprint, a desync sample links to the replay, nothing personal shown', async () => {
     const post = async (b, headers = {}) => (await fetch(API + '/v1/client-errors', { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(b) })).json();
     const base = { platform: 'android', appVersion: `9.${runId.length}.0`, osVersion: 'Android 14', deviceModel: 'Pixel 8', installId: `e2e_${runId}_dev` };

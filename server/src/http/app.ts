@@ -59,6 +59,7 @@ import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
 import { CALENDAR_ENTRY_ID_RE, type CalendarExternal } from '../domain/calendar.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
+import { ticketsOf } from '../domain/supportTickets.js';
 import type { TransferService } from '../domain/transferService.js';
 import type { LinkService, LinkTargets } from '../domain/linkService.js';
 import { androidAssetLinks, appleAssociation, fallbackPage, LINK_TYPES, linksConfig, replayLinkExtra, replayLinkRow, replayStartTick } from '../domain/deepLinks.js';
@@ -123,6 +124,7 @@ export type PlayerMethod =
   | 'calendar' | 'calendarMark'
   | 'pedigreeMine' | 'pedigreePublic' | 'pedigreePair' | 'bloodlines'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
+  | 'helpInquiryMessage' | 'adminInquiryStatus' | 'adminInquiryCompensation'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
   | 'dataExportDownloaded' | 'dataExportExpiring' | 'dataExportDeleted' | 'dataExportAdmin'
@@ -1411,10 +1413,21 @@ export const routes: Route[] = [
       category: z.enum(INQUIRY_CATEGORIES),
       description: z.string().max(m.descriptionMax * 2),
       refs: z.array(z.string().regex(REF_RE)).max(m.attachMax).optional(),
-      diagnostics: z.object({ appVersion: z.string().regex(/^[0-9A-Za-z.+-]{1,32}$/), platform: z.enum(PLATFORMS) }).strict(),
+      // §73.3 (REQ-TKT-003): diagnostics only with consent — optional, and shareDiagnostics: false attaches none
+      diagnostics: z.object({ appVersion: z.string().regex(/^[0-9A-Za-z.+-]{1,32}$/), platform: z.enum(PLATFORMS) }).strict().optional(),
+      shareDiagnostics: z.boolean().optional(),
     }).strict());
-    const t = await c.player(u).invoke('helpInquirySubmit', u, { category: b.category, description: b.description, refs: b.refs ?? [], diagnostics: b.diagnostics }, key, resolveLocale(r));
-    await indexInquiries(c, u, [{ ticketId: t.ticketId, playerId: u, category: t.category, status: t.status, lang: t.lang, attachments: t.attachments.length, createdAt: t.createdAt, updatedAt: t.updatedAt }]);
+    const { summary, ...t } = await c.player(u).invoke('helpInquirySubmit', u, { category: b.category, description: b.description, refs: b.refs ?? [], diagnostics: b.diagnostics ?? null, ...(b.shareDiagnostics !== undefined ? { shareDiagnostics: b.shareDiagnostics } : {}) }, key, resolveLocale(r)) as Awaited<ReturnType<PlayerService['helpInquirySubmit']>> & { summary?: InquirySummary };
+    await indexInquiries(c, u, [summary ?? { ticketId: t.ticketId, playerId: u, category: t.category, status: t.status, lang: t.lang, attachments: t.attachments.length, createdAt: t.createdAt, updatedAt: t.updatedAt }]);
+    return t;
+  } },
+  // §73.4 (REQ-TKT-004): the player's reply in a thread (keyed; never gated — the support route, §73.9)
+  { method: 'POST', path: '/v1/help/inquiries/:ticketId/messages', auth: 'player', handler: async (r, p, c, u) => {
+    const key = idem(r);
+    const max = ticketsOf(helpOf(c.master)).playerReplyMax;
+    const b = await body(r, z.object({ content: z.string().max(max * 2) }).strict());
+    const { summary, ...t } = await c.player(u).invoke('helpInquiryMessage', u, ticketParam(p.ticketId!), b.content, key, resolveLocale(r));
+    await indexInquiries(c, u, [summary]);
     return t;
   } },
   // admin

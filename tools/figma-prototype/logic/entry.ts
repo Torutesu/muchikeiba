@@ -1011,8 +1011,23 @@ export const MuchiLogic = {
   inquiry: (ticketId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.helpInquiry(ID, ticketId, lang)),
   inquiryRead: (ticketId: string) => wrap(() => svc.helpInquiryRead(ID, ticketId)),
   /** POST /v1/help/inquiries with the form's key (the same key on a retry returns the same ticket). */
-  submitInquiry: (input: { category: string; description: string; refs: string[] }, formKey: string, lang: 'ja' | 'en' = 'ja') =>
-    wrap(() => svc.helpInquirySubmit(ID, { category: input.category as never, description: input.description, refs: input.refs, diagnostics: { appVersion: 'proto', platform: 'editor' } }, 'c:/v1/help/inquiries:' + formKey, lang)),
+  submitInquiry: (input: { category: string; description: string; refs: string[]; shareDiagnostics?: boolean }, formKey: string, lang: 'ja' | 'en' = 'ja') =>
+    wrap(async () => {
+      // §73.3: diagnostics only with consent (the form's 診断情報を添える switch)
+      const share = input.shareDiagnostics !== false;
+      const { summary: _s, ...t } = await svc.helpInquirySubmit(ID, { category: input.category as never, description: input.description, refs: input.refs, diagnostics: share ? { appVersion: 'proto', platform: 'editor' } : null, shareDiagnostics: share }, 'c:/v1/help/inquiries:' + formKey, lang) as Awaited<ReturnType<typeof svc.helpInquirySubmit>> & { summary?: unknown };
+      return t;
+    }),
+  /** §73.4 (REQ-TKT-004): POST /v1/help/inquiries/:id/messages with one key per reply (a retry returns the same thread). */
+  inquiryReply: (ticketId: string, content: string, replyKey: string, lang: 'ja' | 'en' = 'ja') =>
+    wrap(async () => { const { summary: _s, ...t } = await svc.helpInquiryMessage(ID, ticketId, content, 'c:/v1/help/inquiries/' + ticketId + '/messages:' + replyKey, lang); return t; }),
+  /** §73 demo: the ops side of a thread (status, reply) on the real rules. */
+  inquiryOps: {
+    reply: (ticketId: string, text: string, close = false) => wrap(() => svc.adminInquiryReply(ID, ticketId, text, close, 'ops-demo', `demo-${ticketId}-${n++}`)),
+    status: (ticketId: string, status: 'in_progress' | 'resolved' | 'closed') => wrap(() => svc.adminInquiryStatus(ID, ticketId, status, `demo-st-${ticketId}-${n++}`)),
+  },
+  /** §73 KPI rows the server wrote (ticket_*), for the checks. */
+  ticketKpi: () => serverKpi.filter((k) => k.name.startsWith('ticket_') || k.name.startsWith('inquiry_')).map((k) => ({ name: k.name, s1: k.s1, s2: k.s2 })),
   /** KPI rows the client would send (help_search / help_article_view), checked against the server's client-event schema. */
   helpKpi: (name: 'help_search' | 'help_article_view', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
   /** REQ-HELP-008: the article a screen's ? link opens (master/help.json contexts). */
@@ -1024,7 +1039,18 @@ export const MuchiLogic = {
     const a = await wrap(() => svc.helpInquirySubmit(ID, { category: 'purchase_missing', description: 'コイン1,020を購入しましたが、残高に反映されていません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
     if (a.ok) await wrap(() => svc.adminInquiryReply(ID, a.value.ticketId, 'お問い合わせありがとうございます。ストアの支払いを確認し、コインの付与が完了しました。ご不便をおかけしました。', false, 'ops-demo', `demo-${a.value.ticketId}`));
     clockShift += 61_000;
-    await wrap(() => svc.helpInquirySubmit(ID, { category: 'bug', description: 'タイムアタックの結果画面で、まれに記録が表示されません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    const b = await wrap(() => svc.helpInquirySubmit(ID, { category: 'bug', description: 'タイムアタックの結果画面で、まれに記録が表示されません。', refs: [], diagnostics: { appVersion: 'proto', platform: 'editor' } }, key(), 'ja'));
+    // §73: support is checking this one (確認中)
+    if (b.ok) await wrap(() => svc.adminInquiryStatus(ID, b.value.ticketId, 'in_progress', `demo-st-${b.value.ticketId}`));
+    clockShift += 61_000;
+    // §73: a resolved one with an apology gift linked (the gift itself went through the compensation path)
+    const c = await wrap(() => svc.helpInquirySubmit(ID, { category: 'coins', description: 'イベントの報酬の無償コインが受け取れませんでした。', refs: [], diagnostics: null, shareDiagnostics: false }, key(), 'ja'));
+    if (c.ok) {
+      await wrap(() => svc.adminInquiryReply(ID, c.value.ticketId, 'ご不便をおかけしました。お詫びの品をプレゼントボックスに入れました。', false, 'ops-demo', `demo-${c.value.ticketId}`));
+      await wrap(() => svc.adminInquiryCompensation(ID, c.value.ticketId, 'comp_demo_1'));
+      await wrap(() => svc.adminInquiryStatus(ID, c.value.ticketId, 'resolved', `demo-st-${c.value.ticketId}`));
+      await wrap(() => svc.helpInquiryRead(ID, c.value.ticketId));
+    }
     clockShift += 61_000;
     return svc.view(ID);
   },

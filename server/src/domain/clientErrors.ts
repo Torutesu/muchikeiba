@@ -185,6 +185,12 @@ export const SCRUB_RULES: [RegExp, string][] = [
   [RE.quoted, '"…"'], [RE.nonAscii, '…'], [RE.hex, '<id>'], [RE.linkToken, '<token>'], [RE.longId, '<id>'], [RE.idPrefix, '<id>'], [RE.digits, '<n>'], [RE.spaces, ' '], [RE.edges, ''],
 ];
 
+/**
+ * Round 23 (§73.3): the secret rules alone (bearer tokens, JWTs, share-link tokens) for text a person must still read —
+ * support tickets keep Japanese, quotes and numbers, so the other rules are not applied there.
+ */
+export const SECRET_SCRUB_RULES: readonly [RegExp, string][] = [[RE.bearer, '<token>'], [RE.jwt, '<token>'], [RE.linkToken, '<token>']];
+
 /** One line of free text: the §60.3 rules in order. */
 function scrubLine(s: string): string {
   let out = s;

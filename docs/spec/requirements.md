@@ -1492,3 +1492,26 @@
 - REQ-HL-018 ヘルプ：記事 `race_highlights`（`races`）とヒント `highlights_tip`。
 - REQ-HL-019 クライアント：C# `HighlightDetector`・`HighlightReel`・`HighlightCaptions`・`HighlightShare`・`AnalyticsEvent.HighlightView`／`HighlightShare`、Unity `HighlightsModel`。プロトタイプ（結果画面の「見どころ」、字幕つきの見どころの再生（WASM の本物のエンジン）、共有シート、ムチ一閃の調子、日英、最大の文字、e2e／en-flow／a11y-flow）。
 - REQ-HL-020 Codex への引き継ぎ：docs/handoff-codex-round23-highlights.md（つなぎのカメラ・字幕の見せ方）。
+
+## 73. お問い合わせの状況確認（support tickets & replies、TS＋C#、`src/domain/supportTickets.ts`・`src/domain/help.ts`・`src/ops/inquiries.ts`・`Muchi.Client/Help.cs`・`Muchi.Game.HelpCenterModel`、`contracts/protocol.md` §73）
+拘束条件：§48 の問い合わせを拡張する（新しい Durable Object・マイグレーションなし）。何も配らない（E番号なし）：お詫びは既存の補填（§22・プレゼントボックス §26）だけで配り、その id を結ぶ。有償コインは配らない。
+- REQ-TKT-001 状態：受付済み `received`・確認中 `in_progress`・返信あり `answered`・解決 `resolved`・クローズ `closed`（日本語・英語）。返信あり・解決のままプレイヤーの返信が `autoCloseDays` 日無ければ自動でクローズ。クローズから `reopenDays` 日はプレイヤーの返信で再開。クローズから `retentionDays` 日で消す。
+- REQ-TKT-002 設定：`help.config.tickets`（範囲を起動時・リモート設定で検査、無い版は既定）と返信のひな形 `replyTemplates`（日本語・英語、§48 のトークン＋`{{ticket_id}}`・`{{category}}`、言葉の検査）。
+- REQ-TKT-003 送信：診断情報は同意したときだけ（`shareDiagnostics`）。トークン・パスワードは送らない。本文は個人情報と秘密らしいもの（§60 の秘密の規則・パスワードの値・URL のクエリ）を置き換えるが読める形で残す。削除済み・削除中のアカウントは送れない（削除の問い合わせはサポートサイト）。
+- REQ-TKT-004 プレイヤーの返信：`POST /v1/help/inquiries/:id/messages`（キー必須・同じキーは同じ結果）。返信できる状態だけ・長さ・間隔・1日の数・1件の上限。解決・クローズからは再開。
+- REQ-TKT-005 表示：詳細に `canReply`・`replyUntil`・`autoCloseAt`・`compensation`・プレイヤーと運営の発言。内部メモ・担当は見せない。
+- REQ-TKT-006 運営の一覧：種類・状態（`open` を含む）・言語・担当・待ち時間で絞る。待ち時間と SLA 超え。本文なし。
+- REQ-TKT-007 CSV：本文・返信・メモなしの列だけ。監査に残る。
+- REQ-TKT-008 運営の詳細：プレイヤーの文脈（作成日・削除・制裁・購入の件数）・内部メモ・担当（viewer が見る、閲覧は監査）。
+- REQ-TKT-009 運営の操作（operator・理由必須・監査）：返信（ひな形はチケットの言語でトークンを埋める）・状態・担当・内部メモ・補填を結ぶ。どれも `opKey` で1回。
+- REQ-TKT-010 補填：同じプレイヤーの既存の補填依頼（却下・期限切れ以外）だけ結べる。ここでは配らない。
+- REQ-TKT-011 お知らせ：返信ごとにアクティビティ `inquiry_answered`、プッシュ `inquiry_reply`（カテゴリ `gifts`、本文を入れない、持ち主 `server`）。状態の変更は知らせない。
+- REQ-TKT-012 KPI：`inquiry_submit`・`inquiry_answered`・`ticket_player_reply`・`ticket_reopen`・`ticket_resolved` は essential（サポートの記録）、`ticket_reply_view` は optional。
+- REQ-TKT-013 ゲート：プレイヤーの返信の口は止めない（`EXEMPT_ROUTES`、サポートへの道）。
+- REQ-TKT-014 データ：§51 は本人の発言と運営の返信（運営の id なし）・状態・補填の id。内部メモ・担当は出さない。削除で索引・担当・メモも消す。
+- REQ-TKT-015 C#：`SendInquiryMessageAsync`・状態の文字・`Inquiry` の新しい項目・`InquiryDraft.ShareDiagnostics`。
+- REQ-TKT-016 Unity：`HelpCenterModel` のスレッド・状態のチップ・返信（オフラインで残す・同じキーで再送）・再開の期限・お詫びからプレゼントボックスへ。
+- REQ-TKT-017 入口：その他 › 設定・サポート › ヘルプ › お問い合わせ履歴（9行目なし）。未読はヘルプの行のバッジ。通報はチケットではない。
+- REQ-TKT-018 コンソール：一覧（絞り込み・待ち時間・CSV）・詳細（文脈・やりとり・内部メモ・担当・状態・ひな形・補填）。e2e。
+- REQ-TKT-019 プロトタイプ：お問い合わせ履歴・スレッド・返信・状態のチップ（ムチ一閃の調子、日本語と英語、文字「特大」、e2e・英語の流れ・アクセシビリティの流れ）。ヘルプの記事 `support_tickets`。
+- REQ-TKT-020 Codex への引き継ぎ：docs/handoff-codex-round23-support-tickets.md。

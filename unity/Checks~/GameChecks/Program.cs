@@ -156,6 +156,8 @@ static class Program
         await Round20IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 21 integration: ONE prompt gate (update > consent > comeback > release notes > reminders > account link > review; none in the FTUE), an account change drops the waiting deep link and the release notes session");
         await Round21IntegrationChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 23 integration: one AccountChangeReset drops the device list and the pedigree trees; SESSION_REPLACED > SESSION_REVOKED > update > maintenance > offline");
+        await Round23IntegrationChecks.Run(Check);
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");

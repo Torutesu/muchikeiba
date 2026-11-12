@@ -947,6 +947,9 @@ html[data-reduce-motion="on"] .fx-bar { transition: none; }
 html[data-reduce-motion="on"] .btn.cta .bg::after { display: none; }
 html[data-reduce-motion="on"] .bar i { animation: none; }
 html[data-reduce-motion="on"] .cardholder.charge .rcard.back { animation: none; }
+html[data-reduce-motion="on"] .fx-straight .fx-lines, html[data-reduce-motion="on"] .fx-confetti i, html[data-reduce-motion="on"] .fx-flash,
+html[data-reduce-motion="on"] .fx-burst, html[data-reduce-motion="on"] .cardholder.charge.r-SSR .rcard.back { animation: none; }
+html[data-reduce-motion="on"] .fx-title.gone, html[data-reduce-motion="on"] .fx-moment.gone { animation: fade .12s ease reverse both; }
 /* battery saver: the hero CTA's loop, the speed lines and the turning rays stop (RenderProfile.AmbientMotion) */
 html[data-perf-ambient="off"] .btn.cta.hero .bg::after, html[data-perf-ambient="off"] .fx-lines { animation: none; }
-html[data-perf-ambient="off"] .fx-rays { animation: fxrays-in var(--dur-peak) var(--ease-out) both; }
+html[data-perf-ambient="off"]:not([data-reduce-motion="on"]) .fx-rays { animation: fxrays-in var(--dur-peak) var(--ease-out) both; }

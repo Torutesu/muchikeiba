@@ -863,6 +863,8 @@ namespace Muchi.Client
                     // REQ-TRF-010 (§54.6): the account moved to another device — a fresh token cannot help; never retried
                     var moved = ParseError(res);
                     if (moved is SessionReplacedException) { NoteOutage(OutageKind.None, null); NoteSessionReplaced(); throw moved; }
+                    // REQ-DEV-008 (§70): this session was signed out from another device / by support — the same one place, never retried
+                    if (moved is SessionRevokedException) { NoteOutage(OutageKind.None, null); NoteSessionRevoked(); throw moved; }
                 }
 
                 if (res.Status == 401 && auth && string.IsNullOrEmpty(_opt.DevUserId) && !refreshedToken)

@@ -533,7 +533,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'failed')); await waitScreen('result'); await waitIn('.pp-sheet.fail');
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /昇級ならず/, 'promo: the fail sheet');
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /ptに戻りました/, 'promo: the setback');
-    const text = await page.locator('.screen.in').innerText();
+    const text = await page.locator('.screen.in:not(.out)').innerText(); // the result screen, not home still leaving
     for (const w of ['今だけ', '残りわずか', 'お得', '倍']) assert.ok(!text.includes(w), 'promo: no urgency / shop word: ' + w);
     await shot('promotion-fail', 600);
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);

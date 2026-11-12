@@ -5301,7 +5301,7 @@ async function HorseCard(horseId, back = () => Stable()) {
     const s = p.stats.find((x) => x.key === k); if (!s) return;
     const y = 238 + i * 58;
     const lean = p.leaning?.stat === k;
-    Txt(TR_STAT[k] + (lean ? '　得意' : ''), 36, y, 200, 16, lean ? GOLD : WHITE, g, { weight: 700, ls: '.04em', nowrap: true });
+    Txt(TR_STAT[k] + (lean ? '　·　得意' : ''), 36, y, 240, 16, lean ? GOLD : WHITE, g, { weight: 700, ls: '.04em', nowrap: true });
     Txt(fmt(s.race), 300, y - 4, 90, 22, WHITE, g, { weight: 700, align: 'right', cls: 'num' }).dataset.stat = k;
     qrLayerBar(36, y + 28, 354, s, g);
     if (cap) {
@@ -5440,7 +5440,7 @@ async function Breeding() {
     for (const a of v.atavism.candidates.slice(0, 3)) { Txt(`隔世遺伝 ${qrPermille(a.permille)}　${qrTrait(a)} ← ${a.from}`, 36, y, 416, 13, GOLD, rp); y += 22; }
     const apt = Object.entries(v.goingAptitude).filter(([k, n]) => k !== 'any' && n > 0);
     if (apt.length) Txt(apt.map(([k, n]) => `${k === 'heavy' ? '重馬場巧者' : '良馬場巧者'} ${qrPermille(n)}`).join('・'), 36, y + 4, 416, 13, MUTED, rp);
-    const go = Cta('配合する', 36, 530, 416, async () => {
+    const go = Cta('配合する', 36, 506, 416, async () => {
       const b = await L.breed(qrSire, qrDam, left <= 0);
       if (!b.ok) { toast(b.code === 'BREEDING_DAILY_LIMIT' ? '今日の配合はおしまい。4:00に戻ります' : b.message); return; }
       FoalReveal(b.value, v, sire, dam);
@@ -5448,9 +5448,9 @@ async function Breeding() {
     go.classList.add('qr-breed');
     const mat = v.today.materialOwned >= v.today.materialCost && v.today.extraUsed < v.today.extraPerDay;
     if (left <= 0 && !mat) disable(go);
-    Txt(left > 0 ? `今日あと${left}回` : mat ? `配合素材を${v.today.materialCost}個使って、もう1回` : '今日の配合はおしまい。4:00に戻ります', 36, 612, 416, 13, SOFT, rp);
+    Txt(left > 0 ? `今日あと${left}回` : mat ? `配合素材を${v.today.materialCost}個使って、もう1回` : '今日の配合はおしまい。4:00に戻ります', 36, 588, 416, 13, SOFT, rp);
   }
-  Txt('見込みの確率はすべて実際の配合と同じ計算です。調教の伸びは受け継がれません。', 36, 640, 416, 11, SOFT, rp, { lh: 1.5 });
+  Txt('見込みの確率はすべて実際の配合と同じ計算です。調教の伸びは受け継がれません。', 36, 614, 416, 11, SOFT, rp, { lh: 1.5 });
   Back(Stable, 'BACK', 40, 834);
 }
 

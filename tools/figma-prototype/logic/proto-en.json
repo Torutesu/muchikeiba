@@ -1621,6 +1621,22 @@
   "お知らせはオフです（最初はオフ）": "The reminder is off (off at first)",
   "使っても使わなくても、もらえるものや遊べる内容は変わりません": "Using these or not changes nothing you receive or can play",
   "上限とお知らせについて（ヘルプ）": "About limits and reminders (Help)",
-  "デモ：60分遊んだことにする": "Demo: count 60 minutes of play"
+  "デモ：60分遊んだことにする": "Demo: count 60 minutes of play",
+  "_promotion": "---- round 22: 昇級戦と降級の猶予 (§68)",
+  "昇級戦　/　{c}級 → {d}級": "Promotion series  /  Class {c} → Class {d}",
+  "{n}pt　·　昇級戦 {a}/{b}": "{n} pts  ·  promotion series {a}/{b}",
+  "昇級戦 {a}/{b}　{s}": "Promotion series {a}/{b}  {s}",
+  "ランク戦　·　降級の猶予 残り{n}戦": "Ranked  ·  demotion protection: {n} races left",
+  "ポイントは{n}ptに戻りました": "Your points went back to {n}",
+  "クラスが上がるのはシーズンの締め": "Your class goes up when the season closes",
+  "ライン {n}pt　·　いま {m}pt": "Line {n} pts  ·  now {m} pts",
+  "昇級戦　/　突破": "Promotion series  /  won",
+  "昇級戦　/　届かず": "Promotion series  /  fell short",
+  "一閃、届いた。": "One flash of the whip, and it landed.",
+  "次の一閃で取り返せ。": "Win it back with the next flash.",
+  "シーズンの締めで{c}級に上がります。上がった後の最初の{n}戦は、締めで一度だけ降級しません。": "You move up to Class {c} when the season closes. For your first {n} races after that, a season close will not demote you, once.",
+  "ポイントは{n}ptに戻りました。あと{m}ptでもう一度挑めます。": "Your points went back to {n}. {m} more points and you can try again.",
+  "直線の一閃が届いた": "The whip in the straight got there",
+  "仕掛けが一歩遅れた": "Your move came a step too late"
  }
 }

@@ -25,6 +25,8 @@ export const ACTIVITY_KINDS = [
   'qchat_mention',
   // Round 18: the personal data export is ready (§51)
   'data_export_ready',
+  // Round 22: a promotion at the season close (§68.10, after a promotion series or the line)
+  'class_promoted',
 ] as const;
 export type ActivityKind = typeof ACTIVITY_KINDS[number];
 export const ACTIVITY_SCREENS = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
@@ -60,6 +62,8 @@ export const ACTIVITY_META: Record<ActivityKind, KindMeta> = {
   inquiry_answered: { category: 'support', screen: 'help_inquiry', collapse: false },
   qchat_mention: { category: 'friends', screen: 'team_feed', collapse: true },
   data_export_ready: { category: 'account', screen: 'privacy', collapse: false },
+  // §68 × §40: the class went up at the close; links to that month's recap (linkId season:YYYY-MM)
+  class_promoted: { category: 'season', screen: 'recap', collapse: false },
 };
 
 /** REQ-ACT-010: `progression.activity` (absent → ACTIVITY_DEFAULTS). */
@@ -291,6 +295,8 @@ export const ACTIVITY_TEXT = {
   qchat_mention_one: '{name}さんが支部のチャットであなたに声をかけました',
   qchat_mention_many: '支部のチャットで{n}件の声がかかりました',
   data_export_ready: 'データのダウンロードの準備ができました',
+  class_promoted_series: '昇級戦を突破して{to}級に昇級しました',
+  class_promoted_line: '{from}級から{to}級に昇級しました',
 } as const;
 
 const fill = (t: string, v: Record<string, string>) => t.replace(/\{(\w+)\}/g, (_, k: string) => v[k] ?? '');
@@ -322,6 +328,7 @@ export function activityText(kind: ActivityKind, count: number, vars: Record<str
     case 'inquiry_answered': return T.inquiry_answered;
     case 'qchat_mention': return count > 1 ? fill(T.qchat_mention_many, { n: String(count) }) : fill(T.qchat_mention_one, v);
     case 'data_export_ready': return T.data_export_ready;
+    case 'class_promoted': return fill(vars.via === 'series' ? T.class_promoted_series : T.class_promoted_line, v);
   }
 }
 

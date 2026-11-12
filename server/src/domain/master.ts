@@ -229,6 +229,8 @@ export interface Progression {
   horseGoals?: import('./horseGoals.js').HorseGoalsConfig;
   /** REQ-REV-*: レビュー依頼のタイミング (reviewPrompt.ts, validated by reviewPromptProblems). Absent = never asks. */
   reviewPrompt?: import('./reviewPrompt.js').ReviewPromptRules;
+  /** REQ-PROMO-*: 昇級戦と降級の猶予 (promotion.ts, validated by promotionProblems). Absent = off (the old promotion at the close). */
+  promotion?: import('./promotion.js').PromotionRules;
   /** REQ-LNOTIF-*: 端末のローカル通知 (localNotify.ts, validated by localNotificationsProblems). Absent / disabled = the device schedules nothing. */
   localNotifications?: import('./localNotify.js').LocalNotifyConfig;
   /** REQ-LIMIT-*: 使いすぎ・遊びすぎの防止 (selfLimits.ts, validated by selfLimitsProblems). Absent = the defaults (no kill switch). */

@@ -23,7 +23,8 @@ import { bettingWordsIn } from './bettingWords.js';
 export const LEGAL_WORDS_JA: readonly string[] = ['倍', 'お得', '今だけ', '残りわずか', '通常価格'];
 
 // cups: Round 16 hosted cups (/v1/cups*), a race group of their own (Round 17 integration). Roster, recap and the home's
-// next card are `core` (closed only by `all`).
+// next card are `core` (closed only by `all`). Round 22: the promotion series view and its seen mark (/v1/promotion*) are
+// `core` too — the series' races themselves are closed by a `ranked` window.
 export const MAINTENANCE_GROUPS = ['gacha', 'shop', 'ranked', 'teams', 'events', 'tournaments', 'training', 'time_attack', 'social', 'cups', 'core'] as const;
 export type MaintenanceGroup = typeof MAINTENANCE_GROUPS[number];
 /** Groups a window may name (`core` = everything not in another group; only `all` closes it). */

@@ -18,6 +18,7 @@ import { selfLimitsConfig } from './selfLimits.js';
 import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
 import { CALENDAR_LIMITS } from './calendar.js';
 import helpJson from '../../master/help.json';
+import { promotionRulesOf } from './promotion.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { PlayerState } from './player.js';
@@ -219,6 +220,12 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'day_rollover_hour': return String(dayRule(m).hourJst);
     // Round 22: §67 the cool-off before a raised / removed own spending limit applies (remote config)
     case 'self_limit_cooloff_hours': return String(selfLimitsConfig(m).coolOffHours);
+    // Round 22: §68 the promotion series rules (remote config; the article reads them, never a number in its text)
+    case 'promo_races': return String(promotionRulesOf(m).races);
+    case 'promo_need': return String(promotionRulesOf(m).needTop);
+    case 'promo_place': return String(promotionRulesOf(m).topPlace);
+    case 'promo_setback': return fmtInt(promotionRulesOf(m).setbackPoints);
+    case 'promo_grace': return String(promotionRulesOf(m).graceRaces);
     default: throw new Error(`unknown token ${name}`);
   }
 }

@@ -2427,14 +2427,14 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
 | `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
+| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）・昇級戦の表示と見た印 §68 `/v1/promotion*`…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
-- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。昇級戦（§68、Round 22）`GET /v1/promotion`・`POST /v1/promotion/ack` も `core`（読むだけと見た印。昇級戦のレース自体は `ranked` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
@@ -4248,3 +4248,91 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - C# `Muchi.Client.SelfLimits`：`SelfLimitsView`（67.6）・`SelfLimitsDigest`（ブートストラップ）・`PlaytimeSnapshot`／`PlaytimeReminderPolicy.Decide`（共有ベクター）・`PlaytimeClock`（前面の時間・セッション・1日の切り替え、端末に保存）・`ApiClient.GetSelfLimitsAsync`／`SetSpendingLimitAsync`／`CancelSpendingRaiseAsync`／`SetPlaytimeAsync`・`ApiErrorCode.SelfLimitExceeded`・`AnalyticsEvent.PlaytimeReminderShown`。
 - Unity のゲーム層 `Muchi.Game.SelfLimitsModel`：設定画面の行・断られた時の文とリンク・区切りでのシートの判断・KPI。描画は `docs/handoff-codex-round22-self-limits.md`。
 - プロトタイプ：設定の画面（上限・待っている変更・取り消し・自分で入力・遊ぶ時間）、購入が断られた状態、遊ぶ時間のシート（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。
+
+## 68. 昇級戦と降級の猶予（ranked promotion series & demotion protection、REQ-PROMO-001〜020、`server/src/domain/promotion.ts`・`progression.promotion`、C# `Promotion.cs`（`PromotionView`・`PromotionPips`）・`Muchi.Game.PromotionModel`、docs/handoff-codex-round22-promotion.md）
+ランク戦（§9・REQ-RATE-001〜004）のシーズンポイントが**昇級ライン**（そのクラスの `promotePoints`）に届いたら、すぐに昇級を確定させずに**昇級戦**（数レースの短い勝負）に入る。突破すれば昇級が確定し、届かなければポイントが少しだけライン手前に戻り、もう一度挑める。昇級した後は**降級の猶予**（最初の数レースの間は1回だけ降級を止める「盾」）がある。
+
+**クラスが変わるのは今まで通りシーズンの締めだけ**（REQ-RATE-002 が上位）。昇級戦は「ラインに届いた」ことを本物か確かめる関門で、突破した時点でその月の昇級が**確定**する（締めでクラスが上がる）。月の途中でクラス・能力上限 `classStatCap`・クラスの順位表を動かさない（順位表・シーズン報酬・支部のポイントの仕組みはそのまま）。
+
+**何も配らない**（E 番号なし、balance-targets の節なし）。課金・アイテム・パスで昇級戦の判定・盾・猶予は変わらない（買える物はどこにも出てこない、REQ-RATE-003 の公平性）。Glicko-2 のレートの更新（REQ-RATE-001/004）とマッチング（REQ-MM-*、初心者のマッチング REQ-MM-003 を含む）は**変えない**（昇級戦の人を近いレートと組ませる優先は入れない：待ち時間と公平性に効くので、効果を測ってから別の節で決める）。
+
+### 68.1 規則 `progression.promotion`（`promotionProblems`、起動時と各リモート設定の版で検証）
+```json
+{ "enabled": true, "races": 3, "needTop": 2, "topPlace": 3, "setbackPoints": 40, "graceRaces": 10 }
+```
+| キー | 検証 |
+|---|---|
+| `enabled` | bool。**`false` は止めるスイッチ**：昇級戦を始めず、進めず（進行中のものは止まったまま締めで 68.4 のとおり解決）、盾も使わない＝**前の動き**（ラインに届けば締めで昇級）に戻る。区分ごと無い場合も同じ |
+| `races` | 整数 1〜5（昇級戦のレース数 N） |
+| `needTop` | 整数 1〜`races`（突破に要る「上位」の回数 K） |
+| `topPlace` | 整数 1〜`seasonPointsByPlace` の長さ（この着順以内が「上位」） |
+| `setbackPoints` | 整数 1〜。昇級ラインのある全クラスで `promotePoints − setbackPoints ≥ max(0, demoteBelowPoints)`（届かなかった時に降級の線より下に落とさない） |
+| `graceRaces` | 整数 0〜100（降級の猶予のレース数 M。0 = 盾なし） |
+知らないキーは落ちる（`reward`・`coins` など報酬の項目は「昇級戦は何も配らない」として落ちる）。始まった昇級戦は**始まった時の `races`・`needTop`・`topPlace` を持ち続ける**（途中で設定が変わっても同じ昇級戦の判定は変わらない）。
+
+### 68.2 数えるレース（`promoCounted`、REQ-PROMO-003）
+昇級戦の開始・進行と猶予のレース数に数えるのは、プレイヤーの Durable Object が `applyRace` で反映した結果のうち、次を**全部**満たすものだけ：
+- `mode: "ranked"`、`void: false`（検証できずに無効になったレース・検証で合わなかったレースは数えない）。
+- `suspect` でない（その人の報告した結果ハッシュが確定の結果と違った＝不正・ずれの疑い。`settleRace` が `final.suspects` から付ける）。
+- プレイヤーの `moderation` が `ok`（隔離・停止中は数えない）。削除の実行中（`deletion.status: deleting`）と削除済み（墓標）のアカウントには結果自体が届かない（§既存の `applyRace` の扱い）。
+- `enabled: true`。同じレース ID は1回だけ（`appliedRaces` に加え、昇級戦の結果にもレース ID を持つ）。
+シーズンポイント・レート・ミッションなど他の反映は今まで通り（昇級戦は追加で見るだけ）。
+
+### 68.3 昇級戦の流れ（`notePromotionRace`、決定的、REQ-PROMO-004〜007）
+数えるレースを1つ反映した**後**（ポイントは加算済み）に、上から1つだけ行う：
+1. **進行**：進行中の昇級戦（`status: active`、同じシーズン・同じクラス）があり、そのレースの開始時刻 `startAtMs` が昇級戦を始めたレースの開始時刻より後（どちらかが不明なら数える）なら、結果を1つ足す。`top` = 着順 ≤ `topPlace` **かつ** CPU が代わりに走っていない（`details.cpuAssisted: false`）。**切断（REQ-NET-006 の CPU 引き継ぎ）は着順にかかわらず `miss`**（ポイントは既存の切断の決まりどおり着順で入る）。昇級戦が始まった後に、それより前に始まったレースの結果が遅れて届いても昇級戦には入らない（ポイントは今まで通り入る）。
+   - `top` の数 ≥ `needTop` → **突破**（`passed`）。
+   - `miss` の数 > `races − needTop` → **届かず**（`failed`）：シーズンポイント ← `min(今のポイント, promotePoints − setbackPoints)`。差は `setback.points` に積む（68.6）。
+   - どちらでもなければ続く。決まった時点で終わる（残りのレースは走らない）。
+2. **開始**：進行中の昇級戦が無く、クラスに次のクラスがあり（`promotePoints` が null でない）、ポイント ≥ `promotePoints`、このシーズン・このクラスで突破済みでない → 始める。**始めたレースは昇級戦に入らない**。ID は `シーズン:クラス:回数`（例 `2026-11:C:1`、届かなかった後の再挑戦は `:2`）。
+突破の後はそのシーズンのそのクラスで二度と始まらず、ポイントも戻らない（ポイントは減らない）。結果が2回届いても数は変わらない（レース ID で1回）。昇級戦に入るかどうかはレースの開始時刻で決める（決まった後に遅れて届いた古いレースで判定が変わらない）。
+
+### 68.4 シーズンの締め（`rollSeason`、REQ-PROMO-008/009）
+昇級・降級の判定は今までと同じ式（締めの時のポイントと `promotePoints` / `demoteBelowPoints`）。
+- **締めの時に進行中の昇級戦は、その時のポイントだけで解決し、持ち越さない**（`status: season_end`）。届かずはもうポイントを戻しているので、進行中＝ポイントがライン以上 → 昇級する。途中でやめた人も、ラインに届いた月は今まで通り昇級する（昇級戦は「届かなかった」時にだけポイントを戻す関門で、締めの式は変えない）。
+- 閉じたシーズンの記録（`seasonHistory`）に `promo: "series"`（突破して昇級）または `"series_open"`（進行中のまま締めで昇級）、盾を使った時は `shielded: true` を足す（どちらも省略可。古い記録には無い）。
+- 新しいシーズンでは昇級戦も `setback` も空から始まる。
+
+### 68.5 降級の猶予と盾（REQ-PROMO-010/011）
+- `enabled: true` の締めで昇級したら、新しいクラスの**猶予** `grace = { classId, races: 0, since }` を付ける（`graceRaces > 0` の時）。そのクラスで数えるレース（68.2）を走るたびに `races + 1`、`graceRaces` に達したら猶予は終わる。別のクラスに移ったら消える。
+- その後の締めで**降級になるはずの時**、猶予がそのクラスで続いていて、そのシーズン・そのクラスの盾をまだ使っていなければ、**クラスに残る**（盾を使った＝`shields` に `{ seasonId, classId }`、猶予は終わる、KPI `demotion_shield_used`）。盾は**1シーズン・1クラスに1回**、1回の昇級に1回。
+- 盾は降級だけを止める。シーズン報酬（REQ-SEASON-002）は締めたクラスと順位のまま（盾で増えも減りもしない）。
+
+### 68.6 ポイントを戻した分（REQ-PROMO-012）
+シーズンのミッション（REQ-UXS-016）の `points`・`promotion_line` は「このシーズンに稼いだポイント」＝`season.points + setback.points`（同じシーズンの分だけ）で数える。届かずでポイントが戻っても、もう達成したミッションを失わない（新しく何かを配ることも無い）。順位表・支部のポイント・締めの判定は今のポイント（戻した後）。
+
+### 68.7 API（REQ-PROMO-013/014）
+| メソッド | パス | 内容 |
+|---|---|---|
+| GET | `/v1/promotion` | 見る（下）。ホームの「昇級戦 2/3」と結果画面の印の元 |
+| POST | `/v1/promotion/ack` | `{ "seriesId": "2026-11:C:1" }`。終わった昇級戦の結果シートを見た印。冪等（同じ ID を何度送っても同じ）。知らない ID・進行中は 404 `NOT_FOUND` |
+```json
+{ "enabled": true, "seasonId": "2026-11", "classId": "C", "toClassId": "B", "line": 300, "points": 315, "earned": 315,
+  "rules": { "races": 3, "needTop": 2, "topPlace": 3, "setbackPoints": 40, "graceRaces": 10 },
+  "series": { "id": "2026-11:C:1", "status": "active", "races": 3, "needTop": 2, "topPlace": 3,
+              "results": [{ "raceId": "r-1", "place": 2, "top": true, "cpu": false }],
+              "pips": ["top", "open", "open"], "next": 2, "tops": 1, "misses": 0,
+              "startedAt": 1794416400000, "endedAt": null, "setbackTo": null, "seen": false },
+  "passedThisSeason": false,
+  "grace": null, "shieldUsedThisSeason": false }
+```
+- `series` は進行中、または最後に終わった昇級戦（このシーズン・このクラスのもの。無ければ null）。`pips` は `top`／`miss`／`open`（まだ）／`skip`（決まって走らなかった分）で長さ `races`。`next` は次に走るのが何戦目か（1〜`races`、終わっていれば null）＝ホームの「昇級戦 {next}/{races}」。
+- `grace`：`{ classId, racesLeft }`（猶予の残りレース数）か null。`enabled: false` の時は `series`・`grace` も null（止めた間は何も出さない）。
+- メンテナンスの区分は `core`（§46.2。読むだけと見た印で、レースは `ranked` の区分が止める）。
+
+### 68.8 KPI（REQ-PROMO-015、§58 の分類はすべて `optional`）
+| 名前 | s1 | s2 | s3 | 数 |
+|---|---|---|---|---|
+| `promo_series_start` | クラス | 次のクラス | 昇級戦 ID | `value` ポイント・`count` 何回目 |
+| `promo_series_end` | `pass`／`fail`／`season_end` | クラス | 次のクラス | `count` 上位の数・`value` 走った数 |
+| `demotion_shield_used` | クラス | シーズン | — | `value` ポイント・`count` 猶予で走った数 |
+
+### 68.9 状態 `promotion`（REQ-PROMO-016）
+新しい PlayerState のキー `promotion`：`series`（進行中か最後のもの）・`history`（終わった昇級戦、新しい順に10件）・`passed`（突破した `シーズン:クラス`、24件）・`attempts`（今のシーズンの回数）・`setback`（`{ seasonId, points }`）・`grace`・`shields`（24件）。§51 の分類は `play`（開示の `play.promotion` にそのまま出る。他のプレイヤーの情報は持たない）。アカウント削除の `wipe` で消える。
+
+### 68.10 端末（REQ-PROMO-017/018）
+- **ホーム**：昇級戦の間はランク戦のボタンに「昇級戦 {next}/{races}」と印（○ 上位・● 外れ・· まだ・– 走らずに決まった分）。猶予中はクラスの横に「降級の猶予 残り{n}戦」。
+- **結果画面**：ランク戦の結果の後に `GET /v1/promotion` を読み、昇級戦の始まり（帯「昇級戦 開始」）・その戦の印・決まった時の結果（突破／届かず）を出す。突破・届かずのシートは**1セッションに1つの案内**（§58.11 `SessionPromptGate`／プロトタイプ `sessionPrompt`）を通す。取れなかった時は結果画面の中の印と一言だけ（シートは次のホームで出す）。見たら `ack`。
+- 文言は煽らない（「今だけ」・作った残り時間・課金への誘導なし。§58.11）。押し付けのプッシュ・ローカル通知は足さない（§61 の表に足さない）。
+- 振り返り（§43）：昇級した月の名場面に「昇級戦を突破して B級へ」。アクティビティ（§40）に `class_promoted`（締めで昇級した時、`season` 区分、リンクはその月の振り返り）。
+- ヘルプ（§48）に記事 `promotion_series`（数字は `{{promo_races}}` などのトークン）、ヒント集（§57）に `promotion_series_tip`。

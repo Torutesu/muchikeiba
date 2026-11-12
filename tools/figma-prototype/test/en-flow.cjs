@@ -113,6 +113,7 @@ module.exports = async function enFlow(browser, base, out, errors) {
   // round 12: かんたん操作 in English — the options screen; the ranked race below rides with the whip assist (the HUD chip)
   await show('AssistSettings'); await waitScreen('assist-settings'); await shot('assist-settings', 400);
   assert.match(await page.locator('.screen.in').innerText(), /never rides better than skilled play/i, 'assist: the fairness rule in English');
+  await page.evaluate(() => globalThis.__muchi.logic.promotion.setEnabled(false)); // round 22: the promotion series has its own block below
   await page.evaluate(() => globalThis.__muchi.logic.setAssist('whip'));
   // round 15: アクセシビリティ in English at the standard size (a11y-flow.cjs audits the largest size in both languages)
   await show('A11ySettings'); await waitScreen('a11y-settings'); await shot('a11y-settings', 400);
@@ -302,6 +303,22 @@ module.exports = async function enFlow(browser, base, out, errors) {
     assert.match(await page.locator('.screen.in').innerText(), /Not Now/, 'review: the OS sheet in English');
     await page.locator('.screen.in .rev-os-later').click(); await waitScreen('home');
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
+  }
+
+  // round 22: 昇級戦 in English (REQ-PROMO-020): the start card, the home label, the pass and fail sheets
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('PromotionResult', 'start'); await waitScreen('result'); await waitIn('.pp-card'); await shot('promotion-start', 500);
+    assert.match(await page.locator('.screen.in .pp-card').innerText(), /Promotion series begins/, 'promo: the banner in English');
+    await show('PromotionResult', 'one'); await waitScreen('result'); await waitIn('.pp-card');
+    await show('Home'); await waitScreen('home'); await waitIn('.pp-home'); await shot('promotion-home', 500);
+    await show('PromotionResult', 'passed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-pass', 500);
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Promotion to Class [A-Z] confirmed/, 'promo: the pass sheet in English');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    await show('PromotionResult', 'failed'); await waitScreen('result'); await waitIn('.pp-sheet'); await shot('promotion-fail', 500);
+    assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /Not promoted this time/, 'promo: the fail sheet in English');
+    await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
+    await page.evaluate(async () => { await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
   }
 
   // round 20: 通知 in English (REQ-LNOTIF-007): settings with the device reminders and the upcoming list, the pre-permission dialog

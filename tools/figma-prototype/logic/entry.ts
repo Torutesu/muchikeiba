@@ -91,6 +91,7 @@ const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string 
 
 const KEY = 'muchi.proto.player';
 const ID = 'local';
+let promoRace = 0; // round 22: demo race ids (§68)
 
 class LocalRepo implements PlayerRepo {
   get(id: string): PlayerState | null {
@@ -1401,6 +1402,35 @@ export const MuchiLogic = {
       const rp = (master.progression as { reviewPrompt?: { softAsk: { ios: boolean; android: boolean } } }).reviewPrompt;
       if (rp) rp.softAsk = { ios: soft, android: false };
       await svc.tx(ID, null, (st) => { st.createdAt = Math.min(st.createdAt, now() - 10 * DAY_MS); st.stats.races = Math.max(st.stats.races, 12); st.flags.tutorialGachaUsed = true; delete st.reviewPrompt; });
+      return true;
+    }),
+  },
+  // ---------------------------------------------------------------- round 22: 昇級戦と降級の猶予 (REQ-PROMO-*, contracts/protocol.md §68)
+  // The real PlayerService / promotion.ts rules on the local player: GET /v1/promotion, POST /v1/promotion/ack, and a demo state
+  // reached through real ranked results (settleRace → applyRace): just below the line, a series started, one race in, passed,
+  // failed, or a grace window after a promotion (the close is a month away in the demo, so that one is set directly).
+  promotion: {
+    view: () => wrap(() => svc.promotion(ID)),
+    ack: (seriesId: string) => wrap(() => svc.promotionAck(ID, seriesId)),
+    /** The kill switch (progression.promotion.enabled) on the local master; the walkthroughs that race for other reasons turn it off. */
+    setEnabled: (on: boolean) => { const prog = master.progression as { promotion?: { enabled: boolean } }; if (prog.promotion) prog.promotion.enabled = on; return on; },
+    demo: (state: 'near' | 'start' | 'one' | 'passed' | 'failed' | 'grace' | 'off') => wrap(async () => {
+      const prog = master.progression as { promotion?: { enabled: boolean } };
+      if (prog.promotion) prog.promotion.enabled = state !== 'off';
+      const line = classDef(master, (await svc.state(ID)).season.classId).promotePoints ?? 300;
+      await svc.tx(ID, null, (st) => { delete st.promotion; st.season.points = line - 12; st.flags.tutorialGachaUsed = true; });
+      const race = (place: number) => svc.applyRace(ID, { raceId: `proto_promo_${Date.now().toString(36)}_${++promoRace}`, mode: 'ranked', place, fieldSize: 12, newRating: null, void: false, humans: 4,
+        details: { trackId: 'aoba_turf_1600', style: 'sashi', finishTick: 1900, startReactionTicks: null, whips: 3, whipMashed: false, cpuAssisted: false } });
+      if (state === 'near' || state === 'off') return true;
+      if (state === 'grace') {
+        await svc.tx(ID, null, (st) => { st.promotion = { series: null, history: [], passed: [], attempts: {}, setback: null, grace: { classId: st.season.classId, races: 3, since: 'demo' }, shields: [] }; st.season.points = 20; });
+        return true;
+      }
+      await race(2); // reaches the line: the series starts (this race is not part of it)
+      if (state === 'start') return true;
+      await race(state === 'failed' ? 6 : 1);
+      if (state === 'one') return true;
+      await race(state === 'failed' ? 9 : 3);
       return true;
     }),
   },

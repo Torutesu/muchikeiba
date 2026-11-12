@@ -120,6 +120,10 @@ export interface RaceResultForPlayer {
   horseId?: string;
   /** REQ-MYRP-001: what マイリプレイ needs to offer this race later (absent for void races and results from older rooms). */
   replay?: import('./myReplays.js').ReplayRef;
+  /** REQ-PROMO-003: this rider's reported result disagreed with the final one (cheat / desync suspect). */
+  suspect?: boolean;
+  /** REQ-PROMO-005: when the race started (orders races for the promotion series). Absent in results from older rooms. */
+  startAtMs?: number;
 }
 
 /** REQ-RATE-004: apply the race's rating change as a delta, so a newer rating is never overwritten by a stale snapshot. */

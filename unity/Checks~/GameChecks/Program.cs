@@ -144,6 +144,8 @@ static class Program
         await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
+        Console.WriteLine("== round 22: 昇級戦と降級の猶予 (PromotionModel: start banner, pips, 「昇級戦 2/3」, outcome sheet through the one-prompt gate, ack once, offline copy, grace, kill switch, English; REQ-PROMO-*)");
+        await PromotionChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: クライアントのエラー報告 (ClientErrorModel: Unity log lines, no loop, stalls / pause, API failures, desync race id + tick, asset, consent hook, send on pause; REQ-CERR-*)");
         await ClientErrorChecks.Run(Check);
         Console.WriteLine("== round 20: 端末のローカル通知 (LocalNotificationModel: plan from the digest, diff, account switch / deletion / logout, pre-prompt, details, tap, English; REQ-LNOTIF-*)");

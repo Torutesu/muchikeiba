@@ -84,7 +84,13 @@ export interface PlayerStats {
 }
 
 /** Closed season record kept for rewards (REQ-SEASON-002). */
-export interface SeasonRecord { seasonId: string; classId: string; points: number; races: number; nextClassId: string; rank: number | null; rewarded: boolean }
+export interface SeasonRecord {
+  seasonId: string; classId: string; points: number; races: number; nextClassId: string; rank: number | null; rewarded: boolean;
+  /** REQ-PROMO-009: the promotion followed a passed series (`series`) or a series still running at the close (`series_open`). */
+  promo?: 'series' | 'series_open';
+  /** REQ-PROMO-011: the demotion shield kept the class at this close. */
+  shielded?: boolean;
+}
 
 export interface FriendsState {
   ids: string[];
@@ -240,6 +246,8 @@ export interface PlayerState {
   horseGoals?: import('./horseGoals.js').HorseGoalsState;
   /** REQ-REV-*: レビュー依頼 — when the store review was asked, the pre-question answer, the last session (reviewPrompt.ts). Nothing is ever granted. */
   reviewPrompt?: import('./reviewPrompt.js').ReviewPromptState;
+  /** REQ-PROMO-*: 昇級戦と降級の猶予 — the running / last series, passed keys, setback this season, grace window, shields (promotion.ts). */
+  promotion?: import('./promotion.js').PromotionState;
   /** REQ-DEX-*: 個人データの開示・ダウンロード — the current request, cooldown start, audit log, R2 keys still to delete (dataExport.ts). */
   dataExport?: import('./dataExport.js').DataExportState;
   /** REQ-TUT-007 (§57): tip cards seen (tips.ts markTipsSeen; ids of open cards only, bounded by tips.config.seenMax). */

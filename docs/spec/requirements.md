@@ -1448,3 +1448,26 @@
 - REQ-LIMIT-020 クライアント SDK：`SelfLimitsView`・`SelfLimitsDigest`・`PlaytimeReminderPolicy`・`PlaytimeClock`・`ApiClient` の4つの呼び出し・`ApiErrorCode.SelfLimitExceeded`・`AnalyticsEvent.PlaytimeReminderShown`。
 - REQ-LIMIT-021 Unity のゲーム層 `SelfLimitsModel`（設定の行・断られた時の文とリンク・シートの判断・KPI）。描画は `docs/handoff-codex-round22-self-limits.md`。
 - REQ-LIMIT-022 法務・文言：急かす言い回し・「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉を使わない（テスト）。上限の変更・お知らせの答えに報酬・罰は無い。プロトタイプ（設定・断られた状態・シート、日本語・英語、文字の大きさ §41、e2e・en-flow・a11y-flow）。
+
+## 68. 昇級戦と降級の猶予（ranked promotion series & demotion protection、TS＋C#、`src/domain/promotion.ts`・`progression.promotion`・`Muchi.Client/Promotion.cs`・`Muchi.Game.PromotionModel`、`contracts/protocol.md` §68）
+拘束条件：クラスが変わるのはシーズンの締めだけ（REQ-RATE-002 が上位）。何も配らない（E 番号なし）。買える物は判定・盾・猶予に関係しない（REQ-RATE-003）。Glicko-2 のレート更新とマッチングは変えない。
+- REQ-PROMO-001 規則 `progression.promotion`：`enabled`・`races`（1〜5）・`needTop`（1〜races）・`topPlace`（1〜着順ポイント表の長さ）・`setbackPoints`（1〜、全クラスで戻した後も降級の線以上）・`graceRaces`（0〜100）。知らないキー（報酬の項目を含む）は落ちる。起動時と各リモート設定の版で検証。
+- REQ-PROMO-002 止めるスイッチ：`enabled: false`（または区分なし）は前の動き（ラインに届けば締めで昇級、盾なし）。昇級戦を始めず・進めない。
+- REQ-PROMO-003 数えるレース：確定したランク戦（`void` でない）、`suspect` でない、隔離・停止中でない、同じレース ID は1回。削除中・削除済みには結果が届かない。
+- REQ-PROMO-004 開始：昇級戦が無く、次のクラスがあり、ポイント ≥ `promotePoints`、このシーズン・クラスで突破済みでない時、数えるレースの後に始まる（始めたレースは入らない）。始まった時の規則を持ち続ける。
+- REQ-PROMO-005 進行：`top` = 着順 ≤ `topPlace` かつ CPU の引き継ぎなし。切断は `miss`。昇級戦を始めたレースより前に始まったレースは入らない（遅れて届いても）。
+- REQ-PROMO-006 突破：`top` ≥ `needTop`。その月の昇級が確定（締めで昇級）。そのシーズン・クラスで二度と始まらない。
+- REQ-PROMO-007 届かず：`miss` > `races − needTop`。ポイントを `min(今, promotePoints − setbackPoints)` に戻す。もう一度ラインに届けば次の回が始まる。
+- REQ-PROMO-008 締め：判定の式は変えない。進行中の昇級戦はその時のポイントで解決（`season_end`）し、持ち越さない。
+- REQ-PROMO-009 記録：閉じたシーズンの記録に `promo`（`series`／`series_open`）と `shielded`。
+- REQ-PROMO-010 猶予：締めで昇級したら新しいクラスで `graceRaces` レースの猶予。数えるレースで減る。
+- REQ-PROMO-011 盾：猶予中に締めで降級になるはずならクラスに残る。1シーズン・1クラスに1回、1回の昇級に1回。シーズン報酬は変えない。
+- REQ-PROMO-012 戻した分：シーズンのミッションの `points`・`promotion_line` はこのシーズンに稼いだポイント（戻した分を足す）で数える。
+- REQ-PROMO-013 `GET /v1/promotion`：規則・今の昇級戦（印 `pips`・次の戦 `next`）・猶予・盾。止めた間は null。
+- REQ-PROMO-014 `POST /v1/promotion/ack`：結果のシートを見た印、冪等。メンテナンスの区分は2つとも `core`。
+- REQ-PROMO-015 KPI：`promo_series_start`・`promo_series_end`（pass／fail／season_end）・`demotion_shield_used`。§58 の分類は `optional`。
+- REQ-PROMO-016 状態 `promotion`：§51 の分類は `play`。削除の `wipe` で消える。
+- REQ-PROMO-017 端末：ホームの「昇級戦 2/3」、結果画面の印・始まりの帯・突破／届かずのシート（1セッション1つの案内 §58.11 を通す）。プッシュ・ローカル通知は足さない。
+- REQ-PROMO-018 振り返り（§43）に昇級戦の突破、アクティビティ（§40）に `class_promoted`。ヘルプの記事 `promotion_series` とヒント `promotion_series_tip`。
+- REQ-PROMO-019 クライアント SDK：`PromotionView`・`PromotionPips`・`ApiClient.GetPromotion`／`AckPromotion`。Unity のゲーム層 `PromotionModel`。描画は `docs/handoff-codex-round22-promotion.md`。
+- REQ-PROMO-020 プロトタイプ：始まりの帯・結果画面の印・突破／届かずのシート・ホームの表示（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。

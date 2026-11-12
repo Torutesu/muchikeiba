@@ -119,6 +119,7 @@ import {
 } from './hallOfFame.js';
 import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
 import { answerReviewPrompt, checkReviewPrompt, reviewPromptStatus, type ReviewCheckInput, type ReviewStep } from './reviewPrompt.js';
+import { ackPromotion, notePromotionRace, promotionEnabled, promotionView } from './promotion.js';
 import { localRemindersView } from './localNotify.js';
 import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
@@ -272,7 +273,14 @@ export class PlayerService {
     }
     const draft: PlayerState = structuredClone(current);
     const now = this.d.clock();
-    rollSeason(this.d.master, draft, now);
+    const rolled = rollSeason(this.d.master, draft, now);
+    // §68 × §40 (REQ-PROMO-018): a promotion at the close is one activity entry (linked to that month's recap)
+    if (rolled.closed && rolled.from !== rolled.to && promotionEnabled(this.d.master) && rolled.seasonId) {
+      const cs = this.d.master.progression.classes;
+      if (cs.findIndex((c) => c.id === rolled.to) > cs.findIndex((c) => c.id === rolled.from)) {
+        recordActivity(this.d.master, draft, { kind: 'class_promoted', source: `class_promoted:${rolled.seasonId}`, vars: { from: rolled.from!, to: rolled.to!, via: rolled.promo?.promo === 'series' ? 'series' : 'line' }, linkId: `season:${rolled.seasonId}` }, now);
+      }
+    }
     // REQ-RECAP-002/003: a closed season / game year becomes its recap (once); §43 × §40: one activity entry per recap
     for (const rid of rollRecaps(this.d.master, draft, now)) {
       const [kind, period] = rid.split(':') as [string, string];
@@ -289,6 +297,15 @@ export class PlayerService {
     const hallBefore = this.d.onHall ? hallSnapshotKey(this.d.master, draft, now) : '';
     const kpi: KpiRecord[] = [];
     const emit: Emit = (e) => { kpi.push(kpiRecord(draft, now, e)); };
+    // REQ-PROMO-015: what the season close did to the promotion series / the shield (rollSeason ran before emit existed)
+    if (rolled.closed && rolled.promo) {
+      const x = rolled.promo.ended;
+      if (x) emit({ name: 'promo_series_end', s1: 'season_end', s2: x.classId, s3: x.toClassId, count: x.results.filter((r) => r.top).length, value: x.results.length });
+      if (rolled.promo.shielded) {
+        const h = draft.seasonHistory.find((y) => y.seasonId === rolled.seasonId);
+        emit({ name: 'demotion_shield_used', s1: rolled.from ?? '', s2: rolled.seasonId ?? '', value: h?.points ?? 0, count: rolled.promo.graceRaces ?? 0 });
+      }
+    }
     expireGifts(this.d.master, draft, now, emit); // REQ-BOX-006: lazy expiry on every transaction (the alarm runs one too)
     settleExchanges(this.d.master, draft, now, giftGiver(this.d.master, draft, now, emit)); // REQ-EXCH-006 / §26.1: leftover event points → material, into the gift box
     let result: T;
@@ -637,6 +654,16 @@ export class PlayerService {
   reviewPromptAnswer(id: string, promptId: string, step: ReviewStep) {
     return this.tx(id, null, (s, now, emit) => answerReviewPrompt(s, promptId, step, now, emit));
   }
+
+  // ---- 昇級戦と降級の猶予 (REQ-PROMO-*, promotion.ts) — nothing here ever grants anything ----
+  /** REQ-PROMO-013: the series, the grace window, the rules (a read on a copy: a season close is not saved by a read). */
+  async promotion(id: string) {
+    const s = structuredClone(await this.load(id));
+    rollSeason(this.d.master, s, this.d.clock());
+    return promotionView(this.d.master, s);
+  }
+  /** REQ-PROMO-014: the result sheet of an ended series was seen (idempotent). */
+  promotionAck(id: string, seriesId: string) { return this.tx(id, null, (s) => ackPromotion(s, seriesId)); }
 
   // ---- 厩舎の整理 (REQ-ORG-*, roster.ts) ----
   /** REQ-ORG-001..003: the organiser rows, filtered / sorted by the optional query (the client runs the same rules). */
@@ -1189,6 +1216,7 @@ export class PlayerService {
         return { coins: 0, seasonPoints: 0, titles: [] as string[], rewarded: false, firstWinBonus: 0, comebackXp: 0, achievements: [] as ReturnType<typeof syncCollection>, event: null };
       }
       const base0 = applyRaceResult(this.d.master, s, r, now);
+      notePromotionRace(this.d.master, s, r, now, emit); // REQ-PROMO-003..007: the series / grace window (after the points)
       noteRaceForReplays(this.d.master, s, r, prevBest, now); // REQ-MYRP-001: offer the race in マイリプレイ
       noteRivalRace(this.d.master, s, r, now, emit); // REQ-RIVAL-004: head to head (ranked) / challenge (friend)
       noteFsugRace(this.d.master, s, r, now); // REQ-FSUG-013: friend-room / event / tournament opponents (never ranked)

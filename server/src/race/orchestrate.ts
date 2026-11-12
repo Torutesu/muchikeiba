@@ -116,8 +116,9 @@ function withAssist(d: RaceDetails, assisted: FinalOutcome['assisted'], slot: nu
  * Turns a final race outcome into per-player results (places, rating updates for ranked, ride details
  * for statistics/titles derived from the confirmed input log when it is given).
  */
-export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings: Record<string, Rating>, log?: ReplayLog, eventId: string | null = null): Record<string, RaceResultForPlayer> {
-  const ev = eventId ? { eventId } : {};
+export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings: Record<string, Rating>, log?: ReplayLog, eventId: string | null = null, startAtMs?: number): Record<string, RaceResultForPlayer> {
+  // REQ-PROMO-005: the start time orders races for the promotion series (absent when the caller does not know it)
+  const ev = { ...(eventId ? { eventId } : {}), ...(startAtMs !== undefined ? { startAtMs } : {}) };
   const out: Record<string, RaceResultForPlayer> = {};
   const humans = config.entrants.filter((e) => e.kind === 'human');
   if (final.status === 'void') {
@@ -148,6 +149,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
     out[h.playerId!] = {
       raceId: config.raceId, mode: config.mode, place: placeOf.get(h.slot) ?? config.entrants.length,
       fieldSize: config.entrants.length, newRating: newRatings.get(h.playerId!) ?? null, void: false,
+      ...((final.suspects ?? []).includes(h.slot) ? { suspect: true } : {}), // REQ-PROMO-003: the rider's hash disagreed
       details: log && config.mode !== 'tutorial' ? withAssist(withSkill(raceDetailsFor(config, log, h.slot, ft === undefined || ft < 0 ? null : ft), final.skillFired, h.slot), final.assisted, h.slot) : null,
       ...(config.mode !== 'tutorial' ? { seen: raceFieldSeen(config, h.slot) } : {}),
       humans: humans.length,

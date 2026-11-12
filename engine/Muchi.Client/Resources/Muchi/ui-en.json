@@ -1484,6 +1484,18 @@
   "この金額は選べません": "This amount cannot be chosen",
   "上限を変えました": "Limit changed",
   "変更を取り消しました": "Change cancelled",
-  "自分で決めた今月の上限（¥{yen}）を超えるため、購入できません": "This would go over the monthly limit you set (¥{yen}), so it cannot be bought"
+  "自分で決めた今月の上限（¥{yen}）を超えるため、購入できません": "This would go over the monthly limit you set (¥{yen}), so it cannot be bought",
+  "_promotion": "---- round 22: 昇級戦と降級の猶予 (§68, Promotion.cs / PromotionModel)",
+  "昇級": "Promotion",
+  "昇級戦 {n}/{m}": "Promotion series {n}/{m}",
+  "{a}戦で{b}着以内が{n}回で突破": "Win with {n} top-{b} finishes in {a} races",
+  "降級の猶予 残り{n}戦": "Demotion protection: {n} races left",
+  "{c}級へ昇級確定": "Promotion to Class {c} confirmed",
+  "昇級ならず": "Not promoted this time",
+  "シーズンの締めで{c}級に上がります": "You move up to Class {c} when the season closes",
+  "ポイントは{n}ptに戻りました。あと{m}ptでもう一度挑めます": "Your points went back to {n}. {m} more points and you can try again",
+  "昇級戦 開始": "Promotion series begins",
+  "昇級ラインに到達。ここからが本番だ": "Promotion line reached. Now it counts",
+  "昇級戦のルール": "Promotion series rules"
  }
 }

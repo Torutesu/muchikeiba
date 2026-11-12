@@ -1566,3 +1566,31 @@ WHERE blob1 = 'playtime_reminder_shown' AND timestamp > NOW() - INTERVAL '28' DA
 GROUP BY reasons, choice
 ORDER BY n DESC
 ```
+
+## 昇級戦：始まり・結果・盾（REQ-PROMO-015、Round 22、contracts/protocol.md §68）
+列（すべてサーバー、§58 の分類は optional）：`promo_series_start` `blob8` = クラス、`blob9` = 次のクラス、`blob10` = 昇級戦 ID（`2026-11:C:1`）、`double5`（count）= そのシーズン・クラスで何回目、`double9`（value）= 始まった時のポイント。`promo_series_end` `blob8` = `pass`／`fail`／`season_end`、`blob9` = クラス、`blob10` = 次のクラス、`double5` = 上位の数、`double9` = 走った数。`demotion_shield_used` `blob8` = クラス、`blob9` = シーズン、`double9` = 締めのポイント、`double5` = 猶予で走った数。
+
+**突破率と再挑戦**（月ごと、クラスごと。突破率が極端なら `needTop`・`topPlace` を見直す。`fail` の後の `start` の回数が多ければ `setbackPoints` が小さすぎる）：
+
+```sql
+SELECT toStartOfMonth(timestamp) AS month, if(blob1 = 'promo_series_start', blob8, blob9) AS class,
+  sumIf(_sample_interval, blob1 = 'promo_series_start') AS started,
+  sumIf(_sample_interval, blob1 = 'promo_series_start' AND double5 > 1) AS retries,
+  sumIf(_sample_interval, blob1 = 'promo_series_end' AND blob8 = 'pass') AS passed,
+  sumIf(_sample_interval, blob1 = 'promo_series_end' AND blob8 = 'fail') AS failed,
+  sumIf(_sample_interval, blob1 = 'promo_series_end' AND blob8 = 'season_end') AS open_at_close
+FROM muchi_kpi
+WHERE blob1 IN ('promo_series_start', 'promo_series_end') AND timestamp > NOW() - INTERVAL '120' DAY
+GROUP BY month, class
+ORDER BY month DESC, class
+```
+
+**盾を使った数**（締めのたびに。多ければ昇級したての人が上のクラスで勝てていない＝`classStatCap` の差かマッチングを見る）：
+
+```sql
+SELECT blob9 AS season, blob8 AS class, sum(_sample_interval) AS shields, avg(double9) AS avg_points
+FROM muchi_kpi
+WHERE blob1 = 'demotion_shield_used' AND timestamp > NOW() - INTERVAL '120' DAY
+GROUP BY season, class
+ORDER BY season DESC, class
+```

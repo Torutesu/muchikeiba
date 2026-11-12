@@ -1167,5 +1167,14 @@
     "coolOffHours": 72,
     "historyKeep": 30,
     "playtime": { "sessionChoicesMin": [30, 60, 90, 120], "dailyChoicesMin": [60, 120, 180, 240], "quietAfterChoicesHour": [21, 22, 23, 0] }
+  },
+  "promotion": {
+    "_note": "REQ-PROMO-*（contracts/protocol.md §68）。昇級ラインに届いたら races 戦の昇級戦。topPlace 着以内（CPU の引き継ぎなし）が needTop 回で突破（その月の昇級が確定、クラスは締めで変わる）。届かなければ promotePoints − setbackPoints まで戻す。昇級後 graceRaces 戦は締めの降級を1回止める（盾）。何も配らない。enabled: false で前の動き。",
+    "enabled": true,
+    "races": 3,
+    "needTop": 2,
+    "topPlace": 3,
+    "setbackPoints": 40,
+    "graceRaces": 10
   }
 }

@@ -758,3 +758,12 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
   background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .7); transform: skewX(-10deg); white-space: nowrap; }
 .cal-mark.on { color: var(--navy); background: var(--cyan); box-shadow: none; }
 .cal-go { font-size: 26px; color: var(--cyan); line-height: 1; }
+
+/* round 22 (§68): 昇級戦 — the pips (○ top, ● miss, · to run, – not run), the result card and the outcome sheet */
+.pp-pip { border-radius: 50%; border: 2px solid var(--cyan); box-sizing: border-box; }
+.pp-pip.top { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 14px rgba(255, 211, 79, .45); }
+.pp-pip.miss { background: rgba(255, 255, 255, .16); border-color: var(--text-3); }
+.pp-pip.open { background: transparent; }
+.pp-pip.skip { background: transparent; border-style: dashed; border-color: var(--text-4); opacity: .6; }
+.pp-sheet.pass .rule { background: var(--gold); }
+html[data-reduce-motion="on"] .pp-pip.top { box-shadow: none; }

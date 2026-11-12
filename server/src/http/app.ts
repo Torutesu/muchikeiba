@@ -44,6 +44,7 @@ import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
 import { EQUIP_SOURCES } from '../domain/commentaryPacks.js';
 import { accessibilityBodySchema } from '../domain/accessibility.js';
 import { privacyChoicesBodySchema, privacyPlatformBodySchema, privacyPromptBodySchema } from '../domain/privacyChoices.js';
+import { playtimeBodySchema, spendingBodySchema } from '../domain/selfLimits.js';
 import type { RivalService } from '../domain/rivalService.js';
 import { ADVICE_CONTEXTS, type AdviceContext } from '../domain/raceAdviceService.js';
 import { DEFAULT_RULESET, type Ruleset } from '../domain/ruleset.js';
@@ -100,6 +101,7 @@ export type PlayerMethod =
   | 'commentaryPacks' | 'equipCommentaryPack' | 'buyCommentaryPack'
   | 'accessibility' | 'setAccessibility'
   | 'privacyChoices' | 'setPrivacyChoices' | 'setPrivacyPlatform' | 'notePrivacyPromptShown' | 'clientErrorsAttach'
+  | 'selfLimits' | 'setSpendingLimit' | 'cancelSpendingRaise' | 'setPlaytime'
   | 'rivalPeek' | 'rivalSync' | 'rivalSetOptOut' | 'rivalBlock' | 'rivalChallengeCheck' | 'rivalChallengeReceive' | 'rivalSeen' | 'rivalPush'
   | 'history' | 'historyTicket' | 'adminHistory' | 'adminHistoryRefs'
   | 'exchangeView' | 'exchangeBuy'
@@ -646,6 +648,11 @@ export const routes: Route[] = [
   { method: 'PUT', path: '/v1/privacy/choices', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPrivacyChoices', u, await body(r, privacyChoicesBodySchema)) },
   { method: 'PUT', path: '/v1/privacy/platform', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPrivacyPlatform', u, await body(r, privacyPlatformBodySchema)) },
   { method: 'POST', path: '/v1/privacy/prompt-shown', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('notePrivacyPromptShown', u, (await body(r, privacyPromptBodySchema)).privacyVersion) },
+  // REQ-LIMIT-013/014 (§67): 使いすぎ・遊びすぎの防止 — never gated (§46 EXEMPT_ROUTES), idempotent by content
+  { method: 'GET', path: '/v1/self-limits', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('selfLimits', u) },
+  { method: 'PUT', path: '/v1/self-limits/spending', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setSpendingLimit', u, (await body(r, spendingBodySchema)).limitYen) },
+  { method: 'DELETE', path: '/v1/self-limits/spending/pending', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('cancelSpendingRaise', u) },
+  { method: 'PUT', path: '/v1/self-limits/playtime', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('setPlaytime', u, await body(r, playtimeBodySchema)) },
   { method: 'PUT', path: '/v1/player/age', auth: 'player', handler: async (r, _p, c, u) => {
     const b = await body(r, z.object({ birthYear: z.number().int(), birthMonth: z.number().int().min(1).max(12), guardianConsent: z.boolean() }));
     return c.player(u).invoke('setAge', u, b.birthYear, b.birthMonth, b.guardianConsent);

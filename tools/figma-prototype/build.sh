@@ -73,6 +73,7 @@ node "$HERE/test/round19-transfer-code.test.mjs" # round 19: 引き継ぎコー�
 node "$HERE/test/round20-consent.test.mjs"   # round 20: 広告・分析の同意 — no pre-prompt in the FTUE, ad_offer moment, ATT answer, npa, analytics off withholds optional events, policy update, English
 node "$HERE/test/round20-client-errors.test.mjs" # round 20: クライアントのエラー報告 — window.onerror → WASM ErrorReporter (collapse, scrub, saved queue, same batch id on retry, consent) → the server ingest, device fingerprint = server
 node "$HERE/test/round20-review-prompt.test.mjs" # round 20: レビュー依頼 — FTUE / session / cool-down / loss, native once, soft → store or inquiry (never the store after いまいち), no reward, English
+node "$HERE/test/round22-self-limits.test.mjs" # round 22: 使いすぎ・遊びすぎの防止 — own limit (lower now, raise waits, cancel), refused confirmation, no pack over it in the shortfall, the play-time rule
 node "$HERE/test/round20-local-notifications.test.mjs" # round 20: 端末のローカル通知 — the digest, the shared planner, push categories / quiet hours switch the local kinds, cap, details off, English, the diff
 node "$HERE/test/round21-showcase.test.mjs" # round 21: トレーナーカード — demo cards (friend, under 13, blocked → neutral), the editor (earned only, strict save), my card, the share image in WASM without a player id, KPI
 node "$HERE/test/round21-deep-links.test.mjs" # round 21: ディープリンク・再戦 — share (one link per target, no id in the URL), open → the screen behind a confirmation, one neutral answer, revoke, KPI without tokens, rematch (window, someone left, everyone in → a new room on the same conditions)

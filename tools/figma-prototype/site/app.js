@@ -1230,6 +1230,9 @@ async function Home() {
   // again on the next home. Both are decided before home is drawn; R21 integration (§58.11 = §64.6): when both are due the
   // one table decides (the consent sheet first), and neither shows once another prompt took this session.
   const comeback = await cbView();
+  // round 22 (REQ-LIMIT-011/012): the play-time reminder the player asked for, at this safe point (never through sessionPrompt)
+  const pt = await playtimeDue('home');
+  if (pt) return PlaytimeSheet(pt, Home);
   const cnsDue = await consentHomeDue();
   const firstPrompt = sessionPrompt.pick([...(comeback.active && comeback.window.showWelcome ? ['comeback_welcome'] : []), ...(cnsDue ? ['consent_pre_prompt'] : [])]);
   if (firstPrompt === 'consent_pre_prompt') return ConsentPrompt(Home, cnsDue);
@@ -1505,6 +1508,8 @@ async function Shortfall(sf, ctx, retry, back) {
     // free-only payments, the monthly limit, an unsettled refund…: the shortfall is said, nothing is sold
     const c = Card('Shortfall none', 52, 242, 976, 160, d, 'var(--text-3)');
     Txt(sf.line, 30, 34, 916, 19, WHITE, c, { weight: 500, lh: 1.6 }).dataset.line = '1';
+    // round 22 (REQ-LIMIT-006): the player's own limit — a link to the setting only
+    if (sf.blockedCode === 'SELF_LIMIT_EXCEEDED') TextLink('上限の設定', 30, 104, 300, () => SelfLimits(() => Shortfall(sf, ctx, retry, back)), c).dataset.action = 'self-limits';
   }
   Txt('購入するとこの画面の前の操作に戻ります　·　有償コインから先に使われます', 52, 494, 976, 13, SOFT, d, { nowrap: true });
   Cta('閉じる', 52, 548, 380, back, d);
@@ -1708,6 +1713,9 @@ async function PurchaseConfirm(productId, back, after) {
     Kicker('年齢確認済み', 0, 0, state, { rule: false, size: 16, color: OK });
     S(v.firstPurchaseBonus ? v.firstPurchaseBonus.label : 'はじめての購入ボーナスの対象ではありません', 34, 19, v.firstPurchaseBonus ? CYAN : DIM, { weight: 500 });
     S(v.monthlyLimitYen == null ? '今月の購入上限：なし（20歳以上）' : `今月の購入上限 ${yen(v.monthlyLimitYen)}　·　あと ${yen(v.remainingYen)}　（翌月1日に戻ります）`, 72, 19, WHITE, { weight: 500 });
+    // round 22 (REQ-LIMIT-005): the player's own limit next to the age cap, and the way to set one
+    if (v.selfLimitYen != null) S(`自分で決めた上限 ${yen(v.selfLimitYen)}　·　あと ${yen(Math.max(0, v.selfLimitYen - v.monthSpentYen))}`, 104, 16, CYAN, { weight: 500 }).dataset.selfLimit = '1';
+    TextLink('上限を設定', 760, 160, 244, () => SelfLimits(() => PurchaseConfirm(productId)), state).dataset.action = 'self-limits';
     if (v.pass) S(`有効期間：${seasonEnd(v.pass.endsAt)}まで（今シーズン限り・自動更新なし）${v.pass.remainingDays != null ? '　残り' + v.pass.remainingDays + '日' : ''}`, 110, 16, GOLD);
     if (v.allowance) S(`${v.allowance.days}日間、毎日 無償コイン${v.allowance.dailyFreeCoins}枚（自動更新なし）`, 110, 16, GOLD);
     const buy = disable(Cta('購入する（プロトタイプでは決済しません）', 492, 652, 560, () => {}, box, 'gold'));
@@ -1733,6 +1741,14 @@ async function PurchaseConfirm(productId, back, after) {
     S(`今月はあと ${yen(rem ?? 0)} まで購入できます。上限は翌月1日に戻ります。`, 50, 20, WHITE, { weight: 500 });
     S('年齢ごとの月の上限は、未成年の保護のために設けています。', 90, 15, SOFT);
     TextLink('年齢を訂正する', 0, 160, 200, () => { ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
+  } else if (r.code === 'SELF_LIMIT_EXCEEDED') {
+    // round 22 (REQ-LIMIT-005): over the player's own monthly limit — said plainly, a link to the setting, no raise suggested
+    state.dataset.state = 'self-limit';
+    const x = r.details ?? {};
+    S('自分で決めた今月の上限を超えます', 0, 28, WARN, { weight: 700 });
+    S(`自分で決めた上限 ${yen(x.selfLimitYen ?? 0)}　·　今月の支払い ${yen(x.monthSpentYen ?? 0)}　·　この商品 ${yen(x.priceYen ?? p.priceYen)}`, 50, 19, WHITE, { weight: 500 });
+    S('上限は翌月1日に戻ります。上限はご自身で決めたもので、いつでも確かめられます。', 90, 15, SOFT);
+    TextLink('上限の設定', 0, 160, 260, () => SelfLimits(() => PurchaseConfirm(productId)), state).dataset.action = 'self-limits';
   } else if (r.code === 'DELETION_PENDING') {
     state.dataset.state = 'deletion';
     S('アカウント削除の手続き中のため、購入できません', 0, 26, WARN, { weight: 700 });
@@ -7648,6 +7664,9 @@ async function History(tab) {
     Txt(S.limitText, 36, y, 376, 13, WHITE, d, { weight: 500, lh: 1.5 }).dataset.hiLimit = '1';
     Gauge(36, y + 46, 376, S.monthlyLimitYen ? S.monthSpentYen / S.monthlyLimitYen : 0, d, { gold: true }); y += 66;
   }
+  // round 22 (REQ-LIMIT-008/018): the player's own limit next to the age cap; the setting is reached from here
+  if (S.selfLimitText) { Txt(S.selfLimitText, 36, y, 376, 13, CYAN, d, { weight: 500, lh: 1.5 }).dataset.hiSelfLimit = '1'; y += 26; }
+  TextLink('上限の設定', 36, y - 4, 220, () => SelfLimits(() => History()), d).dataset.action = 'self-limits'; y += 36;
   Txt(S.notice, 36, y, 376, 12, SOFT, d, { lh: 1.5 }); y = Math.max(y + 76, 310);
   Hair(36, y, 376, d); y += 16;
   const r = P.items.find((x) => x.ref === hiState.sel);
@@ -8377,6 +8396,8 @@ const helpGo = (screen, back) => ({
   notifications: () => NotifySettings(),
   // round 21 (§65): the calendar
   calendar: () => Calendar(),
+  // round 22: 使いすぎ・遊びすぎの防止 (§67)
+  self_limits: () => SelfLimits(),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -8951,6 +8972,157 @@ async function NotifySettings() {
   Back(Settings, 'BACK', 40, 834);
 }
 
+// ================================================================= round 22: 使いすぎ・遊びすぎの防止 (REQ-LIMIT-*, contracts/protocol.md §67)
+// The real selfLimits rules on the local player: the own monthly limit (lower → at once; higher / none → after the cool-off,
+// cancellable), a custom amount on the step, the play-time reminder settings. Reached from the purchase history (その他 ›
+// 設定・サポート › 購入・コイン・ガチャ履歴 › 上限の設定), the purchase confirmation (上限を設定), a refused purchase, the shortfall
+// card and the sheet — never a ninth row on either その他 page. The device clock counts this page's time; the demo adds minutes.
+// The sheet is player-requested: it never goes through sessionPrompt (§58.11) and never takes the session's one prompt.
+const slState = { back: null, custom: '' };
+const PT_KEY = 'muchi.playtime.clock';
+const ptClock = () => { try { return JSON.parse(prefs.get(PT_KEY) ?? 'null') ?? null; } catch { return null; } };
+function ptLoad() {
+  let c = ptClock();
+  const nowMs = L.now();
+  if (!c || nowMs - (c.lastAt ?? 0) >= 30 * 60_000) c = { sessionStart: nowMs, extraMin: 0, sessionMark: null, dayKey: c?.dayKey ?? null, dailyShown: c?.dailyShown ?? false, quietShown: c?.quietShown ?? false, dayExtra: c?.dayExtra ?? 0 };
+  c.lastAt = nowMs; prefs.set(PT_KEY, JSON.stringify(c));
+  return c;
+}
+const ptOffset = () => -new Date(L.now()).getTimezoneOffset();
+async function playtimeDue(place) {
+  if (ftue) return null;
+  const r = await L.selfLimits.view();
+  if (!r.ok || !r.value.playtime.enabled) return null;
+  const c = ptLoad();
+  const played = Math.floor((L.now() - c.sessionStart) / 60_000) + c.extraMin;
+  const d = L.selfLimits.decide({
+    now: L.now(), localOffsetMin: ptOffset(), locale: isJa() ? 'ja' : 'en',
+    settings: { sessionMin: r.value.playtime.sessionMin, dailyMin: r.value.playtime.dailyMin, quietAfterHour: r.value.playtime.quietAfterHour },
+    sessionPlayedMin: played, dayPlayedMin: played + (c.dayExtra ?? 0), marks: { sessionMark: c.sessionMark, dayKey: c.dayKey, dailyShown: !!c.dailyShown, quietShown: !!c.quietShown }, place,
+  });
+  if (!d.show) return null;
+  Object.assign(c, d.marks); prefs.set(PT_KEY, JSON.stringify(c));
+  return { d, played };
+}
+/** The calm sheet over the paddock: two buttons of the same size, nothing gained or lost either way. */
+function PlaytimeSheet(pt, next) {
+  currentScreen = () => PlaytimeSheet(pt, next);
+  Clear('playtime-sheet'); SetArt('Art/home-paddock', false); Shade('dim');
+  const box = Dialog('Playtime reminder', 960, 560);
+  box.classList.add('pt-sheet'); box.dataset.reasons = pt.d.reasons.join(',');
+  Kicker('遊ぶ時間のお知らせ', 52, 44, box);
+  // the rule's own texts follow the device language (like §61); the screen language here is the same
+  Txt(pt.d.title, 52, 108, 856, 32, WHITE, box, { weight: 700 }).classList.add('keep-ja');
+  pt.d.lines.forEach((l, i) => Txt(l, 52, 172 + i * 40, 856, 20, WHITE, box, { weight: 500, nowrap: true }).classList.add('pt-line', 'keep-ja'));
+  Txt(pt.d.note, 52, 312, 856, 15, SOFT, box, { lh: 1.6 }).classList.add('keep-ja');
+  const answer = (choice) => {
+    L.kpi([{ name: 'playtime_reminder_shown', at: L.now(), props: { reasons: pt.d.reasons.join(','), sessionMin: Math.min(1440, Math.floor(pt.played / 5) * 5), dayMin: Math.min(1440, Math.floor(pt.played / 5) * 5), choice } }]);
+    globalThis.__muchi && (globalThis.__muchi.lastPlaytime = { reasons: pt.d.reasons, choice });
+    if (choice === 'stop') { toast('おつかれさまでした'); return Home(); }
+    if (choice === 'settings') return SelfLimits(() => next());
+    next();
+  };
+  // same size and weight: neither answer is pushed
+  Ghost(pt.d.buttons.continue, 52, 400, 420, 64, () => answer('continue'), box).dataset.pt = 'continue';
+  Ghost(pt.d.buttons.stop, 488, 400, 420, 64, () => answer('stop'), box).dataset.pt = 'stop';
+  TextLink(pt.d.buttons.settings, 52, 484, 400, () => answer('settings'), box).dataset.pt = 'settings';
+}
+/** Review: a 60-minute session and the 22:00 mark due on the home. */
+async function PlaytimeDemo() {
+  await L.selfLimits.setPlaytime({ sessionMin: 60 });
+  const c = ptLoad(); c.extraMin = (c.extraMin ?? 0) + 61; c.sessionMark = null; prefs.set(PT_KEY, JSON.stringify(c));
+  const pt = await playtimeDue('home');
+  return pt ? PlaytimeSheet(pt, Home) : Home();
+}
+/** Review: the refused purchase (own limit ¥3,000, ¥2,400 spent, a ¥800 pack). */
+async function SelfLimitRefusedDemo() {
+  await L.selfLimits.seedDemo();
+  return PurchaseConfirm('coin_800', () => Store('coins'));
+}
+async function SelfLimits(back) {
+  if (back) slState.back = back;
+  currentScreen = () => SelfLimits();
+  const r = await L.selfLimits.view();
+  Clear('self-limits'); SetArt('Art/home-paddock', false); Shade('dim');
+  TopBar('その他　/　購入履歴　/　使いすぎ・遊びすぎの防止', '自分で決める上限とお知らせ。下げるのはすぐ、上げるのは少し時間をおいてから', { wallet: false });
+  const goBack = () => (slState.back ?? (() => History()))();
+  if (!r.ok) { toast(r.message); Back(goBack, 'BACK', 40, 834); return; }
+  const v = r.value, sp = v.spending, pt = v.playtime;
+  // ① the monthly spending limit
+  const a = Glass('Spending limit', 36, 134, 880, 676, undefined, .9);
+  a.classList.add('sl-spending'); a.dataset.limit = String(sp.limitYen ?? 'none'); a.dataset.pending = sp.pending ? String(sp.pending.limitYen ?? 'none') : '';
+  Kicker('月の購入上限', 36, 26, a, { size: 16 });
+  Txt(sp.statusText, 36, 84, 808, 22, WHITE, a, { weight: 700, nowrap: true }).classList.add('sl-status');
+  Txt(sp.ageLimitYen != null ? `年齢に応じた上限 ${yen(sp.ageLimitYen)}　·　効いている上限 ${yen(sp.effectiveLimitYen)}　·　今月の支払い ${yen(sp.monthSpentYen)}` : `年齢に応じた上限：なし　·　今月の支払い ${yen(sp.monthSpentYen)}`, 36, 120, 808, 14, MUTED, a, { weight: 500, nowrap: true });
+  const amounts = [...sp.choicesYen];
+  if (sp.limitYen != null && !amounts.includes(sp.limitYen)) amounts.push(sp.limitYen);
+  amounts.sort((x, y) => x - y); amounts.push(null);
+  amounts.forEach((yv, i) => {
+    const cur = yv === sp.limitYen;
+    const b = Btn(yv == null ? '上限なし' : yen(yv), 36 + (i % 3) * 272, 160 + Math.floor(i / 3) * 62, 260, 54, async () => {
+      if (cur) return;
+      const s = await L.selfLimits.setSpending(yv);
+      toast(s.ok ? (s.value.applied === 'pending' ? s.value.view.spending.pendingText : '上限を変えました') : s.message);
+      SelfLimits();
+    }, 'choice' + (cur ? ' on' : ''), a);
+    b.dataset.slAmount = String(yv ?? 'none'); b.style.whiteSpace = 'nowrap';
+  });
+  const rowsY = 160 + Math.ceil(amounts.length / 3) * 62 + 4;
+  // a custom amount on the step (numbers only)
+  const fieldBox = el('fieldbox sl-field', 36, rowsY, 532, 54, a);
+  const inp = document.createElement('input');
+  inp.className = 'field keep-ja'; inp.inputMode = 'numeric'; inp.maxLength = 8;
+  inp.placeholder = isJa() ? `金額を入力（${fmt(sp.custom.stepYen)}円単位）` : `Enter an amount (steps of ¥${fmt(sp.custom.stepYen)})`;
+  inp.setAttribute('aria-label', '金額を入力');
+  Object.assign(inp.style, { left: '16px', top: '6px', width: '500px', height: '42px', fontSize: '22px' });
+  inp.value = slState.custom; inp.addEventListener('input', () => { slState.custom = inp.value.replace(/[^0-9]/g, ''); });
+  fieldBox.appendChild(inp);
+  Ghost('この金額にする', 584, rowsY, 260, 54, async () => {
+    const n = Number(slState.custom);
+    if (!Number.isInteger(n) || n <= 0) { toast('金額を入力してください'); return; }
+    const s = await L.selfLimits.setSpending(n);
+    if (s.ok) slState.custom = '';
+    toast(s.ok ? (s.value.applied === 'pending' ? s.value.view.spending.pendingText : '上限を変えました') : 'この金額は選べません');
+    SelfLimits();
+  }, a, 'quiet small').dataset.action = 'sl-custom';
+  let y = rowsY + 74;
+  if (sp.pending) {
+    Txt(sp.pendingText, 36, y, 560, 15, GOLD, a, { weight: 500, lh: 1.5 }).classList.add('sl-pending');
+    Ghost('変更を取り消す', 604, y - 8, 240, 50, async () => { const s = await L.selfLimits.cancel(); toast(s.ok ? '変更を取り消しました' : s.message); SelfLimits(); }, a, 'quiet small').dataset.action = 'sl-cancel';
+    y += 56;
+  }
+  Hair(36, y, 808, a); y += 14;
+  sp.rulesText.forEach((l) => { Txt(l, 36, y, 808, 13, SOFT, a, { lh: 1.5 }).classList.add('sl-rule'); y += 24; });
+  // ② the play-time reminder (off by default)
+  const b = Glass('Playtime reminder', 936, 134, 628, 676, undefined, .9);
+  b.classList.add('sl-playtime'); b.dataset.enabled = String(pt.enabled);
+  Kicker('遊ぶ時間のお知らせ', 36, 26, b, { size: 16 });
+  Txt(pt.enabled ? 'お知らせはオンです' : 'お知らせはオフです（最初はオフ）', 36, 84, 556, 18, pt.enabled ? CYAN : MUTED, b, { weight: 500, nowrap: true }).classList.add('sl-pt-status');
+  const ptRow = (label, key, choices, fmtv, yy) => {
+    Txt(label, 36, yy, 556, 15, WHITE, b, { weight: 500, nowrap: true });
+    [null, ...choices].forEach((c, i) => {
+      const on = (pt[key] ?? null) === c;
+      const btn = Btn(c == null ? '使わない' : fmtv(c), 36 + i * 112, yy + 28, 104, 48, async () => {
+        if (on) return;
+        const s = await L.selfLimits.setPlaytime({ [key]: c });
+        if (!s.ok) toast(s.message);
+        SelfLimits();
+      }, 'choice' + (on ? ' on' : ''), b);
+      btn.dataset.pt = key + ':' + String(c ?? 'off'); btn.style.whiteSpace = 'nowrap'; btn.style.fontSize = '15px'; btn.style.padding = '0';
+    });
+  };
+  ptRow('一度に遊ぶ時間', 'sessionMin', pt.choices.sessionMin, (n) => `${n}分`, 128);
+  ptRow('一日の合計', 'dailyMin', pt.choices.dailyMin, (n) => `${n}分`, 232);
+  ptRow('◯時を過ぎたら', 'quietAfterHour', pt.choices.quietAfterHour, (n) => `${n}時`, 336);
+  let yb = 452;
+  pt.rulesText.forEach((l) => { Txt(l, 36, yb, 556, 13, SOFT, b, { lh: 1.5 }).classList.add('sl-rule'); yb += 24; });
+  Txt('使っても使わなくても、もらえるものや遊べる内容は変わりません', 36, yb, 556, 13, SOFT, b, { lh: 1.5 }).classList.add('sl-rule'); yb += 24;
+  TextLink('上限とお知らせについて（ヘルプ）', 36, 600, 556, () => HelpArticle(L.helpContext('self_limits'), 'context', () => SelfLimits()), b).dataset.helpContext = 'self_limits';
+  // review only: play an hour on this device's clock, then the home shows the sheet
+  Ghost('デモ：60分遊んだことにする', 36, 636, 360, 36, () => PlaytimeDemo(), b, 'quiet small').dataset.action = 'pt-demo';
+  Back(goBack, 'BACK', 40, 834);
+}
+
 async function boot() {
   const [ja, artIndex, ruleset, commentary, partners, commentaryEn, serverEn, uiEn, commentaryPacks] = await Promise.all([
     fetch('data/ja.json').then((r) => r.json()), fetch('data/art.json').then((r) => r.json()),
@@ -8981,7 +9153,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

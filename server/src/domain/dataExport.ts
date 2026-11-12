@@ -412,6 +412,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   releaseNotes: x('play'),
   // Round 21 (§65, REQ-CAL-016): calendar rows marked for a reminder (ids, kinds, until)
   calendar: x('play'),
+  // Round 22 (§67): the player's own spending limit, a pending raise, the play-time reminder settings and their history
+  selfLimits: x('settings'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -531,6 +533,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       ads: s.ads ? { pref: s.ads.pref, day: s.ads.day, counts: clone(s.ads.counts), total: s.ads.total,
         sessions: s.ads.sessions.map((a) => ({ placementId: a.placementId, createdAt: a.createdAt, status: a.status, at: a.at ?? null, reward: clone(a.reward) ?? null })) } : null,
       hallVisibility: s.hall?.visibility ?? null, rivalOptOut: rival?.optOut ?? null,
+      // §67 (Round 22): own monthly spending limit, a pending raise / removal, play-time reminder settings, history
+      selfLimits: clone(s.selfLimits) ?? null,
     },
     horses: {
       items: s.horses.map(horseOut), bond: clone(s.bond) ?? null, training: clone(s.training) ?? null,

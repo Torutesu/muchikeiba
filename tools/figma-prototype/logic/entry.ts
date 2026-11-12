@@ -84,6 +84,7 @@ import { compileCatalogWith, translateText, romanizeName } from '../../../server
 import { CODE_EN } from '../../../server/src/i18n/en.js';
 import uiEn from '../../../engine/Muchi.Client/Resources/Muchi/ui-en.json';
 import protoEn from './proto-en.json';
+import { decidePlaytimeReminder, type PlaytimeSnapshot } from '../../../server/src/domain/selfLimits.js';
 import { diffLocalNotifications, localNotifyRows, planLocalNotifications, type LocalNotifySnapshot, type LocalRemindersView } from '../../../server/src/domain/localNotify.js';
 
 const trackNames = new Map((tracksJson as { tracks: { id: string; name?: string }[] }).tracks.map((t) => [t.id, t.name ?? t.id]));
@@ -1430,6 +1431,30 @@ export const MuchiLogic = {
       return this.digest();
     },
     seedDemoDays: () => MuchiLogic.seedDemo(4, [3, 3, 3, 3]),
+  },
+  // ---------------------------------------------------------------- round 22: 使いすぎ・遊びすぎの防止 (REQ-LIMIT-*, contracts/protocol.md §67)
+  // The real selfLimits rules on the local player (own limit, cool-off, cancel, play-time settings) and the shared reminder rule
+  // (= C# PlaytimeReminderPolicy). The device clock lives in the page (it counts foreground time; the demo adds minutes).
+  selfLimits: {
+    view: () => wrap(() => svc.selfLimits(ID)),
+    setSpending: (limitYen: number | null) => wrap(() => svc.setSpendingLimit(ID, limitYen)),
+    cancel: () => wrap(() => svc.cancelSpendingRaise(ID)),
+    setPlaytime: (b: { sessionMin?: number | null; dailyMin?: number | null; quietAfterHour?: number | null }) => wrap(() => svc.setPlaytime(ID, b)),
+    decide: (snapshot: PlaytimeSnapshot) => decidePlaytimeReminder(snapshot),
+    /** Demo: an adult who already spent ¥2,400 this month with an own limit of ¥3,000 (a ¥800 pack is then refused). */
+    async seedDemo() {
+      const s = await svc.state(ID);
+      if (!s.age) await wrap(() => svc.setAge(ID, 1990, 1, false));
+      const st = await svc.state(ID);
+      const month = new Date(now() + 9 * 3600_000).toISOString().slice(0, 7);
+      st.monthlySpendYen[month] = Math.max(st.monthlySpendYen[month] ?? 0, 2400);
+      // demo state written directly (whatever was set before): own limit ¥3,000 in effect, nothing waiting
+      st.selfLimits ??= { spending: { limitYen: null, setAt: null, pending: null }, playtime: { sessionMin: null, dailyMin: null, quietAfterHour: null, updatedAt: null }, rev: 0, history: [] };
+      st.selfLimits.spending = { limitYen: 3000, setAt: now(), pending: null };
+      st.selfLimits.rev++;
+      await repo.put(st);
+      return wrap(() => svc.selfLimits(ID));
+    },
   },
   // ---------------------------------------------------------------- round 18: 個人データの開示・ダウンロード (REQ-DEX-*, contracts/protocol.md §51)
   // ---------------------------------------------------------------- 広告・分析の同意 (REQ-CNS-*, contracts/protocol.md §58)

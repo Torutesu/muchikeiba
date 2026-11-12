@@ -1151,7 +1151,7 @@ AdMob の形：`?ad_network=…&ad_unit=…&custom_data=…&reward_amount=…&re
 - 「足りる」は**そのパックの有償コインだけ**で数える（初回購入ボーナスの無償コインは数えない。`paid` のときは無償コインは使えないため、`any` のときも案内を控えめにするため）。
 - 足りるもののうち価格の安い順（同じ価格ならコインのパック `kind: "coins"` を先、次に有償コインの少ない順）で**1つ**。`status: "covered"`。
 - 足りるものが無ければ、買えるもののうち有償コインが一番多いもの（同じなら安い方）を返し `covers: false`・`status: "largest_only"`（「いちばん大きい〜でも、あと◯枚足りません」）。
-- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。
+- 買えるものが1つも無ければ `offer: null`・`status: "none_buyable"`・`blockedCode`（`AGE_LIMIT_EXCEEDED` / `SELF_LIMIT_EXCEEDED`（§67、Round 22：自分で決めた上限。クライアントは設定へのリンクだけを出す） / `UNSETTLED_DEBT` / `DELETION_PENDING` / `BANNED`）。自分で決めた上限（§67）を超えるパックは候補から除く。
 - 初回購入ボーナスは**ショップと同じ表示**（§13 `firstPurchaseBonus.label`「はじめての購入時のみ：無償コイン◯枚をプレゼント」）を、そのパックでまだ受け取っていない時だけ付ける。「倍」「お得」「今だけ」「残りわずか」・残り時間は使わない（テストで確認）。
 
 ### 29.3 形（`CoinShortfall`）
@@ -1461,6 +1461,7 @@ TeamGoalView = { "teamId": "tabc123456", "teamName": "あおばRC", "enabled": t
   "notice": "有償コインに有効期限はありません。使うときは有償コインから先に使われます。無償コインはゲーム内で受け取ったコインです。",
   "windows": { "purchasesDays": 2557, "coinsDays": 365, "gachaDays": 90 } }
 ```
+- Round 22（§67.3）：自分で決めた上限を後方互換で足す（`selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`）。画面は `limitText` の下に `selfLimitText` と「上限の設定」のリンク（§67 の画面の入口）。
 - `monthlyLimitYen` は年齢区分（`ageLimits`）の月額上限。上限なし（20歳以上）・年齢未登録は `null`、`ageLimited` は上限がある区分（16歳未満・16〜17歳・18〜19歳）のとき true、`limitText` は上限があるときだけ（無ければ `null`）。
 
 ### 33.2 一覧（要認証、カーソル式）
@@ -2433,7 +2434,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
-- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
@@ -3520,6 +3521,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
 - 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts` に渡す。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を確かめる。
 - **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5。§65 の予定表の印から作った通知も含む）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、端末で待っているディープリンク（§63）を捨て（前のアカウントに届いたもの）、アップデートのお知らせの「このセッションで出した」（§64。見た印はサーバーのアカウントごと）を戻し、この1つの規則を最初に戻す（R21 統合）。
+- **Round 22（§67.4）遊ぶ時間のお知らせはこの規則の外**：本人が頼んだお知らせでお願いの画面ではないので、`sessionPrompt`／`SessionPromptGate` を通らず、枠を使わない・取られない。同じ区切りではこのシートを先に出し、お願いの画面は次の区切りに回す（Unity は `SelfLimitsModel.SheetVisible`）。
 - **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
@@ -3731,6 +3733,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
 | `calendar_mark`（R21 統合） | 予定表（§65）で印を付けた行の**始まり** | `reminders`（自分で付けた印なので呼び戻しと同じ種類、既定オフ） | `startAt − leadHours.calendar_mark`（既定 2 時間） | 印があり、まだ始まっていない（始まった行・印を外した行・`until` を過ぎた行は予約しない）。名前は文言に入れない（「印を付けた予定が{date}に始まります」） | `calendar` |
 
+- Round 22（§67）：遊ぶ時間のお知らせは**アプリの中のシート**（通知ではない）。OS の通知・プッシュのどちらにも持ち主を作らない（`LNOTIF_OWNERSHIP` に足さない）。
 - 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
 - 期限の知らせ（週替わりチャレンジ・ライバル・交換所・プレゼント）は**データの本当の期限**だけ。作った時計・カウントダウン・「今だけ」「残りわずか」「お得」などは無い。購入・ショップ・ガチャ・パスの購入へ誘う種類は無い（開く画面はコードで固定、設定で変えられない）。厩舎手当（§13.5）の受け取りはショップの画面にあるので知らせない。
@@ -4145,3 +4148,103 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 67. 使いすぎ・遊びすぎの防止（自分で決める上限、self-set spending limit & play-time reminder、REQ-LIMIT-001〜022、`server/src/domain/selfLimits.ts`、C# `SelfLimits.cs`（`SelfLimitsView`・`PlaytimeReminderPolicy`・`PlaytimeClock`）・`Muchi.Game.SelfLimitsModel`、共有ベクター `contracts/self-limits.vectors.json`、docs/handoff-codex-round22-self-limits.md）
+有料のゲームとして信頼してもらうための、**プレイヤー自身が決める**安全の機能。2つある：
+1. **自分で決める月の購入上限**（年齢帯の月額上限 REQ-PUR-002 と同じか、それより低い額だけ）。
+2. **遊ぶ時間のお知らせ**（既定オフ。1回に遊ぶ時間・1日の合計・「◯時を過ぎたら」の目安を本人が選び、端末がレースの結果の後などの区切りで静かに知らせる）。
+
+どちらもコイン・アイテムを動かさない（経済の E は無し）。報酬・罰・機能の解放の条件にはしない（上限を下げても何ももらえない、上げても何も失わない）。文言は落ち着いた中立のもので、「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉（`bettingWords.ts`）・急かす言い回し（「もう少しだけ」「あと1回」など）を使わない（テスト）。
+
+### 67.1 月の購入上限（REQ-LIMIT-001〜004）
+- 選び方：設定 `progression.selfLimits.spendingChoicesYen`（既定 `[1000, 3000, 5000, 10000, 30000]`）から1つ、または**自分で入力**（`customStepYen` 円刻み、`customMinYen`〜`customMaxYen`）、または「上限なし」（`limitYen: null`）。
+- **年齢帯の上限より高くできない**：年齢帯の上限（`ageLimits`、20歳以上は無し）を超える額は `400 BAD_REQUEST`。選択肢も年齢帯の上限以下だけを返す（`choicesYen`）。年齢が未登録でも決められる（年齢を登録した時点で低い方が効く）。年齢帯が上がって（誕生日）年齢帯の上限が上がっても、自分の上限はそのまま。
+- **効いている上限 = min(年齢帯の上限, 自分の上限)**（`effectiveLimitYen`、どちらも無ければ `null`）。
+- **下げるのはすぐ**：今より低い額（上限なし→額を決める、を含む）は保存した瞬間から効く。待っている引き上げがあれば取り消す。
+- **上げる・外すのは冷却期間の後**：今より高い額・「上限なし」は `pending` になり、`coolOffHours`（既定 72 時間、24〜168）たってから効く。期間中は今の上限のまま。本人はいつでも取り消せる（`DELETE /v1/self-limits/spending/pending`）。待っている間に別の引き上げを頼むと、**時計は最初から**（同じ額をもう一度頼んだ時は何も変えない＝冪等）。今と同じ額を保存すると待っている引き上げを取り消す。
+- 期間が過ぎた引き上げは、読む時・買う時に「効いている」とみなす（`pending.effectiveAt <= now`）。状態への反映は次の書き込み（自分の上限の変更）で行い、履歴に `raise_applied`（時刻は `effectiveAt`）を残す。
+- **月の境目**：年齢帯の上限と同じ **JST の暦月**（`jstMonthKey`、ゲーム日の 4:00 切り替えではない）と同じ `monthlySpendYen`（ストアの購入時刻 `purchasedAt` の月）で数える。上限を月の途中で下げると、その月にもう払った額と比べる（払った額が新しい上限以上なら、その月は買えない）。
+
+### 67.2 購入の確認と全部の経路（REQ-LIMIT-005〜007）
+- `POST /v1/shop/purchase-intent`（`checkPurchaseIntent`）と、同じ判定を使うすべての経路（`productBlock`：コイン不足の案内 §29 の候補、ショップの1回限りの案内 §13.3）が、**今月の支払い＋価格 > 自分の上限** の時に断る。
+- 新しいエラー `409 SELF_LIMIT_EXCEEDED`（年齢帯の `AGE_LIMIT_EXCEEDED` とは別）。`error.details`：`{ "selfLimitYen": 3000, "monthSpentYen": 2400, "priceYen": 800, "month": "2026-11", "settings": "self_limits" }`。**どちらの上限で断るか**：自分の上限が年齢帯の上限より**低い**時だけ `SELF_LIMIT_EXCEEDED`（同じ額なら年齢帯の `AGE_LIMIT_EXCEEDED`。自分の上限を変えても買えないので）。判定の順は REQ-PUR-001 のまま（年齢未登録→未精算→保護者同意→商品ごと：1回限り・クラス・パス・手当・今月の上限超過の記録→年齢帯の上限→**自分の上限**）。
+- クライアントの文：「自分で決めた今月の上限（¥3,000）を超えるため、購入できません」＋リンク「上限の設定」（`settings: "self_limits"` が開く画面）。急かさず、引き上げを勧めない（リンクは設定の画面を開くだけ）。
+- 購入の確認（§13.2）の応答に `selfLimitYen`・`effectiveLimitYen`・`selfLimitPending`（待っている引き上げ、`{ limitYen, effectiveAt }` か `null`）を足す（後方互換）。確認のシートには「上限を設定」のリンクを置く。
+- **コイン不足の案内（§29）**：候補から自分の上限を超えるパックを除く（`productBlock` の同じ判定）。1つも買えない理由が自分の上限なら `status: "none_buyable"`・`blockedCode: "SELF_LIMIT_EXCEEDED"`・`line`「自分で決めた今月の上限に達しているため、いま購入できるパックはありません」。**自分の上限を超えるパックを勧めることは無い**（テスト）。
+- **1回限りの案内（§13.3 `GET /v1/shop/offers`）**：自分の上限を超える商品の案内は `showPopup: false`（ショップの中には残る）、`selfLimitBlocked: true`。上限の範囲に戻れば（翌月・自分で上げた）いつものとおり。
+- **ストアから届いた購入は必ず付与する**（REQ-LIMIT-007、返金の規則と同じ考え）：確認の後に上限を下げた・アプリが確認を飛ばした・ストアの保留が後で通った、などで上限を超える購入が届いても、ストアで支払いは済んでいるので**付与して今月の支払いに数える**（資金決済法：有償コインの購入を失わない）。記録に `selfLimitBreach: true` を付ける（運用コンソールに見える）。その月の以降の購入は確認で断られる（払った額がもう上限を超えているので）。返金はストアの通常の手続き（REQ-PUR-006）。
+
+### 67.3 履歴（§33）の表示（REQ-LIMIT-008）
+`GET /v1/history/summary` に後方互換で足す：`selfLimitYen`・`effectiveLimitYen`・`selfRemainingYen`・`selfLimitPending`・`selfLimitText`（自分の上限がある時だけ、例「自分で決めた上限 ¥3,000（今月の残り ¥600）」、無ければ `null`）。`limitText`（年齢帯）はそのまま、画面は2行を並べる。
+
+### 67.4 遊ぶ時間のお知らせ（REQ-LIMIT-009〜012）
+- **既定オフ**。本人が選ぶ：1回に遊ぶ時間 `sessionMin`（`playtime.sessionChoicesMin`、既定 `[30, 60, 90, 120]`）、1日の合計 `dailyMin`（`dailyChoicesMin`、既定 `[60, 120, 180, 240]`）、「◯時を過ぎたら」`quietAfterHour`（端末の時刻の時、`quietAfterChoicesHour`、既定 `[21, 22, 23, 0]`）。それぞれ `null`＝使わない。設定はサーバーに保存して端末どうしで同じになる（`PUT /v1/self-limits/playtime`）。
+- **時間を測るのは端末**（`PlaytimeClock`）：アプリが前面にある時間だけ数える。1回（セッション）は §58.11 と同じ「起動から終了まで」に加え、背面に 30 分以上いたら新しいセッション。1日は**端末の時刻で 4:00 に切り替え**（ゲーム日と同じ時刻。夜ふかしが前の日に数えられるように）。数えた時間はサーバーに送らない（KPI の丸めた分だけ）。
+- **出す時（区切り）**：レースの結果の画面を閉じた後（`race_result`）とホームに戻った時（`home`）だけ。**レース中・マッチング中・購入の途中・チュートリアルの途中には出さない**（その時に来た分は次の区切りまで持ち越す）。
+- 判断は純粋な関数 `decidePlaytimeReminder(snapshot)`（TS）＝ C# `PlaytimeReminderPolicy.Decide`（共有ベクター `contracts/self-limits.vectors.json`）：
+  - `session`：今回のセッションの分 ≥ 前回知らせた区切り＋`sessionMin`（30 分なら 30・60・90…で1回ずつ）。
+  - `daily`：今日の分 ≥ `dailyMin` で、今日まだ知らせていない（1日1回）。
+  - `quiet_after`：端末の時刻が `quietAfterHour` 時〜4:00 の間で、今日まだ知らせていない（1日1回）。
+  - 2つ以上が同じ区切りで来たら**1枚のシート**にまとめる（行の順：`quiet_after` → `daily` → `session`）。どれも知らせ済みにする。
+- シート：見出し「ひと息つきませんか」、行「遊びはじめて60分たちました」「今日は合計120分遊びました」「22時を過ぎました」、添え書き「ご自身で決めた目安のお知らせです。続けるか、ここで終えるかはご自由に」。ボタンは**同じ大きさの2つ**「続ける」「今日はここまで」（どちらも何も失わない・何ももらえない。「今日はここまで」はホームに戻るだけ）。設定へのリンク「お知らせの設定」。音・振動なし、カウントダウンなし。
+- **§58.11 の「1セッションに1つ」の規則は通らない**（決めたこと）：これは本人が頼んだお知らせで、お願いの画面ではないので、他のお願いの画面の枠を使わず、他の画面に枠を取られて出せなくなることも無い。同じ区切りで別のお願いの画面と重ねない（このシートを先に出し、お願いの画面は次の区切り）。§61 のローカル通知・プッシュではない（アプリの中だけ、OS の通知は使わない）。§61.1 の持ち主の表には「アプリ内のシート（通知ではない）」として載せる。
+
+### 67.5 API（要認証。メンテナンス・強制アップデートで**閉じない**＝§46 `EXEMPT_ROUTES`）
+| メソッド | パス | 本文 | 内容 |
+|---|---|---|---|
+| GET | `/v1/self-limits` | | 状態（67.6）。読むだけ（状態を作らない） |
+| PUT | `/v1/self-limits/spending` | `{ "limitYen": 3000 \| null }` | 月の上限。応答 `{ applied: "now" \| "pending" \| "unchanged" \| "cancelled", view }` |
+| DELETE | `/v1/self-limits/spending/pending` | | 待っている引き上げを取り消す（無ければ何もしない） |
+| PUT | `/v1/self-limits/playtime` | `{ "sessionMin": 60 \| null, "dailyMin": 120 \| null, "quietAfterHour": 22 \| null }` | 遊ぶ時間のお知らせ（無いキーは今のまま） |
+- 本文は厳密（知らないキーは 400）。選択肢に無い値（`playtime`）、刻み・範囲の外、年齢帯の上限を超える額（`spending`）は 400。内容で冪等（同じ本文を何度送っても同じ結果）、冪等キーは要らない。
+- アカウント削除の予約中も変えられる（下げる・取り消すは本人を守る操作なので）。BAN 中も読める・変えられる。
+- **§46 のグループ（決めたこと）**：4つとも `EXEMPT_ROUTES`。理由：上限を**下げる**ことは購入ができる間いつでもできないといけない（ストアからの購入 `POST /v1/shop/purchase` はメンテナンス中も通る）。上げる・外すは冷却期間の後なので窓の間に開いていても困らない。コイン・アイテムを動かさない。パスは `/v1/shop` の下に置かない（`shop` の窓で閉じないように）。
+- ブートストラップ・`GET /v1/player` に `selfLimits`（端末が時間を測るための写し、読むだけ）：`{ "playtime": { "sessionMin": null, "dailyMin": null, "quietAfterHour": null, "enabled": false }, "spending": { "limitYen": null, "effectiveLimitYen": 5000, "pending": null } }`。
+
+### 67.6 `GET /v1/self-limits` の形
+```json
+{ "rev": 3,
+  "spending": {
+    "limitYen": 3000, "ageLimitYen": 5000, "ageBand": "under16", "effectiveLimitYen": 3000, "binding": "self",
+    "month": "2026-11", "monthSpentYen": 2400, "remainingYen": 600,
+    "pending": { "limitYen": null, "requestedAt": 1794000000000, "effectiveAt": 1794259200000 },
+    "choicesYen": [1000, 3000, 5000], "custom": { "minYen": 100, "maxYen": 5000, "stepYen": 100 }, "coolOffHours": 72,
+    "statusText": "自分で決めた上限 ¥3,000（今月の残り ¥600）",
+    "pendingText": "上限なしへの変更は 11/14 12:00 から効きます（取り消せます）",
+    "rulesText": ["下げた上限はすぐに効きます", "上げる・外す変更は72時間たってから効きます（その間は取り消せます）", "年齢に応じた上限より高くはできません", "ストアで支払いが済んだ購入は、上限を超えていても受け取れます（今月の支払いに数えます）"] },
+  "playtime": { "sessionMin": 60, "dailyMin": null, "quietAfterHour": 22, "enabled": true,
+    "choices": { "sessionMin": [30, 60, 90, 120], "dailyMin": [60, 120, 180, 240], "quietAfterHour": [21, 22, 23, 0] },
+    "rulesText": ["レースの途中には出しません。結果の後かホームで知らせます", "時間は端末で数えます（サーバーには送りません）"] },
+  "history": [{ "at": 1794000000000, "kind": "remove_requested", "fromYen": 3000, "toYen": null }] }
+```
+- `binding`：効いている上限がどちらか（`self`／`age`／`none`。同じ額なら `age`）。`history` は直近 `historyKeep`（既定 30）件、新しい順。`kind`：`set`（すぐ効いた変更）・`raise_requested`・`remove_requested`・`raise_applied`・`raise_cancelled`・`playtime`。
+- 文は日本語で作り、英語は応答の境界で訳す（`i18n/en.ts`）。時刻は JST の `MM/DD HH:mm`。
+
+### 67.7 状態・個人データ・削除（REQ-LIMIT-015）
+- PlayerState のトップレベルのキー **`selfLimits`**（`SelfLimitsState`：`spending { limitYen, setAt, pending }`・`playtime { sessionMin, dailyMin, quietAfterHour, updatedAt }`・`rev`・`history`）。最初に変えた時に作る（読むだけでは作らない）。購入の記録（`purchases[]`）に `selfLimitBreach?: true`。
+- §51 の分類は **`settings`**（本人の設定）。開示のファイルの `settings.selfLimits` に全部入る（上限・待っている変更・遊ぶ時間の設定・履歴）。
+- アカウント削除の最後の `wipe` で消える。他の場所に写しは無い（KPI の行は §51 の分析イベントと同じ扱い）。引き継ぎ（§54）では同じアカウントなのでそのまま。
+
+### 67.8 KPI（REQ-LIMIT-016、`kpiConsent.ts`）
+| 名前 | どこ | 分類 | 中身 |
+|---|---|---|---|
+| `self_limit_set` | サーバー | **essential**（本人が決めた支払いの上限の記録：「上限を決めたのに買えた／買えない」の問い合わせと返金の確認に要る。§58 の選択の記録と同じ考え） | `s1` 変更（`set`／`raise_requested`／`remove_requested`／`raise_cancelled`）、`amountYen` 新しい額（無しは 0）、`value` 前の額（無しは 0） |
+| `self_limit_block` | サーバー | optional | 購入の確認が自分の上限で断られた。`s1` 商品、`amountYen` 価格 |
+| `playtime_setting_change` | サーバー | optional | `s1` 変えた項目（`session`／`daily`／`quiet_after`、複数は `,`）、`s2` `on`／`off`（変更後にどれか有効か） |
+| `playtime_reminder_shown` | クライアント | optional | `props: { reasons: "session,daily", sessionMin, dayMin, choice }`（分は5分に丸める。`choice`：`continue`／`stop`／`settings`） |
+
+### 67.9 設定 `progression.selfLimits`（`selfLimitsProblems`、起動時とリモート設定の各版）
+`spendingChoicesYen`（1〜8個、昇順・重複なし・`customStepYen` の倍数）・`customMinYen`・`customMaxYen`（≤ 10,000,000）・`customStepYen`（1〜10,000）・`coolOffHours`（24〜168）・`historyKeep`（5〜100）・`playtime.sessionChoicesMin`（15〜600 分）・`dailyChoicesMin`（30〜1440 分）・`quietAfterChoicesHour`（0〜23）。**停止スイッチは無い**（本人を守る機能を運用で消せないように。区画が無ければ既定値）。
+
+### 67.10 運用（REQ-LIMIT-017）
+- 運用コンソールのプレイヤー画面（`GET /v1/admin/players/:playerId`、`viewer`）に「自分で決めた上限」：今の額・効いている上限・待っている変更と効く時刻・遊ぶ時間の設定・履歴。購入の行に `selfLimitBreach` の印（「自分の上限を超えて届いた」）。
+- **サポートは見るだけ**：上限を上げる・外す・待っている引き上げを早める管理 API は**作らない**（テストで、`/v1/admin` に自分の上限を書く口が無いことを確かめる）。本人から「上限を外したい」と問い合わせがあっても、アプリの設定（冷却期間あり）を案内する。
+
+### 67.11 入口（REQ-LIMIT-018）
+- その他の2つのページはどちらも8行で満杯なので**行を足さない**。入口は：その他 › 設定・サポート の左の面の「購入・コイン・ガチャ履歴」の画面（§33）の上限の行の横「上限の設定」、購入の確認のシート（§13.2）の「上限を設定」、購入が断られた時のリンク、コイン不足の案内（`blockedCode: "SELF_LIMIT_EXCEEDED"`）のリンク、遊ぶ時間のシートの「お知らせの設定」。画面の名前は「使いすぎ・遊びすぎの防止」。
+- ヘルプセンター（§48）に記事 `self_limits`（「使いすぎ・遊びすぎを防ぐ設定」、冷却期間の時間はトークン `{{self_limit_cooloff_hours}}`、年齢帯の額は `{{monthly_limit:under16}}`）。ヒント集（§57）に1枚 `self_limits`。
+
+### 67.12 クライアント（REQ-LIMIT-019〜022）
+- C# `Muchi.Client.SelfLimits`：`SelfLimitsView`（67.6）・`SelfLimitsDigest`（ブートストラップ）・`PlaytimeSnapshot`／`PlaytimeReminderPolicy.Decide`（共有ベクター）・`PlaytimeClock`（前面の時間・セッション・1日の切り替え、端末に保存）・`ApiClient.GetSelfLimitsAsync`／`SetSpendingLimitAsync`／`CancelSpendingRaiseAsync`／`SetPlaytimeAsync`・`ApiErrorCode.SelfLimitExceeded`・`AnalyticsEvent.PlaytimeReminderShown`。
+- Unity のゲーム層 `Muchi.Game.SelfLimitsModel`：設定画面の行・断られた時の文とリンク・区切りでのシートの判断・KPI。描画は `docs/handoff-codex-round22-self-limits.md`。
+- プロトタイプ：設定の画面（上限・待っている変更・取り消し・自分で入力・遊ぶ時間）、購入が断られた状態、遊ぶ時間のシート（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）、e2e・en-flow・a11y-flow。

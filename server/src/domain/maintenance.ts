@@ -185,7 +185,8 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *     training sessions that were started before the window; leaving a queue (match / event cancel);
  *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history;
  *   - the ad / analytics choices (§58: GET/PUT /v1/privacy/choices, PUT /v1/privacy/platform, POST /v1/privacy/prompt-shown);
- *   - client error reports (§60).
+ *   - client error reports (§60);
+ *   - the player's own spending limit and play-time reminder (§67, /v1/self-limits*).
  */
 export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/health', 'GET /v1/config', 'GET /v1/maintenance', 'GET /v1/assets/catalog', 'GET /v1/visuals',
@@ -219,6 +220,9 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 21 (§63, REQ-LINK-009): opening a link answers with a maintenance / update state of its target instead of failing
   // (the link is kept; the screen says when to open it again). Making, listing and revoking links stay in group `social`.
   'POST /v1/links/resolve',
+  // Round 22 (§67, REQ-LIMIT-014): the player's own limits — lowering must work whenever a purchase can (store receipts are
+  // exempt above); a raise only starts the cool-off. Moves no coins. Not under /v1/shop so a `shop` window never closes it.
+  'GET /v1/self-limits', 'PUT /v1/self-limits/spending', 'DELETE /v1/self-limits/spending/pending', 'PUT /v1/self-limits/playtime',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

@@ -23,6 +23,8 @@ namespace Muchi.Game
             ["NG_NAME"] = "この名前は使用できません。別の名前を入力してください。",
             ["AGE_REQUIRED"] = "生年月を入力してください。",
             ["AGE_LIMIT_EXCEEDED"] = "今月の購入上限に達しています。翌月1日に戻ります。",
+            // REQ-LIMIT-005 (§67.2): the player's own limit — the screen adds the 「上限の設定」 link (SelfLimitsModel.RefusedText has the amount)
+            ["SELF_LIMIT_EXCEEDED"] = "自分で決めた今月の上限を超えるため、購入できません。上限は「上限の設定」で確かめられます。",
             ["GUARDIAN_CONSENT_REQUIRED"] = "18歳未満の方は保護者の同意が必要です。",
             ["ALREADY_PURCHASED"] = "この商品は購入済みです。",
             ["UNSETTLED_DEBT"] = "未精算の返金があるため、購入・スカウトを止めています。お問い合わせください。",

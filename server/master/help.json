@@ -321,6 +321,17 @@
       "related": ["data_export", "delete_account"]
     },
     {
+      "id": "self_limits", "category": "purchases",
+      "title": { "ja": "使いすぎ・遊びすぎを防ぐ設定", "en": "Limits on spending and play time" },
+      "body": {
+        "ja": "「購入・コイン・ガチャ履歴」の「上限の設定」（購入の確認の「上限を設定」からも開けます）で、ご自身で次の2つを決められます。\n\n・月の購入上限：選んだ額か、自分で入力した額まで。年齢に応じた月額上限より高くはできません（たとえば16歳未満は月{{monthly_limit:under16}}円まで）\n・下げた上限はすぐに効きます。上げる・外す変更は{{self_limit_cooloff_hours}}時間たってから効き、その間はいつでも取り消せます（気持ちが落ち着く時間をとるためです）\n・上限は日本時間の暦月（毎月はじめに切り替え）で数えます。年齢に応じた上限と同じ数え方です\n・ストアで支払いが済んだ購入は、上限を超えていても受け取れ、その月の支払いに数えます。返金はストアの手続きになります\n・遊ぶ時間のお知らせ：一度に遊ぶ時間・一日の合計・「◯時を過ぎたら」から選べます（最初はオフ）\n・お知らせはレースの途中には出ず、レースの結果の後かホームで出ます。時間はこの端末で数え、サーバーには送りません\n・上限やお知らせを使っても使わなくても、もらえるものや遊べる内容は変わりません\n・サポートが上限を上げたり外したりすることはできません",
+        "en": "Under Limit settings on the purchase, coin and gacha history screen (also from Set a limit on the purchase confirmation), you can decide two things for yourself.\n\n• Monthly spending limit: a listed amount or one you type. It cannot be higher than the monthly limit for your age (for example, up to {{monthly_limit:under16}} yen a month under 16)\n• A lower limit applies at once. Raising or removing it takes effect after {{self_limit_cooloff_hours}} hours, and you can cancel it at any time until then (to give you time to think it over)\n• The limit counts by calendar month in Japan time (it starts again at the beginning of each month), like the limit for your age\n• A purchase already paid in the store is still delivered even over the limit, and counts toward that month. Refunds go through the store\n• Play-time reminder: choose a session length, a daily total and an \"after this hour\" time (all off at first)\n• The reminder never appears during a race, only after a race result or on the home screen. The time is counted on this device and never sent to the server\n• Using these settings or not changes nothing you receive or can play\n• Support cannot raise or remove your limit"
+      },
+      "keywords": { "ja": ["上限", "使いすぎ", "遊びすぎ", "課金", "購入", "時間", "お知らせ", "制限"], "en": ["limit", "spending", "budget", "play time", "reminder", "break", "purchase"] },
+      "links": [ { "type": "screen", "screen": "self_limits" }, { "type": "screen", "screen": "history" } ],
+      "related": ["buy_coins", "history_help"]
+    },
+    {
       "id": "local_reminders", "category": "account",
       "title": { "ja": "端末のお知らせ（リマインダー）", "en": "Reminders on your device" },
       "body": {
@@ -355,6 +366,7 @@
     "privacy_choices": "ads_analytics_privacy",
     "notifications": "local_reminders",
     "showcase": "showcase",
-    "calendar": "calendar"
+    "calendar": "calendar",
+    "self_limits": "self_limits"
   }
 }

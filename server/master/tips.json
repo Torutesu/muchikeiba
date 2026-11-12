@@ -102,7 +102,10 @@
       "body": { "ja": "イベント・大会・カップ・メンテナンスの日付をひとつの表で見られる。時刻は日本時間。印を付けると、リマインダーがオンなら始まる前に知らせる。", "en": "See event, tournament, cup and maintenance dates in one list. Times are JST. Mark one to get a reminder before it starts (with Reminders on)." } },
     { "id": "links_tip", "topic": "social", "unlock": "friend_rooms", "art": "branch", "help": "share_links",
       "title": { "ja": "リンクで誘う", "en": "Invite with a link" },
-      "body": { "ja": "部屋・カップ・リプレイは「共有」からリンクで送れる。開いても何ももらえず、何も使わない。レースの後は「再戦」。", "en": "Send rooms, cups and replays as a link from Share. Opening one gives nothing and spends nothing. After a race, press Rematch." } }
+      "body": { "ja": "部屋・カップ・リプレイは「共有」からリンクで送れる。開いても何ももらえず、何も使わない。レースの後は「再戦」。", "en": "Send rooms, cups and replays as a link from Share. Opening one gives nothing and spends nothing. After a race, press Rematch." } },
+    { "id": "self_limits", "topic": "shop", "unlock": "shop", "art": "coins", "help": "self_limits",
+      "title": { "ja": "上限は自分で決められる", "en": "Set your own limits" },
+      "body": { "ja": "月の購入上限と遊ぶ時間のお知らせを自分で決められる。下げた上限はすぐ効き、上げる時は少し時間をおいてから効く。", "en": "You can set a monthly spending limit and a play-time reminder. A lower limit applies at once; raising it takes effect after a pause." } }
   ],
   "contexts": {
     "gacha_odds": "scout_pity_tip",

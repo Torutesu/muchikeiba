@@ -212,6 +212,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Recaps'); await waitScreen('recaps', 30000); await page.waitForSelector('.screen.in .rc-card', { timeout: 30000 }); await shot('recaps', english, 600);
     await show('Recap', 'season:2026-11', 0); await waitScreen('recap'); await page.waitForSelector('.screen.in .rc-big', { timeout: 30000 }); await shot('recap', english, 950);
     await show('HostedCups'); await waitScreen('hosted-cups', 30000); await shot('cups', english, 600);
+    // Round 22: 使いすぎ・遊びすぎの防止 — the screen with a waiting change, the refused purchase, the play-time sheet
+    await page.evaluate(async () => { await globalThis.__muchi.logic.selfLimits.seedDemo(); await globalThis.__muchi.logic.selfLimits.setSpending(null); });
+    await show('SelfLimits'); await waitScreen('self-limits'); await page.waitForSelector('.screen.in .sl-pending', { timeout: 20000 }); await shot('self-limits', english, 600);
+    await show('SelfLimitRefused'); await waitScreen('purchase'); await page.waitForSelector('.screen.in [data-state="self-limit"]', { timeout: 20000 }); await shot('self-limit-refused', english, 500);
+    await show('PlaytimeSheet'); await waitScreen('playtime-sheet'); await page.waitForSelector('.screen.in .pt-sheet', { timeout: 20000 }); await shot('playtime-sheet', english, 500);
+    await page.evaluate(async () => { const S = globalThis.__muchi.logic.selfLimits; await S.cancel(); await S.setPlaytime({ sessionMin: null }); localStorage.removeItem('muchi.playtime.clock'); });
     // Round 20: 通知 — push categories, the device reminders and the upcoming list; the pre-permission dialog
     await page.evaluate(async () => { localStorage.setItem('muchi.lnotif.os', 'granted'); await globalThis.__muchi.logic.localNotify.seedDemo(); await globalThis.__muchi.logic.localNotify.setCategory('reminders', true); });
     await show('NotifySettings'); await waitScreen('notify-settings'); await page.waitForSelector('.screen.in .ln-next', { timeout: 20000 }); await shot('notify-settings', english, 600);

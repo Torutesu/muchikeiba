@@ -13,7 +13,8 @@ import type { SeasonEntry } from './leaderboard.js';
 import type { Rng } from './rng.js';
 import type { Clock } from './time.js';
 import { seasonIdFor, rollSeason, classDef } from './season.js';
-import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
+import { cancelSpendingRaise, selfLimitsDigest, selfLimitsView, setPlaytime, setSpendingLimit, type PlaytimeBody, type PlaytimeSettings } from './selfLimits.js';
+import { ageCapOf, applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
 import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
@@ -39,6 +40,8 @@ import { admitClientBatch, clientToKpi, ensureKpi, isPayer, kpiRecord, type Clie
 
 /** Collects analytics events inside a transaction; they are emitted only if the transaction is saved. */
 export type Emit = (e: KpiEvent) => void;
+/** §67.8 `playtime_setting_change` s1 names. */
+const PLAYTIME_KPI_KEY: Record<keyof PlaytimeSettings, string> = { sessionMin: 'session', dailyMin: 'daily', quietAfterHour: 'quiet_after' };
 import type { Ruleset } from './ruleset.js';
 import { abortSubmit, prepareSubmit, recordResult, startTimeAttack, timeAttackView } from './timeAttack.js';
 import { ensureGoal, mayContribute, playerGoalPending, playerGoalRace, playerGoalReward, playerGoalTa, playerGoalView, weekKeyOf, type GoalContribution } from './teamGoal.js';
@@ -363,7 +366,7 @@ export class PlayerService {
   /** REQ-UXS-001/014/032/040: computed sections of GET /v1/player and bootstrap. */
   private extras(s: PlayerState, now: number) {
     const m = this.d.master;
-    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s), privacyChoices: privacyChoicesBadge(m, s, now, adIneligibility(m, s, now) === null), localReminders: localRemindersView(m, s, now) };
+    return { consent: consentView(m, s), unlocks: unlocksView(m, s, now), experiments: experimentsView(m, s.id), deletion: deletionView(s), giftBox: giftBadge(m, s, now), assist: assistView(s), commentaryPack: commentaryPackBadge(m, s), accessibility: accessibilityView(s), activity: activityBadge(m, s, now), help: helpBadge(s), tips: tipsBadge(m, s, now), nextActions: nextActionsView(m, s, now), horseGoalPin: pinnedGoalView(m, s), privacyChoices: privacyChoicesBadge(m, s, now, adIneligibility(m, s, now) === null), localReminders: localRemindersView(m, s, now), selfLimits: selfLimitsDigest(s, ageCapOf(m, s, now), now) };
   }
 
   async view(id: string) {
@@ -501,7 +504,16 @@ export class PlayerService {
     if (moderationOf(s, this.d.clock()) === 'banned') throw new AppError('BANNED', 'purchases are disabled for this account'); // REQ-OPS-033
     // REQ-UXS-040: no new purchases while the account is scheduled for deletion (cancel the deletion to buy)
     notDeleting(s);
-    return checkPurchaseIntent(this.d.master, s, productId, this.d.clock());
+    try {
+      return checkPurchaseIntent(this.d.master, s, productId, this.d.clock());
+    } catch (e) {
+      // REQ-LIMIT-016: a confirmation refused by the player's own limit (no state is written)
+      if (e instanceof AppError && e.code === 'SELF_LIMIT_EXCEEDED' && this.d.onKpi) {
+        const now = this.d.clock();
+        await this.writeKpi(id, s, now, [kpiRecord(s, now, { name: 'self_limit_block', s1: productId, amountYen: Number(e.details?.priceYen ?? 0) })]);
+      }
+      throw e;
+    }
   }
 
   async purchase(id: string, platform: PurchaseRecord['platform'], productId: string, receipt: string) {
@@ -1914,6 +1926,39 @@ export class PlayerService {
   /** POST /v1/privacy/prompt-shown: the pre-prompt was shown (once per policy version). */
   notePrivacyPromptShown(id: string, privacyVersion: string) {
     return this.tx(id, null, (s, now) => notePrivacyPromptShown(this.d.master, s, privacyVersion, now, adIneligibility(this.d.master, s, now) === null));
+  }
+
+  // ---------------------------------------------------------------- 使いすぎ・遊びすぎの防止 (REQ-LIMIT-*, selfLimits.ts, §67)
+  /** GET /v1/self-limits: read-only (never creates state). */
+  async selfLimits(id: string) {
+    const s = await this.load(id);
+    const now = this.d.clock();
+    return selfLimitsView(this.d.master, s, ageCapOf(this.d.master, s, now), now);
+  }
+  /** PUT /v1/self-limits/spending: lowering applies now, raising / removing after the cool-off (idempotent by content). */
+  setSpendingLimit(id: string, limitYen: number | null) {
+    return this.tx(id, null, (s, now, emit) => {
+      const age = ageCapOf(this.d.master, s, now);
+      const r = setSpendingLimit(this.d.master, s, limitYen, age, now);
+      if (r.kind) emit({ name: 'self_limit_set', s1: r.kind, amountYen: r.toYen ?? 0, value: r.fromYen ?? 0 });
+      return { applied: r.applied, view: selfLimitsView(this.d.master, s, age, now) };
+    });
+  }
+  /** DELETE /v1/self-limits/spending/pending: the waiting raise / removal is dropped (nothing waiting = no change). */
+  cancelSpendingRaise(id: string) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = cancelSpendingRaise(this.d.master, s, now);
+      if (r.kind) emit({ name: 'self_limit_set', s1: r.kind, amountYen: r.toYen ?? 0, value: r.fromYen ?? 0 });
+      return { applied: r.applied, view: selfLimitsView(this.d.master, s, ageCapOf(this.d.master, s, now), now) };
+    });
+  }
+  /** PUT /v1/self-limits/playtime: the reminder settings (missing keys keep their value). */
+  setPlaytime(id: string, body: PlaytimeBody) {
+    return this.tx(id, null, (s, now, emit) => {
+      const r = setPlaytime(this.d.master, s, body, now);
+      if (r.changed.length > 0) emit({ name: 'playtime_setting_change', s1: r.changed.map((k) => PLAYTIME_KPI_KEY[k]).join(','), s2: r.enabled ? 'on' : 'off' });
+      return { changed: r.changed, view: selfLimitsView(this.d.master, s, ageCapOf(this.d.master, s, now), now) };
+    });
   }
 
   // ---------------------------------------------------------------- アクセシビリティ設定 (REQ-A11Y-*, accessibility.ts)

@@ -1605,6 +1605,22 @@
   "印を付けました": "Marked",
   "印を外しました": "Mark removed",
   "冬のミニ大会": "Winter mini tournament",
-  "ナイター記念大会": "Night race memorial tournament"
+  "ナイター記念大会": "Night race memorial tournament",
+  "_selfLimits": "---- round 22: 使いすぎ・遊びすぎの防止 (§67)",
+  "自分で決めた上限 {limit}　·　あと {left}": "Your own limit {limit}  ·  {left} left",
+  "自分で決めた今月の上限を超えます": "This goes over the monthly limit you set",
+  "自分で決めた上限 {limit}　·　今月の支払い {spent}　·　この商品 {price}": "Your limit {limit}  ·  spent this month {spent}  ·  this item {price}",
+  "上限は翌月1日に戻ります。上限はご自身で決めたもので、いつでも確かめられます。": "The limit resets on the 1st. You set it yourself and can check it at any time.",
+  "その他　/　購入履歴　/　使いすぎ・遊びすぎの防止": "More  /  Purchase history  /  Spending & play-time limits",
+  "自分で決める上限とお知らせ。下げるのはすぐ、上げるのは少し時間をおいてから": "Limits and reminders you set yourself. Lowering applies at once; raising takes a pause",
+  "年齢に応じた上限 {limit}　·　効いている上限 {eff}　·　今月の支払い {spent}": "Limit for your age {limit}  ·  in effect {eff}  ·  spent this month {spent}",
+  "年齢に応じた上限：なし　·　今月の支払い {spent}": "Limit for your age: none  ·  spent this month {spent}",
+  "この金額にする": "Use this amount",
+  "金額を入力してください": "Please enter an amount",
+  "お知らせはオンです": "The reminder is on",
+  "お知らせはオフです（最初はオフ）": "The reminder is off (off at first)",
+  "使っても使わなくても、もらえるものや遊べる内容は変わりません": "Using these or not changes nothing you receive or can play",
+  "上限とお知らせについて（ヘルプ）": "About limits and reminders (Help)",
+  "デモ：60分遊んだことにする": "Demo: count 60 minutes of play"
  }
 }

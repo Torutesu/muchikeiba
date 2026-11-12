@@ -80,7 +80,11 @@ master/         マスターデータ（全て架空。金額・確率は暫定�
 | POST | `/v1/challenges/weekly/:challengeId/start` | 要 | 必須 | `{horseId}` か `{loan:true}` 設定（CPU・馬場・正規化）とトークンを発行（`CHALLENGE_HORSE_INELIGIBLE` / `CHALLENGE_LIMIT_REACHED` 429） |
 | POST | `/v1/challenges/weekly/submit` | 要 | | `{sessionId, token, inputs, resultHash, config?}` 検証器で再シミュレーションしてサーバーが条件を判定（セッション単位で冪等、`CHALLENGE_RESULT_MISMATCH` 422 / `VERIFIER_UNAVAILABLE` 503） |
 | GET | `/v1/teams/me/goal` | 要 | | 支部の共同目標：今週の目標・段と報酬・自分の貢献と今日の数・上位の貢献者・先週の結果。貢献は確定したレース結果と検証済みのタイムアタックだけ（クライアントから送る経路は無い）。週の締めと配布は TeamDO のアラーム（protocol §32） |
-| POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
+| POST | `/v1/shop/purchase-intent` | 要 | | `{productId}` ストア購入を始めてよいか（`AGE_REQUIRED` / `GUARDIAN_CONSENT_REQUIRED` / `AGE_LIMIT_EXCEEDED` / `SELF_LIMIT_EXCEEDED`（自分で決めた上限、§67） / `ALREADY_PURCHASED` / `UNSETTLED_DEBT` / `NOT_ELIGIBLE`）。パスは残り日数、コインは初回の無償上乗せも返す（§13.2） |
+| GET | `/v1/self-limits` | 要 | | 使いすぎ・遊びすぎの防止（§67）：自分で決めた月の上限・年齢帯の上限・効いている上限・待っている変更・遊ぶ時間のお知らせ。読むだけ。メンテナンスで閉じない |
+| PUT | `/v1/self-limits/spending` | 要 | | `{limitYen: number\|null}` 下げるのはすぐ、上げる・外すのは冷却期間（既定72時間）の後。年齢帯の上限より高い額は 400。内容で冪等 |
+| DELETE | `/v1/self-limits/spending/pending` | 要 | | 待っている引き上げ・解除を取り消す（無ければ何もしない） |
+| PUT | `/v1/self-limits/playtime` | 要 | | `{sessionMin?, dailyMin?, quietAfterHour?}`（選択肢か null）遊ぶ時間のお知らせ。時間は端末が数える |
 | GET | `/v1/shop/store-account` | 要 | | `{appleAppAccountToken, googleObfuscatedAccountId}` 購入時にストアへ渡す値（下記「ストア連携」） |
 | POST | `/v1/shop/purchase` | 要 | （取引IDで自動） | `{platform: apple\|google\|fake, productId, receipt}`。apple＝`Transaction.jwsRepresentation`、google＝`{"purchaseToken":"…"}` |
 | POST | `/v1/store/notifications/:platform` | 署名 | | `apple`：App Store Server Notifications V2、`google`：RTDN（Pub/Sub push、OIDC）、`fake`：開発用 |

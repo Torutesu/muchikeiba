@@ -154,6 +154,8 @@ static class Program
         await Round21IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
+        Console.WriteLine("== quality/goals-flow: 目標の階段 (GoalLadderModel: today / path / week / season rungs, reward uses, class ladder and the partner's usable strength, one keyed claim, offline today only, English; REQ-GOAL-*)");
+        await GoalLadderChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");

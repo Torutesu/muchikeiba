@@ -107,7 +107,8 @@ export class InquiryIndex {
   exportCsv(q: InquiryQuery): { csv: string; rows: number } {
     const rows = this.list({ ...q, limit: INQUIRY_EXPORT_MAX }, INQUIRY_EXPORT_MAX);
     const iso = (t: number | null | undefined) => (t === null || t === undefined ? '' : new Date(t).toISOString());
-    const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    // a cell a spreadsheet would read as a formula gets a leading quote (CSV injection); quotes / commas / newlines are quoted
+    const cell = (raw: string) => { const v = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw; return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
     const head = 'ticket_id,player_id,category,status,lang,attachments,created_at,updated_at,first_reply_at,closed_at,assignee,waiting_hours,sla_breached';
     const lines = rows.map((r) => [r.ticketId, r.playerId, r.category, r.status, r.lang, String(r.attachments), iso(r.createdAt), iso(r.updatedAt), iso(r.firstReplyAt), iso(r.closedAt),
       r.assignee ?? '', r.waitingMs === null ? '' : (r.waitingMs / 3_600_000).toFixed(1), r.slaBreached ? '1' : '0'].map(cell).join(','));

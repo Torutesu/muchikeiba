@@ -53,7 +53,7 @@ const list = (await L.inquiries()).value;
 const answered = list.items.find((x) => x.status === 'answered');
 assert.ok(answered && answered.unread, 'the ops reply answers the ticket (unread)');
 assert.strictEqual((await L.view()).help.unreadReplies, 1, 'the settings badge');
-const act = (await L.activity()).value.items.find((x) => x.kind === 'inquiry_answered');
+const act = (await L.activity()).value.items.find((x) => x.kind === 'inquiry_answered' && x.link?.id === answered.ticketId); // R23: the demo also answers a resolved ticket
 assert.deepStrictEqual(act.link, { screen: 'help_inquiry', id: answered.ticketId }, 'the activity entry links to the inquiry');
 const d = (await L.inquiry(answered.ticketId, 'en')).value;
 assert.strictEqual(d.statusText, 'Replied'); // R23 §73.1 (was Answered)

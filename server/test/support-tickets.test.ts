@@ -344,6 +344,15 @@ describe('ops desk (REQ-TKT-006..010)', () => {
   });
 });
 
+describe('CSV safety (REQ-TKT-007)', () => {
+  it('a cell a spreadsheet would read as a formula is quoted', async () => {
+    const x = await setup();
+    await x.submit('=HYPERLINK(1)', 'a');
+    const csv = (await x.admin('/v1/admin/inquiries/export')).body.csv as string;
+    expect(csv.split('\n')[1]!.startsWith(`q_1,'=HYPERLINK(1),`)).toBe(true);
+  });
+});
+
 describe('wiring (REQ-TKT-012/013/014)', () => {
   it('the reply route is never gated; KPI classes; English keeps the person\'s words', async () => {
     expect(EXEMPT_ROUTES).toContain('POST /v1/help/inquiries/:ticketId/messages');

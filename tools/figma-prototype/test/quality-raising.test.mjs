@@ -41,10 +41,8 @@ assert.strictEqual(p.totals.ranked <= p.totals.cap, true, 'ranked never above th
 assert.strictEqual(p.lineage.generation, 1, 'a scouted partner is generation 1');
 
 // 2) the training outlook is exactly what start previews
-// the next game day: fresh slots (one more day when the 2026-12-01 rollover change makes that a 28-hour day)
-L.setDayOffset(7 + 12);
-let tv = (await L.training()).value;
-if (!tv.horses.some((x) => !x.blocked)) { L.setDayOffset(7 + 13); tv = (await L.training()).value; }
+L.setDayOffset(7 + 12); // the next game day: fresh slots
+const tv = (await L.training()).value;
 const other = tv.horses.find((x) => !x.blocked);
 assert.ok(other, 'a horse that can still train today');
 const hill = other.menus.find((m) => m.id === 'hill');

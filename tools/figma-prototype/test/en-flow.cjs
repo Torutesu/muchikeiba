@@ -108,9 +108,6 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await show('Scout'); await waitScreen('scout'); await shot('scout', 900);
   // quality pass 2 (docs/quality/shop.md): the scout confirmation and the purchase receipt in English
   await page.locator('.screen.in .btn[data-label^="10回引く"]').first().click(); await waitScreen(['scout-confirm', 'shortfall']); await shot('scout-confirm', 500);
-  await page.evaluate(async () => { const L = globalThis.__muchi.logic; const r = await L.demoPurchase('starter_pack'); return globalThis.__muchi.show('Receipt', r.value.receipt); });
-  await waitScreen('receipt'); await shot('purchase-receipt', 700);
-  assert.match(await page.locator('.screen.in').innerText(), /Purchase complete/, 'the receipt in English');
   await show('Odds', 'standard'); await shot('odds', 500);
   // round 12: the coin shortfall sheet (T6) — server texts translated at the response boundary, the pack card, the buttons
   await show('Shortfall', 'paid'); await waitScreen('shortfall'); await shot('shortfall-paid', 500);
@@ -774,6 +771,10 @@ await shot('diagnostics', 600);
   await page.locator('.screen.in .qr-breed').click(); await waitScreen('breeding-reveal'); await shot('foal-reveal-1', 600);
   for (let i = 0; i < 3; i++) { await page.locator('.screen.in .qr-next').click(); await page.waitForTimeout(500); }
   await shot('foal-reveal-all', 900);
+  // quality pass 2: the receipt of a demo purchase — last, since a purchase quiets the review prompt and moves the wallet
+  await page.evaluate(async () => { const L = globalThis.__muchi.logic; const r = await L.demoPurchase('starter_pack'); return globalThis.__muchi.show('Receipt', r.value.receipt); });
+  await waitScreen('receipt'); await shot('purchase-receipt', 700);
+  assert.match(await page.locator('.screen.in').innerText(), /Purchase complete/, 'the receipt in English');
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

@@ -1876,7 +1876,6 @@
   "無償コイン{n}枚を受け取りました（残り{d}日）": "Received {n} free coins ({d} days left)",
   "昇級のお祝い：各クラス1回限り": "For your promotion: once per class",
   "{item}：{purpose}": "{item}: {purpose}",
-  "{contents}（{total}）": "{contents} ({total})",
   "見た目だけで、ランク戦の能力は変わりません。": "Looks only; no effect on ranked ability.",
   "有料ライン {total}": "Premium track {total}",
   "届いている{n}段は購入後すぐ受け取れます": "the {n} tiers you have reached can be claimed right after buying"

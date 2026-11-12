@@ -2063,7 +2063,7 @@ async function Store(tab = 'recommended') {
   Txt('決済前に商品・年齢区分を確認します　·　このプロトタイプでは決済しません', 920, 634, 576, 14, SOFT, p, { align: 'right', nowrap: true });
   NavBar(3);
 }
-const contentsText = (p) => p.contents.map((x) => x.label + (x.totalLabel ? `（${x.totalLabel}）` : '')).join('　·　');
+const contentsText = (p) => p.contents.flatMap((x) => (x.totalLabel ? [x.label, x.totalLabel] : [x.label])).join('　·　');
 /** Quality pass 2: what each item does in play, from the server (products.json display.itemPurposes) — one line each. */
 const purposesText = (p) => p.contents.filter((x) => x.purpose).map((x) => `${x.label.replace(/×\d+$/, '')}：${x.purpose}`).join('\n');
 function productTags(p, extra) {

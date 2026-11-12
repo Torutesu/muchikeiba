@@ -197,7 +197,14 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Scout'); await waitScreen('scout'); await shot('scout', english, 800);
     // quality pass 2 (docs/quality/shop.md): the scout confirmation and the purchase receipt at the largest text
     await page.locator('.screen.in .btn[data-label^="10回引く"]').first().click(); await waitScreen(['scout-confirm', 'shortfall']); await shot('scout-confirm', english, 500);
-    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const r = await L.demoPurchase('starter_pack'); const rc = r.ok ? r.value.receipt : (await L.demoPurchase('coin_160')).value.receipt; return globalThis.__muchi.show('Receipt', rc); });
+    // the receipt exactly as the server builds it for the starter pack (receipt.ts), shown without buying: a real purchase
+    // would quiet the review prompt checked further down (server/test/q2-shop.test.ts covers the receipt itself)
+    await page.evaluate(() => globalThis.__muchi.show('Receipt', { txId: 'demo', productId: 'starter_pack', name: 'スターターパック', priceYen: 480, at: Date.now(),
+      lines: [{ kind: 'paid_coins', label: '有償コイン300枚', purpose: null, qty: 300 },
+        { kind: 'item', label: 'SR以上確定スカウト券×1', purpose: 'スカウトの画面で使うと、SR以上の馬が1頭来ます（提供割合は券の画面で確認できます）', itemId: 'ticket_sr_plus', qty: 1 },
+        { kind: 'item', label: '限定勝負服の柄「稲妻」×1', purpose: '勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）', itemId: 'costume_starter', qty: 1 }],
+      wallet: { paid: 300, free: 2144 }, next: { action: 'use_sr_ticket', label: 'SR以上確定スカウト券を使う', itemId: 'ticket_sr_plus', pattern: null },
+      notes: ['購入の記録は「その他」→「購入履歴」でいつでも確かめられます'] }));
     await waitScreen('receipt'); await shot('purchase-receipt', english, 700);
     await show('Odds', 'standard'); await shot('odds', english, 500);
     await show('Stable'); await shot('stable', english, 600);

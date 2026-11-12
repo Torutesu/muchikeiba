@@ -1441,8 +1441,9 @@ async function Home() {
   EnToggle();
   GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
   ActivityBell(); // round 15 (REQ-ACT-009): the bell with the unread count
-  // right: the thin-divider menu (厩舎 / スカウト / ミッション / 機能)
-  const menu = Glass('Menu', 1139, 190, 388, 394, undefined, .77);
+  // right: the thin-divider menu (厩舎 / 調教 / スカウト / 機能). Quality pass (home): 目標 is not repeated here — the ladder
+  // at the top left is the one goals surface and opens 目標.
+  const menu = Glass('Menu', 1139, 190, 388, 320, undefined, .72);
   const ms = missions.ok ? missions.value : [];
   const done = ms.filter((m) => m.progress >= m.target).length;
   const claimable = ms.filter((x) => x.progress >= x.target && !x.claimed);
@@ -1451,8 +1452,6 @@ async function Home() {
     // round 11 (REQ-TRAIN-*): 調教 — today's slots left, opens with the unlock table
     unlock('training').unlocked ? ['調教', training?.ok && training.value.enabled ? `今日あと${training.value.slotsLeft}回` : '', () => Training(), training?.ok && training.value.slotsLeft > 0] : ['調教', unlockText('training'), () => toast('調教は' + unlockText('training')), false, true],
     ['スカウト', unlock('gacha').unlocked === false ? '' : `${L.bannerList().banners.filter((b) => b.status !== 'upcoming').length}件 開催中`, () => Scout()],
-    // quality/goals-flow: 目標 (daily, the first steps and season missions on one screen with one claim)
-    ['目標', goals.ok && goals.value.today.open ? `今日 ${goals.value.today.done} / ${goals.value.today.total}` : '', () => Goals()],
     ['機能・イベント', `${(player.unlocks.features ?? []).filter((f) => f.unlocked).length}件 開放`, () => Features()],
   ];
   rows.forEach(([name, meta, go, dot, locked], i) => {
@@ -1460,25 +1459,25 @@ async function Home() {
     const em = document.createElement('em'); em.textContent = meta; if (dot) em.className = 'gold'; b.appendChild(em);
     if (dot) { const d = document.createElement('i'); d.className = 'dot'; b.appendChild(d); }
   });
-  // ① partner (name, style, bond) — bottom left
-  const pc = Glass('Partner', 33, 576, 450, 207, undefined, .79);
-  Kicker('あなたの相棒', 29, 24, pc, { rule: false, size: 17 });
-  Txt(p ? p.name : '—', 29, 50, 400, 45, WHITE, pc, { ls: '.08em', nowrap: true });
+  // ① partner — the hero: the horse in the art, and its nameplate at the bottom left (name large, one line under it).
+  // Quality pass (home): a lighter plate with the gold rule, no second caption row; the details live in 厩舎.
+  const pc = Glass('Partner', 33, 610, 470, 176, undefined, .62);
+  pc.classList.add('partner-plate');
+  Kicker('あなたの相棒', 29, 22, pc, { size: 16, gold: true, ruleW: 56 });
+  Txt(p ? p.name : '—', 29, 78, 420, 52, WHITE, pc, { ls: '.08em', nowrap: true });
   if (p) {
-    Txt(`${STYLE_JA[p.style] ?? p.style}　/　${surfaceJa(p.surface)}　/　${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 124, 400, 18, WHITE, pc, { weight: 700, ls: '.04em', nowrap: true });
-    const sk = L.horseSkill(p);
-    const bondLine = unlock('bond').unlocked && bond?.ok ? `絆 Lv${bond.value.level}　·　調子 ${['ふつう', '上向き', '好調'][Math.min(2, bond.value.todayActions)]}` : '絆・お世話は' + unlockText('bond');
-    Txt(`${p.rarity}${sk ? '　·　「' + sk.name + '」' : ''}　·　${bondLine}`, 29, 160, 400, 14, MUTED, pc, { nowrap: true });
-  } else Txt('無料スカウトで相棒を迎えよう', 29, 124, 400, 18, WHITE, pc);
+    const bondLine = unlock('bond').unlocked && bond?.ok ? `　·　絆 Lv${bond.value.level}` : '';
+    Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m${bondLine}`, 29, 140, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
+  } else Txt('無料スカウトで相棒を迎えよう', 29, 140, 420, 16, WHITE, pc);
   pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
   // ② race: the largest, bottom right
   Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
-  await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
-  await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
-  await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
+  await GoalPinStrip(); // round 18: the pinned horse goal — quality pass: a rung of the ladder, not its own panel
+  await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer — the ad is a small top-bar entry)
+  await NextCard(); // round 16: 次にやること — quality pass: one slim line, only for what no other home element already says
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   MaybeLinkPrompt('Home', Home);
@@ -2157,6 +2156,16 @@ async function AdOfferSlot(surface, x, y, w, h, back, parent) {
   const v = await L.ads();
   const p = v.eligible ? v.placements.find((q) => q.surface === surface) : null;
   if (!p || (surface === 'home' && cur?.dataset.screen !== 'home')) return null;
+  if (surface === 'home') {
+    // quality pass (home): the rewarded ad is a small optional entry in the top bar, never a big card — it is a choice,
+    // not the screen's second-biggest thing. Same placement, same consent / player / verdict path.
+    const live = p.left > 0;
+    const chip = Btn(live ? '動画を見る' : '動画の報酬', x, y, w, h, () => (live ? ConsentBeforeAd(() => AdPlayer(p, back)) : toast('今日の分は受け取りました（4:00 にリセット）')),
+      'ghost quiet small ad-card ad-chip' + (live ? '' : ' done'), parent, live ? `▶ 動画で${p.rewardLabel}` : '動画の報酬：今日は受け取り済み');
+    chip.dataset.homeCard = 'ad'; chip.dataset.placement = p.id; chip.dataset.state = live ? 'offer' : 'done';
+    globalThis.__muchi && (globalThis.__muchi.lastKpi = live ? 'ad_offer_view' : globalThis.__muchi.lastKpi);
+    return chip;
+  }
   const card = Glass('Ad offer', x, y, w, h, parent, .84);
   card.classList.add('ad-card');
   card.dataset.homeCard = 'ad'; card.dataset.placement = p.id; card.dataset.state = p.left > 0 ? 'offer' : 'done';
@@ -3673,7 +3682,13 @@ function glRungs(v) {
 /** Home, top left: the three rungs (tap → 目標). Replaces the season box; the week rung holds the rival and the challenges. */
 function GoalLadderPanel(v) {
   const rungs = glRungs(v);
-  const p = Glass('Goals', GL_BOX.x, GL_BOX.y, GL_BOX.w, 16 + rungs.length * 50, undefined, .8);
+  // quality pass (home): say 「受け取れる報酬があります」 once — the rungs keep their own line and their gold dot, and one claim
+  // line at the bottom of the ladder opens 目標, where everything is received at once
+  const READY = '受け取れる報酬があります', anyReady = rungs.some((x) => x.ready);
+  for (const x of rungs) if (x.main === READY) {
+    x.main = x.key === 'today' ? (v.today.complete ? '今日の目標は完了' : `今日の目標 ${v.today.done}/${v.today.total}`) : x.key === 'path' ? glTitle(v.path.current.kind) : x.main;
+  }
+  const p = Glass('Goals', GL_BOX.x, GL_BOX.y, GL_BOX.w, 16 + rungs.length * 50 + (anyReady ? 50 : 0), undefined, .8);
   p.classList.add('gl-panel'); p.dataset.rungs = rungs.map((x) => x.key).join(',');
   rungs.forEach((x, i) => {
     const row = el('gl-rung', 0, 8 + i * 50, GL_BOX.w, 50, p); row.dataset.rung = x.key;
@@ -3683,6 +3698,11 @@ function GoalLadderPanel(v) {
     const g = Gauge(118, 36, 326, x.fill, row, { gold: x.ready }); g.style.height = '3px';
     if (x.ready) { el('gl-dot', 10, 16, 6, 6, row); row.dataset.ready = '1'; }
   });
+  if (anyReady) {
+    const c = el('gl-rung gl-home-claim', 0, 8 + rungs.length * 50, GL_BOX.w, 50, p); c.dataset.rung = 'claim';
+    Txt(READY, 24, 13, GL_BOX.w - 80, 17, GOLD, c, { weight: 700, nowrap: true });
+    Txt('›', GL_BOX.w - 48, 8, 24, 24, GOLD, c, { weight: 700, align: 'right' });
+  }
   p.style.cursor = 'pointer'; p.setAttribute('role', 'button');
   p.addEventListener('click', () => Goals());
   return p;
@@ -3870,7 +3890,7 @@ function ClassLadder(v) {
 // under it. The server chooses (MuchiLogic.nextActions = GET /v1/home/next on the real nextAction.ts); this only draws it.
 // The top bar is left alone (season · rival strip · gift envelope · wallet; §40's bell will sit there later). Deadlines are
 // real times shown as a date and time, never a countdown; no card leads to the shop. 「今日は閉じる」 holds for the game day.
-const NEXT_BOX = { x: 520, y: 560, w: 560 };
+const NEXT_BOX = { x: 540, y: 714, w: 540 }; // quality pass: one slim line under the horse, left of 「レースへ」
 const NEXT_VIEWED = 'muchi.next.viewed';
 const nxDeadline = (ms) => { const d = new Date(ms - 60_000 + 9 * 3600e3); return `${d.getUTCMonth() + 1}月${d.getUTCDate()}日 ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}まで`; };
 const NX_FEATURE = { missions: 'ミッション', training: '調教', bond: '絆・飼い葉', season: 'シーズン・ランキング', rival: 'ライバル', breeding: '配合', friends: 'フレンド', teams: '支部', time_attack: 'タイムアタック', weekly_challenge: '週替わりチャレンジ', events: 'イベント', tournaments: '大会', my_stable: 'マイ厩舎', stud: '種牡馬の貸し借り' };
@@ -3920,40 +3940,41 @@ function nxViews(v) {
   for (const [i, slot] of shown) if (!seen.kinds.includes(i.kind)) { seen.kinds.push(i.kind); nxKpi('next_card_view', i, slot); }
   try { localStorage.setItem(NEXT_VIEWED, JSON.stringify(seen)); } catch { /* */ }
 }
+// Quality pass (home): kinds another home element already says — the ladder (today's / the first steps' / the season's
+// rewards, the week's challenge and rival, the team goal, the pinned horse goal), the menu (調教), 「レースへ」 (the first
+// race, the first-win bonus) and the automatic login bonus. Home never says a thing twice; 次にやること keeps the rest.
+const NX_HOME_DUP = ['race', 'first_race', 'first_win', 'login_bonus', 'missions_claim', 'missions_close', 'rival_week', 'weekly_challenge', 'team_goal_near', 'horse_goal_near', 'training_slots'];
+/** What home shows of the server's next list: the first item (the primary, then the chips) no other home element repeats. */
+const nxHomeItem = (v) => [v.primary, ...v.chips].find((i) => i && !NX_HOME_DUP.includes(i.kind)) ?? null;
 async function NextCard() {
   if (cur?.dataset.screen !== 'home') return null;
   cur.querySelectorAll('[data-next]').forEach((n) => n.remove());
   const r = await L.nextActions();
   if (!r.ok || !r.value.enabled || cur?.dataset.screen !== 'home') return null;
   const v = r.value;
-  const p = v.primary;
-  // the race card alone repeats the big 「レースへ」: nothing to add, so nothing is drawn
-  if (!p || (p.kind === 'race' && v.chips.length === 0)) return null;
+  const p = nxHomeItem(v);
+  if (!p) return null;
   const t = nxText(p);
-  const card = Glass('Next', NEXT_BOX.x, NEXT_BOX.y, NEXT_BOX.w, 142, undefined, .84);
-  card.dataset.next = p.kind; card.classList.add('next-card', 'rise');
+  // one slim line under the horse, left of 「レースへ」: kicker, what (and until when), its link; 今日は閉じる above it
+  const card = Glass('Next', NEXT_BOX.x, NEXT_BOX.y, NEXT_BOX.w, 72, undefined, .74);
+  card.dataset.next = p.kind; card.classList.add('next-card', 'next-line', 'rise');
   if (p.featureKey) card.dataset.feature = p.featureKey;
   if (p.deadlineAt) card.dataset.deadline = String(p.deadlineAt);
-  Kicker('次にやること', 24, 18, card, { rule: false, size: 14 });
+  Kicker('次にやること', 22, 10, card, { rule: false, size: 13 });
+  Txt(t.deadline ? t.title + '　·　' + t.deadline : t.title, 22, 36, NEXT_BOX.w - 190, 16, WHITE, card, { weight: 700, nowrap: true });
+  const go = TextLink(t.cta, NEXT_BOX.w - 168, p.dismissible ? 34 : 18, 150, () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); }, card, t.cta + ' ›');
+  go.dataset.nextGo = p.kind;
   if (p.dismissible) {
-    TextLink('今日は閉じる', 404, 8, 136, async () => {
+    const dm = TextLink('今日は閉じる', NEXT_BOX.w - 168, 0, 150, async () => {
       const d = await L.dismissNext(p.kind);
       if (!d.ok) return toast(d.message);
       toast('今日はこのお知らせを閉じました');
       NextCard();
-    }, card).dataset.nextDismiss = p.kind;
+    }, card);
+    dm.dataset.nextDismiss = p.kind;
   }
-  Txt(t.title, 24, 44, 512, 21, WHITE, card, { weight: 700, nowrap: true });
-  Txt(t.deadline ? `${t.detail}　·　${t.deadline}` : t.detail, 24, 84, 330, 14, MUTED, card, { weight: 500, nowrap: true });
-  const go = Ghost(t.cta, 370, 78, 166, 46, () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); }, card, 'small');
-  go.dataset.nextGo = p.kind;
-  v.chips.forEach((c, k) => {
-    const ct = nxText(c);
-    const chip = Ghost(ct.chip, NEXT_BOX.x + k * 214, NEXT_BOX.y + 152, 204, 42, () => { nxKpi('next_card_tap', c, 'chip'); nxGo(c); }, undefined, 'small');
-    chip.dataset.next = c.kind; chip.dataset.nextChip = c.kind; chip.classList.add('next-chip');
-    if (c.deadlineAt) chip.dataset.deadline = String(c.deadlineAt);
-  });
-  nxViews(v);
+  card.style.cursor = 'pointer'; card.addEventListener('click', () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); });
+  nxViews({ ...v, primary: p, chips: [] });
   return card;
 }
 
@@ -4074,14 +4095,15 @@ async function cbView() { const r = await L.comeback(); return r.ok ? r.value : 
 // ---- the home card slot (round 10): home shows at most ONE card, in the left column between the season panel and the
 // partner. Priority: the comeback welcome (a full screen before home, once per window) > what's new (once) > the comeback
 // campaign card (while a window runs) > the rewarded-ad offer. Closing a card draws the next one in the same place.
-const HOME_CARD = { x: 33, y: 260, w: 450 }; // quality/goals-flow: under the goal ladder (up to four rungs)
+// quality/goals-flow: under the goal ladder; quality pass: right under however many rungs it has (the pinned goal, the claim line)
+const HOME_CARD = { x: 33, w: 450, get y() { const g = cur?.querySelector(':scope > .gl-panel'); return g ? Math.max(260, g.offsetTop + g.offsetHeight + 14) : 260; } };
 async function HomeCard(cb) {
   if (cur?.dataset.screen !== 'home') return null;
   cur.querySelectorAll('[data-home-card]').forEach((n) => n.remove());
   const wn = await L.whatsNew();
   if (wn.ok && wn.value.showCard && !globalThis.__cbWhatsNewClosed) return WhatsNewCard(wn.value, cb);
   if (cb?.active) return ComebackCard(cb);
-  if (typeof AdOfferSlot === 'function') return AdOfferSlot('home', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 214, Home);
+  if (typeof AdOfferSlot === 'function') return AdOfferSlot('home', 560, 40, 340, 52, Home); // quality pass: a small entry in the top bar
   return null;
 }
 /** REQ-CB-008: the one-time card: what went live since the player last looked. Closing marks it seen. */
@@ -4481,14 +4503,28 @@ async function GoalPinStrip() {
   const r = await L.horseGoals.pinned();
   if (!r.ok || !r.value.pinned || cur?.dataset.screen !== 'home') return null;
   const pin = r.value.pinned;
-  const s = Glass('Goal pin', NEXT_BOX.x, 470, NEXT_BOX.w, 76, undefined, .82);
-  s.dataset.hgPin = pin.horseId; s.classList.add('hg-pin-strip', 'rise');
-  Kicker('ピン留めした目標', 22, 12, s, { rule: false, size: 12, w: 260 });
-  Txt(pin.horseName, 290, 10, 248, 13, MUTED, s, { weight: 700, nowrap: true, align: 'right' }).classList.add('hg-pin-name');
-  Txt(pin.goal.text, 22, 38, 400, 18, WHITE, s, { weight: 700, nowrap: true });
-  Txt(`${pin.goal.have} / ${pin.goal.need}`, 430, 38, 108, 18, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  // quality pass (home): the pinned horse goal is one more rung of the goal ladder (one goals surface), above its claim line
+  const ladder = cur.querySelector(':scope > .gl-panel');
+  let s;
+  if (ladder) {
+    const claim = ladder.querySelector('.gl-home-claim');
+    const y = claim ? parseFloat(claim.style.top) : ladder.offsetHeight - 8;
+    s = el('gl-rung hg-pin-strip', 0, y, GL_BOX.w, 50, ladder); s.dataset.rung = 'pin';
+    if (claim) claim.style.top = (y + 50) + 'px';
+    ladder.style.height = (ladder.offsetHeight + 50) + 'px';
+    Txt('ピン留め', 24, 12, 92, 12, CYAN, s, { weight: 700, ls: '.16em', nowrap: true });
+    Txt(pin.goal.text, 118, 6, 226, 16, WHITE, s, { weight: 700, nowrap: true }).classList.add('gl-main');
+    Txt(pin.horseName, 118, 28, 226, 12, MUTED, s, { weight: 500, nowrap: true }).classList.add('hg-pin-name');
+    Txt(`${pin.goal.have} / ${pin.goal.need}`, 344, 6, 100, 17, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  } else {
+    s = Glass('Goal pin', 32, 470, 469, 76, undefined, .82); s.classList.add('hg-pin-strip');
+    Txt(pin.goal.text, 22, 14, 330, 18, WHITE, s, { weight: 700, nowrap: true });
+    Txt(`${pin.goal.have} / ${pin.goal.need}`, 350, 14, 100, 18, GOLD, s, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+    Txt(pin.horseName, 22, 44, 330, 13, MUTED, s, { weight: 700, nowrap: true }).classList.add('hg-pin-name');
+  }
+  s.dataset.hgPin = pin.horseId;
   s.style.cursor = 'pointer'; s.setAttribute('role', 'button');
-  s.addEventListener('click', () => HorseGoals(pin.horseId));
+  s.addEventListener('click', (e) => { e.stopPropagation(); HorseGoals(pin.horseId); });
   const day = new Date(L.now() + 5 * 3600e3).toISOString().slice(0, 10); // the game day (04:00 JST)
   let seen = null; try { seen = localStorage.getItem(HG_HOME_VIEWED); } catch { /* */ }
   if (seen !== day) { try { localStorage.setItem(HG_HOME_VIEWED, day); } catch { /* */ } hgKpi('home', pin.doneCount); }
@@ -9429,6 +9465,8 @@ async function boot() {
       // R21 integration (§58.11 = §64.6): the one table and the pick among prompts due at one moment
       priority: () => [...PROMPT_PRIORITY], pick: (due) => sessionPrompt.pick(due), can: (k) => sessionPrompt.can(k), ftue: (on) => { ftue = !!on; } },
     offer: () => OfferThen(Home),
+    // quality pass (home): the next-list kinds home leaves out because another home element already says them
+    nextHomeDup: () => [...NX_HOME_DUP],
     // quality pass (docs/quality/presentation.md): the result's celebration for a given place and a moment, on demo data
     // (nothing applied), so every peak can be looked at without riding a race to that place
     fx: {

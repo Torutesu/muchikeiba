@@ -128,7 +128,7 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   };
   const HOME_BAR = ['.gl-panel', '.btn.envelope', '.btn.bell', '[data-name="Wallet"]', '.btn.lang', '[data-name="Menu"]'];
   // Round 16 integration: the whole home — the top bar plus the 次にやること card and chips, the partner card, the big CTA
-  const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero', '.hg-pin-strip']; // round 18: the pinned goal strip (demo('next') pins the partner's goal)
+  const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero', '.hg-pin-strip', '.ad-chip']; // quality pass: the ad is a small top-bar entry // round 18: the pinned goal strip (demo('next') pins the partner's goal)
   /** demo('next') = a player with a next card and two chips (a gift expiring, scout tickets); waits for the card. */
   const homeWithNext = async () => {
     await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt', 'release-notes'], 60000);

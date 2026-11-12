@@ -1871,7 +1871,6 @@
   "期限はありません（購入するまでここに置いておきます）": "No end date (it stays here until you buy it)",
   "{date}まで（あと{n}日）": "Until {date} ({n} days left)",
   "受け取り中：{a}日目／{b}日（残り{n}日）": "Running: day {a} of {b} ({n} days left)",
-  "今日の分は受け取り済み": "Today's coins claimed",
   "今日の分は受け取り済みです": "You have claimed today's coins",
   "無償コイン{n}枚を受け取りました（残り{d}日）": "Received {n} free coins ({d} days left)",
   "昇級のお祝い：各クラス1回限り": "For your promotion: once per class",

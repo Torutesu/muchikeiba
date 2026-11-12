@@ -219,6 +219,8 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 21 (§63, REQ-LINK-009): opening a link answers with a maintenance / update state of its target instead of failing
   // (the link is kept; the screen says when to open it again). Making, listing and revoking links stay in group `social`.
   'POST /v1/links/resolve',
+  // Round 23 (§73.9, REQ-TKT-013): the player's reply in a support thread — the same support route as sending an inquiry
+  'POST /v1/help/inquiries/:ticketId/messages',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

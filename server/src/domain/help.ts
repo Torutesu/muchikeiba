@@ -32,6 +32,8 @@ import type { Locale } from '../i18n/locale.js';
 import { recordActivity } from './activity.js';
 import { DATA_EXPORT_DEFAULTS } from './dataExport.js';
 import { quickChatOf } from './quickChat.js';
+import { canReplyNow, autoCloseAtOf, replyUntilOf, isOpenStatus, scrubTicketText, ticketsOf, ticketProblems, type TicketConfig, type ReplyTemplate } from './supportTickets.js';
+import { enqueuePush } from './push.js';
 
 // ------------------------------------------------------------------------------------------------ master
 
@@ -89,8 +91,14 @@ export interface InquiryConfig { descriptionMin: number; descriptionMax: number;
 export interface HelpConfig {
   enabled: boolean; supportSiteHost: string; titleMaxChars: number; bodyMaxChars: number; searchMaxChars: number; searchMaxResults: number;
   feedbackPerDay: number; inquiry: InquiryConfig;
+  /** §73 (REQ-TKT-002): the ticket rules (absent = TICKET_DEFAULTS). */
+  tickets?: Partial<TicketConfig>;
 }
-export interface HelpMaster { version: number; config: HelpConfig; categories: HelpCategory[]; articles: HelpArticle[]; contexts: Record<string, string> }
+export interface HelpMaster {
+  version: number; config: HelpConfig; categories: HelpCategory[]; articles: HelpArticle[]; contexts: Record<string, string>;
+  /** §73 (REQ-TKT-002): the operators' reply templates (JA/EN, §48 tokens + {{ticket_id}} / {{category}}). */
+  replyTemplates?: ReplyTemplate[];
+}
 
 export const BASE_HELP = helpJson as unknown as HelpMaster;
 export const helpOf = (m: Pick<Master, 'help'>): HelpMaster => m.help ?? BASE_HELP;
@@ -211,6 +219,10 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'calendar_days': return String(CALENDAR_LIMITS.maxRangeDays);
     case 'calendar_marks': return String(CALENDAR_LIMITS.marksMax);
     case 'day_rollover_hour': return String(dayRule(m).hourJst);
+    // Round 23 (§73, REQ-TKT-001): the ticket clocks (help.config.tickets)
+    case 'ticket_auto_close_days': return String(ticketsOf(helpOf(m)).autoCloseDays);
+    case 'ticket_reopen_days': return String(ticketsOf(helpOf(m)).reopenDays);
+    case 'ticket_keep_days': return String(ticketsOf(helpOf(m)).retentionDays);
     default: throw new Error(`unknown token ${name}`);
   }
 }
@@ -361,6 +373,7 @@ export function helpProblems(m: Master, h: HelpMaster = helpOf(m), maxWhips = 6)
     else if (!ids.has(ctx[k]!)) out.push(`help.contexts.${k}: unknown article ${ctx[k]}`);
   }
   for (const k of Object.keys(ctx)) if (!(HELP_CONTEXTS as readonly string[]).includes(k)) out.push(`help.contexts: unknown context ${k}`);
+  out.push(...ticketProblems(env, h)); // §73 (REQ-TKT-002)
   return out;
 }
 
@@ -397,11 +410,14 @@ export const INQUIRY_CATEGORY_TEXT: Record<InquiryCategory, Loc> = {
 };
 /** Categories whose form offers the §33 history rows first (any category may attach them). */
 export const INQUIRY_HISTORY_CATEGORIES: readonly InquiryCategory[] = ['purchase_missing', 'refund', 'coins', 'gacha'];
-export type InquiryStatus = 'received' | 'answered' | 'closed';
+/** §73 (REQ-TKT-001): 受付済み / 確認中 / 返信あり / 解決 / クローズ (§48 had received / answered / closed). */
+export type InquiryStatus = 'received' | 'in_progress' | 'answered' | 'resolved' | 'closed';
 export const INQUIRY_STATUS_TEXT: Record<InquiryStatus, Loc> = {
   received: { ja: '受付済み', en: 'Received' },
-  answered: { ja: '回答済み', en: 'Answered' },
-  closed: { ja: '完了', en: 'Closed' },
+  in_progress: { ja: '確認中', en: 'Checking' },
+  answered: { ja: '返信あり', en: 'Replied' },
+  resolved: { ja: '解決', en: 'Resolved' },
+  closed: { ja: 'クローズ', en: 'Closed' },
 };
 
 const supportSiteUrl = (h: HelpMaster) => `https://${h.config.supportSiteHost}/`;
@@ -515,7 +531,8 @@ export interface InquiryTicket {
   createdAt: number; updatedAt: number; firstReplyAt: number | null;
   description: string; redacted: number;
   attachments: InquiryAttachment[];
-  diagnostics: { appVersion: string; platform: Platform; playerId: string; lastRaceIds: string[] };
+  /** §73 (REQ-TKT-003): null app version / platform = the player did not share the diagnostics. */
+  diagnostics: { appVersion: string | null; platform: Platform | null; playerId: string; lastRaceIds: string[] };
   messages: InquiryMessage[];
   /** Support messages the player has opened (unread = support messages beyond this count). */
   seenReplies: number;
@@ -523,12 +540,27 @@ export interface InquiryTicket {
   indexed: boolean;
   /** REQ-HELP-017: reply opKeys already applied (a retried reply is answered from here). */
   replyKeys: string[];
+  // ---- §73 (absent on tickets stored before Round 23) ----
+  /** When the ticket became answered / resolved (the auto-close clock starts here). */
+  autoCloseFrom?: number | null;
+  closedAt?: number | null;
+  /** When the player last wrote (submission or reply): the waiting clock of an open ticket. */
+  lastPlayerAt?: number | null;
+  shareDiagnostics?: boolean;
+  /** §73.6: compensation request ids (§22) linked by support — the grant itself went through the compensation path. */
+  compensation?: { ref: string; at: number }[];
+  /** Player reply idempotency keys and op status keys already applied. */
+  playerKeys?: string[];
+  statusKeys?: string[];
+  reopens?: number;
 }
 export interface HelpState {
   votes: Record<string, { helpful: boolean; at: number }>;
   voteDay: string; votesToday: number;
   seq: number; tickets: InquiryTicket[];
   sentDay: string; sentToday: number; lastSentAt: number;
+  /** §73 (REQ-TKT-004): player replies per game day (absent before Round 23). */
+  replyDay?: string; repliesToday?: number;
 }
 export const PLATFORMS = ['ios', 'android', 'editor'] as const;
 export type Platform = typeof PLATFORMS[number];
@@ -568,9 +600,10 @@ export function redactPersonal(text: string): { text: string; n: number } {
   return { text: out, n };
 }
 
-export interface InquiryInput { category: InquiryCategory; description: string; refs: string[]; diagnostics: { appVersion: string; platform: Platform } }
+export interface InquiryInput { category: InquiryCategory; description: string; refs: string[]; diagnostics?: { appVersion: string; platform: Platform } | null; shareDiagnostics?: boolean }
 
-const openCount = (st: HelpState) => st.tickets.filter((t) => t.status === 'received').length;
+/** §73: waiting for support = received or in_progress. */
+const openCount = (st: HelpState) => st.tickets.filter((t) => isOpenStatus(t.status)).length;
 
 /** The limits shown on the list and refused on submit (REQ-HELP-013). */
 function limitsOf(m: Master, st: HelpState, now: number) {
@@ -584,7 +617,8 @@ function limitsOf(m: Master, st: HelpState, now: number) {
   if (open >= q.openMax) reason = 'open';
   else if (today >= q.perDay) { reason = 'day'; retryAt = gameDayStartMs(addJstDays(day, 1), rule); }
   else if (st.lastSentAt > 0 && now < st.lastSentAt + q.minIntervalSec * 1000) { reason = 'interval'; retryAt = st.lastSentAt + q.minIntervalSec * 1000; }
-  return { openMax: q.openMax, open, perDay: q.perDay, today, retryAt, reason };
+  const tc = ticketsOf(helpOf(m));
+  return { openMax: q.openMax, open, perDay: q.perDay, today, retryAt, reason, repliesPerDay: tc.repliesPerDay, repliesToday: st.replyDay === day ? st.repliesToday ?? 0 : 0 };
 }
 
 /** Latest confirmed races of the player (newest first, at most 3) — race ids only. */
@@ -612,13 +646,15 @@ export function submitInquiry(m: Master, s: PlayerState, input: InquiryInput, ro
   if (len < q.descriptionMin || len > q.descriptionMax) throw new AppError('BAD_REQUEST', `description must be ${q.descriptionMin}..${q.descriptionMax} characters`);
   if (input.refs.length > q.attachMax || new Set(input.refs).size !== input.refs.length) throw new AppError('BAD_REQUEST', `refs: up to ${q.attachMax} distinct references`);
   if (rows.length !== input.refs.length) throw new AppError('BAD_REQUEST', 'refs and rows differ');
-  if (!(PLATFORMS as readonly string[]).includes(input.diagnostics.platform) || !/^[0-9A-Za-z.+-]{1,32}$/.test(input.diagnostics.appVersion)) throw new AppError('BAD_REQUEST', 'bad diagnostics');
+  // §73 (REQ-TKT-003): diagnostics only with the player's consent (shareDiagnostics false or none sent = nothing attached)
+  const share = input.shareDiagnostics !== false && !!input.diagnostics;
+  if (input.diagnostics && (!(PLATFORMS as readonly string[]).includes(input.diagnostics.platform) || !/^[0-9A-Za-z.+-]{1,32}$/.test(input.diagnostics.appVersion))) throw new AppError('BAD_REQUEST', 'bad diagnostics');
   const lim = limitsOf(m, st, now);
   if (lim.reason) {
     const msg = lim.reason === 'open' ? `up to ${q.openMax} inquiries can wait for an answer` : lim.reason === 'day' ? `up to ${q.perDay} inquiries a day` : `wait ${q.minIntervalSec} seconds between inquiries`;
     throw new AppError('RATE_LIMITED', msg, undefined, { reason: lim.reason, retryAt: lim.retryAt });
   }
-  const red = redactPersonal(d);
+  const red = scrubTicketText(d);
   const day = gameDayKey(now, dayRule(m));
   if (st.sentDay !== day) { st.sentDay = day; st.sentToday = 0; }
   st.sentToday += 1;
@@ -628,8 +664,9 @@ export function submitInquiry(m: Master, s: PlayerState, input: InquiryInput, ro
     id: `q_${st.seq}`, key, category: input.category, status: 'received', lang, createdAt: now, updatedAt: now, firstReplyAt: null,
     description: red.text, redacted: red.n,
     attachments: rows.map((r) => ({ ref: r.ref, kind: r.kind, at: r.row.at, ...ticketLine(r) })),
-    diagnostics: { appVersion: input.diagnostics.appVersion, platform: input.diagnostics.platform, playerId: s.id, lastRaceIds: lastRaceIds(s) },
+    diagnostics: share ? { appVersion: input.diagnostics!.appVersion, platform: input.diagnostics!.platform, playerId: s.id, lastRaceIds: lastRaceIds(s) } : { appVersion: null, platform: null, playerId: s.id, lastRaceIds: [] },
     messages: [], seenReplies: 0, indexed: false, replyKeys: [],
+    autoCloseFrom: null, closedAt: null, lastPlayerAt: now, shareDiagnostics: share, compensation: [], playerKeys: [], statusKeys: [], reopens: 0,
   };
   st.tickets.push(t);
   pruneTickets(st, q.keepMax);
@@ -649,10 +686,11 @@ function ticketLine(r: ResolvedRef): { title: string; detail: string } {
   return { title: r.row.banner, detail: `スカウト${r.row.count}回・${r.row.summary}` };
 }
 
-/** Newest `keepMax` tickets; tickets waiting for an answer are never dropped. */
+/** Newest `keepMax` tickets; tickets waiting for an answer are never dropped (§73: oldest closed, then resolved, then answered). */
 function pruneTickets(st: HelpState, keepMax: number) {
   while (st.tickets.length > keepMax) {
-    const i = st.tickets.findIndex((t) => t.status !== 'received');
+    let i = -1;
+    for (const x of ['closed', 'resolved', 'answered'] as const) { i = st.tickets.findIndex((t) => t.status === x); if (i >= 0) break; }
     if (i < 0) break;
     st.tickets.splice(i, 1);
   }
@@ -660,23 +698,26 @@ function pruneTickets(st: HelpState, keepMax: number) {
 
 const unreadOf = (t: InquiryTicket) => t.messages.filter((x) => x.from === 'support').length > t.seenReplies;
 
-function ticketOf(s: PlayerState, ticketId: string): InquiryTicket {
+export function ticketOf(s: PlayerState, ticketId: string): InquiryTicket {
   const t = peek(s)?.tickets.find((x) => x.id === ticketId);
   if (!t) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
   return t;
 }
 
 /** REQ-HELP-014: GET /v1/help/inquiries/:id (`internal`: the ops view adds who replied and the index flag). */
-export function inquiryDetail(m: Master, s: PlayerState, ticketId: string, lang: Locale, internal = false) {
-  void m;
+export function inquiryDetail(m: Master, s: PlayerState, ticketId: string, lang: Locale, internal = false, now = Date.now()) {
   const t = ticketOf(s, ticketId);
+  const tc = ticketsOf(helpOf(m));
   return {
     ticketId: t.id, category: t.category, categoryTitle: pick(INQUIRY_CATEGORY_TEXT[t.category], lang), status: t.status, statusText: pick(INQUIRY_STATUS_TEXT[t.status], lang),
     createdAt: t.createdAt, updatedAt: t.updatedAt, lang: t.lang, inquiryText: t.description, redacted: t.redacted,
     attachments: t.attachments.map((x) => ({ ...x })), diagnostics: { ...t.diagnostics, lastRaceIds: [...t.diagnostics.lastRaceIds] },
     messages: t.messages.map((x) => ({ from: x.from, messageText: x.content, at: x.at, ...(internal && x.by ? { by: x.by } : {}) })),
     unread: unreadOf(t),
-    ...(internal ? { indexed: t.indexed, firstReplyAt: t.firstReplyAt } : {}),
+    // §73 (REQ-TKT-005): the thread's state for the player (never the internal notes or the assignee)
+    canReply: canReplyNow(t, tc, now), replyUntil: replyUntilOf(t, tc), autoCloseAt: autoCloseAtOf(t, tc), shareDiagnostics: t.shareDiagnostics ?? true,
+    compensation: (t.compensation ?? []).map((c) => ({ ref: c.ref, at: c.at, screen: 'gift_box' as const })),
+    ...(internal ? { indexed: t.indexed, firstReplyAt: t.firstReplyAt, closedAt: t.closedAt ?? null, lastPlayerAt: t.lastPlayerAt ?? t.createdAt } : {}),
   };
 }
 
@@ -688,21 +729,22 @@ export function inquiryList(m: Master, s: PlayerState, lang: Locale, now: number
   return {
     items: tickets.map((t) => ({
       ticketId: t.id, category: t.category, categoryTitle: pick(INQUIRY_CATEGORY_TEXT[t.category], lang), status: t.status, statusText: pick(INQUIRY_STATUS_TEXT[t.status], lang),
-      createdAt: t.createdAt, updatedAt: t.updatedAt, unread: unreadOf(t),
+      createdAt: t.createdAt, updatedAt: t.updatedAt, unread: unreadOf(t), canReply: canReplyNow(t, ticketsOf(helpOf(m)), now),
     })),
     unread: tickets.filter(unreadOf).length,
-    limits: { openMax: lim.openMax, open: lim.open, perDay: lim.perDay, today: lim.today, retryAt: lim.retryAt },
+    limits: { openMax: lim.openMax, open: lim.open, perDay: lim.perDay, today: lim.today, retryAt: lim.retryAt, repliesPerDay: lim.repliesPerDay, repliesToday: lim.repliesToday },
   };
 }
 
 /** Summaries the ops index has not confirmed yet (REQ-HELP-016). */
-export function unindexedSummaries(s: PlayerState): InquirySummary[] {
-  return (peek(s)?.tickets ?? []).filter((t) => !t.indexed).map((t) => summaryOf(s.id, t));
+export function unindexedSummaries(s: PlayerState, m?: Pick<Master, 'help'>): InquirySummary[] {
+  return (peek(s)?.tickets ?? []).filter((t) => !t.indexed).map((t) => summaryOf(s.id, t, m));
 }
 
 /** REQ-HELP-014: mark a ticket's replies read (idempotent). */
-export function markInquiryRead(s: PlayerState, ticketId: string) {
+export function markInquiryRead(s: PlayerState, ticketId: string, emit?: (e: KpiEvent) => void) {
   const t = ticketOf(s, ticketId);
+  if (unreadOf(t)) emit?.({ name: 'ticket_reply_view', s1: t.category }); // §73.5 (optional KPI)
   t.seenReplies = t.messages.filter((x) => x.from === 'support').length;
   return { ticketId, unread: false, unreadTotal: helpBadge(s).unreadReplies };
 }
@@ -723,9 +765,15 @@ export function helpBadge(s: PlayerState) {
 }
 
 /** REQ-HELP-016: what the ops index keeps (never the text). */
-export interface InquirySummary { ticketId: string; playerId: string; category: InquiryCategory; status: InquiryStatus; lang: Locale; attachments: number; createdAt: number; updatedAt: number }
-export const summaryOf = (playerId: string, t: InquiryTicket): InquirySummary => ({
+export interface InquirySummary {
+  ticketId: string; playerId: string; category: InquiryCategory; status: InquiryStatus; lang: Locale; attachments: number; createdAt: number; updatedAt: number;
+  // §73 (REQ-TKT-006; absent in rows written before Round 23): the clocks the queue shows — still no text
+  firstReplyAt?: number | null; autoCloseAt?: number | null; closedAt?: number | null; waitingSince?: number | null;
+}
+export const summaryOf = (playerId: string, t: InquiryTicket, m?: Pick<Master, 'help'>): InquirySummary => ({
   ticketId: t.id, playerId, category: t.category, status: t.status, lang: t.lang, attachments: t.attachments.length, createdAt: t.createdAt, updatedAt: t.updatedAt,
+  firstReplyAt: t.firstReplyAt, autoCloseAt: autoCloseAtOf(t, ticketsOf(m ? helpOf(m) : BASE_HELP)), closedAt: t.status === 'closed' ? t.closedAt ?? t.updatedAt : null,
+  waitingSince: isOpenStatus(t.status) ? t.lastPlayerAt ?? t.createdAt : null,
 });
 
 /**
@@ -735,10 +783,11 @@ export const summaryOf = (playerId: string, t: InquiryTicket): InquirySummary =>
 export function replyInquiry(m: Master, s: PlayerState, ticketId: string, content: string, close: boolean, actor: string, opKey: string, now: number, emit?: (e: KpiEvent) => void) {
   const q = helpOf(m).config.inquiry;
   const t = ticketOf(s, ticketId);
-  if (t.replyKeys.includes(opKey)) return { ...summaryOf(s.id, t), replies: t.messages.filter((x) => x.from === 'support').length, duplicate: true };
+  if (t.replyKeys.includes(opKey)) return { ...summaryOf(s.id, t, m), replies: t.messages.filter((x) => x.from === 'support').length, duplicate: true };
   if (t.status === 'closed') throw new AppError('CONFLICT', 'inquiry is closed');
-  const c = content.trim();
-  if ([...c].length < 1 || [...c].length > q.replyMax) throw new AppError('BAD_REQUEST', `content must be 1..${q.replyMax} characters`);
+  const raw = content.trim();
+  if ([...raw].length < 1 || [...raw].length > q.replyMax) throw new AppError('BAD_REQUEST', `content must be 1..${q.replyMax} characters`);
+  const c = scrubTicketText(raw).text; // §73.3: a secret pasted by support never reaches the player's state
   if (CONTROL.test(c.replace(/\n/g, ''))) throw new AppError('BAD_REQUEST', 'content has control characters');
   t.messages.push({ from: 'support', content: c, at: now, by: actor });
   t.replyKeys.push(opKey);
@@ -746,13 +795,19 @@ export function replyInquiry(m: Master, s: PlayerState, ticketId: string, conten
   t.status = close ? 'closed' : 'answered';
   t.updatedAt = now;
   t.indexed = false;
+  // §73.1: the auto-close clock starts with the reply; a closing reply starts the reopen window
+  t.autoCloseFrom = close ? null : now;
+  t.closedAt = close ? now : null;
   const n = t.messages.filter((x) => x.from === 'support').length;
   if (t.firstReplyAt === null) {
     t.firstReplyAt = now;
     emit?.({ name: 'inquiry_answered', s1: t.category, durationMs: now - t.createdAt });
   }
+  if (close) emit?.({ name: 'ticket_resolved', s1: t.category, s2: 'closed', durationMs: now - t.createdAt });
   recordActivity(m, s, { kind: 'inquiry_answered', source: `inquiry:${t.id}:${n}`, linkId: t.id }, now);
-  return { ...summaryOf(s.id, t), replies: n, duplicate: false };
+  // §73.7 (REQ-TKT-011): a server-sent push (category gifts, owner `server`); the text of the reply never goes into it
+  if (ticketsOf(helpOf(m)).pushOnReply && m.push?.templates?.inquiry_reply) enqueuePush(m, s, 'inquiry_reply', { ticketId: t.id }, now);
+  return { ...summaryOf(s.id, t, m), replies: n, duplicate: false };
 }
 
 /** REQ-HELP-006: the inputs of the shared fold vectors (contracts/help-fold.vectors.json, scripts/gen-help-vectors.ts). */

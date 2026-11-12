@@ -34,6 +34,11 @@ export const KPI_ESSENTIAL: Readonly<Record<string, string>> = Object.freeze({
   block_remove: 'safety record (blocks)',
   inquiry_submit: 'support record',
   inquiry_answered: 'support record',
+  // Round 23 §73.8: the support thread — when the player wrote, when a ticket reopened and when it closed are the support
+  // trail ops need for refunds and complaints (SLA proof); the rows carry the category and status only, never the text
+  ticket_player_reply: 'support record (player message in a ticket, §73)',
+  ticket_reopen: 'support record (ticket reopened, §73)',
+  ticket_resolved: 'support record (ticket resolved / closed / auto-closed, §73)',
   // R20 integration: Round 19 §54 引き継ぎコード — account access like sign-in; the issue / redeem rows (with the failure class,
   // never the ID or password) are the audit trail ops need to spot brute force and account takeover (§54.9)
   transfer_issue: 'account access audit (transfer code issued, §54)',
@@ -69,6 +74,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'link_create', 'link_resolve', 'link_revoke', 'rematch', 'deep_link_open',
   'release_notes_view', 'release_notes_target', 'release_notes_history',
   'calendar_view', 'calendar_entry_open', 'calendar_mark',
+  // R23 §73: opening a support reply (engagement only; the reply itself is the support record)
+  'ticket_reply_view',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

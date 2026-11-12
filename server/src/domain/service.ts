@@ -78,7 +78,8 @@ import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
 import { forgetShowcase, setShowcase, showcaseCopy, showcaseCopyKey, showcaseMine, type ShowcaseInput } from './showcase.js';
 import { checkReleaseNotes, markReleaseNotesSeen, releaseNotesHistory } from './releaseNotes.js';
 import { calendarView, markCalendar, type CalendarExternal } from './calendar.js';
-import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
+import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, summaryOf, ticketOf, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
+import { linkCompensation, needsSettle, playerReply, setTicketStatus, settleTickets, type OpStatus } from './supportTickets.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
 import {
@@ -1654,6 +1655,7 @@ export class PlayerService {
    */
   async helpInquirySubmit(id: string, input: InquiryInput, idemKey: string | null, lang: Locale = 'ja') {
     const key = this.requireKey(idemKey);
+    await this.refuseDeleted(id); // §73.3: a tombstoned account never gets a fresh state through a ticket
     const s = await this.historyState(id);
     const known = s.idem.find((e) => e.key === key);
     if (known) return known.result as ReturnType<typeof inquiryDetail>;
@@ -1667,15 +1669,42 @@ export class PlayerService {
       const missing = rows.find((r) => r.kind === null);
       if (missing) throw new AppError('NOT_FOUND', `reference ${missing.ref}`);
     }
-    return this.tx(id, key, (st, now, emit) => submitInquiry(this.d.master, st, input, rows as Exclude<typeof rows[number], { kind: null }>[], key, lang, now, emit));
+    return this.tx(id, key, (st, now, emit) => {
+      settleTickets(this.d.master, st, now, emit);
+      const out = submitInquiry(this.d.master, st, input, rows as Exclude<typeof rows[number], { kind: null }>[], key, lang, now, emit);
+      return { ...out, ...inquiryDetail(this.d.master, st, out.ticketId, lang, false, now), summary: summaryOf(id, ticketOf(st, out.ticketId), this.d.master) };
+    });
+  }
+  private async refuseDeleted(id: string) {
+    if (await this.wiped(id) && (await this.repo.tombstoned?.(id))) throw new AppError('FORBIDDEN', 'account deleted');
+  }
+  /** §73.1: a read that finds an auto-close or a purge due settles it first (rare; otherwise a plain read). */
+  private async settledHelp(id: string): Promise<PlayerState> {
+    const s = await this.load(id);
+    if (!needsSettle(this.d.master, s, this.d.clock()) || (await this.wiped(id))) return s;
+    await this.tx(id, null, (st, now, emit) => { settleTickets(this.d.master, st, now, emit); });
+    return this.load(id);
   }
   /** REQ-HELP-014: the player's inquiries, newest first, with the limits. */
   async helpInquiries(id: string, lang: Locale = 'ja') {
-    const s = await this.load(id);
-    return { ...inquiryList(this.d.master, s, lang, this.d.clock()), unindexed: unindexedSummaries(s) };
+    const s = await this.settledHelp(id);
+    return { ...inquiryList(this.d.master, s, lang, this.d.clock()), unindexed: unindexedSummaries(s, this.d.master) };
   }
-  async helpInquiry(id: string, ticketId: string, lang: Locale = 'ja') { return inquiryDetail(this.d.master, await this.load(id), ticketId, lang); }
-  helpInquiryRead(id: string, ticketId: string) { return this.tx(id, null, (s) => markInquiryRead(s, ticketId)); }
+  async helpInquiry(id: string, ticketId: string, lang: Locale = 'ja') { return inquiryDetail(this.d.master, await this.settledHelp(id), ticketId, lang, false, this.d.clock()); }
+  helpInquiryRead(id: string, ticketId: string) { return this.tx(id, null, (s, now, emit) => { settleTickets(this.d.master, s, now, emit); return markInquiryRead(s, ticketId, emit); }); }
+  /**
+   * REQ-TKT-004: the player's reply in a thread (keyed: a retry returns the same thread). Returns the detail plus the
+   * summary the ops index needs.
+   */
+  async helpInquiryMessage(id: string, ticketId: string, content: string, idemKey: string | null, lang: Locale = 'ja') {
+    const key = this.requireKey(idemKey);
+    await this.refuseDeleted(id);
+    return this.tx(id, key, (s, now, emit) => {
+      settleTickets(this.d.master, s, now, emit);
+      playerReply(this.d.master, s, ticketId, content, key, now, emit);
+      return { ...inquiryDetail(this.d.master, s, ticketId, lang, false, now), summary: summaryOf(id, ticketOf(s, ticketId), this.d.master) };
+    });
+  }
   /** REQ-HELP-016: the ops index stored these ticket versions. */
   async helpInquiryIndexed(id: string, items: { ticketId: string; updatedAt: number }[]) {
     if (await this.wiped(id)) return { indexed: 0 };
@@ -1683,14 +1712,38 @@ export class PlayerService {
   }
   /** REQ-HELP-016: the ops view of one inquiry (who replied; a deleted account is NOT_FOUND). */
   async adminInquiry(id: string, ticketId: string) {
-    const s = await this.historyState(id);
-    return { playerId: id, ...inquiryDetail(this.d.master, s, ticketId, 'ja', true), unindexed: unindexedSummaries(s) };
+    await this.historyState(id);
+    const s = await this.settledHelp(id);
+    const now = this.d.clock();
+    // §73.6 (REQ-TKT-008): the player context support needs — no balances, no other free text
+    const player = { createdAt: s.createdAt, deletion: s.deletion?.status ?? null, moderation: moderationOf(s, now), purchases: s.purchases.length };
+    const t = ticketOf(s, ticketId);
+    return { playerId: id, ...inquiryDetail(this.d.master, s, ticketId, 'ja', true, now), player, templateCategory: t.category, unindexed: unindexedSummaries(s, this.d.master) };
   }
   /** REQ-HELP-015/017: an operator's reply (once per opKey; never on a deleted account). */
   async adminInquiryReply(id: string, ticketId: string, content: string, close: boolean, actor: string, opKey: string) {
     await this.historyState(id);
     if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
-    return this.tx(id, null, (s, now, emit) => replyInquiry(this.d.master, s, ticketId, content, close, actor, opKey, now, emit));
+    return this.tx(id, null, (s, now, emit) => { settleTickets(this.d.master, s, now, emit); return replyInquiry(this.d.master, s, ticketId, content, close, actor, opKey, now, emit); });
+  }
+  /** REQ-TKT-009: an operator's status change (once per opKey). */
+  async adminInquiryStatus(id: string, ticketId: string, status: OpStatus, opKey: string) {
+    await this.historyState(id);
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
+    return this.tx(id, null, (s, now, emit) => {
+      settleTickets(this.d.master, s, now, emit);
+      const out = setTicketStatus(this.d.master, s, ticketId, status, opKey, now, emit);
+      return { ...out, summary: summaryOf(id, ticketOf(s, ticketId), this.d.master) };
+    });
+  }
+  /** REQ-TKT-010: link a compensation request (already validated against the OpsDO by the admin route). */
+  async adminInquiryCompensation(id: string, ticketId: string, compensationId: string) {
+    await this.historyState(id);
+    if (await this.wiped(id)) throw new AppError('NOT_FOUND', `inquiry ${ticketId}`);
+    return this.tx(id, null, (s, now) => {
+      const out = linkCompensation(this.d.master, s, ticketId, compensationId, now);
+      return { ...out, summary: summaryOf(id, ticketOf(s, ticketId), this.d.master) };
+    });
   }
 
   // ---- 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33; read only) ----

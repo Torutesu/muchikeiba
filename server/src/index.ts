@@ -367,6 +367,10 @@ export function makeOpsApi(env: Env): OpsApi | undefined {
       upsert: (items) => call(ops().inqUpsert!(items)),
       list: (q) => call(ops().inqList!(q)),
       forgetPlayer: (pid) => call(ops().inqForget!(pid)),
+      exportCsv: (q) => call(ops().inqExport!(q)),
+      desk: (p, t) => call(ops().inqDesk!(p, t)),
+      assign: (p, t, a, now) => call(ops().inqAssign!(p, t, a, now)),
+      addNote: (p, t, n, max) => call(ops().inqNote!(p, t, n, max)),
     },
   };
 }

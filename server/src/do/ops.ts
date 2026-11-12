@@ -11,7 +11,7 @@ import type { DryRunOp } from '../ops/config.js';
 import type { AdminPrincipal } from '../ops/admin.js';
 import type { Grant } from '../ops/support.js';
 import { CompensationStore, type CompensationGift, type CompensationQuery, type CompensationRepo, type CompensationRequest } from '../ops/compensation.js';
-import { InquiryIndex, type InquiryIndexRepo, type InquiryQuery } from '../ops/inquiries.js';
+import { InquiryIndex, type InquiryIndexRepo, type InquiryNote, type InquiryQuery } from '../ops/inquiries.js';
 import type { InquirySummary } from '../domain/help.js';
 
 /** REQ-HELP-016: the inquiry index on SQLite (one row per ticket, no text; added with CREATE TABLE IF NOT EXISTS — no migration). */
@@ -19,6 +19,32 @@ export class SqlInquiryIndexRepo implements InquiryIndexRepo {
   constructor(private readonly sql: SqlStorage) {
     sql.exec('CREATE TABLE IF NOT EXISTS inquiries (player_id TEXT NOT NULL, ticket_id TEXT NOT NULL, status TEXT NOT NULL, category TEXT NOT NULL, updated_at INTEGER NOT NULL, json TEXT NOT NULL, PRIMARY KEY (player_id, ticket_id))');
     sql.exec('CREATE INDEX IF NOT EXISTS inquiries_status ON inquiries (status, updated_at)');
+    // §73.6 (REQ-TKT-008/009): the support desk — assignee and internal notes (never in the player's state; no migration)
+    sql.exec('CREATE TABLE IF NOT EXISTS inquiry_desk (player_id TEXT NOT NULL, ticket_id TEXT NOT NULL, assignee TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (player_id, ticket_id))');
+    sql.exec('CREATE TABLE IF NOT EXISTS inquiry_notes (player_id TEXT NOT NULL, ticket_id TEXT NOT NULL, op_key TEXT NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL, text TEXT NOT NULL, PRIMARY KEY (player_id, ticket_id, op_key))');
+  }
+  all() {
+    return this.sql.exec<{ json: string }>('SELECT json FROM inquiries ORDER BY updated_at DESC LIMIT 20000').toArray().map((r) => JSON.parse(r.json) as InquirySummary);
+  }
+  removeTicket(playerId: string, ticketId: string) {
+    for (const t of ['inquiries', 'inquiry_desk', 'inquiry_notes']) this.sql.exec(`DELETE FROM ${t} WHERE player_id = ? AND ticket_id = ?`, playerId, ticketId);
+  }
+  assignee(playerId: string, ticketId: string) {
+    return this.sql.exec<{ assignee: string }>('SELECT assignee FROM inquiry_desk WHERE player_id = ? AND ticket_id = ?', playerId, ticketId).toArray()[0]?.assignee ?? null;
+  }
+  assignees() {
+    return new Map(this.sql.exec<{ player_id: string; ticket_id: string; assignee: string }>('SELECT player_id, ticket_id, assignee FROM inquiry_desk').toArray().map((r) => [`${r.player_id}\u0000${r.ticket_id}`, r.assignee] as [string, string]));
+  }
+  setAssignee(playerId: string, ticketId: string, assignee: string | null, at: number) {
+    if (assignee === null) this.sql.exec('DELETE FROM inquiry_desk WHERE player_id = ? AND ticket_id = ?', playerId, ticketId);
+    else this.sql.exec('INSERT INTO inquiry_desk (player_id, ticket_id, assignee, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(player_id, ticket_id) DO UPDATE SET assignee = excluded.assignee, updated_at = excluded.updated_at', playerId, ticketId, assignee, at);
+  }
+  notes(playerId: string, ticketId: string) {
+    return this.sql.exec<{ op_key: string; by: string; at: number; text: string }>('SELECT op_key, by, at, text FROM inquiry_notes WHERE player_id = ? AND ticket_id = ? ORDER BY at, op_key', playerId, ticketId)
+      .toArray().map((r) => ({ opKey: r.op_key, by: r.by, at: r.at, text: r.text }));
+  }
+  addNote(playerId: string, ticketId: string, n: InquiryNote & { opKey: string }) {
+    this.sql.exec('INSERT OR IGNORE INTO inquiry_notes (player_id, ticket_id, op_key, by, at, text) VALUES (?, ?, ?, ?, ?, ?)', playerId, ticketId, n.opKey, n.by, n.at, n.text);
   }
   get(playerId: string, ticketId: string) {
     const r = this.sql.exec<{ json: string }>('SELECT json FROM inquiries WHERE player_id = ? AND ticket_id = ?', playerId, ticketId).toArray()[0];
@@ -31,7 +57,8 @@ export class SqlInquiryIndexRepo implements InquiryIndexRepo {
   list(q: InquiryQuery) {
     const where: string[] = [];
     const args: (string | number)[] = [];
-    if (q.status) { where.push('status = ?'); args.push(q.status); }
+    if (q.status === 'open') where.push("status IN ('received', 'in_progress')");
+    else if (q.status) { where.push('status = ?'); args.push(q.status); }
     if (q.category) { where.push('category = ?'); args.push(q.category); }
     const sql = `SELECT json FROM inquiries ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY updated_at DESC LIMIT ?`;
     return this.sql.exec<{ json: string }>(sql, ...args, q.limit ?? 100).toArray().map((r) => JSON.parse(r.json) as InquirySummary);
@@ -39,6 +66,8 @@ export class SqlInquiryIndexRepo implements InquiryIndexRepo {
   removePlayer(playerId: string) {
     const n = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM inquiries WHERE player_id = ?', playerId).one().n;
     this.sql.exec('DELETE FROM inquiries WHERE player_id = ?', playerId);
+    this.sql.exec('DELETE FROM inquiry_desk WHERE player_id = ?', playerId);
+    this.sql.exec('DELETE FROM inquiry_notes WHERE player_id = ?', playerId);
     return n;
   }
 }
@@ -143,6 +172,11 @@ export class OpsDO extends DurableObject<Env> {
   // ---- inquiry index (REQ-HELP-016) ----
   inqUpsert(items: InquirySummary[]) { return wrap(() => this.inquiries.upsert(items)); }
   inqList(q: InquiryQuery) { return wrap(() => this.inquiries.list(q)); }
+  // §73.6 (REQ-TKT-007..009)
+  inqExport(q: InquiryQuery) { return wrap(() => this.inquiries.exportCsv(q)); }
+  inqDesk(playerId: string, ticketId: string) { return wrap(() => this.inquiries.desk(playerId, ticketId)); }
+  inqAssign(playerId: string, ticketId: string, assignee: string | null, now: number) { return wrap(() => this.inquiries.assign(playerId, ticketId, assignee, now)); }
+  inqNote(playerId: string, ticketId: string, n: InquiryNote & { opKey: string }, max: number) { return wrap(() => this.inquiries.addNote(playerId, ticketId, n, max)); }
   inqForget(playerId: string) { return wrap(() => this.inquiries.forgetPlayer(playerId)); }
 
   // ---- dead-letter index (REQ-OPS-041) ----

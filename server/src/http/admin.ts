@@ -22,10 +22,11 @@ import type { TournamentsService } from '../domain/tournamentService.js';
 import { REPORT_ACTIONS, type PlayerReport, type PlayerReportFilter, type ReportAction, type SubmitInput, type SubmitOutcome } from '../ops/playerReports.js';
 import { REPORT_CATEGORIES, REPORT_CONTENT_KINDS, reportsConfig, type ReportCategory, type ReportContentKind, type ReportsConfig } from '../domain/reports.js';
 import { adminWindowView, bannerPreview, DEFAULT_MAINTENANCE, maintenanceConfigSchema, maintenanceProblems, windowFromInput, windowInputSchema, type MaintenanceConfig, type MaintenanceWindow } from '../domain/maintenance.js';
-import { INQUIRY_CATEGORIES, type InquiryCategory, type InquirySummary } from '../domain/help.js';
+import { INQUIRY_CATEGORIES, helpOf, type InquiryCategory, type InquirySummary } from '../domain/help.js';
+import { OP_STATUSES, TICKET_DEFAULTS, isOpenStatus, replyTemplatesFor, scrubTicketText, ticketsOf, type OpStatus } from '../domain/supportTickets.js';
 import { releaseNotesPreview, type ReleaseNotesMaster } from '../domain/releaseNotes.js';
 import { DEFAULT_RULESET } from '../domain/ruleset.js';
-import { INQUIRY_STATUSES, type InquiryQuery } from '../ops/inquiries.js';
+import { INQUIRY_STATUS_FILTERS, type InquiryDesk, type InquiryNote, type InquiryQuery, type InquiryQueueRow } from '../ops/inquiries.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 import { CLIENT_ERROR_CATEGORIES, CLIENT_ERROR_PLATFORMS, clientErrorsConfig, type ClientErrorBatch, type ClientErrorCategory, type ClientErrorPlatform, type ClientErrorsConfig } from '../domain/clientErrors.js';
 import type { ClientErrorQuery, ClientErrorsCore, IngestWho } from '../ops/clientErrors.js';
@@ -86,8 +87,13 @@ export interface OpsApi {
   /** REQ-HELP-016: the inquiry index (no text; absent = the inquiry list answers NOT_FOUND). */
   inquiries?: {
     upsert(items: InquirySummary[]): Promise<{ stored: number }>;
-    list(q: InquiryQuery): Promise<InquirySummary[]>;
+    list(q: InquiryQuery): Promise<InquiryQueueRow[]>;
     forgetPlayer(playerId: string): Promise<{ removed: number }>;
+    // §73.6 (REQ-TKT-007..009): CSV without text, and the desk (assignee, internal notes)
+    exportCsv(q: InquiryQuery): Promise<{ csv: string; rows: number }>;
+    desk(playerId: string, ticketId: string): Promise<InquiryDesk>;
+    assign(playerId: string, ticketId: string, assignee: string | null, now: number): Promise<InquiryDesk>;
+    addNote(playerId: string, ticketId: string, n: InquiryNote & { opKey: string }, max: number): Promise<InquiryDesk & { duplicate: boolean }>;
   };
 }
 /** REQ-CERR-*: the client error store (ClientErrorsDO; absent = reports are accepted and dropped, the console answers NOT_FOUND). */
@@ -158,6 +164,27 @@ const inq = (ctx: AdminContext) => {
   return ctx.ops.inquiries;
 };
 const ticketIdSchema = z.string().regex(/^q_[0-9]{1,9}$/);
+/** §73.2: the ticket rules of the master in effect. */
+const ticketCfgOf = async (ctx: AdminContext, now: number) => (ctx.baseMaster ? ticketsOf(helpOf((await masterFor(ctx, null, now)).master)) : TICKET_DEFAULTS);
+/** §73.6 (REQ-TKT-006): the queue filters of a request. */
+async function inquiryQuery(r: AdminRequest): Promise<InquiryQuery> {
+  const st = r.query.get('status');
+  const cat = r.query.get('category');
+  const lang = r.query.get('lang');
+  const who = r.query.get('assignee');
+  const age = r.query.get('minAgeHours');
+  if (st && !(INQUIRY_STATUS_FILTERS as string[]).includes(st)) throw new AppError('BAD_REQUEST', `status must be one of ${INQUIRY_STATUS_FILTERS.join('|')}`);
+  if (cat && !(INQUIRY_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', 'unknown category');
+  if (lang && lang !== 'ja' && lang !== 'en') throw new AppError('BAD_REQUEST', 'lang must be ja|en');
+  if (age !== null && !/^[0-9]{1,4}$/.test(age)) throw new AppError('BAD_REQUEST', 'minAgeHours must be 0..9999');
+  const cfg = await ticketCfgOf(r.ctx, r.now);
+  return {
+    ...(st ? { status: st as InquiryQuery['status'] } : {}), ...(cat ? { category: cat as InquiryCategory } : {}), ...(lang ? { lang: lang as 'ja' | 'en' } : {}),
+    ...(who ? { assignee: who === 'none' ? null : who === 'me' ? r.principal.id : who } : {}),
+    ...(age !== null ? { minAgeMs: Number(age) * 3_600_000 } : {}),
+    limit: num(r.query, 'limit', 100), now: r.now, slaHours: cfg.slaHours, retentionDays: cfg.retentionDays,
+  };
+}
 /** REQ-HELP-016: write ticket summaries to the index and tell the player object (best effort: an unindexed ticket is re-sent later). */
 async function reindex(ctx: AdminContext, playerId: string, items: InquirySummary[]) {
   if (!ctx.ops.inquiries || items.length === 0) return;
@@ -697,11 +724,22 @@ export const adminRoutes: AdminRoute[] = [
 
   // ---- ヘルプセンターの問い合わせ (REQ-HELP-016/017, contracts/protocol.md §48.7) ----
   { method: 'GET', path: '/v1/admin/inquiries', role: 'viewer', write: false, action: 'inquiry.list', handler: async (r) => {
-    const st = r.query.get('status');
-    const cat = r.query.get('category');
-    if (st && !(INQUIRY_STATUSES as string[]).includes(st)) throw new AppError('BAD_REQUEST', `status must be one of ${INQUIRY_STATUSES.join('|')}`);
-    if (cat && !(INQUIRY_CATEGORIES as readonly string[]).includes(cat)) throw new AppError('BAD_REQUEST', 'unknown category');
-    return { result: { items: await inq(r.ctx).list({ ...(st ? { status: st as InquiryQuery['status'] } : {}), ...(cat ? { category: cat as InquiryCategory } : {}), limit: num(r.query, 'limit', 100) }) } };
+    const q = await inquiryQuery(r);
+    return { result: { items: await inq(r.ctx).list(q), slaHours: q.slaHours, now: r.now } };
+  } },
+  // §73.6 (REQ-TKT-007): the queue as CSV — ids, category, status, language, counts, times, assignee, waiting; never text
+  { method: 'GET', path: '/v1/admin/inquiries/export', role: 'viewer', write: false, action: 'inquiry.export', handler: async (r) => {
+    const q = await inquiryQuery(r);
+    const out = await inq(r.ctx).exportCsv(q);
+    return { result: out, target: 'inquiries', after: { rows: out.rows, filter: { status: q.status ?? null, category: q.category ?? null, lang: q.lang ?? null } } };
+  } },
+  // §73.6 (REQ-TKT-009): the reply templates in the ticket's language, tokens filled from data
+  { method: 'GET', path: '/v1/admin/inquiry-templates', role: 'viewer', write: false, action: 'inquiry.templates', handler: async (r) => {
+    const playerId = parse(pid, r.query.get('playerId') ?? '');
+    const ticketId = parse(ticketIdSchema, r.query.get('ticketId') ?? '');
+    const v = await r.ctx.player(playerId).invoke('adminInquiry', playerId, ticketId);
+    const m = (await masterFor(r.ctx, null, r.now)).master;
+    return { result: replyTemplatesFor(m, ticketId, v.templateCategory, v.lang) };
   } },
   { method: 'GET', path: '/v1/admin/players/:playerId/inquiries/:ticketId', role: 'viewer', write: false, action: 'inquiry.view', handler: async (r) => {
     const playerId = parse(pid, r.params.playerId);
@@ -713,9 +751,13 @@ export const adminRoutes: AdminRoute[] = [
       if (e instanceof AppError && e.code === 'NOT_FOUND' && e.message === 'account deleted') await r.ctx.ops.inquiries?.forgetPlayer(playerId).catch(() => null);
       throw e;
     }
-    const { unindexed, ...ticket } = v;
+    const { unindexed, templateCategory: _c, ...ticket } = v;
     if (unindexed?.length) await reindex(r.ctx, playerId, unindexed);
-    return { result: ticket, target: `player:${playerId}` };
+    // §73.6 (REQ-TKT-008): the desk (assignee, internal notes — never shown to the player) and the waiting clock
+    const desk = await inq(r.ctx).desk(playerId, ticketId).catch(() => ({ assignee: null, notes: [] }));
+    const cfg = await ticketCfgOf(r.ctx, r.now);
+    const waitingMs = isOpenStatus(ticket.status) ? r.now - (ticket.lastPlayerAt ?? ticket.createdAt) : null;
+    return { result: { ...ticket, assignee: desk.assignee, internalNotes: desk.notes, waitingMs, slaHours: cfg.slaHours, slaBreached: waitingMs !== null && waitingMs >= cfg.slaHours * 3_600_000 }, target: `player:${playerId}` };
   } },
   { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/reply', role: 'operator', write: true, action: 'inquiry.reply', handler: async (r) => {
     const playerId = parse(pid, r.params.playerId);
@@ -725,6 +767,48 @@ export const adminRoutes: AdminRoute[] = [
     const { replies, duplicate, ...summary } = out;
     await reindex(r.ctx, playerId, [summary]);
     return { result: { ...summary, replies, duplicate }, target: `player:${playerId}`, before: null, after: { ticketId, status: summary.status, replies } };
+  } },
+  // §73.6 (REQ-TKT-009): status (in_progress / resolved / closed), assignee, internal notes, a compensation link
+  { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/status', role: 'operator', write: true, action: 'inquiry.status', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    const b = parse(z.object({ opKey: opKeySchema, status: z.enum(OP_STATUSES as [OpStatus, ...OpStatus[]]), reason: z.string() }).strict(), r.body);
+    const out = await r.ctx.player(playerId).invoke('adminInquiryStatus', playerId, ticketId, b.status, b.opKey);
+    await reindex(r.ctx, playerId, [out.summary]);
+    return { result: { ticketId, status: out.status, duplicate: out.duplicate }, target: `player:${playerId}`, after: { ticketId, status: out.status } };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/assign', role: 'operator', write: true, action: 'inquiry.assign', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    const b = parse(z.object({ assignee: z.string().min(1).max(64).nullable(), reason: z.string() }).strict(), r.body);
+    await r.ctx.player(playerId).invoke('adminInquiry', playerId, ticketId); // the ticket exists (a deleted account is NOT_FOUND)
+    const who = b.assignee === 'me' ? r.principal.id : b.assignee;
+    const before = await inq(r.ctx).desk(playerId, ticketId);
+    const desk = await inq(r.ctx).assign(playerId, ticketId, who, r.now);
+    return { result: { ticketId, assignee: desk.assignee }, target: `player:${playerId}`, before: { assignee: before.assignee }, after: { assignee: desk.assignee } };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/notes', role: 'operator', write: true, action: 'inquiry.note', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    const cfg = await ticketCfgOf(r.ctx, r.now);
+    const b = parse(z.object({ opKey: opKeySchema, text: z.string().trim().min(1).max(cfg.noteMax), reason: z.string() }).strict(), r.body);
+    await r.ctx.player(playerId).invoke('adminInquiry', playerId, ticketId);
+    const text = scrubTicketText(b.text).text;
+    const desk = await inq(r.ctx).addNote(playerId, ticketId, { opKey: b.opKey, by: r.principal.id, at: r.now, text }, cfg.notesMax);
+    // the audit row records that a note was added, not its text (the note itself is the record)
+    return { result: { ticketId, notes: desk.notes, duplicate: desk.duplicate }, target: `player:${playerId}`, after: { ticketId, notes: desk.notes.length } };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/inquiries/:ticketId/compensation', role: 'operator', write: true, action: 'inquiry.compensation', handler: async (r) => {
+    const playerId = parse(pid, r.params.playerId);
+    const ticketId = parse(ticketIdSchema, r.params.ticketId);
+    const b = parse(z.object({ compensationId: z.string().min(1).max(64), reason: z.string() }).strict(), r.body);
+    // REQ-TKT-010: only an existing compensation request (§22, the audited grant path into the gift box) of this player
+    const req = await comps(r.ctx).get(b.compensationId, r.now);
+    if (req.playerId !== playerId) throw new AppError('BAD_REQUEST', 'the compensation is for another player');
+    if (req.status === 'rejected' || req.status === 'expired') throw new AppError('CONFLICT', `the compensation is ${req.status}`);
+    const out = await r.ctx.player(playerId).invoke('adminInquiryCompensation', playerId, ticketId, req.id);
+    await reindex(r.ctx, playerId, [out.summary]);
+    return { result: { ticketId, compensation: out.compensation }, target: `player:${playerId}`, after: { ticketId, compensation: req.id, status: req.status } };
   } },
 
   // ---- クライアントのエラー報告 (REQ-CERR-014..016, contracts/protocol.md §60.7) ----

@@ -137,6 +137,22 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.equal(promoCard > 0, promoChanged, `quality: the promotion card only for a series this race touched (before ${JSON.stringify(promoBefore)}, after ${JSON.stringify(promoAfter)})`);
   assert.equal(res.quiet, 4, 'quality c: the quiet keepsake row (highlights, photo, keep, share) is intact');
   await shot('result', 2200);
+  // quality-2 integration: the ranked loss at its fullest — a two-line tip, the 能力の差 line (ranked), the 1.4 lesson, the 会心
+  // count and the R22 promotion card: the 振り返り row still ends above 「もう一度」 and stays in the panel (least specific parts go first)
+  await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'failed', true, { place: 9, line: '仕掛けが早すぎて最後に脚が止まった',
+    tip: '仕掛ける前に長押しで溜めると、一閃の加速が長く続きます。直線の入口まで待ちましょう',
+    field: { weaker: true, line: '能力の差：相棒 3320 ／ この場のCPU 3600。調教で伸ばすと勝ちやすい' },
+    lesson: { line: '仕掛けがあと1.5秒遅ければ、0.8秒速くゴールできた', perfect: '会心のムチ 3/5', shiftTicks: 30 } }));
+  await waitScreen('result'); await page.waitForTimeout(600);
+  const worst = await page.evaluate(() => {
+    const s = document.querySelector('.screen.in'), l = s.querySelector('.go-lesson'), cta = s.querySelector('.btn.cta');
+    const a = l.getBoundingClientRect(), g = l.closest('.glass').getBoundingClientRect(), c = cta.getBoundingClientRect();
+    return { text: l.textContent, parts: Number(l.dataset.parts), field: l.dataset.field, above: a.bottom <= c.top, inPanel: a.right <= g.right + 1 && l.scrollWidth <= l.clientWidth + 1, card: !!s.querySelector('.pp-card') };
+  });
+  assert.ok(worst.above && worst.inPanel, 'quality-2: the fullest ranked-loss 振り返り row ends above the CTA, inside the panel: ' + JSON.stringify(worst));
+  assert.ok(/^振り返り：能力の差/.test(worst.text) && worst.field === 'horse', 'quality-2: the horse-or-riding line is the part that stays: ' + worst.text);
+  assert.ok(worst.card, 'quality-2: the promotion card is on the same result');
+  await shot('result-fullest', 600);
 
   // d) the raising screens: the type floor; the reveal under reduce motion
   const minFont = () => page.evaluate(() => {

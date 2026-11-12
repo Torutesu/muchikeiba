@@ -1243,9 +1243,22 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   // quality pass 2 (docs/quality/ranked.md §4): after a ranked loss the row first says which side to work on — the horse
   // (「能力の差：相棒 3320 ／ この場のCPU 3600。調教で伸ばすと勝ちやすい」) or the riding (「能力は互角以上…：差は乗り方」), then the 1.4 lesson
   const fieldLine = !raceCtx.beginner && r.field?.line ? r.field.line : '';
-  const lesson = [fieldLine, r.lesson?.line, r.lesson?.perfect].filter(Boolean).join('　·　');
+  const parts = [fieldLine, r.lesson?.line, r.lesson?.perfect].filter(Boolean);
   // (the lesson wraps inside the panel — a long line with the 会心 count used to run past the panel into the art)
-  if (lesson) { const ls = stagger(Txt('振り返り：' + lesson, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); if (r.lesson) ls.dataset.shift = String(r.lesson.shiftTicks); if (fieldLine) ls.dataset.field = r.field.weaker ? 'horse' : 'riding'; ly += ls.offsetHeight + 8; }
+  // quality-2 integration: the 能力の差 line + the 1.4 lesson + the 会心 count under a two-line tip ran under 「もう一度」 — the row
+  // must end above the CTA: drop the least specific part first (会心, then the 仕掛け lesson), and as a last resort the tip
+  // (the lesson says the more specific thing). The full row stays in the element's title.
+  if (parts.length) {
+    const CTA_TOP = 640 - 8, full = '振り返り：' + parts.join('　·　');
+    const ls = stagger(Txt(full, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); ls.title = full;
+    if (r.lesson) ls.dataset.shift = String(r.lesson.shiftTicks);
+    if (fieldLine) ls.dataset.field = r.field.weaker ? 'horse' : 'riding';
+    const fits = () => ls.offsetTop + ls.offsetHeight <= CTA_TOP;
+    while (!fits() && parts.length > 1) { parts.pop(); ls.textContent = '振り返り：' + parts.join('　·　'); }
+    if (!fits() && tipEl.textContent) { tipEl.remove(); ly = 580; ls.style.top = ly + 'px'; }
+    ls.dataset.parts = String(parts.length);
+    ly = ls.offsetTop + ls.offsetHeight + 8;
+  }
   // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
   // — only when it still fits above the CTA (the lesson, when there is one, says the more specific thing)
   if (raceCtx.advice && ly <= 612) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) stagger(Txt('アドバイス：' + wl, 44, ly, 520, 16, CYAN, p, { weight: 500, nowrap: true }), 1).classList.add('adv-debrief'); }
@@ -1367,7 +1380,7 @@ function PromoOutcome(v, after) {
   return d;
 }
 /** Demo entry (show('PromotionResult', state)): a ranked result after the real results of the demo state. */
-async function PromoResultDemo(state = 'start', fresh = true) {
+async function PromoResultDemo(state = 'start', fresh = true, res = null) {
   if (fresh) sessionPrompt.reset(); // the demo state is a player opening the app (a new session), like the review demo
   await L.promotion.demo(state);
   const v = await L.promotion.view();
@@ -1375,7 +1388,7 @@ async function PromoResultDemo(state = 'start', fresh = true) {
   const place = state === 'failed' ? 9 : state === 'start' ? 2 : state === 'one' ? 1 : 3;
   raceCtx = { tutorial: false, trackName: '青葉競馬場 芝1600m', trackId: 'aoba_turf_1600', beginner: false, ftue: false, config: { raceId: 'demo_promo' },
     promo: v.ok ? { view: v.value, beforeId: state === 'start' ? null : v.value.series?.id ?? null } : null };
-  const f = { result: { place, runners: 12, won: place === 1, time: '1:35.8', line: place <= 3 ? '直線の一閃が届いた' : '仕掛けが一歩遅れた', code: 'demo', tip: '', margin: '', rows: [] } };
+  const f = { result: { place, runners: 12, won: place === 1, time: '1:35.8', line: place <= 3 ? '直線の一閃が届いた' : '仕掛けが一歩遅れた', code: 'demo', tip: '', margin: '', rows: [], ...(res ?? {}) } }; // res: extra result fields (the result-panel fit checks)
   return ResultScreen(f, { coins: 0, seasonPoints: 0, firstWinBonus: 0 }, 0, { level: 1, xpToNextLevel: 0 }, []);
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -2251,6 +2264,7 @@ async function PurchaseConfirm(productId, back, after) {
       const g = await L.demoPurchase(productId);
       if (!g.ok) { toast(g.message); return PurchaseConfirm(productId); }
       purchaseAfter = null; ageForm = null; await refresh();
+      linkOp('purchase'); // AccountLinkPrompt.NotePurchase: a granted purchase (the account-link prompt's FirstPurchase trigger)
       if (after) { toast('購入しました（デモ・決済なし）。元の操作に戻ります'); return after(); }
       Receipt(g.value.receipt);
     }, box, 'gold');
@@ -2317,7 +2331,9 @@ function Receipt(rc) {
     const go = Cta(rc.next.label, 492, 678, 560, () => { k('next'); ReceiptNext(rc.next, back); }, d, 'gold');
     go.dataset.action = 'receipt-next'; go.dataset.next = rc.next.action;
   }
-  Ghost('閉じる', 48, 684, 220, 60, () => back(), d, 'quiet');
+  // integration (quality-2): the first purchase's account-link prompt (§58.11 row 7, PurchaseComplete) comes when the receipt is
+  // closed — never over the receipt, and not when the player takes the step that uses what was bought (then the next home)
+  Ghost('閉じる', 48, 684, 220, 60, () => { if (!MaybeLinkPrompt('PurchaseComplete', back)) back(); }, d, 'quiet');
 }
 /** The receipt's one next step — each uses what was just bought. */
 async function ReceiptNext(n, back) {
@@ -11420,7 +11436,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ WinDemo: (n, o) => WinDemo(n ?? 40, o ?? 'win'), PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, Receipt, TicketOdds, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ WinDemo: (n, o) => WinDemo(n ?? 40, o ?? 'win'), PromotionResult: (s, fresh, res) => PromoResultDemo(s ?? 'start', fresh !== false, res), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, Receipt, TicketOdds, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

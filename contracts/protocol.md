@@ -3510,6 +3510,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | `highlight_view`・`highlight_share`（§72.5、Round 23） | クライアント | `optional` | 見どころの再生と共有の使われ方の分析だけ。レース・プレイヤー・tick を持たない。分析がオフなら書かない（見どころはそのまま動く） |
   | `ticket_player_reply`・`ticket_reopen`・`ticket_resolved`（§73.8、Round 23） | サーバー | `essential` | サポートの記録（`inquiry_submit`・`inquiry_answered` と同じ扱い）。いつ連絡し、いつ再開・解決したかは返金・苦情の対応の証跡。本文・番号は入れない |
   | `ticket_reply_view`（§73.8、Round 23） | サーバー（既読の時） | `optional` | 運営の返信が読まれたかの分析だけ |
+  | **品質パス2（quality-2 統合で確かめた）**：`scout_confirm`（スカウトの確認のシート：view／pull／cancel、コイン・券・SR以上券）・`purchase_receipt`（購入の受け取り：view／next） | クライアント | `optional` | 画面の使われ方の分析だけ。引いた・買ったの記録はサーバーの `gacha_draw`・`purchase`（`essential`）のまま。はじめの1週間（明日の行・相棒の成長・はじめの10歩の直行）と、ランク戦の能力の差の行は**新しいイベントを足さない**（表示だけ） |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
@@ -3540,7 +3541,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | 4 | `release_notes` | アップデートのお知らせ（§64） | 新しい版の最初のホーム |
   | 5 | `promotion_outcome` | 昇級戦の結果のシート（突破／届かず、§68.6。R22 統合） | 自分で勝ち取った結果の知らせ（お願いではない）。取れなければ結果画面の中の一言だけで、シートは次のホームで |
   | 6 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
-  | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
+  | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後。**いつ**（品質パス2）：3日目の当日はホームを開いた時には出さずレース結果を閉じた後（`ResultClosed`、4日目以降はホームでも）。初めての購入は受け取りの画面を閉じた後（`PurchaseComplete`。受け取りの「使う一歩」を選んだ時は次のホーム） |
   | 8 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
   | — | `playtime_reminder` | 遊ぶ時間のお知らせ（§67.4）。**表の外**（R22 統合で決めた） | 本人が頼んだお知らせでお願いの画面ではない。枠を使わず・取られない。同じ区切りではこれを先に出し、表のものは次の区切り |
 
@@ -4220,7 +4221,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
   - `path.current.screen`：その段をやる画面（種類ごとにコードで固定：`scout`・`silks`・`care`・`race`・`breeding`・`friends`・`teams`・`time_attack`・`collection`。ショップ・購入・有償スカウトは無い）。`open`：その画面の機能が開いているか。
   - `partner`：相棒（いなければ・引退していれば・調教が無効なら `null`）の成長。段階は Q1 の `growthStage`（馬カードと同じ）、`stageFrom` はいまの段階が始まった伸びの合計。`gainedToday`／`gainedYesterday` は調教日誌（§25 `log`）の今日／前のゲーム日の伸びの合計。`sessionsLeft` はこの馬が今日あと何回調教できるか（アカウントの残りと馬ごとの上限の小さい方、素質いっぱいなら 0）。**表示だけで報酬は付かない**。
   - 端末：C# `GoalTomorrow`・`GoalPartner`・`GoalItem.Screen/Open`、Unity `GoalLadderModel.TomorrowLine`（今日のセットが終わったら今日の段の文、数字は出さない）・`TomorrowLines`・`TomorrowAt`・`Partner`（`PartnerGrowthLine`）・`PathScreen`・`PathLockText`。
-  - アカウント引き継ぎの案内（REQ-UXS-073）：3日目の当日はホームを開いた時には出さず、レース結果を閉じた後に出す（4日目以降はホームでも）。1回だけ・FTUE 中なし・§58.11 の1セッション1つは同じ。
+  - アカウント引き継ぎの案内（REQ-UXS-073）：3日目の当日はホームを開いた時には出さず、レース結果を閉じた後に出す（4日目以降はホームでも）。1回だけ・FTUE 中なし・§58.11 の1セッション1つは同じ。「いつ」は §58.11 の表の7行目が唯一の正（初めての購入は受け取りの画面を閉じた後）。
 
 ## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
 番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。

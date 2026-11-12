@@ -249,10 +249,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // together, a time attack each, a challenge (no point) → the week ends → the result sheet once (fixed reward, title)
   async function rivalFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
-    await waitScreen('home'); await waitIn('.rv-strip');
-    assert.equal(await page.locator('.screen.in .rv-strip').getAttribute('data-home-rival'), 'human', 'rival: paired with last week\'s candidate');
+    // quality/goals-flow: the rival is a part of the home ladder's 今週 rung → 目標 → the rival row
+    await waitScreen('home'); await waitIn('.gl-panel [data-rung="week"]');
+    assert.match(await page.locator('.screen.in .gl-panel [data-rung="week"]').innerText(), /ライバル/, 'rival: on the week rung of the home ladder');
     await shot('rival-home-strip', 300);
-    await page.locator('.screen.in .rv-strip').click(); await waitScreen('rival'); await waitIn('.rv-card[data-state="human"]');
+    await page.locator('.screen.in .gl-panel').click(); await waitScreen('goals'); await waitIn('.gl-week[data-week^="rival"]');
+    await page.locator('.screen.in .gl-week[data-week^="rival"]').first().click(); await waitScreen('rival'); await waitIn('.rv-card[data-state="human"]');
     // the demo days crossed a week boundary: an earlier week's result sheet comes first (once)
     if (await page.locator('.screen.in .rv-result').count()) { await shot('rival-earlier-week', 400); await page.locator('.screen.in .rv-result .rv-continue').click(); await page.waitForTimeout(400); }
     const text = await page.locator('.screen.in').innerText();
@@ -354,9 +356,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // on the real engine, the condition live in the HUD → the result decided by the logic's re-simulation of the issued config
   async function challengeFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
-    await waitIn('.wch-home');
+    // quality/goals-flow: this week's challenges are a part of the home ladder's 今週 rung → 目標 → the challenge row
+    await waitIn('.gl-panel [data-rung="week"]');
+    assert.match(await page.locator('.screen.in .gl-panel [data-rung="week"]').innerText(), /チャレンジ \d\/3/, 'challenge: on the week rung of the home ladder');
     await shot('home-weekly-challenge', 300);
-    await page.locator('.screen.in .wch-open').click(); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
+    await page.locator('.screen.in .gl-panel').click(); await waitScreen('goals'); await waitIn('.gl-week[data-week="challenge"]');
+    await page.locator('.screen.in .gl-week[data-week="challenge"]').click(); await waitScreen('weekly-challenge'); await waitIn('.wch-card');
     const text = await page.locator('.screen.in').innerText();
     assert.ok(text.includes('クラスBの上限') && text.includes('見た目だけ') && text.includes('週1回'), 'challenge: the fairness rules, the cosmetic badge and once a week are on the screen');
     assert.ok(!/倍|今だけ|残りわずか|お得|通常価格/.test(text), 'challenge: no banned wording');

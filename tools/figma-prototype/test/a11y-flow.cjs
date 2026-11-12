@@ -126,7 +126,7 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     if (r.out.length) errors.push(`a11y ${name}${english ? ' (en)' : ''}: boxes overlap: ${r.out.slice(0, 6).join(' | ')}`);
     return r;
   };
-  const HOME_BAR = ['[data-name="Season"]', '.rv-strip', '.btn.envelope', '.btn.bell', '[data-name="Wallet"]', '.btn.lang', '[data-name="Menu"]'];
+  const HOME_BAR = ['.gl-panel', '.btn.envelope', '.btn.bell', '[data-name="Wallet"]', '.btn.lang', '[data-name="Menu"]'];
   // Round 16 integration: the whole home — the top bar plus the 次にやること card and chips, the partner card, the big CTA
   const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero', '.hg-pin-strip']; // round 18: the pinned goal strip (demo('next') pins the partner's goal)
   /** demo('next') = a player with a next card and two chips (a gift expiring, scout tickets); waits for the card. */
@@ -188,6 +188,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   const keyScreens = async (english) => {
     await show('Home'); await waitScreen('home'); await shot('home', english, 700);
     await show('Settings'); await waitScreen('settings'); await shot('settings', english);
+    await show('Goals'); await waitScreen('goals'); await shot('goals', english, 600); // quality/goals-flow
+    await show('ClassLadder'); await page.waitForTimeout(500); await shot('class-ladder', english, 300);
     await show('A11ySettings'); await waitScreen('a11y-settings'); await shot('a11y-settings', english);
     await show('Store', 'recommended'); await waitScreen('shop-recommended'); await shot('shop-recommended', english, 600);
     await show('Store', 'coins'); await waitScreen('shop-coins'); await shot('shop-coins', english, 500);

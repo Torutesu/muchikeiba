@@ -1280,6 +1280,13 @@ export const MuchiLogic = {
   async nextActions() {
     return wrap(async () => svc.nextActions(ID, await nextTeamGoal()));
   },
+  // quality/goals-flow: 目標の階段 (REQ-GOAL-*): the real goals.ts ladder and the one claim, the team goal as GET /v1/home/goals reads it
+  async goals() {
+    return wrap(async () => svc.goals(ID, { teamGoal: await nextTeamGoal() }));
+  },
+  async claimGoals() {
+    return wrap(async () => svc.claimGoals(ID, key(), { teamGoal: await nextTeamGoal() }));
+  },
   async dismissNext(kind: string) {
     return wrap(async () => svc.dismissNextAction(ID, kind, await nextTeamGoal()));
   },

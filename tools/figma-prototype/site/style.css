@@ -954,3 +954,21 @@ html[data-reduce-motion="on"] .fx-title.gone, html[data-reduce-motion="on"] .fx-
 /* battery saver: the hero CTA's loop, the speed lines and the turning rays stop (RenderProfile.AmbientMotion) */
 html[data-perf-ambient="off"] .btn.cta.hero .bg::after, html[data-perf-ambient="off"] .fx-lines { animation: none; }
 html[data-perf-ambient="off"]:not([data-reduce-motion="on"]) .fx-rays { animation: fxrays-in var(--dur-peak) var(--ease-out) both; }
+/* quality/goals-flow: 目標の階段 — the home ladder, the goals screen, the claim moment (structure only; colours from the tokens) */
+.gl-rung { cursor: pointer; }
+.gl-rung + .gl-rung::before { content: ''; position: absolute; left: 24px; right: 24px; top: 0; height: 1px; background: rgba(150, 173, 187, .22); }
+.gl-dot { border-radius: 50%; background: var(--gold); }
+.gl-pips { display: flex; gap: 6px; }
+.gl-pips i { flex: 1; height: 6px; border-radius: 3px; background: #23394a; }
+.gl-pips i.on { background: var(--cyan); }
+.gl-pips i.now { background: rgba(var(--cyan-rgb), .45); }
+.gl-power { position: absolute; height: 8px; border-radius: 4px; background: #23394a; overflow: hidden; }
+.gl-power i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: inherit; }
+.gl-power i.next { background: rgba(255, 211, 79, .35); }
+.gl-power i.now { background: var(--cyan); }
+.gl-week { border-radius: 4px; }
+.gl-week:hover { background: rgba(var(--cyan-rgb), .06); }
+.gl-class { border-radius: 4px; background: rgba(var(--navy-rgb), .55); }
+.gl-class.current { box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .8); }
+.gl-line { animation: rise .32s ease both; }
+html[data-reduce-motion="on"] .gl-line { animation: fade .15s ease both; }

@@ -1431,20 +1431,12 @@ async function Home() {
   const firstPrompt = sessionPrompt.pick([...(comeback.active && comeback.window.showWelcome ? ['comeback_welcome'] : []), ...(cnsDue ? ['consent_pre_prompt'] : [])]);
   if (firstPrompt === 'consent_pre_prompt') return ConsentPrompt(Home, cnsDue);
   if (firstPrompt === 'comeback_welcome') return ComebackWelcome(comeback);
-  const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
+  if (unlock('rival').unlocked) await L.rival.view(); // pairs this week's rival (the home strip used to do it); the ladder reads it
+  const [missions, fw, bond, training, goals] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null, L.goals()]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
-  // top left: season / class (④)
-  const season = Glass('Season', 32, 32, 469, 100, undefined, .78);
-  Kicker(`シーズン ${SEASON_LABEL()}　/　${u.day}日目`, 24, 20, season, { rule: false, size: 18 });
-  const cls = L.master.classes.find((c) => c.id === player.season.classId);
-  if (unlock('season').unlocked) {
-    Txt(`クラス ${player.season.classId}`, 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
-    Txt(cls?.promotePoints ? (player.season.points >= cls.promotePoints ? `${fmt(player.season.points)}pt　·　昇級ラインに到達` : `${fmt(player.season.points)}pt　·　昇級まで あと${fmt(cls.promotePoints - player.season.points)}pt`) : `${fmt(player.season.points)}pt　·　最上位クラス`, 150, 59, 300, 15, MUTED, season, { weight: 500, nowrap: true });
-  } else {
-    Txt('ルーキー', 24, 54, 200, 22, WHITE, season, { weight: 700, ls: '.08em' });
-    Txt('シーズン・クラスは' + unlockText('season'), 150, 59, 300, 14, SOFT, season, { nowrap: true });
-  }
+  // top left (quality/goals-flow): the goal ladder — today / this week (or the first steps) / the season — in place of the season box
+  if (goals.ok) GoalLadderPanel(goals.value);
   Wallet();
   EnToggle();
   GiftEnvelope(); // round 12 (REQ-BOX-004): the envelope with the unclaimed count
@@ -1459,7 +1451,8 @@ async function Home() {
     // round 11 (REQ-TRAIN-*): 調教 — today's slots left, opens with the unlock table
     unlock('training').unlocked ? ['調教', training?.ok && training.value.enabled ? `今日あと${training.value.slotsLeft}回` : '', () => Training(), training?.ok && training.value.slotsLeft > 0] : ['調教', unlockText('training'), () => toast('調教は' + unlockText('training')), false, true],
     ['スカウト', unlock('gacha').unlocked === false ? '' : `${L.bannerList().banners.filter((b) => b.status !== 'upcoming').length}件 開催中`, () => Scout()],
-    unlock('missions').unlocked ? ['ミッション', `${done} / ${ms.length}`, () => Missions(ms, fw, bonus), claimable.length > 0] : ['ミッション', unlockText('missions'), () => toast('デイリーミッションは' + unlockText('missions')), false, true],
+    // quality/goals-flow: 目標 (daily, the first steps and season missions on one screen with one claim)
+    ['目標', goals.ok && goals.value.today.open ? `今日 ${goals.value.today.done} / ${goals.value.today.total}` : '', () => Goals()],
     ['機能・イベント', `${(player.unlocks.features ?? []).filter((f) => f.unlocked).length}件 開放`, () => Features()],
   ];
   rows.forEach(([name, meta, go, dot, locked], i) => {
@@ -1483,9 +1476,7 @@ async function Home() {
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
   if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
   NavBar(0);
-  if (unlock('rival').unlocked) await RivalStrip(); // round 12: this week's rival, top centre (its own slot, not the card slot)
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer)
-  await ChallengeHomeCard(); // round 13: this week's challenges, under the home card
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
@@ -3621,6 +3612,259 @@ async function Demo(kind) {
   return Home();
 }
 
+// ================================================================= quality/goals-flow: 目標の階段 (REQ-GOAL-*, server goals.ts)
+// Home answers three questions with one panel (top left, where the season box was): what to do today, what this week is
+// for (or, for a new player, the next of the first ten steps), and where the season is going. The rival strip and the
+// weekly challenge card were folded into the 今週 rung. Tapping it opens 目標: three columns read left to right (今日 →
+// 今週 → シーズン), each reward says what it does for the player's horses, the season column says why to climb (how much
+// of the partner the class lets race), and one 「まとめて受け取る」 claims every claimable mission with a short moment.
+// The figures are the server's (MuchiLogic.goals = GET /v1/home/goals); nothing here invents a pace or a deadline.
+const GL_BOX = { x: 32, y: 32, w: 469 };
+const GL_KIND = { races: 'レースに出る', wins: '1着になる', top3: '3着以内に入る', training: '調教をする', first_win: '今日の初勝利（ランク戦）', gacha: 'スカウトを1回', silks: '勝負服を変える', care: '飼い葉をあげる', ranked_top3: 'ランク戦で3着以内', breed: '配合を1回', friends: 'フレンドを追加', team: '支部に入る', ta_finish: 'タイムアタックを完走', ranked_races: 'ランク戦に出る', points: 'シーズンptを集める', promotion_line: '昇級ラインに届く', collect: '図鑑の馬を迎える' };
+const glTitle = (k) => GL_KIND[k] ?? k;
+const glItemName = (id) => ({ breeding_material: '配合素材', training_apple: 'りんごのおやつ' })[id] ?? L.master.itemLabels[id] ?? id;
+/** A reward in one line (coins, items, pass XP). */
+function glReward(r) {
+  if (!r) return '';
+  const out = [];
+  if (r.freeCoins) out.push(`無償コイン${fmt(r.freeCoins)}枚`);
+  for (const it of r.items ?? []) out.push(`${glItemName(it.itemId)}×${it.qty}`);
+  if (r.broodmare) out.push('繁殖牝馬1頭');
+  if (r.passXp) out.push(`パスXP ${fmt(r.passXp)}`);
+  return out.join('・');
+}
+/** What a reward does for the player's horses (the Unity GoalLadderModel.ItemPurpose). */
+function glPurpose(r) {
+  const id = r?.items?.[0]?.itemId;
+  const by = { breeding_material: '配合で良い仔を狙う・馬の覚醒に使う', training_apple: '次の調教の伸びが少し良くなる', gacha_ticket: '新しい馬をスカウト（1回）', gacha_ticket_10: '新しい馬をスカウト（10回）', ticket_sr_plus: 'SR以上の馬をスカウト（1回）' }[id];
+  if (by) return by;
+  if (r?.broodmare) return '繁殖牝馬が厩舎に来る（配合ができる）';
+  if (r?.passXp) return 'シーズンパスのレベルが上がる';
+  if (r?.freeCoins) return 'スカウト・覚醒に使える無償コイン';
+  return '';
+}
+/** The rungs of home, the same rules as GoalLadderModel.Rebuild. */
+function glRungs(v) {
+  const out = [];
+  const t = v.today;
+  if (t.open) {
+    const next = t.items.find((i) => i.progress < i.target);
+    out.push({ key: 'today', label: '今日', main: t.complete ? '今日の目標は完了' : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
+      figure: `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
+  }
+  if (v.path) out.push({ key: 'path', label: `はじめの${v.path.steps}歩`, main: v.path.current.claimable ? '受け取れる報酬があります' : glTitle(v.path.current.kind), figure: `${v.path.done}/${v.path.steps}`, fill: v.path.done / Math.max(1, v.path.steps), ready: v.path.current.claimable });
+  if (v.week) {
+    const w = v.week, parts = [];
+    if (w.challenge) parts.push(`チャレンジ ${w.challenge.cleared}/${w.challenge.total}`);
+    if (w.rivalResult) parts.push('ライバル 結果発表');
+    else if (w.rival) parts.push(`ライバル ${w.rival.me}-${w.rival.them}`);
+    if (w.teamGoal) parts.push(`支部 ${w.teamGoal.reached}/${w.teamGoal.tiers}段`);
+    out.push({ key: 'week', label: '今週', main: parts.join('　·　'), figure: null, fill: w.challenge ? w.challenge.cleared / Math.max(1, w.challenge.total) : 0, ready: !!w.rivalResult });
+  }
+  const s = v.season, cls = `${s.classId}級`;
+  const r = { key: 'season', label: 'シーズン', ready: s.missions.some((x) => x.claimable), fill: 0, figure: null };
+  if (s.status === 'rookie') r.main = 'ルーキー　·　ランク戦でクラスが決まります';
+  else if (s.status === 'top') Object.assign(r, { main: `${cls}　·　最上位クラス`, figure: `${fmt(s.points)}pt`, fill: 1 });
+  else if (s.status === 'line_reached') Object.assign(r, { main: `${cls}　·　昇級ラインに到達`, figure: `${fmt(s.points)}pt`, fill: 1 });
+  else Object.assign(r, { main: `${cls}　·　昇級まで あと${fmt(s.left)}pt`, figure: `${fmt(s.points)}/${fmt(s.line)}`, fill: s.line ? Math.min(1, s.points / s.line) : 0 });
+  out.push(r);
+  return out;
+}
+/** Home, top left: the three rungs (tap → 目標). Replaces the season box; the week rung holds the rival and the challenges. */
+function GoalLadderPanel(v) {
+  const rungs = glRungs(v);
+  const p = Glass('Goals', GL_BOX.x, GL_BOX.y, GL_BOX.w, 16 + rungs.length * 50, undefined, .8);
+  p.classList.add('gl-panel'); p.dataset.rungs = rungs.map((x) => x.key).join(',');
+  rungs.forEach((x, i) => {
+    const row = el('gl-rung', 0, 8 + i * 50, GL_BOX.w, 50, p); row.dataset.rung = x.key;
+    Txt(x.label, 24, 12, 92, 12, CYAN, row, { weight: 700, ls: '.16em', nowrap: true });
+    Txt(x.main, 118, 6, x.figure ? 226 : 326, 16, WHITE, row, { weight: 700, nowrap: true }).classList.add('gl-main');
+    if (x.figure) Txt(x.figure, 344, 6, 100, 17, GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+    const g = Gauge(118, 36, 326, x.fill, row, { gold: x.ready }); g.style.height = '3px';
+    if (x.ready) { el('gl-dot', 10, 16, 6, 6, row); row.dataset.ready = '1'; }
+  });
+  p.style.cursor = 'pointer'; p.setAttribute('role', 'button');
+  p.addEventListener('click', () => Goals());
+  return p;
+}
+
+/** 目標: 今日 → 今週 (or the first steps) → シーズン, one claim. */
+async function Goals() {
+  currentScreen = Goals;
+  const r = await L.goals();
+  await refresh();
+  if (!r.ok) { toast('目標を読み込めませんでした'); return Home(); }
+  const v = r.value;
+  Clear('goals'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('目標　/　今日 → 今週 → シーズン', `今日の分は ${jstDate(v.today.resetAt).slice(-5)} に更新　·　報酬は1回でまとめて受け取れます`);
+  const COL = [{ x: 36 }, { x: 555 }, { x: 1074 }], W = 490, Y = 134, H = 600;
+  // ① 今日
+  const c1 = Glass('Goals today', COL[0].x, Y, W, H, undefined, .88); c1.dataset.col = 'today'; c1.classList.add('gl-col');
+  Kicker('今日', 32, 24, c1, { size: 16 });
+  const lb = v.today.loginBonus;
+  if (lb?.open && lb.next) {
+    const line = `${lb.claimedToday ? '明日' : '今日'}のログインボーナス：${glReward(lb.next.reward) || (lb.next.reward.broodmare ? '繁殖牝馬1頭' : '')}`;
+    Txt(line, 32, 92, 300, 13, MUTED, c1, { weight: 500, nowrap: true }).classList.add('gl-login');
+  }
+  if (v.today.open) {
+    Txt(`${v.today.done}/${v.today.total}`, 330, 56, 128, 34, GOLD, c1, { align: 'right', cls: 'num' });
+    v.today.items.forEach((it, i) => GlRow(c1, it, 32, 118 + i * 94, W - 64));
+  } else Txt('デイリーミッションは' + unlockText('missions') + '。まずは「はじめの10歩」から。', 32, 120, W - 64, 16, MUTED, c1, { lh: 1.7 });
+  // ② 今週 / はじめの10歩
+  const c2 = Glass('Goals week', COL[1].x, Y, W, H, undefined, .88); c2.dataset.col = v.path && v.week ? 'path,week' : v.path ? 'path' : 'week'; c2.classList.add('gl-col');
+  let wy = 118;
+  if (v.path && v.week) {
+    // compact: the next step, the pips and the last reward, then the week
+    Kicker(`はじめの${v.path.steps}歩　/　今週`, 32, 24, c2, { size: 16, w: W - 64 });
+    GlPath(c2, v.path, 104, true);
+    wy = 236;
+  } else if (v.path) {
+    Kicker(`はじめの${v.path.steps}歩`, 32, 24, c2, { size: 16 });
+    Txt(`${v.path.done}/${v.path.steps}`, 330, 56, 128, 34, GOLD, c2, { align: 'right', cls: 'num' });
+    GlPath(c2, v.path, 120, false);
+    Txt('1歩ずつ順に受け取ります。週替わりチャレンジ・ライバルが開くと、ここに「今週」の目標も並びます。', 32, 520, W - 64, 13, SOFT, c2, { lh: 1.6 });
+  } else Kicker('今週', 32, 24, c2, { size: 16 });
+  const w = v.week;
+  if (!v.path && !w) Txt('週替わりチャレンジ・ライバルが開くと、ここに並びます。', 32, 120, W - 64, 16, MUTED, c2, { lh: 1.7 });
+  if (w) {
+    Txt(`${jstDate(w.endsAt - 60_000)}まで`, 230, v.path ? wy - 30 : 66, 228, 13, MUTED, c2, { align: 'right', nowrap: true });
+    const step = v.path ? 112 : 132;
+    if (w.challenge) {
+      const ch = w.challenge;
+      GlWeekRow(c2, wy, '週替わりチャレンジ', `${ch.cleared}/${ch.total}`, ch.cleared / Math.max(1, ch.total), `${glReward(ch.reward)}　·　3つで「${ch.badgeName}」`, v.path ? '' : glPurpose(ch.reward), () => WeeklyChallenge(), 'challenge');
+      wy += step;
+    }
+    if (w.rivalResult) {
+      const rr = w.rivalResult;
+      GlWeekRow(c2, wy, '先週のライバル', `${rr.me} - ${rr.them}`, null, `${{ win: '勝ち越し', lose: '負け越し', draw: '引き分け', no_contest: '勝負なし', not_enough: 'レース数が足りませんでした' }[rr.outcome] ?? ''}${rr.freeCoins ? `　·　無償コイン${fmt(rr.freeCoins)}枚` : ''}`, '', () => Rival(), 'rival-result');
+      wy += v.path ? 112 : 132;
+    }
+    if (w.rival && !(v.path && w.rivalResult && w.challenge)) {
+      const rv = w.rival;
+      const sub = rv.rankedRaces < rv.minRaces ? `ランク戦 ${rv.rankedRaces}/${rv.minRaces}戦で結果が出ます` : '同じランク戦で先着すれば1点';
+      GlWeekRow(c2, wy, 'ライバル', `${rv.me} - ${rv.them}`, null, `勝ち越すと 無償コイン${fmt(rv.winReward.freeCoins)}枚　·　${sub}`, '', () => Rival(), 'rival');
+      wy += step;
+    }
+    if (w.teamGoal) {
+      const tg = w.teamGoal;
+      GlWeekRow(c2, wy, '支部の共同目標', `${tg.reached}/${tg.tiers}段`, tg.reached / Math.max(1, tg.tiers), tg.nextTarget ? `次の段まで ${fmt(tg.nextTarget - tg.progress)}` : 'すべての段に届きました', '', () => TeamGoal(), 'team');
+    }
+  }
+  // ③ シーズン: the class line, the own pace, why climb, the season missions
+  const s = v.season;
+  const c3 = Glass('Goals season', COL[2].x, Y, W, H, undefined, .88); c3.dataset.col = 'season'; c3.classList.add('gl-col');
+  Kicker('シーズン', 32, 24, c3, { size: 16 });
+  Txt(`${seasonEnd(s.endsAt)}まで`, 230, 66, 228, 13, MUTED, c3, { align: 'right', nowrap: true });
+  if (s.status === 'rookie') {
+    Txt('ルーキー', 32, 86, 300, 30, WHITE, c3);
+    Txt('シーズン・クラスは' + unlockText('season'), 32, 136, W - 64, 15, MUTED, c3);
+  } else {
+    Txt(`${s.classId}級`, 32, 86, 160, 34, WHITE, c3, { ls: '.06em' });
+    Txt(s.line == null ? `${fmt(s.points)}pt` : `${fmt(s.points)} / ${fmt(s.line)}pt`, 200, 96, 258, 22, GOLD, c3, { weight: 700, align: 'right', cls: 'num' });
+    Gauge(32, 136, W - 64, s.line ? Math.min(1, s.points / s.line) : 1, c3, { gold: s.status !== 'climbing' });
+    const line = s.status === 'line_reached' ? `昇級ラインに到達　·　シーズンの締めで ${s.nextClassId}級へ` : s.status === 'top' ? '最上位クラス' : `昇級まで あと${fmt(s.left)}pt` + (s.pace.racesToLine ? `　·　いまのペースで あと約${s.pace.racesToLine}戦` : '');
+    Txt(line, 32, 150, W - 64, 14, WHITE, c3, { weight: 500, lh: 1.45 }).classList.add('gl-season-line');
+  }
+  if (s.power && s.status !== 'rookie') {
+    const pw = s.power;
+    const why = el('gl-why', 32, 200, W - 64, 100, c3); why.dataset.held = String(pw.held);
+    Txt('なぜ上をめざす？', 0, 0, 300, 12, CYAN, why, { weight: 700, ls: '.16em' });
+    Txt(`相棒の力 ${fmt(pw.usable)} / ${fmt(pw.total)}（${s.classId}級の上限 ${fmt(pw.cap)}）`, 0, 24, W - 64, 16, WHITE, why, { weight: 700, nowrap: true });
+    const bar = el('gl-power', 0, 54, W - 64, 8, why);
+    const fillTo = (n) => `${Math.round(100 * Math.min(1, n / Math.max(1, pw.total)))}%`;
+    bar.innerHTML = `<i class="next" style="width:${fillTo(pw.nextUsable ?? pw.usable)}"></i><i class="now" style="width:${fillTo(pw.usable)}"></i>`;
+    Txt(pw.held === 0 ? 'いまのクラスで相棒の力をすべて出せています' : pw.nextUsable != null ? `${s.nextClassId}級なら ${fmt(pw.nextUsable)} まで出せます` : '', 0, 72, W - 64, 14, pw.held === 0 ? OK : GOLD, why, { weight: 500 });
+  }
+  TextLink('クラスの階段', 32, s.status === 'rookie' ? 180 : 300, 220, () => ClassLadder(v), c3, 'クラスの階段 ›').dataset.action = 'class-ladder';
+  Txt('シーズンミッション', 32, 344, 300, 12, CYAN, c3, { weight: 700, ls: '.16em' });
+  s.missions.slice(0, 5).forEach((it, i) => GlMini(c3, it, 32, 368 + i * 44, W - 64));
+  // the one claim (the only filled CTA on the screen); otherwise a quiet back
+  if (v.claimable > 0) Cta(`まとめて受け取る（${v.claimable}件）`, 1074, 748, 490, () => GlClaim(), undefined).classList.add('gl-claim');
+  else Txt(v.today.complete ? `今日の目標は完了　·　${jstDate(v.today.resetAt).slice(-5)} に更新` : '受け取れる報酬はありません', 1074, 770, 490, 15, MUTED, undefined, { align: 'right' });
+  Back(Home, 'BACK', 40, 834);
+}
+/** The first steps: pips, the current step (a goal row) and the last step's reward. compact = above the week. */
+function GlPath(parent, path, y, compact) {
+  const W = 426;
+  const pips = el('gl-pips', 32, y, W, 10, parent); pips.dataset.path = `${path.done}/${path.steps}`;
+  for (let i = 0; i < path.steps; i++) { const d = document.createElement('i'); if (i < path.done) d.className = 'on'; else if (i === path.done) d.className = 'now'; pips.appendChild(d); }
+  if (compact) {
+    const it = path.current;
+    const row = el('gl-row', 32, y + 20, W, 80, parent); row.dataset.goal = it.id; row.dataset.state = it.claimable ? 'claimable' : 'open';
+    Txt(`${path.step}. ${glTitle(it.kind)}`, 0, 0, 300, 16, WHITE, row, { weight: 700, nowrap: true });
+    Txt(`${Math.min(it.progress, it.target)}/${it.target}`, 300, 0, 126, 16, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
+    Txt(`${glReward(it.reward)}　·　最後に ${glReward(path.finalReward)}`, 0, 28, W, 13, GOLD, row, { weight: 700, nowrap: true });
+    Hair(0, 70, W, row);
+    return;
+  }
+  GlRow(parent, path.current, 32, y + 36, W, `${path.step}. `);
+  Hair(32, y + 142, W, parent);
+  Txt('最後の歩の報酬', 32, y + 164, 300, 13, CYAN, parent, { weight: 700, ls: '.16em' });
+  Txt(glReward(path.finalReward), 32, y + 188, W, 20, GOLD, parent, { weight: 700 });
+  Txt(glPurpose(path.finalReward), 32, y + 220, W, 14, SOFT, parent);
+}
+/** A goal row: title and progress, the gauge, the reward and what it does. */
+function GlRow(parent, it, x, y, w, prefix = '') {
+  const row = el('gl-row', x, y, w, 86, parent); row.dataset.goal = it.id; row.dataset.state = it.claimed ? 'claimed' : it.claimable ? 'claimable' : it.progress >= it.target ? 'done' : 'open';
+  const done = it.progress >= it.target;
+  Txt((it.claimed || (done && it.table === 'first_win') ? '✓ ' : '') + prefix + glTitle(it.kind), 0, 0, w - 120, 17, it.claimed ? OK : WHITE, row, { weight: 700, nowrap: true });
+  Txt(`${Math.min(it.progress, it.target)}/${it.target}`, w - 120, 0, 120, 17, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
+  const g = Gauge(0, 30, w, it.target ? it.progress / it.target : 1, row, { gold: it.claimable }); g.style.height = '3px';
+  Txt(glReward(it.reward) + (it.table === 'first_win' ? '（1着で自動）' : ''), 0, 42, w, 14, GOLD, row, { weight: 700, nowrap: true });
+  Txt(glPurpose(it.reward), 0, 62, w, 12, SOFT, row, { nowrap: true });
+  return row;
+}
+function GlWeekRow(parent, y, title, figure, fill, sub, purpose, go, key) {
+  const row = el('gl-row gl-week', 32, y, 426, purpose ? 120 : 100, parent); row.dataset.week = key; row.setAttribute('role', 'button'); row.style.cursor = 'pointer';
+  row.addEventListener('click', (e) => { e.stopPropagation(); go(); });
+  Txt(title + ' ›', 0, 0, 300, 18, WHITE, row, { weight: 700, nowrap: true });
+  Txt(figure, 300, -4, 126, 22, GOLD, row, { weight: 700, align: 'right', cls: 'num', nowrap: true });
+  if (fill != null) { const g = Gauge(0, 34, 426, fill, row); g.style.height = '3px'; }
+  Txt(sub, 0, 48, 426, 13, MUTED, row, { lh: 1.5 });
+  if (purpose) Txt(purpose, 0, 92, 426, 12, SOFT, row, { nowrap: true });
+}
+function GlMini(parent, it, x, y, w) {
+  const row = el('gl-row gl-mini', x, y, w, 40, parent); row.dataset.goal = it.id; row.dataset.state = it.claimed ? 'claimed' : it.claimable ? 'claimable' : 'open';
+  Txt((it.claimed ? '✓ ' : '') + glTitle(it.kind), 0, 0, 230, 14, it.claimed ? OK : WHITE, row, { weight: 500, nowrap: true });
+  Txt(`${fmt(Math.min(it.progress, it.target))}/${fmt(it.target)}`, 230, 0, 92, 14, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
+  Txt(glReward(it.reward), 326, 0, w - 326, 14, GOLD, row, { weight: 700, align: 'right', nowrap: true });
+  const g = Gauge(0, 24, w, it.target ? it.progress / it.target : 1, row, { gold: it.claimable }); g.style.height = '2px';
+}
+/** The claim moment: what arrived, line by line, then back to the ladder (already updated by the server). */
+async function GlClaim() {
+  const r = await L.claimGoals();
+  if (!r.ok) { toast(r.error?.message ?? '受け取れませんでした'); return Goals(); }
+  const t = r.value.total;
+  const lines = [...(t.freeCoins ? [['無償コイン', `◎ ${fmt(t.freeCoins)}`]] : []), ...(t.items ?? []).map((it) => [glItemName(it.itemId), `×${it.qty}`]), ...(t.passXp ? [['パスXP', `+${fmt(t.passXp)}`]] : [])];
+  const d = Dialog('Goals claimed', 640, 200 + lines.length * 56);
+  d.classList.add('gl-moment'); d.dataset.claimed = String(r.value.claimed.length);
+  Kicker(`${r.value.claimed.length}件受け取りました`, 48, 40, d, { size: 16 });
+  lines.forEach(([k, val], i) => {
+    const row = el('gl-line', 48, 106 + i * 56, 544, 48, d); row.style.animationDelay = `${120 + i * 110}ms`;
+    Txt(k, 0, 10, 300, 20, WHITE, row, { weight: 700 });
+    Txt(val, 300, 4, 244, 28, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
+  });
+  await refresh();
+  Ghost('OK', 640 - 48 - 200, 200 + lines.length * 56 - 84, 200, 56, () => Goals(), d).dataset.action = 'gl-ok';
+}
+/** クラスの階段: every class with its cap (how much of a horse ranked uses), its line and its top reward. */
+function ClassLadder(v) {
+  const s = v.season;
+  Sheet('クラスの階段', 'ランク戦', (sh, close, y) => {
+    Txt('クラスごとに、ランク戦で使える能力の合計に上限があります。上のクラスほど、育てた力をそのまま出せます。買える物で上限は変わりません。', 48, y, 564, 14, MUTED, sh, { lh: 1.7 });
+    [...s.ladder].reverse().forEach((c, i) => {
+      const yy = y + 86 + i * 120;
+      const row = el('gl-class', 48, yy, 564, 108, sh); row.dataset.class = c.classId; if (c.current) row.classList.add('current');
+      Txt(`${c.classId}級`, 16, 14, 120, 30, c.current ? CYAN : c.reached ? WHITE : MUTED, row);
+      if (c.current) Txt('いまのクラス', 16, 62, 140, 12, CYAN, row, { weight: 700, ls: '.12em' });
+      Txt(`能力の上限 ${fmt(c.statCap)}`, 150, 16, 220, 16, WHITE, row, { weight: 700, nowrap: true });
+      Txt(c.promotePoints != null ? `昇級 ${fmt(c.promotePoints)}pt` : '最上位', 380, 16, 168, 16, MUTED, row, { weight: 500, align: 'right', nowrap: true });
+      if (c.rewards.top) Txt(`${c.rewards.top.maxRank === 1 ? '1位' : `上位${c.rewards.top.maxRank}位`} ${glReward(c.rewards.top.reward)}`, 150, 48, 398, 13, GOLD, row, { weight: 700, nowrap: true });
+      if (c.rewards.floor) Txt(`出走した人みんな ${glReward(c.rewards.floor)}`, 150, 72, 398, 12, SOFT, row, { nowrap: true });
+    });
+  }, 660, { solo: true }); // solo: the goals columns step aside while the ladder is open (largest text)
+}
+
 // ================================================================= round 16: 次にやること (REQ-NEXT-*, contracts/protocol.md §45)
 // One card at the bottom centre of home (between the partner and the race button, over the paddock art) and up to two chips
 // under it. The server chooses (MuchiLogic.nextActions = GET /v1/home/next on the real nextAction.ts); this only draws it.
@@ -3655,7 +3899,7 @@ function nxText(i) {
   }[i.kind] ?? ['次の1レースへ', 'ランク戦・約90秒', 'レースへ', 'レースへ'];
   return { title: T[0], detail: T[1], cta: T[2], chip: T[3], deadline: i.deadlineAt ? nxDeadline(i.deadlineAt) : null };
 }
-async function nxOpenMissions() { const [ms, fw] = await Promise.all([L.missions(), L.firstWinBonus()]); Missions(ms.ok ? ms.value : [], fw, null); }
+async function nxOpenMissions() { return Goals(); } // quality/goals-flow: the daily, first-step and season missions are claimed on 目標
 /** Where a card leads (the screen ids of §45.1). Never the shop. */
 function nxGo(i) {
   const feature = { missions: nxOpenMissions, training: Training, rival: Rival, weekly_challenge: () => WeeklyChallenge(), time_attack: () => TimeAttack(), events: () => EventTop(), teams: TeamGoal };
@@ -3830,7 +4074,7 @@ async function cbView() { const r = await L.comeback(); return r.ok ? r.value : 
 // ---- the home card slot (round 10): home shows at most ONE card, in the left column between the season panel and the
 // partner. Priority: the comeback welcome (a full screen before home, once per window) > what's new (once) > the comeback
 // campaign card (while a window runs) > the rewarded-ad offer. Closing a card draws the next one in the same place.
-const HOME_CARD = { x: 33, y: 152, w: 450 };
+const HOME_CARD = { x: 33, y: 260, w: 450 }; // quality/goals-flow: under the goal ladder (up to four rungs)
 async function HomeCard(cb) {
   if (cur?.dataset.screen !== 'home') return null;
   cur.querySelectorAll('[data-home-card]').forEach((n) => n.remove());
@@ -3843,12 +4087,12 @@ async function HomeCard(cb) {
 /** REQ-CB-008: the one-time card: what went live since the player last looked. Closing marks it seen. */
 function WhatsNewCard(data, cb) {
   const KIND = { feature: '新機能', banner: 'スカウト', event: 'イベント', balance: '調整', maintenance: 'メンテナンス' };
-  const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 404, undefined, .86);
+  const card = Glass('What\'s new', HOME_CARD.x, HOME_CARD.y, HOME_CARD.w, 316, undefined, .86);
   card.dataset.homeCard = 'whatsnew'; card.dataset.whatsnew = String(data.items.length); card.classList.add('rise');
   Kicker('前回からのお知らせ', 28, 24, card, { size: 16 });
-  const shown = data.items.slice(0, 3);
+  const shown = data.items.slice(0, 2);
   shown.forEach((it, i) => {
-    const row = el('cb-item', 28, 92 + i * 84, 394, 84, card); row.dataset.item = it.id;
+    const row = el('cb-item', 28, 80 + i * 80, 394, 80, card); row.dataset.item = it.id;
     // round 17 (REQ-MNT-005): an announced maintenance links to its notice
     if (it.kind === 'maintenance') { row.dataset.action = 'mnt-notice'; row.setAttribute('role', 'button'); row.style.cursor = 'pointer'; row.addEventListener('click', (e) => { e.stopPropagation(); MaintenanceNotice(); }); }
     Txt(KIND[it.kind] ?? 'お知らせ', 0, 12, 90, 12, CYAN, row, { weight: 700, ls: '.18em' });
@@ -3857,8 +4101,8 @@ function WhatsNewCard(data, cb) {
     Txt(it.body, 0, 58, 394, 12, MUTED, row, { nowrap: true }).style.overflow = 'hidden';
   });
   const more = Math.max(0, data.items.length - shown.length) + (data.more ?? 0);
-  if (more > 0) Txt(`ほか${more}件`, 28, 352, 200, 14, SOFT, card);
-  Ghost('閉じる', 282, 336, 140, 48, async () => {
+  if (more > 0) Txt(`ほか${more}件`, 28, 264, 200, 14, SOFT, card);
+  Ghost('閉じる', 282, 248, 140, 48, async () => {
     globalThis.__cbWhatsNewClosed = true; card.remove(); await L.whatsNewSeen(data.upTo); HomeCard(cb);
   }, card, 'small').dataset.whatsnewClose = '1';
   return card;
@@ -9178,7 +9422,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

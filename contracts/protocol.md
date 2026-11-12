@@ -4145,3 +4145,32 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 目標の階段（goal ladder、quality/goals-flow、REQ-GOAL-001〜012、`server/src/domain/goals.ts`、C# `Goals.cs`・`Muchi.Game.GoalLadderModel`、docs/quality/goals-rewards.md）
+番号は統合で付ける（Round 22・23 の後）。ホームの「なぜ今日・今週・今月遊ぶか」を、既にある仕組みだけから1回で読む。**何も新しく配らない**（E 番号なし）。
+
+| メソッド | パス | 内容 |
+|---|---|---|
+| GET | `/v1/home/goals` | 階段（読むだけ）。支部にいれば共同目標も（`/v1/home/next` と同じ読み方） |
+| POST | `/v1/home/goals/claim` | Idempotency-Key 必須。受け取れるデイリー・初心者の段（届いている分を順に）・シーズンミッションを1つのトランザクションで。応答 `{ claimed: [{id, table, reward}], total, ladder }`。無ければ 409 `NOT_ELIGIBLE`。KPI `goals_claim_all`（`count`・`value` = 無償コイン、`optional`） |
+
+```json
+{ "day": "2026-12-08", "now": 1796698800000, "claimable": 4,
+  "today": { "open": true, "done": 4, "total": 5, "claimable": 3, "complete": false, "resetAt": 1796756400000,
+             "items": [{ "id": "race3", "table": "daily", "kind": "races", "progress": 3, "target": 3, "reward": { "freeCoins": 15 }, "claimed": false, "claimable": true },
+                       { "id": "first_win", "table": "first_win", "kind": "first_win", "progress": 1, "target": 1, "reward": { "freeCoins": 30 }, "claimed": true, "claimable": false }],
+             "loginBonus": { "open": true, "claimedToday": true, "next": { "track": "beginner", "day": 2, "days": 7, "reward": { "broodmare": "t_broodmare" } } } },
+  "path": { "step": 1, "steps": 10, "done": 0, "current": { "id": "bm_scout", "table": "beginner", "...": "..." }, "finalReward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } },
+  "week": { "endsAt": 0, "challenge": { "cleared": 1, "total": 3, "reward": {}, "badgeName": "…", "badgeEarned": false }, "rival": { "kind": "cpu", "me": 2, "them": 1, "rankedRaces": 3, "minRaces": 3, "winReward": { "freeCoins": 20 } },
+            "teamGoal": null, "rivalResult": null },
+  "season": { "open": true, "seasonId": "2026-12", "endsAt": 0, "classId": "C", "nextClassId": "B", "points": 165, "races": 10, "line": 300, "left": 135, "demoteBelow": null, "status": "climbing",
+              "pace": { "races": 10, "pace10": 165, "racesToLine": 9, "minRaces": 3 },
+              "power": { "horseId": "h1", "partner": true, "total": 3320, "cap": 2800, "usable": 2800, "nextCap": 3200, "nextUsable": 3200, "held": 520 },
+              "ladder": [{ "classId": "C", "statCap": 2800, "promotePoints": 300, "demoteBelowPoints": null, "current": true, "reached": true, "rewards": { "top": { "maxRank": 10, "reward": {} }, "floor": {} } }],
+              "missions": [], "pass": { "level": 2, "maxLevel": 30, "freeClaimable": 2 }, "promotion": null } }
+```
+- `today.items`：デイリー（`missions` の開放後）＋今日の初勝利ボーナス（勝った時に自動で払われる。`claimable` は常に false）。`loginBonus.next` は次に受け取るログボ（今日まだなら今日の分、受け取ったら明日の分。初心者の7日→7日周期の順、`claimLoginBonus` と同じ）。期限は実時刻（`resetAt`・週の終わり・月の終わり）で、端末は日時として出す（カウントダウンにしない）。
+- `path`：初心者ミッション（REQ-UXS-015）が終わるまで。`week`：週替わり・ライバル・共同目標・先週のライバルの結果（未読の間）のどれかがある時。
+- `season.pace`：このシーズンの自分の1戦平均×10（整数）。ランク戦が `minRaces` 未満なら null（数字を作らない）。`power`：相棒（いなければ一番強い馬）の `raceStats` の合計と、いまのクラス・次のクラスの上限で出せる分（REQ-RATE-003 の正規化そのもの。買える物で変わらない）。`promotion`：§68（Round 22）の昇級戦を統合で渡す（`status`・`next`・`races`・`needTop`・`tops`・`misses`）。
+- 次にやること（§45）の `missions_claim` の件数は、初心者の段とシーズンミッションの受け取れる数も含む（開く画面は同じ）。
+- メンテナンスの区分は `core`。データのダウンロード・削除：新しい状態は無い（読むだけ）。

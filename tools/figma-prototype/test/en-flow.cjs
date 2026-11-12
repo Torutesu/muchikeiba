@@ -82,6 +82,12 @@ module.exports = async function enFlow(browser, base, out, errors) {
   await waitScreen('home');
   assert.equal(await page.evaluate(() => document.documentElement.lang), 'en');
   await shot('home', 800);
+  // quality/goals-flow: 目標 (today → week → season), the class ladder and the claim moment, in English
+  await page.locator('.screen.in .gl-panel').click(); await waitScreen('goals'); await shot('goals', 600);
+  await page.locator('.screen.in [data-action="class-ladder"]').click(); await page.waitForTimeout(400); await shot('class-ladder', 300);
+  await show('Goals'); await waitScreen('goals');
+  if (await page.locator('.screen.in .gl-claim').count()) { await page.locator('.screen.in .gl-claim').click(); await page.waitForSelector('.screen.in .gl-moment', { timeout: 15000 }); await shot('goals-claimed', 600); await page.locator('.screen.in [data-action="gl-ok"]').click(); await waitScreen('goals'); }
+  await show('Home'); await waitScreen('home');
   assert.match(await page.locator('.screen.in').innerText(), /Race/, 'the home CTA is in English');
 
   await click('ショップ'); await waitScreen('shop-recommended'); await shot('shop-recommended', 600);

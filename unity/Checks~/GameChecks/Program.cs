@@ -142,6 +142,8 @@ static class Program
         await RosterChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 馬ごとの目標 (HorseGoalsModel: goals panel rows, ribbon, pin / unpin, home pinned card, KPI, next-action kind, English; REQ-HGOAL-*)");
         await HorseGoalsChecks.Run(Check, Ruleset());
+        Console.WriteLine("== quality pass: raising & breeding (horse card, training outlook & stage up, breeding intent & foal reveal)");
+        await RaisingQualityChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: クライアントのエラー報告 (ClientErrorModel: Unity log lines, no loop, stalls / pause, API failures, desync race id + tick, asset, consent hook, send on pause; REQ-CERR-*)");

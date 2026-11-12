@@ -26,6 +26,10 @@ namespace Muchi.Game
         public bool Enabled;
         /// <summary>Why it is disabled (one sentence), null when enabled.</summary>
         public string BlockedText;
+        /// <summary>Quality pass: what this menu would give the selected horse now — "+5〜+6" (exact, server computeGain), null on older servers.</summary>
+        public string OutlookText;
+        /// <summary>Why: "疲れ −15%・絆 +2%" (empty when nothing moves it).</summary>
+        public string OutlookReason;
     }
 
     /// <summary>The mini-game phase on screen.</summary>
@@ -124,6 +128,8 @@ namespace Muchi.Game
                         BondText = m.BondMultiplier > 1 ? "絆が効く ×" + m.BondMultiplier.ToString(CultureInfo.InvariantCulture) : null,
                         Enabled = blocked == null && View.SlotsLeft > 0 && Phase == TrainingPhase.Choose,
                         BlockedText = blocked == null ? (View.SlotsLeft > 0 ? null : BlockedTexts["no_slots"]) : (BlockedTexts.TryGetValue(blocked, out var t) ? t : "選べません"),
+                        OutlookText = Horse != null && Horse.MenuOutlook.TryGetValue(m.Id, out var ol) ? ol.RangeText : null,
+                        OutlookReason = Horse != null && Horse.MenuOutlook.TryGetValue(m.Id, out var ol2) ? ol2.ReasonText : null,
                     });
                 }
                 return list;
@@ -279,6 +285,13 @@ namespace Muchi.Game
         /// <summary>"ミニゲーム ◎4 ○1 ×0（+9%）" or "ミニゲームなし".</summary>
         public string TimingText => Result == null ? null : Result.Settled != "done" ? "ミニゲームなし"
             : "ミニゲーム ◎" + Result.Timing.Perfect + " ○" + Result.Timing.Good + " ×" + Result.Timing.Miss + "（+" + (Result.Timing.BonusPermille / 10).ToString(CultureInfo.InvariantCulture) + "%）";
+        /// <summary>Quality pass: the session moved the horse into a later growth stage (the result screen's moment).</summary>
+        public bool StageUp => Result != null && Result.Potential > 0 && GrowthStages.StageUp(Result.TrainedTotal - Result.Total, Result.TrainedTotal, Result.Potential);
+        /// <summary>"成長期" — the stage after this session (null before a result).</summary>
+        public string StageText => Result == null || Result.Potential <= 0 ? null : GrowthStages.Of(Result.TrainedTotal, Result.Potential).Name;
+        /// <summary>"成長段階が上がりました：充実期" when <see cref="StageUp"/>, else null.</summary>
+        public string StageUpText => StageUp ? "成長段階が上がりました：" + StageText : null;
+
         /// <summary>"見込み +6〜+7" from the start preview (in whole points, the fraction carries over).</summary>
         public string PreviewText => Started == null ? null : "見込み +" + Started.PreviewMinMilli / 1000 + "." + (Started.PreviewMinMilli % 1000) / 100 + "〜+" + Started.PreviewMaxMilli / 1000 + "." + (Started.PreviewMaxMilli % 1000) / 100;
 

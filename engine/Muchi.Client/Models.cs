@@ -683,6 +683,8 @@ namespace Muchi.Client
         public AtavismOdds Atavism = new AtavismOdds();
         /// <summary>Foal skill odds (REQ-UXS-050); "no skill" 1000‰ on older servers.</summary>
         public SkillInheritPreview Skill = new SkillInheritPreview();
+        /// <summary>The foal's rarity odds (exact, contracts/protocol.md Q1.2); Known = false on older servers.</summary>
+        public FoalRarityOdds Rarity = new FoalRarityOdds();
         internal static BreedingPreview Parse(JsonNode o)
         {
             var d = J.Opt(o, "distance");
@@ -694,6 +696,7 @@ namespace Muchi.Client
                 Today = BreedingAllowance.Parse(J.Opt(o, "today")),
                 Atavism = AtavismOdds.Parse(J.Opt(o, "atavism")),
                 Skill = SkillInheritPreview.Parse(J.Opt(o, "skill")),
+                Rarity = FoalRarityOdds.Parse(J.Opt(o, "rarity")),
             };
         }
     }

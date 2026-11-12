@@ -134,6 +134,13 @@ namespace Muchi.Game
             return new HighlightsModel("result", ReplayPlayer.Open(data), templates, track, now);
         }
 
+        /// <summary>From the result screen's finished race driver (offline or online: the inputs that reproduce what the device showed). Null when the race cannot be shared (void, failed, tutorial).</summary>
+        public static HighlightsModel ForDriver(IRaceDriver driver, CommentaryTemplates templates = null, Action<AnalyticsEvent> track = null, NowMs now = null)
+        {
+            if (!ReplayShareModel.CanShare(driver) || !ShowOnResult(driver.Config.Mode)) return null;
+            return ForResult(driver.Config, ReplayShareModel.InputsOf(driver), driver.Final?.Hash ?? driver.Sim.Result?.Hash, driver.PlayerSlot, templates, track, now);
+        }
+
         public HighlightMomentView Current => Reel == null || Reel.Done ? null : Moments[Reel.Index];
         public bool Done => Reel == null || Reel.Done;
         /// <summary>「見どころ 1 / 3」.</summary>

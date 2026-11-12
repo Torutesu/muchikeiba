@@ -1605,6 +1605,19 @@
   "印を付けました": "Marked",
   "印を外しました": "Mark removed",
   "冬のミニ大会": "Winter mini tournament",
-  "ナイター記念大会": "Night race memorial tournament"
+  "ナイター記念大会": "Night race memorial tournament",
+  "いまのレースから自動で選んだ場面": "Moments picked from the race you just ran",
+  "選ばれた場面": "Moments picked",
+  "いちばんの場面": "Best moment",
+  "選び方は全員同じです。自分の馬が出る場面を少し優先します。レースの結果は変わりません": "Everyone gets the same picks. Moments with your horse come first. The race result never changes",
+  "もう一度見る": "Watch again",
+  "ムチ一閃　/　見どころ": "Muchi Issen / Highlights",
+  "名前・IDは入りません（馬の名前だけ）": "No names or IDs (horse names only)",
+  "リンクを共有しました（いちばんの場面から始まります）": "Link shared (it starts at the best moment)",
+  "リンクを開いたフレンドは、いちばんの場面から見られます": "Friends who open the link start at the best moment",
+  "違うレースを流さないため、再計算の結果が一致しないレースは再生しません": "To never show a different race, a replay that does not re-simulate to the same result is not played",
+  "見どころを見る ›": "Highlights ›",
+  "{n}つの場面": "{n} moments",
+  "あわせて{n}秒": "{n} s in all"
  }
 }

@@ -509,6 +509,16 @@ await shot('diagnostics', 600);
   await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', 400);
   await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
 
+  // round 23: レースの見どころ in English (REQ-HL-010): the captions (Muchi.Client HighlightCaptions through ui-en.json), the
+  // counter, the end screen and the share sheet
+  await show('HighlightsDemo'); await waitScreen('highlights', 60000);
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index === 0, null, { timeout: 15000 });
+  await shot('highlights', 600);
+  assert.match(await page.locator('.screen.in .hl-counter').innerText(), /^Highlight 1 \/ \d$/, 'highlights: the counter in English');
+  assert.ok(!/[぀-ヿ一-鿿]/.test(await page.locator('.screen.in .hl-caption').innerText()), 'highlights: the caption in English');
+  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000); await shot('highlights-end', 400);
+  await page.locator('.screen.in .hl-share').click(); await page.waitForSelector('.screen.in .hl-share-sheet'); await shot('highlights-share', 400);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
 
   // round 21: トレーナーカード in English (REQ-SHOW-014): the phrase and background from their JA + EN pair, labels from the

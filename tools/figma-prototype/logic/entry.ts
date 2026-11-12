@@ -68,7 +68,7 @@ import {
 import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
 import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
 import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
-import { formatToken, linksConfig, parseLink, LINK_SCREENS, type LinkType } from '../../../server/src/domain/deepLinks.js';
+import { formatToken, linksConfig, parseLink, LINK_SCREENS, replayLinkExtra, replayLinkRow, replayStartTick, type LinkType } from '../../../server/src/domain/deepLinks.js';
 import { Rematches } from '../../../server/src/domain/rematch.js';
 import { FriendRooms } from '../../../server/src/domain/matchmaker.js';
 import { maintenanceOf } from '../../../server/src/domain/maintenance.js';
@@ -467,7 +467,7 @@ const linkTargets: LinkTargets = {
       case 'friend': return { targetKey: 'me', data: { friendCode: await fsugProfiles.codeOf(uid) } };
       case 'invite': return { targetKey: 'me', data: { code: (await inviteSvc.view(uid, null)).code } };
       case 'cup': { const cupId = str('cupId'); const v = await cupsSvc.get(uid, cupId); if (!v.code) throw new AppError('NOT_FOUND'); return { targetKey: cupId, data: { cupId, code: v.code }, endsAt: v.closesAt }; }
-      case 'replay': { const raceId = str('raceId'); const v = await myReplaysSvc.view(uid) as unknown as { saved: { raceId: string; public: boolean }[] }; if (!v.saved.some((x) => x.raceId === raceId && x.public)) throw new AppError('NOT_FOUND'); return { targetKey: raceId, data: { raceId } }; }
+      case 'replay': { const raceId = str('raceId'); const st = replayStartTick(t); const v = await myReplaysSvc.view(uid) as unknown as { saved: { raceId: string; public: boolean }[] }; if (!v.saved.some((x) => x.raceId === raceId && x.public)) throw new AppError('NOT_FOUND'); return replayLinkRow(raceId, st); } // R23 §72.4: the optional start tick
       case 'team': { const me = await teamsSvc.me(uid); if (!me.team) throw new AppError('NOT_FOUND'); return { targetKey: me.team.teamId, data: { teamId: me.team.teamId } }; }
     }
   },
@@ -479,7 +479,7 @@ const linkTargets: LinkTargets = {
       case 'friend': return { state: 'ok', target: { friendCode: d.friendCode, displayName: (await svc.linkParty(rec.ownerId)).displayName, self: viewer === rec.ownerId } };
       case 'invite': return { state: 'ok', target: { code: d.code } };
       case 'cup': return { state: 'ok', target: { code: d.code, preview: await cupsSvc.lookup(viewer, d.code!) } };
-      case 'replay': return viewer === rec.ownerId || (await svc.friendsState(viewer)).ids.includes(rec.ownerId) ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: d.raceId, replayTitle: null } } : { state: 'friends_only' };
+      case 'replay': return viewer === rec.ownerId || (await svc.friendsState(viewer)).ids.includes(rec.ownerId) ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: d.raceId, replayTitle: null, ...replayLinkExtra(d) } } : { state: 'friends_only' };
       case 'team': { const v = await teamsSvc.view(d.teamId!, viewer); return v.disbanded ? null : { state: 'ok', target: { teamId: v.teamId, teamName: v.name } }; }
     }
   },

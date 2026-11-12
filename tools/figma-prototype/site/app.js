@@ -959,6 +959,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     toast(k.ok ? (k.value.alreadySaved ? '保存済みです' : 'リプレイを保存しました') : k.code === 'REPLAY_LIMIT' ? '保存できるのはここまでです。不要なリプレイを削除してください' : k.message);
   }).classList.add('rp-keep-result');
   if (!first) Ghost('写真を撮る', 1286, 724, 274, 60, () => PhotoOpen('result', currentScreen)).dataset.action = 'photo-result'; // round 15
+  // round 23 (REQ-HL-011): the race's best moments, re-simulated from its own log (offline too)
+  if (!first) { const back = currentScreen; Ghost('見どころ', 996, 724, 274, 60, () => HighlightReel({ kind: 'result' }, back)).dataset.action = 'hl-result'; }
   EnToggle();
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -3417,6 +3419,11 @@ async function Demo(kind) {
   // round 17: two inquiries — one answered by the real ops reply (unread, an activity entry), one waiting (§48)
   if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
   // round 21 (REQ-CAL-019): a week of play with 28 races — events, tournaments, the weekly challenge and seasons are open
+  // round 23 (REQ-HL-019): a race kept in マイリプレイ and made public → its highlights (the link row enabled)
+  if (kind === 'highlights') {
+    await L.seedDemo(3, [2, 2, 2]); ftue = false; await refresh();
+    return HighlightsDemo();
+  }
   if (kind === 'calendar') { await L.seedDemo(7, [4, 4, 4, 4, 4, 4, 4]); ftue = false; await refresh(); calState.mode = 'month'; calState.weekStart = null; return Calendar(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
@@ -5949,7 +5956,7 @@ function ReplaySheet(x) {
     Txt(rpCourse(x.trackId), 310, y + 2, 302, 15, WHITE, s, { weight: 500, nowrap: true });
     if (x.moment) Txt(RP_MOMENT[x.moment], 48, y + 34, 564, 14, GOLD, s, { weight: 700, ls: '.12em' });
     if (!x.playable) Txt(rpUnplayable(x.reason), 48, y + 62, 564, 15, WARN, s, { weight: 700, lh: 1.5 }).classList.add('rp-unplayable');
-    const play = Cta('再生する', 48, y + 110, 564, () => { close(); ReplayPlayer(x.raceId, { title: rpTitle(x), typed: !!x.replayTitle }); }, s);
+    const play = Cta('再生する', 48, y + 110, 564, () => { close(); ReplayPlayer(x.raceId, { title: rpTitle(x), typed: !!x.replayTitle, isPublic: !!x.public }); }, s);
     play.classList.add('rp-play'); if (!x.playable) disable(play);
     Ghost('名前を変える', 48, y + 214, 270, 56, () => { close(); RenameSheet(x); }, s, 'small').classList.add('rp-rename');
     const fav = Ghost(x.favorite ? '★ お気に入り' : '☆ お気に入り', 342, y + 214, 270, 56, async () => {
@@ -5965,6 +5972,9 @@ function ReplaySheet(x) {
     pub.classList.add('rp-public'); if (x.public) pub.classList.add('on');
     Txt(RP_PUBLIC_NOTE, 48, y + 372, 564, 13, SOFT, s, { lh: 1.55 });
     TextLink('削除', 48, y + 440, 160, async () => { const r = await L.replays.remove(x.raceId); close(); toast(r.ok ? 'リプレイを削除しました' : r.message); MyReplays(); }, s, 'このリプレイを削除').classList.add('rp-delete');
+    // round 23 (REQ-HL-011): the replay's best moments; the link row needs it saved and public (§72.4)
+    const hl = TextLink('見どころ', 342, y + 440, 270, () => { close(); HighlightReel({ kind: 'replay', raceId: x.raceId, linkAllowed: !!x.public, title: rpTitle(x), typed: !!x.replayTitle }, MyReplays); }, s, '見どころを見る ›');
+    hl.classList.add('rp-highlights'); if (!x.playable) disable(hl);
   });
 }
 function rpUnplayable(reason) {
@@ -6080,6 +6090,8 @@ async function ReplayPlayer(raceId, o = {}) {
     if (!state.paused) ctl('pause', 1);
     PhotoOpen('myreplay', () => ReplayPlayer(raceId, { ...o, seekMs: at }));
   }, undefined, 'quiet').dataset.action = 'photo-myreplay';
+  // round 23 (REQ-HL-011): the best moments of this replay
+  Ghost('見どころ', 1030, 664, 260, 60, () => HighlightReel({ kind: 'replay', raceId, friend: !!o.friend, linkAllowed: !o.friend && !!o.isPublic, title: o.title, typed: o.typed }, () => ReplayPlayer(raceId, o)), undefined, 'quiet').dataset.action = 'hl-replay';
   Back(back, 'BACK', 40, 640);
   function paint() {
     pause.querySelector('span').textContent = state.paused ? '再生' : '一時停止';
@@ -6089,7 +6101,7 @@ async function ReplayPlayer(raceId, o = {}) {
     view.playerSlot = state.camera;
   }
   paint();
-  if (o.seekMs) { ctl('seek', o.seekMs); ctl('pause', 1); } // back from photo mode: the same moment, paused
+  if (o.seekMs) { ctl('seek', o.seekMs); if (!o.play) ctl('pause', 1); } // back from photo mode: the same moment, paused (a §72 link plays on)
   let last = performance.now();
   every(33, () => {
     const now = performance.now(), dt = now - last; last = now;
@@ -6119,6 +6131,141 @@ function RpShare(o = {}) {
       globalThis.__muchi && (globalThis.__muchi.lastKpi = 'replay_share');
       close(); toast('共有しました（アプリでは共有シートを開きます）');
     }, s, 'gold').classList.add('rp-share-go');
+  });
+}
+
+// ================================================================= round 23: レースの見どころ (REQ-HL-*, contracts/protocol.md §72)
+// The real Muchi.Game HighlightsModel in WASM: the engine's HighlightDetector picks up to three moments from the race's log (the same
+// answer as the verifier), HighlightReel plays them back to back on the replay player's camera, one caption per moment, the
+// commentary lines inside each window. Opened from the result screen (the race just run, offline too) and from マイリプレイ (the
+// sheet's 「見どころ」, the player's 「見どころ」). Share: the card (always) and a §63 replay link that opens at the top moment
+// (only an own public saved replay). ムチ一閃 tone: the 3D race behind, translucent navy panels, small letter-spaced cyan
+// labels, one skewed cyan CTA ». KPI rows are the C# model's own (HighlightsKpi), sent through the real ingest.
+const hlState = { src: null, info: null, back: null };
+const hlKpi = () => { const k = JSON.parse(engine.HighlightsKpi()); if (k.length) { L.kpi(k); globalThis.__muchi && (globalThis.__muchi.lastKpi = k[k.length - 1].name); } };
+/**
+ * src: { kind: 'result' } (the race just run) or { kind: 'replay', raceId, friend?, linkAllowed?, title?, typed? }.
+ * back: where 戻る returns (the result screen, the replay player or マイリプレイ).
+ */
+async function HighlightReel(src = { kind: 'result' }, back = null) {
+  hlState.src = src; hlState.back = back ?? hlState.back ?? (() => Home());
+  let info;
+  if (src.kind === 'result') info = JSON.parse(engine.HighlightsOpenResult(L.now(), reduced()));
+  else {
+    const d = src.friend ? await L.replays.friendData(src.raceId) : await L.replays.data(src.raceId);
+    if (!d.ok) { toast('このリプレイは見られません'); return hlState.back(); }
+    info = JSON.parse(engine.HighlightsOpenReplay(JSON.stringify(d.value), src.surface ?? (src.friend ? 'friend_replay' : 'my_replays'), !!src.linkAllowed, L.now(), reduced()));
+  }
+  hlState.info = info;
+  currentScreen = () => HighlightReel(src, hlState.back);
+  if (!info.available) {
+    Clear('highlights-unavailable'); SetArt('Art/race-result', false); Shade('dim');
+    const box = Dialog('Highlights unavailable', 820, 380);
+    Kicker('見どころ', 52, 48, box);
+    Txt(info.message, 52, 112, 716, 28, WHITE, box, { weight: 700, lh: 1.4 }).classList.add('hl-unavailable');
+    Txt('違うレースを流さないため、再計算の結果が一致しないレースは再生しません', 52, 196, 716, 15, SOFT, box, { lh: 1.6 });
+    Cta('もどる', 52, 270, 360, () => hlState.back(), box);
+    return;
+  }
+  await viewReady;
+  Clear('highlights'); cur.classList.add('race'); $canvas.hidden = false;
+  view.useRig = true; view.start(info, equippedPartner());
+  cur.dataset.transition = info.transition;
+  // header: what is playing (a typed replay title stays as typed)
+  const h = Glass('Highlights header', 36, 31, 760, 88, undefined, .82);
+  el('rule', 22, 18, 84, 3, h);
+  Txt('レースの見どころ', 22, 30, 300, 24, WHITE, h, { weight: 700, nowrap: true, ls: '.05em' });
+  const sub = Txt(src.kind === 'result' ? 'いまのレースから自動で選んだ場面' : (src.title ?? 'リプレイ'), 22, 60, 720, 14, MUTED, h, { nowrap: true });
+  if (src.typed) { sub.classList.add('keep-ja', 'typed'); sub.dataset.typed = '1'; }
+  EnToggle(1466, 31, 98, 88);
+  // the caption panel (one moment at a time)
+  const cp = Glass('Highlight caption', 36, 560, 980, 168, undefined, .86); cp.classList.add('hl-caption-panel');
+  const counter = Kicker('', 30, 22, cp, { size: 15, w: 600 }); counter.classList.add('hl-counter');
+  const caption = Txt('', 30, 84, 920, 32, WHITE, cp, { weight: 700, nowrap: true, ls: '.03em' }); caption.classList.add('hl-caption');
+  const subject = Txt('', 30, 128, 920, 18, GOLD, cp, { weight: 700, nowrap: true }); subject.classList.add('hl-subject', 'keep-ja');
+  const line = Txt('', 36, 500, 980, 18, WHITE, undefined, { weight: 500, cls: 'tshadow', nowrap: true }); line.classList.add('hl-line');
+  // progress and controls
+  const bar = Glass('Highlight controls', 36, 744, 1528, 120, undefined, .86); bar.classList.add('hl-controls');
+  const seek = el('bar hl-progress', 30, 54, 880, null, bar); const fill = document.createElement('i'); seek.appendChild(fill);
+  const marks = info.moments.map((m, i) => { const t = Txt(String(i + 1), 30 + Math.round(880 * info.moments.slice(0, i).reduce((a, x) => a + x.endMs - x.startMs, 0) / Math.max(1, info.totalMs)), 18, 40, 14, SOFT, bar, { cls: 'num', weight: 700 }); t.classList.add('hl-mark'); return t; });
+  Ghost('次へ', 958, 30, 220, 60, () => { engine.HighlightsControl('next'); }, bar, 'small').classList.add('hl-next');
+  Ghost('スキップ', 1198, 30, 220, 60, () => { engine.HighlightsControl('skip'); }, bar, 'small quiet').classList.add('hl-skip');
+  Back(() => hlState.back(), 'BACK', 40, 640);
+  let last = performance.now(), shownIndex = -2, ended = false;
+  every(33, () => {
+    if (ended) return;
+    const now = performance.now(), dt = now - last; last = now;
+    const f = JSON.parse(engine.HighlightsFrame(dt, L.now()));
+    if (shownIndex === -2) hlKpi(); // highlight_view: the model's row once the reel plays
+    if (f.done) { ended = true; return HighlightEnd(); }
+    view.playerSlot = f.camera;
+    view.draw(f);
+    if (f.index !== shownIndex) {
+      shownIndex = f.index;
+      counter.textContent = f.counter; caption.textContent = f.caption; subject.textContent = f.subject;
+      marks.forEach((m, i) => m.style.color = i === f.index ? CYAN : SOFT);
+      if (info.transition === 'wipe' && !reduced()) { const w = el('hl-wipe', 0, 0, 1600, 900); setTimeout(() => w.remove(), 420); } // Codex: the cut between moments
+      fitText(cp);
+    }
+    line.textContent = f.line;
+    fill.style.width = Math.round(f.progress / 10) + '%';
+    globalThis.__muchi && (globalThis.__muchi.highlight = { index: f.index, done: f.done, t: f.t, camera: f.camera, progress: f.progress, elapsedMs: f.elapsedMs, totalMs: info.totalMs, caption: f.caption, line: f.line, set: info.set, hash: info.hash, transition: info.transition });
+  });
+}
+/** Demo (the flows, without resetting the player): a demo race kept in マイリプレイ and made public → its reel. */
+async function HighlightsDemo() {
+  const raceId = await RpDemoRace(); await L.replays.save(raceId); await L.replays.update(raceId, { public: true });
+  return HighlightReel({ kind: 'replay', raceId, linkAllowed: true, title: 'マイリプレイ' }, MyReplays);
+}
+/** After the last moment (or スキップ): the three captions, share (the one CTA), watch again, back. */
+function HighlightEnd() {
+  const info = hlState.info;
+  currentScreen = HighlightEnd;
+  Clear('highlights-end'); SetArt('Art/race-result', false); Shade('left');
+  TopBar('レースの見どころ', `${info.moments.length}つの場面　·　あわせて${Math.round(info.totalMs / 1000)}秒`, { wallet: false });
+  const p = Glass('Highlights summary', 36, 134, 900, 676, undefined, .9); p.classList.add('hl-summary');
+  Kicker('選ばれた場面', 36, 30, p);
+  [...info.moments].sort((a, b) => a.index - b.index).forEach((m, i) => {
+    const c = Card('Highlight moment', 36, 100 + i * 132, 828, 116, p, m.rank === 1 ? 'var(--gold)' : 'var(--cyan)');
+    c.classList.add('hl-moment'); c.dataset.kind = m.kind; c.dataset.rank = String(m.rank);
+    Txt(String(i + 1), 24, 24, 50, 40, m.rank === 1 ? GOLD : CYAN, c, { weight: 700, cls: 'num' });
+    Txt(m.caption, 90, 22, 700, 24, WHITE, c, { weight: 700, nowrap: true });
+    Txt(m.subject, 90, 64, 520, 16, GOLD, c, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    if (m.rank === 1) Pills([['いちばんの場面', 'gold']], 620, 62, 200, c);
+  });
+  Txt('選び方は全員同じです。自分の馬が出る場面を少し優先します。レースの結果は変わりません', 36, 512, 828, 14, SOFT, p, { lh: 1.6 });
+  const g = Glass('Highlights actions', 980, 134, 584, 676, undefined, .86); g.classList.add('hl-actions');
+  Kicker('見どころ', 36, 30, g);
+  Cta('見どころを共有', 36, 110, 512, () => HlShareSheet(), g).classList.add('hl-share');
+  Ghost('もう一度見る', 36, 214, 512, 60, () => HighlightReel(hlState.src, hlState.back), g).classList.add('hl-again');
+  TextLink('もどる', 36, 300, 200, () => hlState.back(), g).classList.add('hl-back');
+  Back(() => hlState.back(), 'BACK', 40, 834);
+}
+/** 見どころを共有: the card (top caption, no names / ids) and the replay link at the top moment (own public saved replay only). */
+function HlShareSheet() {
+  const c = JSON.parse(engine.HighlightsShare('', true));
+  if (!c.ok) { toast('このレースは共有できません'); return; }
+  Sheet('見どころを共有', 'ムチ一閃　/　見どころ', (s, close, y) => {
+    s.classList.add('hl-share-sheet');
+    Txt(c.lines[0] ?? '', 48, y, 564, 26, GOLD, s, { weight: 700, lh: 1.35 }).classList.add('hl-card-caption');
+    Txt(`${c.horse}　${c.placeText}　${c.time}`, 48, y + 76, 564, 17, WHITE, s, { weight: 500, nowrap: true, cls: 'keep-ja' });
+    Txt(c.course, 48, y + 108, 564, 15, MUTED, s, { nowrap: true });
+    Txt('名前・IDは入りません（馬の名前だけ）', 48, y + 146, 564, 13, SOFT, s);
+    Cta('画像で共有', 48, y + 190, 564, () => {
+      const r = JSON.parse(engine.HighlightsShareCard('', L.now()));
+      hlKpi(); close(); toast(r.ok ? '共有しました（アプリでは共有シートを開きます）' : 'このレースは共有できません');
+    }, s, 'gold').classList.add('hl-share-card');
+    const link = Ghost('リンクで送る', 48, y + 296, 564, 60, async () => {
+      const made = await L.links.create('replay', { raceId: c.raceId, startTick: c.startTick });
+      if (!made.ok) { toast(made.code === 'NOT_FOUND' ? '保存して公開すると、リンクで送れます' : made.message); return; }
+      const r = JSON.parse(engine.HighlightsShareLink(JSON.stringify(made.value), L.now()));
+      hlKpi(); close();
+      globalThis.__muchi && (globalThis.__muchi.lastHighlightLink = made.value.url);
+      toast(r.ok ? 'リンクを共有しました（いちばんの場面から始まります）' : r.message);
+    }, s);
+    link.classList.add('hl-share-link');
+    if (c.linkNote) { disable(link); Txt(c.linkNote, 48, y + 368, 564, 14, MUTED, s, { lh: 1.55 }).classList.add('hl-link-note'); }
+    else Txt('リンクを開いたフレンドは、いちばんの場面から見られます', 48, y + 368, 564, 14, SOFT, s, { lh: 1.55 });
   });
 }
 
@@ -6926,7 +7073,7 @@ async function LinkConfirm(v) {
     invite: ['招待コードの入力へ', () => Invite()],
     cup: ['カップの画面へ', () => HostedCups()],
     team: ['支部の画面へ', () => TeamFeed()],
-    replay: ['リプレイの画面へ', () => MyReplays()],
+    replay: ['リプレイの画面へ', () => (t.startTick != null ? ReplayPlayer(t.raceId, { title: t.replayTitle ?? undefined, seekMs: t.startTick * 50, play: true }) : MyReplays())], // R23 §72.4: from the shared moment
   }[v.type];
   if (go) Cta(go[0], 36, 250, 460, go[1], p).classList.add('lk-confirm-go');
   Ghost('開かない', 520, 257, 220, 60, () => Links(), p, 'quiet').classList.add('lk-confirm-no');
@@ -8981,7 +9128,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

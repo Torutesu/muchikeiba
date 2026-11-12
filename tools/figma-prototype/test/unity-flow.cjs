@@ -1309,6 +1309,17 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(!(await page.locator('.screen.in [data-card]').innerText()).includes('local'), 'no player id on the card');
   await shot('share-card', 200);
   await click('戻る'); await waitScreen('result');
+  // round 23 (REQ-HL-008/011): 見どころ of the race just run — the reel on the 3D view (offline: from the device's own log)
+  await page.locator('.screen.in [data-action="hl-result"]').click(); await waitScreen('highlights', 30000);
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index === 0, null, { timeout: 15000 });
+  const hlR = await page.evaluate(() => globalThis.__muchi.highlight);
+  assert.ok(hlR.set.moments.length >= 1 && hlR.totalMs >= 15000 && hlR.totalMs <= 30000, 'highlights: 1–3 moments, 15–30 s: ' + JSON.stringify(hlR.set.moments.map((m) => m.kind)));
+  assert.ok((await page.locator('.screen.in .hl-caption').textContent()).length > 0, 'highlights: a caption');
+  await shot('highlights-result', 700);
+  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000);
+  await shot('highlights-end', 400);
+  assert.ok(await page.evaluate(() => globalThis.__muchi.logic.kpiLog().some((e) => e.name === 'highlight_view' && e.props.surface === 'result')), 'KPI: highlight_view from the result screen');
+  await page.locator('.screen.in .hl-back').click(); await waitScreen('result');
   // time attack ghost picker: friends first, the top list without friend ghosts, a run beside the friend's ghost
   await page.evaluate(() => globalThis.__muchi.show('TimeAttack')); await waitScreen('time-attack', 30000); await page.waitForTimeout(400);
   const picker = page.locator('.screen.in [data-name="Ghost picker"]');
@@ -2509,6 +2520,60 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .lk-same').innerText(), /前のレースと同じ条件/, 'the same conditions, a new race');
   assert.ok(!(await page.locator('.screen.in').innerText()).match(/今だけ|残りわずか|倍|お得/), 'no urgency wording');
   await shot('rematch-room', 300);
+
+  // ------------------------------------------------------------------ 7. round 23: レースの見どころ (REQ-HL-*)
+  // a race kept in マイリプレイ and made public: its reel (cuts, 次へ, スキップ), the end screen, the share sheet (the card,
+  // the link at the top moment), and the link opening the replay at that moment
+  const hlIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+  await page.evaluate(() => globalThis.__muchi.demo('highlights')); await waitScreen('highlights', 60000);
+  await page.waitForFunction(() => globalThis.__muchi.highlight && globalThis.__muchi.highlight.index === 0, null, { timeout: 15000 });
+  const hl0 = await page.evaluate(() => globalThis.__muchi.highlight);
+  assert.match(await page.locator('.screen.in .hl-counter').textContent(), new RegExp(`^見どころ 1 / ${hl0.set.moments.length}$`), 'highlights: the counter');
+  assert.equal(await page.locator('.screen.in .hl-mark').count(), hl0.set.moments.length, 'highlights: one mark per moment');
+  assert.equal(await page.locator('.screen.in .speed, .screen.in .rp-speed, .screen.in .rp-cam-next').count(), 0, 'highlights: 1×, no camera switching');
+  await shot('highlights-reel', 600);
+  if (hl0.set.moments.length > 1) {
+    await page.locator('.screen.in .hl-next').click();
+    await page.waitForFunction(() => globalThis.__muchi.highlight.index === 1, null, { timeout: 5000 });
+    const hl1 = await page.evaluate(() => globalThis.__muchi.highlight);
+    assert.equal(hl1.camera, hl1.set.moments[1].slot, 'highlights: 次へ cuts to the next horse');
+    await shot('highlights-next', 500);
+  }
+  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000);
+  assert.equal(await page.locator('.screen.in .hl-moment').count(), hl0.set.moments.length, 'end: every moment listed');
+  assert.equal(await page.locator('.screen.in .hl-moment[data-rank="1"]').count(), 1, 'end: one best moment');
+  const endText = await page.locator('.screen.in').innerText();
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ|local/.test(endText), 'end: no urgency, betting wording or player id');
+  await shot('highlights-summary', 400);
+  await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
+  assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 0, 'share: a public saved replay can be sent as a link');
+  await shot('highlights-share', 400);
+  await page.locator('.screen.in .hl-share-card').click(); await page.waitForTimeout(500);
+  await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
+  await page.locator('.screen.in .hl-share-link').click(); await page.waitForFunction(() => !!globalThis.__muchi.lastHighlightLink, null, { timeout: 10000 });
+  const hlKpi = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().filter((e) => e.name.startsWith('highlight_')));
+  assert.deepEqual(hlKpi.filter((e) => e.name === 'highlight_share').map((e) => e.props.via), ['card', 'link'], 'KPI: highlight_share card, then link');
+  assert.ok(!JSON.stringify(hlKpi).match(/raceId|startTick|local/), 'KPI: no race, tick or player');
+  const hlUrl = await page.evaluate(() => globalThis.__muchi.lastHighlightLink);
+  const resolved = await page.evaluate(async (u) => (await globalThis.__muchi.logic.links.resolve(u)).value, hlUrl);
+  assert.equal(resolved.target.startTick, hl0.set.moments.find((m) => m.rank === 1).startTick, 'the link carries the top moment');
+  await page.evaluate((v) => globalThis.__muchi.show('LinkConfirm', v), resolved); await waitScreen('link-confirm'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .lk-confirm-go').click(); await waitScreen('replay-player', 30000);
+  await page.waitForFunction(() => globalThis.__muchi.replay && globalThis.__muchi.replay.t > 0, null, { timeout: 10000 });
+  const rpAt = await page.evaluate(() => globalThis.__muchi.replay);
+  assert.ok(rpAt.t >= resolved.target.startTick * 50 && !rpAt.paused, 'the replay plays from the shared moment: ' + JSON.stringify(rpAt));
+  await shot('highlights-link-replay', 600);
+  // a private replay: the link row is closed with the note
+  await page.evaluate(() => globalThis.__muchi.show('MyReplays')); await waitScreen('my-replays'); await hlIn('.rp-card');
+  await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
+  await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await hlIn('.rp-card[data-public="false"]');
+  await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
+  await page.locator('.screen.in .rp-sheet .rp-highlights').click(); await waitScreen('highlights', 30000);
+  await page.locator('.screen.in .hl-skip').click(); await waitScreen('highlights-end', 10000);
+  await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
+  assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 1, 'a private replay: no link');
+  assert.equal(await page.locator('.screen.in .hl-link-note').textContent(), '保存して公開すると、リンクで送れます');
+  await shot('highlights-share-private', 400);
 
   // a reload on a named player goes straight home
   await demo('day3');

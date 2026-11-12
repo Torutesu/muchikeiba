@@ -4,14 +4,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { handle, makeFriendsService, REPLAY_LINK_MAX_START_TICK, type AppContext, type PlayerInvoker } from '../src/http/app.js';
+import { handle, makeFriendsService, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 import { MemoryDirectory } from '../src/domain/friends.js';
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { FakeStoreVerifier } from '../src/domain/purchase.js';
 import { seededRng } from '../src/domain/rng.js';
 import { AppError } from '../src/domain/errors.js';
 import { DEFAULT_RULESET } from '../src/domain/ruleset.js';
-import { linksConfig } from '../src/domain/deepLinks.js';
+import { linksConfig, REPLAY_LINK_MAX_START_TICK } from '../src/domain/deepLinks.js';
 import { LinkService, MemoryLinkDirectory } from '../src/domain/linkService.js';
 import { maintenanceOf, endpointGroup } from '../src/domain/maintenance.js';
 import { dayRule } from '../src/domain/time.js';
@@ -144,7 +144,7 @@ describe('KPI (REQ-HL-015), storage (REQ-HL-016), gate (REQ-HL-017)', () => {
   });
 
   it('nothing is stored: no new PlayerState key, the vectors file is the verifier\'s', () => {
-    const s = newPlayer('p1', 'ハヤテ', NOW) as unknown as Record<string, unknown>;
+    const s = newPlayer('p1', NOW, '2026-11') as unknown as Record<string, unknown>;
     expect(Object.keys(s).filter((k) => /highlight/i.test(k))).toEqual([]);
     for (const k of Object.keys(s)) expect(classifyKey(k), k).toBeTruthy(); // every key still classified (§51), none added here
     const vec = JSON.parse(readFileSync(join(root, 'contracts', 'highlights.vectors.json'), 'utf8'));
@@ -174,7 +174,7 @@ describe('help and tip (REQ-HL-018)', () => {
     expect(en.title).toBe('Race highlights');
     expect(en.body).not.toMatch(/[ぁ-んァ-ヶ一-龯]/);
     for (const t of [ja.body, en.body]) expect(t).not.toMatch(/倍|今だけ|残りわずか|お得|通常価格|limited time|hurry/i);
-    const tips = tipsIndex(m, newPlayer('p1', 'ハヤテ', NOW), NOW, 'ja') as unknown as { tips: { id: string; unlocked: boolean; help: { articleId: string } | null }[] };
+    const tips = tipsIndex(m, newPlayer('p1', NOW, '2026-11'), NOW, 'ja') as unknown as { tips: { id: string; unlocked: boolean; help: { articleId: string } | null }[] };
     const tip = tips.tips.find((t) => t.id === 'highlights_tip')!;
     expect(tip.unlocked).toBe(true);
     expect(tip.help?.articleId).toBe('race_highlights');

@@ -758,3 +758,8 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
   background: rgba(var(--navy-rgb), .8); box-shadow: inset 0 0 0 2px rgba(var(--cyan-rgb), .7); transform: skewX(-10deg); white-space: nowrap; }
 .cal-mark.on { color: var(--navy); background: var(--cyan); box-shadow: none; }
 .cal-go { font-size: 26px; color: var(--cyan); line-height: 1; }
+
+/* round 23: レースの見どころ (REQ-HL-*) — the cut between moments: a short navy sweep (no flash, none with reduce motion) */
+.el.hl-wipe { pointer-events: none; background: linear-gradient(100deg, transparent 0%, rgba(8, 26, 54, .72) 40%, rgba(8, 26, 54, .72) 60%, transparent 100%); animation: hl-wipe .42s ease-out both; z-index: 30; }
+@keyframes hl-wipe { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+html[data-reduce-motion="on"] .el.hl-wipe { display: none; }

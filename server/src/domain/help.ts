@@ -60,6 +60,8 @@ export const HELP_SCREENS = [
   'calendar',
   // Round 22: 使いすぎ・遊びすぎの防止 (the own spending limit and the play-time reminder, §67)
   'self_limits',
+  // Round 22 (§66): 騎手の道, the career map
+  'career',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -76,7 +78,9 @@ export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_
   // Round 21 (§65): the 予定表 (event calendar)
   'calendar',
   // Round 22 (§67): the self-limits screen, the refused purchase and the play-time sheet
-  'self_limits'] as const;
+  'self_limits',
+  // Round 22 (§66): the 騎手の道 map's ? link
+  'career'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -142,6 +146,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
   showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
   calendar: { ja: '予定表を開く', en: 'Open the calendar' },
+  career: { ja: '騎手の道を開く', en: "Open Jockey's Road" },
 };
 /** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
 export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }

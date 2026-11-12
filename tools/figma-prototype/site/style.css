@@ -767,3 +767,17 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
 .pp-pip.skip { background: transparent; border-style: dashed; border-color: var(--text-4); opacity: .6; }
 .pp-sheet.pass .rule { background: var(--gold); }
 html[data-reduce-motion="on"] .pp-pip.top { box-shadow: none; }
+
+/* round 22: 騎手の道 (§66) — the chapters as a photoreal vertical road; stars as shapes and text, nothing blinks */
+.el.cr-path { background: linear-gradient(to bottom, var(--gold), var(--cyan)); border-radius: 3px; opacity: .55; }
+.card.cr-band { overflow: hidden; }
+.card.cr-band .img.cr-art { opacity: .92; mask-image: linear-gradient(to right, #000 70%, transparent); -webkit-mask-image: linear-gradient(to right, #000 70%, transparent); }
+.card.cr-band.cr-locked .img.cr-art { filter: grayscale(1) brightness(.55); }
+.card.cr-band.cr-locked { background: rgba(var(--navy-rgb), .72); }
+.btn.cr-node { border-radius: 24px; }
+.btn.cr-node span { letter-spacing: .12em; color: var(--gold); }
+.btn.cr-node.locked span { color: var(--text-3); }
+.btn.cr-node.sel .bg { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 22px rgba(0, 210, 237, .3); }
+.btn.cr-node.next .bg { box-shadow: inset 0 0 0 2px var(--gold); }
+.label.cr-story { border-left: 3px solid var(--gold); padding-left: 14px; box-sizing: border-box; }
+.label.cr-obj, .label.cr-pre-obj { letter-spacing: .03em; }

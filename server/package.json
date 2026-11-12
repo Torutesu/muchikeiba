@@ -15,6 +15,7 @@
     "gen:help-vectors": "tsx scripts/gen-help-vectors.ts",
     "gen:client-error-vectors": "tsx scripts/gen-client-error-vectors.ts",
     "gen:practice-sample": "tsx scripts/gen-practice-sample.ts",
+    "gen:career-sample": "tsx scripts/gen-career-sample.ts",
     "lint:deploy": "tsx scripts/lint-deploy.ts",
     "economy": "tsx scripts/economy.ts",
     "smoke": "tsx scripts/smoke.ts",

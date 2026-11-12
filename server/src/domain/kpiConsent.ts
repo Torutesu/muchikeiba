@@ -59,6 +59,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'review_prompt_eligible', 'review_prompt_shown', 'review_soft_answer',
   // Round 22: §68 昇級戦と降級の猶予 (server rows of the ranked promotion series; nothing is granted)
   'promo_series_start', 'promo_series_end', 'demotion_shield_used',
+  // Round 22: §66 騎手の道 (server rows of single-player progress; engagement only)
+  'career_start', 'career_clear', 'career_star',
   // client (POST /v1/analytics/events, after clientToKpi)
   'session_start', 'session_end', 'tutorial_step', 'screen_view', 'commentary_pack_sample', 'client_race_start', 'purchase_flow',
   'push_open', 'push_permission', 'feature_unlock', 'offer_view', 'offer_click', 'race_quit', 'account_link', 'share', 'invite_share',

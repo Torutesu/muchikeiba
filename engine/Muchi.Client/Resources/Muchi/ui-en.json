@@ -1496,6 +1496,27 @@
   "ポイントは{n}ptに戻りました。あと{m}ptでもう一度挑めます": "Your points went back to {n}. {m} more points and you can try again",
   "昇級戦 開始": "Promotion series begins",
   "昇級ラインに到達。ここからが本番だ": "Promotion line reached. Now it counts",
-  "昇級戦のルール": "Promotion series rules"
+  "昇級戦のルール": "Promotion series rules",
+  "_career": "---- 騎手の道 (round 22, REQ-CAREER-*, CareerModel)",
+  "騎手の道": "Jockey's Road",
+  "星 {a}/{b}": "Stars {a}/{b}",
+  "クリア {a}/{b}": "Cleared {a}/{b}",
+  "第{n}章": "Chapter {n}",
+  "第{n}戦": "Race {n}",
+  "能力の上限 {v}": "Stat cap {v}",
+  "星{n}　{text}": "Star {n}  {text}",
+  "相手は{style}": "Rivals: {style}",
+  "前のレースをクリアすると開きます": "Clear the race before this one to open it",
+  "このレースはありません": "This race does not exist",
+  "レースを選んでください": "Choose a race",
+  "騎手の道はオンラインで遊べます。練習レースはオフラインでも遊べます": "Jockey's Road needs a connection. Practice races work offline.",
+  "クリア": "Cleared",
+  "あと一歩": "So close",
+  "次のレース「{title}」が開きました": "Next race open: {title}",
+  "第{n}章 クリア": "Chapter {n} cleared",
+  "何度でも無料でやり直せます": "Retry for free as often as you like",
+  "どの馬も章ごとの能力の上限にそろえ、固有スキルは使いません。相棒でも上限まで届きます。報酬は初クリアと星ごとに一度だけ。何度でも無料でやり直せます。": "Every horse races at the chapter's stat cap, with no unique skills. Your partner reaches the cap too. Rewards come once for the first clear and once per star. Retry for free as often as you like.",
+  "ランク戦のレーティング・クラス・ランキング・ミッションには数えません。": "Career races do not count toward ranked rating, class, rankings or missions.",
+  "今日はここまで。4:00からまた走れます。": "That's all for today. You can race again from 4:00."
  }
 }

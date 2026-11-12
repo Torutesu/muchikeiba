@@ -416,6 +416,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   calendar: x('play'),
   // Round 22 (§67): the player's own spending limit, a pending raise, the play-time reminder settings and their history
   selfLimits: x('settings'),
+  // Round 22 (§66): 騎手の道 progress (stars, first clears, rewards paid) and recent runs — the player's own play record
+  career: x('play'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -627,6 +629,9 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),
       timeAttack: s.timeAttack ? { seasonBest: clone(s.timeAttack.seasonBest), allTimeBest: clone(s.timeAttack.allTimeBest), milestones: [...s.timeAttack.milestones], daily: clone(s.timeAttack.daily),
         runs: s.timeAttack.sessions.map((x) => ({ trackId: x.trackId, horseId: x.horseId, seasonId: x.seasonId, issuedAt: x.issuedAt, status: x.status, result: clone(x.result) })) } : null,
+      // §66 (Round 22): 騎手の道 — per-race progress and the recent runs (results only; the issued configs are not personal data)
+      career: s.career ? { races: clone(s.career.races), daily: clone(s.career.daily),
+        runs: s.career.sessions.map((x) => ({ raceId: x.raceId, chapterId: x.chapterId, horseId: x.horseId, issuedAt: x.issuedAt, status: x.status, result: clone(x.result) })) } : null,
       weeklyChallenge: s.weeklyChallenge ? { weeks: clone(s.weeklyChallenge.weeks), badges: clone(s.weeklyChallenge.badges), daily: clone(s.weeklyChallenge.daily),
         runs: s.weeklyChallenge.sessions.map((x) => ({ weekId: x.weekId, challengeId: x.challengeId, horseId: x.horseId, issuedAt: x.issuedAt, status: x.status, result: clone(x.result) })) } : null,
       events: clone(s.events) ?? {}, tournaments: clone(s.tournaments) ?? {},

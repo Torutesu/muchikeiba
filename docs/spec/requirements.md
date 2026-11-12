@@ -1424,6 +1424,33 @@
 - REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。
 
+## 66. 騎手の道（single-player career、TS＋C#、`src/domain/career.ts`・`src/race/career.ts`・`server/master/career.json`・`Muchi.Client/Career.cs`・`Muchi.Game.CareerModel`、`contracts/protocol.md` §66、balance-targets 4.20・E20）
+
+- REQ-CAREER-001 目的：マッチングを待たずに遊べる、章立てのひとりモード。FTUE の後で深さ（ムチ・手綱・重い馬場・ナイター・相手の脚質・頭数）を順に教える。
+- REQ-CAREER-002 マスター `server/master/career.json`（章 1〜10、1章 3〜5 戦。コース・馬場・ナイター・頭数・CPU の段・能力・脚質、前後の物語、クリアの目標、追加の目標 0〜2、報酬）。起動時に `careerProblems` で検査し、違えば起動しない。
+- REQ-CAREER-003 `GET /v1/career`：章・レース・物語・目標の1行・報酬・自分の進み（開いた・クリア・星・挑戦回数・最高の着順とタイム・払った報酬）・次のレース・決まり（スキルなし・能力そろえ・ランク戦・ランキング・ミッションに数えない・スタミナなし・有料のコンティニュー／スキップなし・報酬は一度）。
+- REQ-CAREER-004 開始 `POST /v1/career/races/:raceId/start`（`Idempotency-Key` 必須）：サーバーが設定を決める（`mode: challenge`、`raceId` `car_…`、CPU の補充 REQ-RACE-060〜063、固有スキルなし、その日の調子なし）。同じ鍵の再送は同じセッション。
+- REQ-CAREER-005 進み方：1つ前のレースをクリアすると次が開く（章をまたいでも同じ）。一度クリアしたレースは開いたまま。開いていないレースは `409 CAREER_LOCKED`。
+- REQ-CAREER-006 公平性：全出走馬を章の `statCap` にそろえる（ランク戦と同じ正規化）。`statCap` は相棒の能力合計以下（検査）なので、無料の相棒も買った馬も同じ上限で走る。課金で能力・回数・判定は変わらない。
+- REQ-CAREER-007 送信 `POST /v1/career/submit`：入力だけを送り、サーバーが発行した設定で C# 検証サーバーが計算し直す（§31・§8.1 と同じ道）。ハッシュが違えば `422 CAREER_RESULT_MISMATCH`、検証サーバーが届かなければ `503`（同じ走りを送り直せる）。
+- REQ-CAREER-008 目標：星1 = クリア（必ず着順）、星2・星3 = 追加の目標（着順・ムチの回数・タイム）で同じ走りでクリアもしたときだけ。判定は検証の結果と送られた入力から決まる（§31.7 `evaluateChallenge`、C# `ChallengeEvaluator` と同じ）。目標と報酬は開始の時の写し。
+- REQ-CAREER-009 冪等：同じセッション・同じハッシュの再送は保存した結果を返す。報酬はレースごとの印（`clear`・`star2`・`star3`）で一度ずつ（二重送信・再送・別セッションの再クリア・並んだ送信で2回払わない）。削除の実行中は `DELETION_PENDING`、削除済み（墓標）は `404` で状態を作り直さない。
+- REQ-CAREER-010 文言：題・副題・物語は日本語と英語を並べて持つ（長さの上限、英語に日本語なし）。ムチ一閃の語り口。ショップの言葉・急かし・共通の賭けの言葉（`bettingWords.ts`）を使わない（検査）。
+- REQ-CAREER-011 報酬（E20）：初クリアと星ごとに一度だけ。無償コイン・配合素材だけ（有償コイン・券・ランダムなもの・調教のりんごなし、コンプの報酬なし）。1回 ≤ 無償コイン100・¥200、アイテム 2個まで。一生分の上限 無償コイン 300・配合素材 60（コードの上限 `CAREER_HARD_LIMITS`、起動時に検査）。経済シミュレーションで E1〜E19 が範囲内（4.20）。
+- REQ-CAREER-012 数えないもの：レーティング・クラスの点・シーズンpt・ランキング・戦績・殿堂・振り返り・ライバル・共同目標・交換所・デイリーミッション・パスの XP・図鑑・馬の目標・絆・実績（`applyRace` を通らない）。マイリプレイには保存しない。
+- REQ-CAREER-013 KPI（サーバー）：`career_start`・`career_clear`・`career_star`。§58 の分類は `optional`（`kpiConsent.ts`）。
+- REQ-CAREER-014 メンテナンス：`/v1/career*` はグループ `time_attack`（§46.2）。送信は `EXEMPT_ROUTES`（走り終えた走りは確定させる）。
+- REQ-CAREER-015 個人データ：状態のキー `career` は §51 の `play`。開示に進み・星・払った印・最近の走りの結果を出す。アカウント削除で消える。マイグレーションなし。
+- REQ-CAREER-016 ヘルプ・ヒント：ヘルプの記事 `career_mode`（画面・文脈 `career`）、ヒントのカード `career_stars`。アクティビティ（§40）には入れない（その場で結果を見るため）。割り込むシート・カードは出さない（§58.11）。
+- REQ-CAREER-017 クライアント SDK：`ApiClient.GetCareerAsync`・`StartCareerRaceAsync`・`SubmitCareerRaceAsync`、モデル（`CareerView` など）、`CareerRun`（星ごとの端末の判定）、`CareerRun.IsCareer`、エラーコード5つ。
+- REQ-CAREER-018 Unity ゲーム層 `CareerModel`：地図・詳細・開始（鍵の再送）・HUD の目標・送信（一時的な失敗は送り直し）・結果（星・新しい星・報酬・開いたレース・物語の後半）。描画は `docs/handoff-codex-round22-career.md`。
+- REQ-CAREER-019 端末の判定と同じ：出荷の全レースの設定で、端末（`CareerRun`）の判定と検証サーバーの出力からの判定が一致し、ハッシュも一致する（`engine/Muchi.Engine.Tests/CareerTests.cs`、設定は `contracts/career-configs.sample.json`）。章1のクリアは素直な乗り方で届く。
+- REQ-CAREER-020 入口：レースの画面（ロビー）の「騎手の道」（FTUE の後）。その他の一覧には足さない。ホームの案内（§45）にしない。
+- REQ-CAREER-021 プロトタイプ：地図（章を写真の縦の道で）・レースの詳細（物語・目標・報酬）・出走前・レース（HUD の目標）・結果（星）。ムチ一閃の見た目、日本語・英語、最大の文字ではみ出さない。e2e・en-flow・a11y-flow。
+- REQ-CAREER-022 アクセシビリティ（§41）：星は形と文字（「星 2/3」）でも示し、色だけに頼らない。文字の大きさに従う。動きを減らす設定では星の演出を止める。
+- REQ-CAREER-023 オフライン：地図は最後に取れた写しを出せるが、開始・送信はオンラインだけ（「騎手の道はオンラインで遊べます。練習レースはオフラインでも遊べます」）。
+- REQ-CAREER-024 停止：`config.enabled: false` で `GET` は `{ enabled: false }`、開始・送信は `404`。
+
 ## 67. 使いすぎ・遊びすぎの防止（自分で決める上限、TS＋C#、`src/domain/selfLimits.ts`・`Muchi.Client/SelfLimits.cs`・`Muchi.Game.SelfLimitsModel`、`contracts/protocol.md` §67、docs/planning/03「自分で決める上限」）
 
 - REQ-LIMIT-001 自分で決める月の購入上限：設定の選択肢（`spendingChoicesYen`）・自分で入力（`customStepYen` 刻み、`customMinYen`〜`customMaxYen`）・上限なし。年齢帯の上限（REQ-PUR-002）より高い額は決められない（400）。年齢未登録でも決められる。

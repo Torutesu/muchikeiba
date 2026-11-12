@@ -147,6 +147,14 @@ namespace Muchi.Client
         LinkLimit,
         /// <summary>REQ-LIMIT-005: 409 — over the player's own monthly limit; see <see cref="SelfLimitExceededException"/> (open the setting).</summary>
         SelfLimitExceeded,
+        /// <summary>REQ-CAREER-005: 409 — the race before this one is not cleared yet.</summary>
+        CareerLocked,
+        /// <summary>REQ-CAREER-004: 429 — the hidden anti-abuse ceiling of career starts for the game day.</summary>
+        CareerLimitReached,
+        CareerSessionExpired,
+        CareerSessionUsed,
+        /// <summary>REQ-CAREER-007: 422 — the server's re-simulation differs from the device's run.</summary>
+        CareerResultMismatch,
     }
 
     public static class ApiErrorCodes
@@ -270,6 +278,11 @@ namespace Muchi.Client
             ["SESSION_REPLACED"] = ApiErrorCode.SessionReplaced,
             ["LINK_LIMIT"] = ApiErrorCode.LinkLimit,
             ["SELF_LIMIT_EXCEEDED"] = ApiErrorCode.SelfLimitExceeded,
+            ["CAREER_LOCKED"] = ApiErrorCode.CareerLocked,
+            ["CAREER_LIMIT_REACHED"] = ApiErrorCode.CareerLimitReached,
+            ["CAREER_SESSION_EXPIRED"] = ApiErrorCode.CareerSessionExpired,
+            ["CAREER_SESSION_USED"] = ApiErrorCode.CareerSessionUsed,
+            ["CAREER_RESULT_MISMATCH"] = ApiErrorCode.CareerResultMismatch,
         };
 
         public static IReadOnlyCollection<string> WireCodes => ByWire.Keys;

@@ -366,6 +366,32 @@ module.exports = async function enFlow(browser, base, out, errors) {
     await page.evaluate(() => localStorage.removeItem('muchi.roster.view'));
   }
 
+  // round 22: 騎手の道 in English (REQ-CAREER-021): the map, the pre-race, a race, the verified result — story and titles in
+  // the master's own English, horse names as typed
+  {
+    const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    await show('Career'); await waitScreen('career'); await waitIn('.cr-band');
+    await shot('career-map', 500);
+    assert.match(await page.locator('.screen.in').innerText(), /Jockey's Road/, 'career: the title in English');
+    assert.match(await page.locator('.screen.in').innerText(), /The First Strike/, 'career: the chapter title from the master English');
+    await page.locator('.screen.in .cr-go').click(); await waitScreen('career-prerace'); await waitIn('.cr-prerace');
+    await shot('career-prerace', 400);
+    await page.locator('.screen.in .cr-gate').click(); await waitScreen('race', 20000);
+    for (let i = 0, kicked = false, w = 0, last = 0; i < 6000; i++) {
+      const f = await page.evaluate(() => globalThis.__muchi.state().lastFrame);
+      if (!f) { await page.waitForTimeout(50); continue; }
+      if (f.done || (await page.evaluate(() => globalThis.__muchi.screen)) !== 'race') break;
+      if (!kicked && f.gateOpen && !f.departed) { await page.locator('.screen.in .btn.whip').click({ force: true }); kicked = true; }
+      if (f.departed && w < 3 && f.remainingM <= 400 && f.whips > 0 && Date.now() - last > 1400) { await page.locator('.screen.in .btn.whip').click({ force: true }); w++; last = Date.now(); }
+      if (f.departed && f.remainingM < 700 && !globalThis.__crShotEn) { globalThis.__crShotEn = 1; await shot('career-race', 0); }
+      await page.waitForTimeout(40);
+    }
+    await waitScreen('career-result', 60000); await waitIn('.cr-verdict');
+    await shot('career-result', 600);
+    assert.match(await page.locator('.screen.in .cr-verdict').innerText(), /^(Cleared|So close)$/, 'career: the verdict in English');
+    assert.match(await page.locator('.screen.in .cr-stars-text').innerText(), /^Stars \d\/3$/, 'career: the stars in English');
+  }
+
   // round 18: 練習レース in English (REQ-PRAC-018): the setup (a lit course at night, strengths, options), a short race on the
   // device, the result lines (debrief, advice, no reward) — horse names as typed
   {

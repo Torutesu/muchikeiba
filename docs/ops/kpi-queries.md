@@ -1534,6 +1534,33 @@ GROUP BY kind ORDER BY opens DESC
 
 - `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。
 
+## 騎手の道：挑戦・クリア・星（REQ-CAREER-013、Round 22、contracts/protocol.md §66.8）
+列（どれもサーバーのイベント、§58 の分類は `optional`）：`career_start` `blob8` = レース id、`blob9` = 章 id、`double5` = そのレースの挑戦回数。`career_clear` `blob8` = レース id、`blob9` = 章 id、`double4` = 着順、`double6` = タイム（ms）、`double8` = 1 で初クリア、`double5` = そのレースの星の数、`double9` = 1 でこの初クリアで章が終わった、`double3` = 払った無償コイン。`career_star` `blob8` = レース id、`blob9` = 章 id、`double9` = 星の番号（1〜3）、`double5` = 全体の星の数。入力・tick・seed は送らない。
+
+**レースごとの詰まり**（どこでやめるか）：挑戦した人・初クリアした人・1人あたりの挑戦回数。初クリアの率が低く挑戦回数が多いレースは、CPU の段・能力（`cpuStatPermille`）・クリアの着順を見直す（`server/master/career.json`、balance-targets 4.20）。
+
+```sql
+SELECT blob9 AS chapter, blob8 AS race,
+  count(DISTINCT if(blob1 = 'career_start', blob2, NULL)) AS players,
+  count(DISTINCT if(blob1 = 'career_clear' AND double8 = 1, blob2, NULL)) AS cleared_players,
+  cleared_players / players AS clear_rate,
+  countIf(blob1 = 'career_start') / players AS tries_per_player
+FROM muchi_kpi
+WHERE blob1 IN ('career_start', 'career_clear') AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY chapter, race ORDER BY chapter, race
+```
+
+**星の集め方**：星2・星3（`career_star` の `double9` = 2・3）を取った人の割合。星3がほとんど取れないレースは目標（ムチの回数・着順）がきつすぎる。
+
+```sql
+SELECT blob8 AS race, double9 AS star, count(DISTINCT blob2) AS players
+FROM muchi_kpi
+WHERE blob1 = 'career_star' AND timestamp > NOW() - INTERVAL '28' DAY
+GROUP BY race, star ORDER BY race, star
+```
+
+**公平性の監視**：課金者（`blob7`）と無課金で初クリアまでの挑戦回数が大きく違うなら、章の上限（`statCap`）と相棒の能力合計の前提（§66.1）を調べる。報酬は一度ずつなので、`double3`（無償コイン）の合計は表の一生分（E20）を超えない。
+
 ## 使いすぎ・遊びすぎの防止：自分の上限・遊ぶ時間のお知らせ（REQ-LIMIT-016、Round 22、contracts/protocol.md §67）
 列：`self_limit_set`（サーバー、**essential**＝分析をオフにしても書く。本人が決めた支払いの上限の記録）`blob8` = 変更（`set`＝すぐ効いた変更・`raise_requested`・`remove_requested`・`raise_cancelled`）、`double1` = 新しい額（上限なしは 0）、`double9` = 前の額（無しは 0）。`self_limit_block`（サーバー、optional）`blob8` = 商品、`double1` = 価格（購入の確認が自分の上限で断られた）。`playtime_setting_change`（サーバー、optional）`blob8` = 変えた項目（`session`・`daily`・`quiet_after`、複数は `,`）、`blob9` = `on`／`off`（変更後にどれか有効か）。`playtime_reminder_shown`（クライアント、optional）`blob8` = 理由（`quiet_after,daily,session` のシートの順）、`blob9` = 答え（`continue`／`stop`／`settings`）、`double9` = セッションの分（5分に丸め）、`double5` = その日の分（5分に丸め）。正確な遊んだ時間・時刻は送らない。
 

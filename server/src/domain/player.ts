@@ -230,6 +230,8 @@ export interface PlayerState {
   activity?: import('./activity.js').ActivityState;
   /** REQ-WCH-*: weekly challenge sessions, this and last week's progress, earned badges (weeklyChallenge.ts wchState). */
   weeklyChallenge?: import('./weeklyChallenge.js').WeeklyChallengeState;
+  /** REQ-CAREER-*: 騎手の道 — per-race progress (stars, first clear, rewards paid once), recent sessions, the anti-abuse day count (career.ts careerState). */
+  career?: import('./career.js').CareerState;
   /** REQ-HOF-*: 殿堂 — per-horse careers, retirement ceremonies, permanent plaques, visibility (hallOfFame.ts ensureHall). */
   hall?: import('./hallOfFame.js').HallState;
   /** REQ-MYRP-*: マイリプレイ — recent races / best moments and the saved list (myReplays.ts ensureMyReplays). */

@@ -706,6 +706,22 @@ export const MuchiLogic = {
       return rec;
     });
   },
+  // round 22 (REQ-CAREER-*, §66): 騎手の道 on the real service — the map, a keyed start (the issued config with the CPU field at
+  // the chapter cap), and the submit: the "server" re-simulates its own replay log in the WASM verifier and judges the stars
+  career: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.careerView(ID, lang)),
+  careerStart: (raceId: string, horseId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.careerStart(ID, raceId, horseId, key(), undefined, lang)),
+  async careerSubmit(sessionId: string, inputs: number[][], resultHash: string, verify: (logJson: string) => string) {
+    return wrap(async () => {
+      const prep = await svc.careerPrepare(ID, sessionId, inputs, resultHash, undefined);
+      if (prep.kind === 'done') return prep.result;
+      let out;
+      try { out = JSON.parse(verify(JSON.stringify(prep.log))); }
+      catch (e) { await svc.careerAbort(ID, sessionId); throw new AppError('VERIFIER_UNAVAILABLE', String((e as Error)?.message ?? e)); }
+      const rec = await svc.careerRecord(ID, sessionId, out, resultHash);
+      if ('rejected' in rec) throw new AppError('CAREER_RESULT_MISMATCH', 'the server re-simulation does not match the submitted run');
+      return rec;
+    });
+  },
   /** The stats the horse races with (base + awakening + growth) and after the class normalisation (ranked). */
   trainingRaceStats: (horseId: string) => {
     const s = repo.get(ID);

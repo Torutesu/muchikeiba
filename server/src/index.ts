@@ -52,6 +52,7 @@ import { silksEditorProblems } from './domain/silksEditor.js';
 import { photoProblems } from './domain/photoMode.js';
 import { helpProblems } from './domain/help.js';
 import { practiceProblems } from './domain/practice.js';
+import { careerProblems } from './domain/career.js';
 import { tipsProblems } from './domain/tips.js';
 import { showcaseProblems } from './domain/showcase.js';
 import { releaseNotesProblems } from './domain/releaseNotes.js';
@@ -80,6 +81,7 @@ import { LOCALES } from './i18n/locale.js';
 import { fcmFromEnv } from './push/fcm.js';
 import { TimeAttackService } from './race/timeAttack.js';
 import { WeeklyChallengeService } from './race/weeklyChallenge.js';
+import { CareerService } from './race/career.js';
 import { HttpVerifierClient } from './domain/verifier.js';
 import { taBoardName, type GhostFile, type TaBoardFile, type TaEntry } from './domain/timeAttack.js';
 import { devModeRefused } from './http/devMode.js';
@@ -136,6 +138,7 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const pp = photoProblems(baseMaster); if (pp.length) throw new Error('master/photo.json: ' + pp.join('; ')); } // REQ-PHOTO-013
 { const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
 { const pr = practiceProblems(baseMaster); if (pr.length) throw new Error('master/practice.json: ' + pr.join('; ')); } // REQ-PRAC-003
+{ const cp = careerProblems(baseMaster); if (cp.length) throw new Error('master/career.json: ' + cp.join('; ')); } // REQ-CAREER-002
 { const tp = tipsProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (tp.length) throw new Error('master/tips.json: ' + tp.join('; ')); } // REQ-TUT-010
 { const sp = showcaseProblems(baseMaster); if (sp.length) throw new Error('master/showcase.json: ' + sp.join('; ')); } // REQ-SHOW-002
 { const rp = releaseNotesProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (rp.length) throw new Error('master/release-notes.json: ' + rp.join('; ')); } // REQ-NEW-002
@@ -576,6 +579,14 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
     }),
     // REQ-WCH-*: weekly challenges (the time attack verifier path)
     weeklyChallenge: new WeeklyChallengeService({
+      player,
+      verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
+      ticketSecret: env.TICKET_SECRET,
+      clock: () => Date.now(),
+      activeRuleset: async () => (await activeConfig(env)).ruleset,
+    }),
+    // REQ-CAREER-*: 騎手の道 (the weekly challenge verifier path)
+    career: new CareerService({
       player,
       verifier: new HttpVerifierClient(env.VERIFIER_URL, undefined, undefined, env.VERIFIER_TOKEN),
       ticketSecret: env.TICKET_SECRET,

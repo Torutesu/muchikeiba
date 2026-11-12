@@ -287,6 +287,17 @@
       "related": ["whip", "race_modes"]
     },
     {
+      "id": "career_mode", "category": "races",
+      "title": { "ja": "騎手の道（ひとりで進むストーリー）", "en": "Jockey's Road (solo story mode)" },
+      "body": {
+        "ja": "マッチングを待たずに、自分の馬でCPUと走る章立てのモードです。レースの画面の「騎手の道」から始められます。\n\n・章ごとに数戦あり、前のレースをクリアすると次のレースが開きます\n・星1はクリア、星2・星3は追加の目標（1着・ムチの回数など）です。判定はサーバーが同じエンジンで計算し直して行います\n・どの馬も章ごとの能力の上限にそろえ、固有スキルは使いません。相棒でも上限まで届きます\n・報酬は初クリアと星ごとに一度だけ（配合素材）。何度でも無料でやり直せ、回数の制限やコンティニューの購入はありません\n・ランク戦のレーティング・クラス・ランキング・ミッションには数えません",
+        "en": "A chapter-based mode where you race CPU horses with your own horse, with no matchmaking wait. Start it from Jockey's Road on the race screen.\n\n• Each chapter has a few races; clearing one opens the next\n• Star 1 is the clear; stars 2 and 3 are extra goals such as winning or a whip limit. The server re-runs the race on the same engine to judge them\n• Every horse is set to the chapter's stat cap and unique skills are off, so your partner reaches the cap too\n• Rewards come once for the first clear and once per star (breeding material). Retries are free and unlimited, with no energy and nothing to buy\n• Career races do not count toward ranked rating, class, rankings or missions"
+      },
+      "keywords": { "ja": ["騎手の道", "きしゅのみち", "ストーリー", "ひとり", "星", "章", "CPU"], "en": ["jockey's road", "career", "story", "solo", "stars", "chapter", "CPU"] },
+      "links": [ { "type": "screen", "screen": "career" } ],
+      "related": ["practice_races", "whip"]
+    },
+    {
       "id": "horse_goals", "category": "horses",
       "title": { "ja": "馬ごとの目標", "en": "Horse goals" },
       "body": {
@@ -364,6 +375,7 @@
     "privacy": "data_export",
     "storage": "data_storage",
     "practice": "practice_races",
+    "career": "career_mode",
     "privacy_choices": "ads_analytics_privacy",
     "notifications": "local_reminders",
     "showcase": "showcase",

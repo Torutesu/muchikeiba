@@ -2424,7 +2424,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`（フレンド部屋の再戦 `/v1/friend-rooms/rematch/:raceId` §63 を含む：レースを始める口。R21 統合）・`/v1/race/*`・`/v1/races/*` |
 | `teams` | `/v1/teams/*`（定型チャット §52 の候補・投稿を含む：投稿先の支部フィードと同じグループ。Round 18 統合）・`/v1/league/*`・`/v1/stamps` |
 | `events` / `tournaments` / `training` | `/v1/events/*` / `/v1/tournaments/*` / `/v1/training/*` |
-| `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
+| `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*`・`/v1/career*`（騎手の道 §66、Round 22：検証するひとりのレース） |
 | `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
 | `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）・昇級戦の表示と見た印 §68 `/v1/promotion*`…） |
@@ -2436,7 +2436,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
 - **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、**使いすぎ・遊びすぎの防止（§67、Round 22）`GET /v1/self-limits`・`PUT /v1/self-limits/spending`・`DELETE /v1/self-limits/spending/pending`・`PUT /v1/self-limits/playtime`**（上限を下げることは購入ができる間いつでもできないといけない。ストアのレシートはどの窓でも通るため。上げる・外すは冷却期間の後でしか効かない。コインを動かさない。`/v1/shop` の下に置かないので `shop` の窓でも閉じない）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。昇級戦（§68、Round 22）`GET /v1/promotion`・`POST /v1/promotion/ack` も `core`（読むだけと見た印。昇級戦のレース自体は `ranked` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
-- **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
+- **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/career/submit`（§66）・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
 - **リンクを開く口**（§63、R21 統合）：`POST /v1/links/resolve` は止めない。窓の間・古いアプリからは、行き先の状態（`maintenance`／`update_required`）を答えの `state` で返し、リンクは捨てない（その画面がいつ開けるかを言う）。`/v1` の外にある Web の代わりのページ `GET /l/:token` と、ユニバーサルリンク・App Links の検証ファイル `GET /.well-known/apple-app-site-association`・`/.well-known/assetlinks.json` は入口の検査の外（窓の間も OS の検証が切れない）。
@@ -4148,6 +4148,98 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
+マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。
+
+### 66.1 マスター `server/master/career.json`（起動時に `careerProblems` で検査、REQ-CAREER-002/010/011）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "sessionTtlMs": 900000, "maxInputs": 400, "startsPerDay": 200, "keepSessions": 30 },
+  "chapters": [ { "id": "c1", "art": "dawn", "statCap": 2800, "title": { "ja": "はじめての一閃", "en": "The First Strike" }, "subtitle": { "ja": "…", "en": "…" },
+    "races": [ { "id": "c1_debut", "trackId": "aoba_turf_1600", "going": "good"?, "night": false?, "cpuCount": 5, "cpuLevel": 1, "cpuStatPermille": 800?, "cpuStyles": ["nige","senko"]?,
+                 "title": { "ja", "en" }, "story": { "before": { "ja", "en" }, "after": { "ja", "en" } },
+                 "clear": { "maxPlace": 3 },
+                 "reward": { "items": [ { "itemId": "breeding_material", "qty": 1 } ] },
+                 "stars": [ { "objective": { "maxPlace": 1 }, "reward": { … }? }, { "objective": { "maxPlace": 3, "maxWhips": 3 }, "reward": { … }? } ] } ] } ] }
+```
+- 目標の形は §31 の条件と同じ（`maxPlace`・`maxWhips`・`maxTimeMs`、全部とゴールが必要）。**クリア（星1）は必ず着順**（`maxPlace`）。`stars` は 0〜2 個（星2・星3）。星2・星3は**同じレースでクリアもしたとき**だけ付く。
+- 検査（どれか1つでも違えば起動しない）：形（zod strict）、章 1〜10・1章 3〜5 戦、id の重複なし、コースがある・馬場がその面の値・ナイターは照明のあるコースだけ、**相棒（`progression.partner` の馬）がそのコースに合う**（面・距離。全員が全レースを走れる馬を持っている）、**章の `statCap` ≤ 相棒の能力合計**（無料の相棒が必ず上限に届く）、`cpuStyles` に合う CPU の馬が `cpuCount + 1` 頭以上、`maxPlace` < 頭数、文言の長さ（題 日本語16字・英語32字、物語 80字・200字）、英語に日本語が無い、ショップの言葉（倍・お得・今だけ・残りわずか・通常価格）と共通の賭けの言葉（§36 `bettingWords.ts`）が無い、報酬（66.6）。
+- 物語と題は**マスターの中に英語を並べて持つ**（ヘルプ §48・ヒント §57 と同じ。`locale-en.json` には入れない）。応答は要求の言語（§23.1）で片方を返す。目標の1行（「3着以内でゴール」「ムチ3回以内」）は §31 と同じ `conditionLabels` の文で、応答の出口で英語になる。
+- 目標の種類は検証サーバーの出力（`order`・`finishTicks`・`finishFracs`）と送られた入力だけで決まるものに限る。「3コーナーで先頭」「スタミナを残してゴール」は検証サーバーの出力に無い値が要る（検証サーバーを先に出す §8 の変更になる）ので**入れない**（決めたこと。必要になったら `RaceSummary` を §8 に足してから）。
+
+### 66.2 進み方（REQ-CAREER-005）
+- 全レースを章の順・章の中の順に並べ、**1つ前のレースをクリアすると次が開く**（章の最初のレースは前の章の最後のレースのクリアで開く）。一度クリアしたレースはマスターが変わっても開いたまま。開いていないレースの開始は `409 CAREER_LOCKED`。
+- 星はレースごとに貯まる（走るたびに足すだけで減らない）。章の星・全体の星は合計。
+- **やり直しはいつでも無料・無制限**：スタミナ・行動力・待ち時間・有料のコンティニュー・有料のスキップは無い。`startsPerDay`（既定200、ゲーム日 §15 の 4:00 で戻る）は画面に出さない乱用よけの上限で、遊びの量では届かない（1戦は1分以上かかる）。
+
+### 66.3 `GET /v1/career`（要認証、読み取りだけ、REQ-CAREER-003）
+```json
+{ "enabled": true, "version": 1, "totalStars": 4, "maxStars": 51, "clearedRaces": 2, "totalRaces": 17, "nextRaceId": "c1_firstwin", "startsLeftToday": 197,
+  "chapters": [ { "id": "c1", "art": "dawn", "title": "はじめての一閃", "subtitle": "…", "statCap": 2800, "unlocked": true, "cleared": false, "stars": 4, "maxStars": 9, "clearedRaces": 2,
+    "races": [ { "id": "c1_debut", "chapterId": "c1", "title": "デビュー戦", "story": { "before": "…", "after": "…" },
+                 "trackId": "aoba_turf_1600", "surface": "turf", "distanceM": 1600, "going": "good", "night": false,
+                 "fieldSize": 6, "cpuCount": 5, "cpuLevel": 1, "cpuStatPermille": 800, "cpuStyles": null, "statCap": 2800,
+                 "objectives": [ { "star": 1, "objective": { "maxPlace": 3 }, "labels": [ { "kind": "place", "text": "3着以内でゴール" } ], "reward": { … } },
+                                 { "star": 2, "objective": { "maxPlace": 1 }, "labels": [ … ], "reward": { … } | null }, … ],
+                 "progress": { "unlocked": true, "cleared": true, "clearedAt": 1795…, "stars": [1,3], "attempts": 2, "bestPlace": 2, "bestTimeMs": 97300,
+                               "rewarded": { "clear": true, "star2": false, "star3": true } } } ] } ],
+  "rules": { "skills": false, "normalized": true, "ranked": false, "leaderboards": false, "missions": false, "energy": false, "paidContinue": false, "paidSkip": false, "rewardOnce": true } }
+```
+`enabled: false`（`config.enabled` が false）の時は `{ "enabled": false }` だけ。開始・送信は `404`。
+
+### 66.4 `POST /v1/career/races/:raceId/start`（要認証・`Idempotency-Key` 必須、REQ-CAREER-004/006）
+本文 `{ "horseId": "h_1" }`（strict）。応答：`{ sessionId, token, raceId, chapterId, playerSlot, config, expiresAt, startsLeftToday, race: { 66.3 のレースの札 }, conditions: { クリアの目標 } }`。
+- 設定（§2）：`mode` = `challenge`（エンジンに新しいモードを足さない。§31 と同じく固有スキルなし・その日の調子なし `rulesetVersion` `+ta`）、`raceId` = `car_<sessionId>`、コース・馬場・ナイター・頭数（`cpuCount` + 1）・CPU の段（`cpuLevel`、乗り方の正確さだけ）・CPU の能力（`cpuStatPermille`）は固定、CPU の馬は `cpuStyles` の脚質の中から（`buildRaceConfig` の `cpuStyles`。無ければ今までと同じ全頭から。今までの設定・ゴールデンは変わらない）。
+- **能力**：自分の馬（現役）を含む全出走馬を章の `statCap` にそろえる（ランク戦と同じ `normalizeStats`：上限を超える馬だけ下げる）。上限は相棒の能力合計以下（66.1）なので、無料の相棒も買った馬も同じ上限で走る。調教・覚醒・課金で上げた能力は上限の上では効かない。
+- 鍵：同じ `Idempotency-Key` の再送は同じセッションを返す（日の回数も1回だけ）。発行のたびに `attempts` +1・KPI `career_start`。
+- 断る：未知のレース `404`、開いていない `409 CAREER_LOCKED`、現役でない馬 `HORSE_NOT_ACTIVE`、日の上限 `429 CAREER_LIMIT_REACHED`、削除の実行中 `DELETION_PENDING`、削除済み（墓標）`404`。
+- 端末：`token` は §8.1 と同じ短命の署名（`raceId` = `car_<sessionId>`、プレイヤー・`playerSlot` に結び付く）。`config` はそのまま `ChallengeRun`（C#）で走らせ、送信で返す。
+
+### 66.5 `POST /v1/career/submit`（要認証、REQ-CAREER-007/008/009）
+本文 `{ sessionId, token, inputs: [[tick, slot, cmd], …], resultHash, config? }`（strict、§31.5 と同じ入力の規則：自分の枠だけ・端末のビットだけ・tick は増えるだけ・`maxInputs` 以下・`maxTicks` 未満）。
+1. `token` を確かめる（期限切れ・偽物は `CAREER_SESSION_EXPIRED`、別のプレイヤーは `401`）。
+2. 準備（DO）：同じセッション・同じ `resultHash` で確定済みなら**保存した結果をそのまま返す**（二重送信・再送で2回払わない）。`issued` 以外は `CAREER_SESSION_USED`、期限切れは `CAREER_SESSION_EXPIRED`、返された `config` が発行したものと違えば `TA_CONFIG_MISMATCH`。発行した設定と入力からリプレイログ（§7、`endTick` -1）を作る。
+3. 検証（§8）：届かなければセッションを `issued` に戻して `503 VERIFIER_UNAVAILABLE`（同じ走りを期限まで送り直せる）。
+4. 記録（DO）：検証のハッシュが端末と違えば `rejected` にして `422 CAREER_RESULT_MISMATCH`（何も記録しない）。同じなら目標を判定する（§31.7 の `evaluateChallenge`：着順は `order`、タイムは §8.1 の式、ムチは自分の枠の WHIP ビットの入力の数）。目標と報酬は**開始の時の写し**（`snapshot`）で判定する（途中でマスターが変わってもこの走りは変わらない）。
+```json
+{ "sessionId": "k…", "raceId": "c1_debut", "chapterId": "c1", "resultHash": "…",
+  "evaluation": { §31.7 のクリアの目標の判定 }, "cleared": true, "firstClear": true,
+  "objectives": [ { "star": 1, "ok": true, "newly": true, "evaluation": { … } }, { "star": 2, "ok": false, … }, { "star": 3, "ok": true, "newly": true, … } ],
+  "stars": [1,3], "newStars": [1,3], "rewards": [ { "kind": "clear", "reward": { … } }, { "kind": "star3", "reward": { … } } ],
+  "unlockedRaceId": "c1_straight", "chapterCleared": false, "totalStars": 2 }
+```
+- 送信は**メンテナンスの窓でも止めない**（§46.2、走り終えた走りは確定させる。`EXEMPT_ROUTES`）。
+
+### 66.6 報酬（REQ-CAREER-011、経済 E20、docs/spec/balance-targets.md 4.20）
+- **初クリアの報酬（`reward`）と星ごとの報酬（`stars[].reward`）だけ、アカウントで一度ずつ**。払ったものは `progress.granted`（`clear`・`star2`・`star3`）に残し、セッションではなくこの印で二度払いを防ぐ（同じ走りの再送・別のセッションでの再クリア・並んだ送信）。星1はクリアの報酬と同じ（別の報酬は無い）。
+- 中身は**無償コイン・配合素材だけ**（りんごのおやつは調教の伸びに効くのでデイリーミッションだけ、03「調教」。`training_apple` は検査で拒否）。有償コインは配らない（資金決済法）、スカウト券・ランダムなものは配らない、「全部そろえたら」の報酬は無い（コンプガチャにならない）。1回の付与は無償コイン100枚以下・最も高いパックの単価で ¥200 以下（景表法、`CAREER_HARD_LIMITS`）、アイテム 1種類 2個まで。
+- 一生分の上限（E20、コードの上限・起動時に検査）：無償コイン 300・配合素材 60。出荷の表は**無償コイン 0**・配合素材 53（E1 の余裕が小さいため。4.20）。
+- 報酬はその場で受け取る（プレゼントボックス §26 を通らない。§26.1 の「その場の受け取り」の行）。
+
+### 66.7 何に数えないか（REQ-CAREER-012）
+騎手の道のレースは `applyRace` を通らない：レーティング・クラスの点・シーズンpt・ランキング・タイムアタックの記録・戦績（`stats`）・殿堂（§34）・振り返り（§43）・ライバル（§28）・支部の共同目標（§32）・交換所のポイント（§30）・デイリーミッション・パスの XP・図鑑の「見た」・馬ごとの目標（§53）・絆・実績、どれも動かない（構造的に。`server/test/career.test.ts`）。マイリプレイ（§37）にも保存できない（練習 §50.7 と同じ：サーバーに確定したレースの部屋が無い）。写真（§38）は撮れる（`source.mode` は `challenge`、表示は「騎手の道」）。
+
+### 66.8 KPI（サーバーのイベント、REQ-CAREER-013、§58 の分類は全部 `optional`）
+| イベント | いつ | 列 |
+|---|---|---|
+| `career_start` | セッションの発行 | s1 = raceId、s2 = chapterId、count = そのレースの挑戦回数 |
+| `career_clear` | クリアした走り（初クリアでなくても） | s1 = raceId、s2 = chapterId、place、durationMs = タイム、isFirst = 初クリア、count = そのレースの星の数、value = 1（この初クリアで章が終わった）／0、freeCoins = 払った無償コイン |
+| `career_star` | 新しく付いた星ごと | s1 = raceId、s2 = chapterId、value = 星の番号（1〜3）、count = 全体の星の数 |
+入力・tick・seed は送らない。クエリは `docs/ops/kpi-queries.md`「騎手の道」。
+
+### 66.9 そのほかの決まり（REQ-CAREER-014〜016）
+- **メンテナンス**（§46.2）：`/v1/career*` はグループ `time_attack`（検証するひとりのレース。エンジンのレベルの検査 `RACE_GROUPS` の対象）。`POST /v1/career/submit` は `EXEMPT_ROUTES`。
+- **個人データの開示**（§51）：状態のキー `career` は `play` に分類（レースごとの進み・星・払った印・日の回数・最近の走りの結果。発行した設定は個人のデータではないので出さない）。アカウントの削除で状態ごと消える（墓標の後の送信・開始は `404`、状態を作り直さない）。
+- **アクティビティ**（§40）：入れない（決めたこと）。§40 は「いない間に起きたこと」の一覧で、騎手の道のクリアはプレイヤーがその場で結果画面を見ている。
+- **ヘルプ・ヒント**：ヘルプセンター（§48）に記事 `career_mode`（画面リンク `career`・文脈 `career`）、ヒント集（§57）にカード `career_stars`（`art: career`）。
+- **一度に1つの割り込み**（§58.11）：騎手の道は割り込むシート・カードを出さない（物語は自分で開いたレースの画面の中、結果の星はその結果画面の中）。ホームの案内（§45）にもしない。
+- **入口**：レースの画面（ロビー）の「騎手の道」（練習レースの隣、FTUE の後）。その他の一覧には足さない。
+
+### 66.10 クライアント（REQ-CAREER-017〜019）
+- `Muchi.Client`：`ApiClient.GetCareerAsync`・`StartCareerRaceAsync(raceId, horseId, idempotencyKey)`・`SubmitCareerRaceAsync(session, run)`、`CareerView`（`Chapter`・`Race`・`NextRace`）・`CareerChapter`・`CareerRace`・`CareerObjective`・`CareerProgress`・`CareerSession`・`CareerResult`・`CareerGrant`、`CareerRun`（`ChallengeRun` に目標を足したもの：星ごとの端末の判定 `StarsNow`）、`CareerRun.IsCareer(config)`（写真・共有の種類の表示「騎手の道」）。エラーコード `CAREER_LOCKED`・`CAREER_LIMIT_REACHED`・`CAREER_SESSION_EXPIRED`・`CAREER_SESSION_USED`・`CAREER_RESULT_MISMATCH`。
+- Unity ゲーム層 `CareerModel`：地図（章・レース・星・次のレース）、レースの詳細（物語・目標・報酬・条件）、開始（鍵を覚えて再送）、HUD の目標の行、送信（一時的な失敗は同じ走りを送り直す）、結果（星・新しい星・報酬・開いたレース・物語の後半）。描画は `docs/handoff-codex-round22-career.md`。
+- デプロイ：サーバーだけ（新しい3つのルート・マスター・KPI。検証サーバーは変わらない、**マイグレーションなし**：状態はプレイヤーの JSON の新しいキー）。
 
 ## 67. 使いすぎ・遊びすぎの防止（自分で決める上限、self-set spending limit & play-time reminder、REQ-LIMIT-001〜022、`server/src/domain/selfLimits.ts`、C# `SelfLimits.cs`（`SelfLimitsView`・`PlaytimeReminderPolicy`・`PlaytimeClock`）・`Muchi.Game.SelfLimitsModel`、共有ベクター `contracts/self-limits.vectors.json`、docs/handoff-codex-round22-self-limits.md）
 有料のゲームとして信頼してもらうための、**プレイヤー自身が決める**安全の機能。2つある：

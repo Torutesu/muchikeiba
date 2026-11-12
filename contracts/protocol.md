@@ -4198,6 +4198,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `path`：初心者ミッション（REQ-UXS-015）が終わるまで。`week`：週替わり・ライバル・共同目標・先週のライバルの結果（未読の間）のどれかがある時。
 - `season.pace`：このシーズンの自分の1戦平均×10（整数）。ランク戦が `minRaces` 未満なら null（数字を作らない）。`power`：相棒（いなければ一番強い馬）の `raceStats` の合計と、いまのクラス・次のクラスの上限で出せる分（REQ-RATE-003 の正規化そのもの。買える物で変わらない）。`promotion`：§68（Round 22）の昇級戦を統合で渡す（`status`・`next`・`races`・`needTop`・`tops`・`misses`）。
 - 次にやること（§45）の `missions_claim` の件数は、初心者の段とシーズンミッションの受け取れる数も含む（開く画面は同じ）。
+- 品質の統合（claude/quality-1）：`season.promotion` はサーバーが同じプレイヤーの状態の §68 から埋める（`status`・`next`・`races`・`needTop`・`tops`・`misses`、昇級戦が無ければ null）。ホームの「次にやること」は、ホームの他の要素が言っていない項目だけを1行で出す（`missions_claim`・`missions_close`・`pass_claim`・`login_bonus`・`race`・`first_race`・`first_win`・`rival_week`・`weekly_challenge`・`team_goal_near`・`horse_goal_near`・`training_slots` は出さない。無ければ行ごと出さない。リンクは「今日は閉じる」の1つまで）。シーズンの段の受け取りの印は、シーズンミッションに加えてパスの無料の報酬（`pass.freeClaimable`）でも付く。端末：`Muchi.Game.NextActionModel.HomeLine`／`HomeLinks`、`GoalLadderModel.PassLine`・`CapCardHorseId`（クラスの上限の行から馬カードへ）。
 - メンテナンスの区分は `core`。データのダウンロード・削除：新しい状態は無い（読むだけ）。
 
 ## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）

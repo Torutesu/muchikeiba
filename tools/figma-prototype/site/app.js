@@ -1014,7 +1014,7 @@ function RaceFx() {
   if (tut) return; // the first race keeps its own one-line intro (「最後の直線。前に7頭。」)
   cur.classList.add('fx-pre');
   const mode = raceCtx.config?.mode;
-  const kicker = raceCtx.ta ? 'タイムアタック' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.lesson ? 'レッスン'
+  const kicker = raceCtx.ta ? 'タイムアタック' : raceCtx.career ? '騎手の道' : raceCtx.challenge ? '週替わりチャレンジ' : raceCtx.practice ? '練習レース' : raceCtx.lesson ? 'レッスン'
     : FX_MODE[mode] ?? (raceCtx.beginner ? '初心者マッチ' : 'ランク戦');
   const t = fxNode('fx-title', hud.fx.over); t.dataset.fx = 'title';
   fxNode('k', t, kicker);

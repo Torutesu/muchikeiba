@@ -102,7 +102,10 @@
       "body": { "ja": "イベント・大会・カップ・メンテナンスの日付をひとつの表で見られる。時刻は日本時間。印を付けると、リマインダーがオンなら始まる前に知らせる。", "en": "See event, tournament, cup and maintenance dates in one list. Times are JST. Mark one to get a reminder before it starts (with Reminders on)." } },
     { "id": "links_tip", "topic": "social", "unlock": "friend_rooms", "art": "branch", "help": "share_links",
       "title": { "ja": "リンクで誘う", "en": "Invite with a link" },
-      "body": { "ja": "部屋・カップ・リプレイは「共有」からリンクで送れる。開いても何ももらえず、何も使わない。レースの後は「再戦」。", "en": "Send rooms, cups and replays as a link from Share. Opening one gives nothing and spends nothing. After a race, press Rematch." } }
+      "body": { "ja": "部屋・カップ・リプレイは「共有」からリンクで送れる。開いても何ももらえず、何も使わない。レースの後は「再戦」。", "en": "Send rooms, cups and replays as a link from Share. Opening one gives nothing and spends nothing. After a race, press Rematch." } },
+    { "id": "devices_tip", "topic": "social", "unlock": null, "art": "branch", "help": "signed_in_devices",
+      "title": { "ja": "ログイン中の端末", "en": "Signed-in devices" },
+      "body": { "ja": "設定の「ログイン中の端末」で、ログインしている端末と記録を確かめられる。知らない端末はログアウトできる。", "en": "Check the devices signed in to your account under Signed-in devices in the settings. Sign out any you do not know." } }
   ],
   "contexts": {
     "gacha_odds": "scout_pity_tip",

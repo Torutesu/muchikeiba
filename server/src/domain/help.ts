@@ -56,6 +56,8 @@ export const HELP_SCREENS = [
   'showcase',
   // Round 21 (§65): the 予定表 (event calendar)
   'calendar',
+  // Round 23 (§70): settings › ログイン中の端末 (signed-in devices and the security log)
+  'devices',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -70,7 +72,9 @@ export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_
   // Round 21 (§62): the トレーナーカード editor
   'showcase',
   // Round 21 (§65): the 予定表 (event calendar)
-  'calendar'] as const;
+  'calendar',
+  // Round 23 (§70): ログイン中の端末
+  'devices'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -135,6 +139,7 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
   showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
   calendar: { ja: '予定表を開く', en: 'Open the calendar' },
+  devices: { ja: 'ログイン中の端末を開く', en: 'Open signed-in devices' },
 };
 /** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
 export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }

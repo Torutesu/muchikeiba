@@ -1999,6 +1999,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 | `cup_started` | カップの最初のレースが始まった（`CupRunner.start` → 主催者以外の各参加者へ `cupStarted`、ポート `notifyStarted`。参加中の人だけ） | `cup_started:{cupId}` | しない | `friends` | `cups` |
 | `cup_finished` / `cup_cancelled` | カップが終わった（順位 `{n}`）／中止になった（`cupClosed`、参加していた人だけ。招待されただけの人には書かない） | `cup_closed:{cupId}` | しない | `friends` | `cups` |
 | `recap_ready` | 振り返りができた（§43、`rollRecaps` が作ったものごと。`vars.kind` = `season`／`year`） | `recap_ready:{recapId}` | しない | `season` | `recap`（`id` = `season:2026-11` など） |
+| `new_device`（Round 23） | 新しい端末でログインがあった（§70.4、`devicesCheckin`。プッシュは送らない） | `new_device:{sessionId}` | しない | `account`（プッシュの種類ではない） | `devices`（`id` = sessionId） |
 
 - 大会（`tournament`）と共同目標（`team_goal`）の賞品はプレゼントボックスにも入るが、`gift_arrived` は書かない（同じことを2回書かない。各行のリンクから見られる）。
 - おかえり・新着情報（REQ-CB-*）は**項目にしない**：一覧の `links.whatsNew`（新着の数）でその画面へ案内するだけ。週替わりチャレンジ（§31）の結果は自分で走った直後に結果画面で出るので、留守の間の出来事にならない（項目なし）。
@@ -2433,7 +2434,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **購入レシート `POST /v1/shop/purchase`・ストアのサーバー通知 `POST /v1/store/notifications/:platform`・`GET /v1/shop/store-account`**：ストアで支払いが済んだ購入は必ず付与する（資金決済法：有償コインの購入を失わない）。メンテナンス中でも、古いアプリからでも受け付ける。新しい購入の始まり（`purchase-intent`）は `shop` の窓で止まる。
 - リワード広告のサーバー通知 `GET /v1/ads/ssv/admob`（視聴はもう済んでいる）。
 - 退会 `DELETE /v1/player`・取り消し `POST /v1/player/deletion/cancel`（権利なので止めない）。
-- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
+- **アカウントとプライバシーの口**（Round 19・20 統合）：引き継ぎコード（§54）`GET`／`POST`／`DELETE /v1/transfer/code`・`POST /v1/transfer/redeem`、規約・プライバシーポリシーへの同意 `POST /v1/player/consent`（REQ-UXS-001。R20 統合で `core` から外した：ポリシーの版が上がった後の再同意を窓で閉じ込めない）、広告・分析の選択（§58）`GET`／`PUT /v1/privacy/choices`・`PUT /v1/privacy/platform`・`POST /v1/privacy/prompt-shown`、クライアントのエラー報告（§60）`POST /v1/client-errors`、ログイン中の端末とセキュリティ（§70、Round 23）`GET /v1/account/devices`・`POST /v1/account/devices/checkin`・`POST /v1/account/devices/:sessionId/signout`・`POST /v1/account/devices/signout-others`・`GET /v1/account/security-log`（乗っ取りへの対応はどの窓でも・古いアプリからでも止めない。コインを動かさない。止めるのは `progression.devices.enabled`）。レビュー依頼（§59）`/v1/review-prompt*` と通知の設定 `/v1/push/preferences`（§61 の `reminders` を含む）は `core`（`all` の窓で止まる）。
 - **個人データの開示・ダウンロード**（§51、Round 18 統合）：`GET`／`POST /v1/player/data-export`・`GET /v1/data-export/file`。退会と同じく法律上の権利なので、どの窓でも・古いアプリからでも止めない（準備はプレイヤーのアラームで動き、ダウンロードは署名つきリンク）。
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
@@ -3484,6 +3485,8 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | `review_prompt_eligible`・`review_prompt_shown`・`review_soft_answer`（§59） | サーバー | `optional` | 頼む時の調整のための分析。分析がオフでもレビュー依頼の規則（間隔・回数）は状態 `reviewPrompt` で守られ、KPI に頼らない |
   | `cheer_send`・`cheer_seen`（§55）、`perf_setting_change`・`asset_predownload`（§56）、`tutorial_replay`・`tip_view`・`tip_context_open`（§57）、`lnotif_scheduled`・`lnotif_opened`・`lnotif_permission`（§61） | クライアント | `optional` | 遊び方・設定の分析だけ。端末の `ConsentState.AllowsClientEvent` が捨て、サーバーも捨てる |
   | `showcase_save`（サーバー）・`showcase_view`・`showcase_share`（§62）、`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）・`deep_link_open`（§63）、`release_notes_view`・`release_notes_target`・`release_notes_history`（§64）、`calendar_view`・`calendar_entry_open`・`calendar_mark`（サーバー、§65）（R21 統合） | サーバー／クライアント | `optional` | カード・リンク・お知らせ・予定表の使われ方の分析だけ。支払い・法定・アカウントの入口の記録は無い。リンクの行はトークン・行き先・相手の id を元から入れない（§63.9）。分析がオフなら書かない（リンク・再戦・カードの見た目はそのまま動く） |
+  | `device_signout`・`new_device_notice`（§70.9、Round 23） | サーバー | `essential` | アカウントへの入口の監査（`transfer_*` と同じ扱い）。ログアウトの操作と新しい端末の増え方で乗っ取りを見つける。端末のハッシュ・セッションの ID・地域・機種は入れない |
+  | `device_list_view`（§70.9、Round 23） | クライアント | `optional` | 一覧と記録の使われ方の分析 |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
@@ -4145,3 +4148,113 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
 - `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
 - 画面が守ること：docs/handoff-codex-round21-event-calendar.md。
+
+## 70. ログイン中の端末とセキュリティ（signed-in devices & account security、REQ-DEV-001〜020、`server/src/domain/devices.ts`・`server/src/domain/sessionRevocation.ts`、C# `Devices.cs`（`DeviceSessionList`・`SecurityLog`・`DeviceLabel`）・`Muchi.Game.DeviceSessionsModel`、docs/handoff-codex-round23-devices.md）
+課金しているプレイヤーが期待する「アカウントの安全」：**このアカウントでログインしている端末の一覧**、**ほかの端末のログアウト**（1台ずつ・この端末以外すべて）、**新しい端末でログインがあった時のお知らせ**、**セキュリティの記録**（新しい端末・ログアウト・引き継ぎコード・連携の追加と解除）。何も配らない・何も売らない（E番号なし、経済の目標なし）。入口は その他 › 設定（アカウントのパネル）の「ログイン中の端末」（その他の行は増やさない）。
+
+**決まりごと**
+- **セッション**＝Firebase の1回のサインイン。ID トークンの `auth_time`（サインインした時刻、秒。トークンの更新では変わらない）で見分ける。端末は `x-install-id`（インストール ID）を **アカウントごとの塩で SHA-256** にした先頭16桁（`device:<uid>:<installId>`）だけを持つ。**IP は保存しない**（ハッシュも持たない）。地域は Cloudflare の `cf-ipcountry`（国の2文字、`XX`・`T1` は持たない）だけ。
+- 端末の名前は**クライアントが送る粗い情報だけ**：`platform`（`ios`・`android`・`other`）、OS の大きい番号（`osMajor`、0〜99）、機種の系統（`model`。サーバーは英字と空白だけを残して24文字まで＝`iPhone15,2` → `iPhone`）、アプリの版（`x.y.z`）。最初に見た時刻・最後に見た時刻は **1時間に切り捨て**（`lastSeenRoundMin`、既定60分）。トークン・IP・端末の ID そのものは一覧にも記録にも出さない。
+- **ログアウトはサーバー側の無効化**：ログアウトされたセッションの次の要求は **`401 SESSION_REVOKED`**（「この端末はログアウトされました」）。§54.6 の `SESSION_REPLACED`（データが別の端末に移った）とは意味が違うので別のコード・別の画面（中立の文言、70.6）。同じ1か所（`authenticateSession` の後、ルートの前、`sessionGuard`）で判定し、`SESSION_REPLACED` を先に見る。Worker の isolate ごとに30秒持つ（ログアウトした isolate はすぐ覚える。ほかの isolate では最大30秒で効く）。
+- **何度送っても同じ**：もうログアウトしたセッションをもう一度ログアウトしても 200（`signedOut: 0`）、数にも数えない。
+- **確認と「新しい端末から古い端末はすぐには追い出せない」**（決めたこと：再認証の代わり）。匿名のアカウントは再認証できない（パスワードが無い）ので、Firebase の「最近のログイン」は使わない。代わりに：
+  1. 本文の `confirm: true`（画面の確認シート）が無ければ `400 BAD_REQUEST`。
+  2. **自分より後にログインした端末は、いつでもすぐログアウトできる**（持ち主の古い端末が、知らない新しい端末を追い出す場合）。
+  3. **自分より前からある端末をログアウトするには、この端末でログインしてから `trustAfterHours`（既定24時間）たっていること**。足りなければ `403 DEVICE_SIGNOUT_TOO_SOON`（`details.availableAt`）。乗っ取った側が、すぐに持ち主の端末を締め出せないようにする。持ち主は新しい端末のお知らせを見て、先に相手をログアウトできる。急ぐ時（端末をなくした等）はサポートが確かめてログアウトする（70.7）。
+- **この端末は「ほかの端末」に入らない**：一覧の「この端末」を指定したログアウトは `409 DEVICE_IS_CURRENT`。この端末のログアウトはアプリのサインアウト（端末の中）で、サーバーの無効化はしない。
+- **回数**：ログアウトはゲーム日（§DAY、04:00 JST）ごとに `revokesPerDay`（既定10）回まで（何かを実際にログアウトした操作だけ数える）→ 超えたら `429 RATE_LIMITED`（再試行しない）。チェックインは変化がなければ書かない（読むだけ）。
+- **匿名だけのアカウントの注意**：Apple・Google の連携も引き継ぎコードも無いアカウントでは、ログアウトされた端末は**同じアカウントに戻れない**（新しく始めることになる）。確認シートでそう言う（70.6）。
+- **引き継ぎ（§54）との関係**：引き継ぎコードで新しい端末に移ると、古いセッションは全部 `SESSION_REPLACED` になる（今まで通り）。その時に一覧・覚えている端末・ログアウトの記録を空にし、記録に `transfer_redeemed` を残す（一覧は移った後の端末だけになる。移った後の最初の端末は「最初の端末」なのでお知らせは出さない）。
+- **メンテナンス**：`/v1/account/devices*`・`/v1/account/security-log` は §46 の `EXEMPT_ROUTES`（決めたこと：ログアウトは乗っ取りへの対応で、どの窓でも古いアプリからでも止めない。コインを動かさない）。止めたい時は運用がリモート設定の `progression.devices.enabled` を false にする（一覧は `enabled: false`、ログアウトは 404。**無効化の判定（`SESSION_REVOKED`）は設定に関係なく効き続ける**）。
+- **削除の手続き中**（`deleting`）・消えたアカウントでは何も書かない（一覧は空、ログアウトは `409 DELETION_PENDING`）。削除の予約中（取り消せる期間）は一覧もログアウトも使える（乗っ取りへの対応は取り消し期間にも要る）。
+
+### 70.1 チェックイン `POST /v1/account/devices/checkin`（要認証）
+アプリの起動・復帰・サインインの直後（連携の追加・解除の後も）に送る。本文 `{ "platform": "ios", "osMajor": 18, "model": "iPhone", "appVersion": "1.4.0" }`（`platform` だけ必須）、ヘッダー `x-install-id`。
+1. `enabled: false`、トークンに `auth_time` が無い、アカウントがまだ無い（ブートストラップ前・削除で消えた）、削除の手続き中（`deleting`）→ 何も書かずに 70.2 と同じ形を返す（`recorded: false`）。
+2. 同じ `auth_time` と同じ端末のセッションがあれば、名前と最後に見た時刻（1時間単位）を更新する。何も変わらなければ書かない。
+3. 無ければ新しいセッションを足す（`sessionId` = `s_` + SHA-256(`session:<uid>:<auth_time>:<端末のハッシュ>`) の先頭16桁）。`maxSessions`（既定20）を超えたら最後に見た時刻の古いものから落とす。
+4. **新しい端末のお知らせ**（70.4）：覚えている端末（`knownDevicesMax`、既定50）に無い端末で、覚えている端末が1台以上あり、そのセッションのログインがこのアカウントの記録の始まり（`since`）より後のとき。**最初の端末には出さない**（記録が始まる前からあったセッション＝この機能の前から使っていた2台目にも出さない）。`x-install-id` が無い時は、同じ `platform`・`model` のセッションが無い時だけ新しい端末とみなす。
+5. **連携の変化**：ID トークンの `firebase.identities` にある `apple.com`・`google.com` を前回と比べ、増えたら `link_added`、減ったら `link_removed` を記録する（初めて見た時は記録しない。クライアントの申告は使わない）。
+6. 引き継ぎの `cutoffAt` より前のセッションは一覧から落とす。
+
+応答は 70.2 と同じ形に `recorded`（true／false）と `newDevice`（true／false）を足したもの。
+
+### 70.2 一覧 `GET /v1/account/devices`（要認証、読むだけ）
+```json
+{ "enabled": true, "current": "s_3f9a0c1d2e4b5a69",
+  "sessions": [ { "sessionId": "s_3f9a0c1d2e4b5a69", "current": true, "platform": "ios", "osMajor": 18, "model": "iPhone", "appVersion": "1.4.0",
+                  "region": "JP", "firstSeenAt": 1794376800000, "lastSeenAt": 1794380400000, "canSignOut": false, "availableAt": null },
+                { "sessionId": "s_7b21e0aa94c3d5f1", "current": false, "platform": "android", "osMajor": 15, "model": "Pixel", "appVersion": "1.3.2",
+                  "region": "JP", "firstSeenAt": 1793000000000, "lastSeenAt": 1794200000000, "canSignOut": true, "availableAt": null } ],
+  "signOutOthers": { "allowed": true, "availableAt": null, "count": 1 },
+  "revokesToday": 0, "revokesPerDay": 10, "trustAfterHours": 24, "anonymousOnly": false, "lastTransferredAt": null }
+```
+- 並びは「この端末」が先、あとは最後に見た時刻の新しい順。`canSignOut` は 70.3 の規則で今ログアウトできるか（できない時の `availableAt`）。`anonymousOnly`：連携が1つも見えていない（70 の注意を確認シートに出す）。
+- 名前の組み立てはクライアント（`DeviceLabel`）：「iPhone（iOS 18）」「Pixel（Android 15）」、機種が無ければ「iOS の端末」。地域は国の名前（`JP` → 日本、それ以外は2文字のまま）。
+
+### 70.3 ログアウト `POST /v1/account/devices/:sessionId/signout`・`POST /v1/account/devices/signout-others`（要認証）
+- 本文 `{ "confirm": true }`。応答 `{ "signedOut": 1, "devices": <70.2> }`。
+- 1台：無い `sessionId` → `404 NOT_FOUND`、この端末 → `409 DEVICE_IS_CURRENT`、もうログアウト済み → 200 `signedOut: 0`、自分より前からある端末で `trustAfterHours` に足りない → `403 DEVICE_SIGNOUT_TOO_SOON`。
+- この端末以外すべて：一覧のこの端末以外を全部ログアウトし、さらに **今より前にログインした、この端末以外のすべてのセッション**（一覧にまだ出ていない端末も）を無効にする（`othersBefore = { at: 今, keep: この端末の auth_time }`）。一覧に自分より前からある端末があり `trustAfterHours` に足りなければ `403 DEVICE_SIGNOUT_TOO_SOON`。ログアウトする相手がいなくても 200（`signedOut: 0`、回数に数えない）。
+- 無効化の記録 `devices.revoked`：`{ authTime, at }` の新しい `revokedKeep`（既定200）件。Firebase の匿名のセッションは期限が無いので、件数で切る（1日 `revokesPerDay` 回の上限があるので、200件は20日以上の連続の操作でしか溢れない）。
+- この端末の `auth_time` が分からない要求（トークンに無い）は `400 BAD_REQUEST`（「この端末」を決められない）。
+
+### 70.4 新しい端末のお知らせ（§40 のアクティビティ）
+- アクティビティの種類 **`new_device`**（`category: "account"`＝プッシュの種類ではない、`screen: "devices"`、まとめない、`source` = `new_device:<sessionId>`、`linkId` = `sessionId`）。文言：「新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます」。怖がらせる言葉（「不正」「危険」「すぐに」）を使わない。新しい端末の名前は文言に入れない（一覧で見る）。
+- **プッシュは送らない**（決めたこと）：今のプッシュの種類（`season`・`friends`・`invites`・`events`・`comeback`・`gifts`・`reminders`）に合うものが無く、新しい種類を足すと通知の設定（§61、一画面の種類の数）と同意（06 §3.5）が変わる。「セキュリティのお知らせ」を装うプッシュは釣りの形でもある。お知らせは全ての端末のアクティビティ（ベルの数）とセキュリティの記録に残る。後でプッシュを足す時は新しい種類 `account`（既定オン）と §61.1 の持ち主の表に行を足す。
+- 割り込みのシートは出さない（§58.11 の表に行は足さない）。
+
+### 70.5 セキュリティの記録 `GET /v1/account/security-log`（要認証、読むだけ）
+```json
+{ "enabled": true, "logDays": 180,
+  "items": [ { "at": 1794380400000, "kind": "new_device", "text": "新しい端末でログインがありました",
+               "device": { "platform": "android", "osMajor": 15, "model": "Pixel", "region": "JP" } },
+             { "at": 1794300000000, "kind": "transfer_issued", "text": "引き継ぎコードを発行しました（パスワードを設定）", "mode": "custom" } ] }
+```
+| kind | いつ | 付くもの |
+|---|---|---|
+| `new_device` | 70.4 のお知らせを出した時 | `device` |
+| `signout_device` | 1台をログアウトした | `device` |
+| `signout_others` | この端末以外をすべてログアウトした | `count` |
+| `signout_support` | サポートがログアウトした（70.7） | `count` |
+| `transfer_issued` | 引き継ぎコードを発行した（`mode`：`custom`＝パスワードを設定、`generated`） | `mode` |
+| `transfer_revoked` | 引き継ぎコードを取り消した（`by`：`player`・`ops`） | `by` |
+| `transfer_redeemed` | 引き継ぎコードでこのアカウントが新しい端末に移った | |
+| `link_added`／`link_removed` | Apple・Google の連携が増えた・減った（70.1 の5） | `provider` |
+- 新しい `logMax`（既定50）件、`logDays`（既定180日）より古いものは読む・書くたびに落とす。文言は日本語で組み立て、英語は応答の境界（i18n/en.ts）。
+- 何かを配ったり、ボタンで何かを実行したりしない（見るだけ。一覧へのリンクだけ）。
+
+### 70.6 クライアントの画面（ムチ一閃の調子、日英、最大の文字）
+- **入口**：その他 › 設定（アカウントのパネル）の「引き継ぎ」の下の「ログイン中の端末 ›」。その他のページの行は増やさない（8行のまま）。アクティビティの `new_device` とヘルプの記事・ヒントのカードからも開く。
+- **ログイン中の端末**：「この端末」の行（シアンのラベル）と、ほかの端末の行（名前・地域・最後に見た日・「ログアウト」）。下に「この端末以外をすべてログアウト」（斜めのシアンの CTA ではなく、静かな枠のボタン）と「セキュリティの記録 ›」「ヘルプ」。
+- **確認シート**：「〇〇をログアウトしますか？」「その端末は次に通信した時にログアウトされます。」連携が無い時（`anonymousOnly`）は「その端末ではこのアカウントに戻れなくなります（Apple・Google の連携か引き継ぎコードがあれば戻れます）」を足す。「ログアウトする」「やめる」。
+- **ログアウトされた端末**（`401 SESSION_REVOKED`）：全画面の中立の案内「この端末はログアウトされました」「別の端末かサポートからログアウトの操作がありました。Apple・Google で連携している場合は、もう一度ログインすると続きから遊べます。心当たりがない場合はお問い合わせください。」ボタン「ログインする」（連携がある時）・「新しく始める」・「お問い合わせ」。`MaintenanceModel` が §54.6 と同じ1か所で受け、メンテナンス・強制アップデート・オフラインはそれを置き換えない。表示した時に `AccountChangeReset` が端末の状態（ローカル通知・エラーの束・お願いの画面・保留のリンク・アップデートのお知らせ・**端末の一覧の写し**）を消す。
+- 文言は「不正」「危険」「今すぐ」を使わない。
+
+### 70.7 運用（`/v1/admin/players/:playerId/devices*`）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/players/:playerId/devices` | viewer | 一覧（名前・地域・時刻。トークン・端末のハッシュ・`auth_time` は出さない）、ログアウトの記録の件数・`othersBefore` の時刻、セキュリティの記録 |
+| `POST /v1/admin/players/:playerId/devices/revoke` | **admin** | `{ "sessionId": "s_…" }` か `{ "all": true }` と `reason`。本人からの依頼（端末をなくした・乗っ取られた）を確かめてからログアウトする。`all` は今より前のすべてのセッション（この端末の例外なし）。監査ログ `player.devices.revoke`、記録に `signout_support`。`trustAfterHours`・1日の回数の制限は掛からない |
+
+### 70.8 保存
+- **プレイヤーの状態** `devices`（新しいトップレベルのキー、`devices.ts`）：`{ since, sessions: [{ id, authTime, device, platform, osMajor, model, appVersion, region, firstSeenAt, lastSeenAt }], known: [端末のハッシュ], revoked: [{ authTime, at }], othersBefore: { at, keep } | null, revokes: { day, count }, providers: string[] | null, log: [{ at, kind, … }] }`。
+- **§51（データの開示）**：`account` に分類。`account.signedInDevices`（名前・地域・時刻だけ）と `account.securityLog` を出す。`auth_time`・端末のハッシュ・無効化の記録・覚えている端末のハッシュは出さない（それだけでは本人にとって意味の無い内部の値で、端末を結びつける鍵になるため）。アカウント削除の `wipe` で消える（ほかに写しは無い）。
+- wrangler の移行は不要（PlayerDO の状態に足すだけ）。
+
+### 70.9 KPI
+| イベント | 送り手 | s1 | 分類（§58.7） |
+|---|---|---|---|
+| `device_list_view` | クライアント（`props.screen`：`devices`・`log`、`props.count`：0〜50 → value） | 画面 | `optional`（使われ方の分析） |
+| `device_signout` | サーバー（実際にログアウトした時だけ、count = 数） | `one`・`others`・`support` | `essential`（アカウントへの入口の監査：§54 の `transfer_*` と同じ。乗っ取りへの対応を見つける） |
+| `new_device_notice` | サーバー（70.4 のお知らせを出した時） | `ios`・`android`・`other` | `essential`（同じ理由。新しい端末の増え方で乗っ取りの波を見つける） |
+
+端末のハッシュ・`sessionId`・地域・機種は入れない。クエリは `docs/ops/kpi-queries.md`「ログイン中の端末」。
+
+### 70.10 設定 `progression.devices`
+`{ "enabled": true, "maxSessions": 20, "knownDevicesMax": 50, "logMax": 50, "logDays": 180, "revokesPerDay": 10, "trustAfterHours": 24, "revokedKeep": 200, "lastSeenRoundMin": 60 }`。範囲：`maxSessions` 5〜50、`knownDevicesMax` 10〜200（`maxSessions` 以上）、`logMax` 10〜200、`logDays` 30〜400、`revokesPerDay` 1〜50、`trustAfterHours` 0〜168、`revokedKeep` 50〜1000、`lastSeenRoundMin` 15〜1440。起動時とリモート設定の版ごとに検査（`devicesProblems`）。
+
+### 70.11 クライアント
+- `Muchi.Client`：`DeviceSessionList`（`Parse`）・`DeviceSession`・`SignOutOthersInfo`・`SecurityLog`・`SecurityLogItem`・`DeviceLabel`（名前・地域の組み立て、日英）・`DeviceCheckin`、`ApiClient.CheckinDeviceAsync`・`GetDevicesAsync`・`SignOutDeviceAsync`・`SignOutOtherDevicesAsync`（再試行しない）・`GetSecurityLogAsync`、`ApiErrorCode.SessionRevoked`・`DeviceSignoutTooSoon`・`DeviceIsCurrent`、`SessionRevokedException` と `ApiClient.SessionRevoked` イベント（再試行しない）、analytics `AnalyticsEvent.DeviceListView`。
+- `Muchi.Game`：`DeviceSessionsModel`（一覧・確認シート・ログアウト・記録・`ForgetAll`）、`MaintenanceModel` の `MaintenanceScreen.SessionRevoked`（`SessionReplacedShown` と同じく `AccountChangeReset` を呼ぶ）、`AccountChangeReset.Devices`。
+- 画面が守ること：docs/handoff-codex-round23-devices.md。

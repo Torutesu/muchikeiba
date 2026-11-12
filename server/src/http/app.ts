@@ -65,6 +65,8 @@ import type { RematchView } from '../domain/rematch.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
+import { checkinBodySchema, providersOf, regionOf, sanitizeModel, type CheckinInput } from '../domain/devices.js';
+import { sha256Hex } from '../domain/transferCode.js';
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
@@ -127,7 +129,8 @@ export type PlayerMethod =
   | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide'
   | 'transferView' | 'transferCheckIssue' | 'transferIssued' | 'transferRevoke' | 'transferProgress' | 'transferRedeemed' | 'transferFailed' | 'transferCutoff' | 'adminTransfer'
   | 'transferRedeemReplay' | 'transferRedeemRemember'
-  | 'linkParty' | 'linkCheckCreate' | 'linkNote';
+  | 'linkParty' | 'linkCheckCreate' | 'linkNote'
+  | 'sessionState' | 'devicesCheckin' | 'devicesView' | 'securityLog' | 'devicesSignOut' | 'devicesSignOutOthers' | 'adminDevices' | 'adminDevicesRevoke';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -243,8 +246,10 @@ export interface AppContext {
    * REQ-TRF-010: when present, player routes authenticate through this (the account and its Firebase `auth_time`) and
    * `sessionGuard` refuses a session signed in before the account moved to another device (401 SESSION_REPLACED).
    */
-  authenticateSession?(req: Request): Promise<{ uid: string; authTime: number | null }>;
+  authenticateSession?(req: Request): Promise<{ uid: string; authTime: number | null; identities?: Record<string, unknown> }>;
   sessionGuard?(uid: string, authTime: number | null): Promise<void>;
+  /** REQ-DEV-008 (§70): a sign-out in this isolate — the guard reads the account's sign-outs again on the next request. */
+  sessionForget?(uid: string): void;
 }
 export interface ClientConfigInfo { versionId: string; hash: string; rulesetVersion: string; activatedAt: number | null }
 
@@ -389,6 +394,34 @@ async function calendarExternal(c: AppContext, u: string): Promise<CalendarExter
 const calendarEntryParam = (s: string) => { if (!CALENDAR_ENTRY_ID_RE.test(s)) throw new AppError('NOT_FOUND', 'no such calendar entry'); return s; };
 
 const id = z.string().min(1).max(64);
+
+/**
+ * REQ-DEV-001 (§70): the session of a request (Firebase `auth_time` and the `firebase.identities` claim), kept by `handle`
+ * after authentication for the device routes. Absent (a context without authenticateSession) = auth_time unknown.
+ */
+const requestSessions = new WeakMap<Request, { authTime: number | null; identities?: Record<string, unknown> }>();
+const authTimeOf = (r: Request) => requestSessions.get(r)?.authTime ?? null;
+/** The per-account hash of the install id (16 hex): never the raw id (§70 minimisation). */
+async function deviceHashOf(uid: string, r: Request): Promise<string | null> {
+  const raw = r.headers.get('x-install-id');
+  if (raw === null) return null;
+  if (!installIdSchema.safeParse(raw).success) throw new AppError('BAD_REQUEST', 'bad x-install-id');
+  return (await sha256Hex(`device:${uid}:${raw}`)).slice(0, 16);
+}
+async function checkinInput(r: Request, uid: string): Promise<CheckinInput> {
+  const b = await body(r, checkinBodySchema);
+  const sess = requestSessions.get(r);
+  const authTime = sess?.authTime ?? null;
+  const device = await deviceHashOf(uid, r);
+  const sessionId = authTime === null ? null : `s_${(await sha256Hex(`session:${uid}:${authTime}:${device ?? ''}`)).slice(0, 16)}`;
+  return {
+    authTime, sessionId, device, platform: b.platform, osMajor: b.osMajor ?? null, model: sanitizeModel(b.model), appVersion: b.appVersion ?? null,
+    region: regionOf(r.headers.get('cf-ipcountry')), providers: providersOf(sess?.identities),
+  };
+}
+const SESSION_ID_RE = /^s_[0-9a-f]{16}$/;
+const sessionParam = (x: string) => { if (!SESSION_ID_RE.test(x)) throw new AppError('NOT_FOUND', 'no such device'); return x; };
+const confirmSchema = z.object({ confirm: z.literal(true) }).strict();
 
 const weekly = (c: AppContext) => {
   if (!c.weeklyChallenge) throw new AppError('NOT_FOUND', 'weekly challenges are not available');
@@ -1436,6 +1469,24 @@ export const routes: Route[] = [
     return rival(c).challenge(u, b.passphrase, key);
   } },
   { method: 'POST', path: '/v1/rival/results/:weekId/seen', auth: 'player', handler: async (_r, p, c, u) => rival(c).seen(u, weekIdParam(p.weekId!)) },
+  // ログイン中の端末とセキュリティ (REQ-DEV-*, contracts/protocol.md §70). Never gated by maintenance or the version gate (§46
+  // EXEMPT_ROUTES): signing out a device is the response to a takeover. Off switch: progression.devices.enabled.
+  { method: 'POST', path: '/v1/account/devices/checkin', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('devicesCheckin', u, await checkinInput(r, u)) },
+  { method: 'GET', path: '/v1/account/devices', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('devicesView', u, authTimeOf(r)) },
+  { method: 'POST', path: '/v1/account/devices/signout-others', auth: 'player', handler: async (r, _p, c, u) => {
+    await body(r, confirmSchema);
+    const out = await c.player(u).invoke('devicesSignOutOthers', u, authTimeOf(r));
+    if (out.signedOut > 0) c.sessionForget?.(u);
+    return out;
+  } },
+  { method: 'POST', path: '/v1/account/devices/:sessionId/signout', auth: 'player', handler: async (r, p, c, u) => {
+    const sid = sessionParam(p.sessionId!);
+    await body(r, confirmSchema);
+    const out = await c.player(u).invoke('devicesSignOut', u, sid, authTimeOf(r));
+    if (out.signedOut > 0) c.sessionForget?.(u);
+    return out;
+  } },
+  { method: 'GET', path: '/v1/account/security-log', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('securityLog', u) },
   // 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54). Never gated by maintenance or the version gate (§46 EXEMPT_ROUTES).
   { method: 'GET', path: '/v1/transfer/code', auth: 'player', handler: async (_r, _p, c, u) => (c.transfer ? c.transfer.view(u) : { enabled: false }) },
   { method: 'POST', path: '/v1/transfer/code', auth: 'player', handler: async (r, _p, c, u) => {
@@ -1514,6 +1565,7 @@ export const handle: Handler = async (req, _p, ctx) => {
           // REQ-TRF-010: a session from before the account moved to another device is refused on its next request
           const s = await ctx.authenticateSession(req);
           uid = s.uid;
+          requestSessions.set(req, { authTime: s.authTime, ...(s.identities ? { identities: s.identities } : {}) }); // REQ-DEV-001
           if (ctx.sessionGuard) await ctx.sessionGuard(uid, s.authTime);
         } else uid = await ctx.authenticate(req);
       }

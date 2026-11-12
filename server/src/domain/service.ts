@@ -121,6 +121,7 @@ import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
   nextDataExportWake, noteDataExportDownload, requestDataExport, takeDataExport, takeExpiredDataExport, type DexFile, type DexLang, type DexReadyInfo,
 } from './dataExport.js';
+import { applyCheckin, adminDevicesView, checkinNeedsWrite, devicesView, logSecurity, resetAfterTransfer, revocationsOf, securityLogView, signOutDevice, signOutOthers, supportRevoke, type CheckinInput } from './devices.js';
 import { REDEEM_REPLAY_MS, ensureTransfer, assertMayIssue, formatCodeId, issueTransfer, progressOf, redeemTransfer, revokeTransfer, transferStateView, type TransferMode } from './transferCode.js';
 import { assertNotLocked, bulkPreview, noteTournamentEntry, parseRosterQuery, pruneRoster, rosterView, runBulk, setFavorite, setLock, type BulkAction } from './roster.js';
 
@@ -1499,10 +1500,17 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       const r = issueTransfer(this.d.master, s, codeId, mode, now);
       emit({ name: 'transfer_issue', s1: mode });
+      logSecurity(this.d.master, s, { kind: 'transfer_issued', mode }, now); // REQ-DEV-011
       return { previous: r.previous, issuedAt: now, expiresAt: r.expiresAt };
     });
   }
-  transferRevoke(id: string, by: 'player' | 'ops') { return this.tx(id, null, (s, now) => ({ revoked: revokeTransfer(s, now, by) })); }
+  transferRevoke(id: string, by: 'player' | 'ops') {
+    return this.tx(id, null, (s, now) => {
+      const revoked = revokeTransfer(s, now, by);
+      if (revoked) logSecurity(this.d.master, s, { kind: 'transfer_revoked', by }, now); // REQ-DEV-011 (only when a code was revoked)
+      return { revoked };
+    });
+  }
   /** REQ-TRF-009: what the redeeming device would leave behind (read only; a never-stored account has none). */
   async transferProgress(id: string) { return progressOf(await this.repo.get(id)); }
   /** REQ-TRF-005/012: consume the code on the owner's object (serialised: one success per code). */
@@ -1510,6 +1518,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => {
       redeemTransfer(s, codeId, now);
       emit({ name: 'transfer_redeem', s1: 'ok' });
+      resetAfterTransfer(this.d.master, s, now); // REQ-DEV-012: the old sessions are SESSION_REPLACED; the list starts again
       return { displayName: s.profile.displayName, cutoffAt: now };
     });
   }
@@ -1525,6 +1534,44 @@ export class PlayerService {
   }
   /** REQ-TRF-010: the old-device cut-off (read only; null for accounts that never moved). */
   async transferCutoff(id: string) { return (await this.repo.get(id))?.transfer?.cutoffAt ?? null; }
+  /** REQ-TRF-010 + REQ-DEV-008: what the session guard needs — the old-device cut-off and the sign-outs (read only). */
+  async sessionState(id: string) {
+    const s = await this.repo.get(id);
+    return { cutoff: s?.transfer?.cutoffAt ?? null, revoked: revocationsOf(s) };
+  }
+
+  // ---- ログイン中の端末とセキュリティ (REQ-DEV-*, contracts/protocol.md §70); the Worker hashes the install id first ----
+  /** REQ-DEV-002: a read when nothing changes; never creates an account (no state before the bootstrap, or wiped). */
+  async devicesCheckin(id: string, input: CheckinInput) {
+    const stored = await this.repo.get(id);
+    const now = this.d.clock();
+    if (!checkinNeedsWrite(this.d.master, stored, input, now)) return { ...devicesView(this.d.master, stored, input.authTime, now), recorded: false, newDevice: false };
+    return this.tx(id, null, (s, t, emit) => {
+      const out = applyCheckin(this.d.master, s, input, t, emit);
+      return { ...devicesView(this.d.master, s, input.authTime, t), ...out };
+    });
+  }
+  async devicesView(id: string, currentAuth: number | null) { return devicesView(this.d.master, await this.repo.get(id), currentAuth, this.d.clock()); }
+  async securityLog(id: string) { return securityLogView(this.d.master, await this.repo.get(id), this.d.clock()); }
+  async devicesSignOut(id: string, sessionId: string, currentAuth: number | null) {
+    if (!(await this.repo.get(id))) throw new AppError('NOT_FOUND', 'no such device');
+    return this.tx(id, null, (s, now, emit) => {
+      const r = signOutDevice(this.d.master, s, sessionId, currentAuth, now, emit);
+      return { ...r, devices: devicesView(this.d.master, s, currentAuth, now) };
+    });
+  }
+  async devicesSignOutOthers(id: string, currentAuth: number | null) {
+    if (!(await this.repo.get(id))) return { signedOut: 0, devices: devicesView(this.d.master, null, currentAuth, this.d.clock()) };
+    return this.tx(id, null, (s, now, emit) => {
+      const r = signOutOthers(this.d.master, s, currentAuth, now, emit);
+      return { ...r, devices: devicesView(this.d.master, s, currentAuth, now) };
+    });
+  }
+  async adminDevices(id: string) { return adminDevicesView(this.d.master, await this.repo.get(id), this.d.clock()); }
+  async adminDevicesRevoke(id: string, target: { sessionId: string } | { all: true }) {
+    if (!(await this.repo.get(id))) throw new AppError('NOT_FOUND', 'no such player');
+    return this.tx(id, null, (s, now, emit) => supportRevoke(this.d.master, s, target, now, emit));
+  }
   async adminTransfer(id: string) {
     const s = await this.repo.get(id);
     const t = s?.transfer;

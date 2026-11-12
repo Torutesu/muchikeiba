@@ -1533,3 +1533,31 @@ GROUP BY kind ORDER BY opens DESC
 ```
 
 - `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。
+
+## ログイン中の端末：お知らせ・ログアウト・一覧（REQ-DEV-016、contracts/protocol.md §70.9、Round 23）
+
+**新しい端末のお知らせがどれだけ出て、どれだけログアウトにつながるか、乗っ取りの波が無いか**。`new_device_notice`（サーバー、essential、`blob8` = `ios` / `android` / `other`）、`device_signout`（サーバー、essential、`blob8` = `one` / `others` / `support`、`double5` = ログアウトした数、実際にログアウトした時だけ）、`device_list_view`（クライアント、optional、`blob8` = `devices` / `log`、`double9` = 行の数）。端末のハッシュ・セッションの ID・地域・機種は入らない（§70.9）。
+
+```sql
+-- 日ごとの新しい端末のお知らせと、プレイヤー自身・サポートのログアウト（急に増えた日は乗っ取りの波を疑う）
+SELECT toDate(timestamp) AS day,
+  sum(if(blob1 = 'new_device_notice', _sample_interval, 0)) AS new_devices,
+  sum(if(blob1 = 'device_signout' AND blob8 = 'one', _sample_interval, 0)) AS signout_one,
+  sum(if(blob1 = 'device_signout' AND blob8 = 'others', _sample_interval, 0)) AS signout_others,
+  sum(if(blob1 = 'device_signout' AND blob8 = 'support', _sample_interval, 0)) AS signout_support,
+  sum(if(blob1 = 'device_signout', double5 * _sample_interval, 0)) AS sessions_signed_out
+FROM muchi_kpi
+WHERE blob1 IN ('new_device_notice', 'device_signout') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY day ORDER BY day
+```
+
+```sql
+-- 一覧と記録が開かれた回数と、平均の行の数
+SELECT blob8 AS screen, sum(_sample_interval) AS views, sum(double9 * _sample_interval) / sum(_sample_interval) AS avg_rows
+FROM muchi_kpi
+WHERE blob1 = 'device_list_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY screen
+```
+
+- `device_list_view` は分析がオフのプレイヤーからは来ない（optional）。`new_device_notice`・`device_signout` は分析の選択に関係なく残る（アカウントへの入口の監査、§58.7）。
+- お知らせ（`new_device_notice`）のあと24時間以内の `device_signout` の割合が高い日は、知らない端末からのログインが増えている。運用はヘルプのお問い合わせ（カテゴリ「アカウント」）と合わせて見る。

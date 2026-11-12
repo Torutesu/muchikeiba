@@ -38,6 +38,10 @@ export const KPI_ESSENTIAL: Readonly<Record<string, string>> = Object.freeze({
   // never the ID or password) are the audit trail ops need to spot brute force and account takeover (§54.9)
   transfer_issue: 'account access audit (transfer code issued, §54)',
   transfer_redeem: 'account access audit and brute-force detection (transfer code redeemed / failed, §54)',
+  // Round 23 §70 ログイン中の端末: the same account-access audit as the transfer rows — sign-outs and new-device notices are how
+  // ops see account takeover and the response to it (counts and the platform only; no device hash, session id, region or model)
+  device_signout: 'account access audit (devices signed out by the player or support, §70)',
+  new_device_notice: 'account access audit (a new device signed in, §70)',
 });
 
 /** Every other event name the server emits or accepts from clients: optional analytics. */
@@ -69,6 +73,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'link_create', 'link_resolve', 'link_revoke', 'rematch', 'deep_link_open',
   'release_notes_view', 'release_notes_target', 'release_notes_history',
   'calendar_view', 'calendar_entry_open', 'calendar_mark',
+  // Round 23 §70: the device list / security log opened — engagement only
+  'device_list_view',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

@@ -185,7 +185,8 @@ export function maintenanceLocale(c: MaintenanceConfig): Record<string, string> 
  *     training sessions that were started before the window; leaving a queue (match / event cancel);
  *   - the KPI ingest (maintenance_block / upgrade_prompt are reported through it) and the purchase history;
  *   - the ad / analytics choices (§58: GET/PUT /v1/privacy/choices, PUT /v1/privacy/platform, POST /v1/privacy/prompt-shown);
- *   - client error reports (§60).
+ *   - client error reports (§60);
+ *   - the signed-in devices, their sign-out and the security log (§70).
  */
 export const EXEMPT_ROUTES: readonly string[] = [
   'GET /v1/health', 'GET /v1/config', 'GET /v1/maintenance', 'GET /v1/assets/catalog', 'GET /v1/visuals',
@@ -219,6 +220,10 @@ export const EXEMPT_ROUTES: readonly string[] = [
   // Round 21 (§63, REQ-LINK-009): opening a link answers with a maintenance / update state of its target instead of failing
   // (the link is kept; the screen says when to open it again). Making, listing and revoking links stay in group `social`.
   'POST /v1/links/resolve',
+  // Round 23 (§70, REQ-DEV-013): ログイン中の端末 — signing out a device is the response to an account takeover, like the
+  // transfer code it is account access: never closed by a window or an old app. Moves no coins; ops stop it with progression.devices.enabled.
+  'GET /v1/account/devices', 'POST /v1/account/devices/checkin', 'POST /v1/account/devices/:sessionId/signout', 'POST /v1/account/devices/signout-others',
+  'GET /v1/account/security-log',
 ];
 
 const PREFIX_GROUPS: [string, MaintenanceGroup][] = [

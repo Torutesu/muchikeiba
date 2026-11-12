@@ -120,8 +120,8 @@ export const ADVICE_KPI_CONTEXTS = ['ranked', 'friend', 'event', 'challenge', 't
 /** REQ-PHOTO-014: where a photo was taken (photoMode.ts PHOTO_SOURCES). */
 export const PHOTO_SOURCE_NAMES = ['paused', 'result', 'replay'] as const;
 /** REQ-ACT-015: the activity list's kinds and deep-link screens (domain/activity.ts; repeated here to keep kpi.ts import-free). */
-export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready'] as const;
-export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy'] as const;
+export const ACTIVITY_KIND_NAMES = ['friend_request', 'friend_accepted', 'rival_week', 'rival_record', 'stable_like', 'team_cheer', 'tournament_result', 'gift_arrived', 'team_goal_tier', 'team_goal_week', 'replay_share', 'inquiry_answered', 'cup_invited', 'cup_started', 'cup_finished', 'cup_cancelled', 'recap_ready', 'ops_notice', 'qchat_mention', 'data_export_ready', 'new_device'] as const;
+export const ACTIVITY_SCREEN_NAMES = ['friends', 'rival', 'stable', 'team_feed', 'tournaments', 'gift_box', 'team_goal', 'replay', 'whats_new', 'help_inquiry', 'cups', 'recap', 'safety', 'privacy', 'devices'] as const;
 /** REQ-HELP-021: help categories (domain/help.ts HELP_CATEGORY_IDS) plus `all`, and where an article was opened from. */
 export const HELP_CATEGORY_NAMES = ['all', 'getting_started', 'races', 'horses', 'scout', 'purchases', 'account', 'deletion', 'accessibility'] as const;
 export const HELP_VIEW_SOURCES = ['list', 'search', 'context', 'link', 'related'] as const;
@@ -241,6 +241,8 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('release_notes_history'), at: z.number().int(), props: z.object({ source: z.enum(RELEASE_HISTORY_SOURCES) }).strict() }),
   // REQ-CAL-015 (§65): the calendar shown (month / week and how many rows) and a row opened (its kind). Marks are server events (calendar_mark).
   z.object({ name: z.literal('calendar_view'), at: z.number().int(), props: z.object({ view: z.enum(CALENDAR_VIEWS), entries: z.number().int().min(0).max(200) }).strict() }),
+  // REQ-DEV-016 (§70.9): ログイン中の端末 / セキュリティの記録 opened (how many rows). Sign-outs and new-device notices are server events.
+  z.object({ name: z.literal('device_list_view'), at: z.number().int(), props: z.object({ screen: z.enum(['devices', 'log']), count: z.number().int().min(0).max(200) }).strict() }),
   z.object({ name: z.literal('calendar_entry_open'), at: z.number().int(), props: z.object({ kind: z.enum(CALENDAR_KPI_KINDS) }).strict() }),
   // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
@@ -311,6 +313,7 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'release_notes_target': return { name: e.name, s1: e.props.appVersion, s2: e.props.kind, s3: e.props.target, value: e.props.page };
     case 'release_notes_history': return { name: e.name, s1: e.props.source };
     case 'calendar_view': return { name: e.name, s1: e.props.view, value: e.props.entries };
+    case 'device_list_view': return { name: e.name, s1: e.props.screen, value: e.props.count };
     case 'calendar_entry_open': return { name: e.name, s1: e.props.kind };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };

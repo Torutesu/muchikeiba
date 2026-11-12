@@ -559,6 +559,22 @@ export const adminRoutes: AdminRoute[] = [
     const out = await r.ctx.transfer.revoke(id, 'ops');
     return { result: out, target: `player:${id}`, before: null, after: out };
   } },
+  // REQ-DEV-017 (contracts/protocol.md §70.7): ログイン中の端末 — view (labels, regions, times, the security log; never auth_time
+  // or hashes) and support's sign-out (admin only, with the reason in the audit; no trust window, no daily limit)
+  { method: 'GET', path: '/v1/admin/players/:playerId/devices', role: 'viewer', write: false, action: 'player.devices.view', handler: async (r) => {
+    const id = parse(pid, r.params.playerId);
+    return { result: await r.ctx.player(id).invoke('adminDevices', id), target: `player:${id}` };
+  } },
+  { method: 'POST', path: '/v1/admin/players/:playerId/devices/revoke', role: 'admin', write: true, action: 'player.devices.revoke', handler: async (r) => {
+    const id = parse(pid, r.params.playerId);
+    const b = parse(z.union([
+      z.object({ sessionId: z.string().regex(/^s_[0-9a-f]{16}$/), reason: z.string() }).strict(),
+      z.object({ all: z.literal(true), reason: z.string() }).strict(),
+    ]), r.body);
+    const target = 'all' in b ? { all: true as const } : { sessionId: b.sessionId };
+    const out = await r.ctx.player(id).invoke('adminDevicesRevoke', id, target);
+    return { result: out, target: `player:${id}`, before: null, after: { ...target, ...out } };
+  } },
   { method: 'POST', path: '/v1/admin/players/:playerId/name-reset', role: 'operator', write: true, action: 'player.name.reset', handler: async (r) => {
     const id = parse(pid, r.params.playerId);
     const b = parse(z.object({ target: z.enum(['display', 'horse', 'stable']), horseId: z.string().min(1).nullable().default(null), reason: z.string() }), r.body);

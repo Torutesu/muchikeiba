@@ -1423,3 +1423,26 @@
 - REQ-CAL-018 クライアント：C# `ApiClient.GetCalendarAsync`・`MarkCalendarAsync`、Unity `CalendarModel`（月・週・日ごとの行・JST の表示・印の切り替えとオフラインの貯め置き・行き先）。
 - REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
 - REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。
+
+## 70. ログイン中の端末とセキュリティ（TS＋C#、`src/domain/devices.ts`・`src/domain/sessionRevocation.ts`・`Muchi.Client/Devices.cs`・`Muchi.Game.DeviceSessionsModel`、`contracts/protocol.md` §70）
+拘束条件：何も配らない・何も売らない（E番号なし）。IP を保存しない。トークン・端末の ID そのものを一覧・記録・KPI・データの開示に出さない。怖がらせる文言を使わない。
+- REQ-DEV-001 セッション：Firebase の1回のサインイン＝ID トークンの `auth_time`。端末はインストール ID をアカウントごとの塩で SHA-256 にした先頭16桁だけ。IP は持たない。地域は `cf-ipcountry` の国の2文字だけ。
+- REQ-DEV-002 チェックイン：`POST /v1/account/devices/checkin`（起動・復帰・サインイン・連携の後）。粗い名前（`platform`・OS の大きい番号・機種の系統（英字と空白だけ）・アプリの版）と時刻（1時間に切り捨て）。変化が無ければ書かない。アカウントが無い・削除の手続き中・`auth_time` が無い・無効の設定では書かない。
+- REQ-DEV-003 一覧：`GET /v1/account/devices`。「この端末」が先、あとは最後に見た順。セッションは `maxSessions` 件まで（古いものから落とす）。各行に今ログアウトできるか。
+- REQ-DEV-004 ログアウト（1台）：`POST /v1/account/devices/:sessionId/signout`、`confirm: true` が要る。サーバー側の無効化で、そのセッションの次の要求は `401 SESSION_REVOKED`。無い → 404、この端末 → 409 `DEVICE_IS_CURRENT`、済み → 200 `signedOut: 0`。
+- REQ-DEV-005 この端末以外すべて：`POST /v1/account/devices/signout-others`。一覧に無い古いセッションも含め、今より前にログインしたこの端末以外のすべてを無効にする。この端末は決して無効にしない。相手がいなければ 200 `signedOut: 0`。
+- REQ-DEV-006 再認証の代わり：確認（`confirm`）＋自分より後にログインした端末はすぐ、自分より前からある端末はこの端末のログインから `trustAfterHours`（既定24時間）後（`403 DEVICE_SIGNOUT_TOO_SOON`、`availableAt`）。
+- REQ-DEV-007 回数：ログアウトはゲーム日ごとに `revokesPerDay` 回（実際にログアウトした操作だけ数える、超えたら `429 RATE_LIMITED`、再試行しない）。
+- REQ-DEV-008 判定の場所：全てのプレイヤーの口で、§54.6 の `SESSION_REPLACED` の後に1回（`sessionGuard`）。isolate ごとに30秒持ち、ログアウトした isolate はすぐ覚える。無効の設定でも判定は効く。
+- REQ-DEV-009 新しい端末のお知らせ：覚えていない端末の新しいセッションで、覚えている端末があり、記録の始まりより後のログインのとき、アクティビティ `new_device`（`account`・画面 `devices`）とセキュリティの記録。最初の端末・この機能より前からのセッションには出さない。プッシュは送らない（合う種類が無い。理由は §70.4）。割り込みのシートなし。
+- REQ-DEV-010 連携の変化：ID トークンの `firebase.identities`（`apple.com`・`google.com`）を前回と比べて `link_added`／`link_removed` を記録する。クライアントの申告は使わない。
+- REQ-DEV-011 セキュリティの記録：`GET /v1/account/security-log`。新しい端末・ログアウト（1台・すべて・サポート）・引き継ぎコード（発行（パスワードを設定）・取り消し・引き継いだ）・連携の追加と解除。新しい `logMax` 件、`logDays` 日まで。見るだけ。
+- REQ-DEV-012 引き継ぎとの関係：引き継ぎコードで移ったら一覧・覚えている端末・無効化の記録を空にし（古いセッションは `SESSION_REPLACED` が止める）、記録に `transfer_redeemed`。移った後の最初の端末にはお知らせを出さない。
+- REQ-DEV-013 ゲート：`/v1/account/devices*`・`/v1/account/security-log` は §46 の `EXEMPT_ROUTES`（乗っ取りへの対応はどの窓でも古いアプリからでも止めない）。止めるのはリモート設定の `progression.devices.enabled`。
+- REQ-DEV-014 削除：削除の手続き中・消えたアカウントには書かない（ログアウトは `409 DELETION_PENDING`）。予約中（取り消し期間）は使える。状態 `devices` はアカウント削除の wipe で消える。
+- REQ-DEV-015 データ：新しい PlayerState のキー `devices` はデータの開示（§51）で `account`。名前・地域・時刻と記録だけを出し、`auth_time`・端末のハッシュ・無効化の記録は出さない。
+- REQ-DEV-016 KPI：クライアント `device_list_view`（optional）、サーバー `device_signout`（essential：アカウントへの入口の監査）・`new_device_notice`（essential：同じ理由）。端末のハッシュ・セッションの ID・地域・機種は入れない。
+- REQ-DEV-017 運用：`GET /v1/admin/players/:playerId/devices`（viewer）で一覧と記録を見る。`POST …/devices/revoke`（admin、理由つき、監査 `player.devices.revoke`）で1台かすべてをログアウトする。
+- REQ-DEV-018 ヘルプとヒント：記事 `signed_in_devices`（一覧の見方・ログアウト・24時間の決まり・お知らせ・連携の無いアカウントの注意）、コンテキスト `devices`、ヒントのカード `devices_tip`。
+- REQ-DEV-019 クライアント：C# の API・モデル（`DeviceSessionList`・`SecurityLog`・`DeviceLabel`）、`SESSION_REVOKED` の例外とイベント（再試行しない）、Unity `DeviceSessionsModel`・`MaintenanceScreen.SessionRevoked`・`AccountChangeReset.Devices`。
+- REQ-DEV-020 プロトタイプと引き継ぎ：その他 › 設定（アカウントのパネル）から一覧・確認シート・記録・ログアウトされた画面（ムチ一閃の調子、日英、最大の文字、e2e・英語の流れ・アクセシビリティの流れ）。Codex 向け docs/handoff-codex-round23-devices.md。

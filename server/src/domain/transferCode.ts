@@ -13,6 +13,7 @@ import type { PlayerState } from './player.js';
 import { moderationOf } from './player.js';
 import { deletionScheduled } from './accountDeletion.js';
 import { dayRule, gameDayKey } from './time.js';
+import { sessionRevoked, sessionRevokedError, type SessionRevocations } from './sessionRevocation.js';
 
 // ------------------------------------------------------------------------------------------------ configuration
 
@@ -285,22 +286,41 @@ export const sessionReplacedError = () => new AppError('SESSION_REPLACED', 'こ�
 /**
  * Per-isolate cache of each account's cut-off (30 s), so the check costs one PlayerDO read per player per isolate and
  * half minute. The isolate that served the redeem learns the new cut-off at once (`note`).
+ *
+ * Round 23 (§70, REQ-DEV-008): the same read also answers the account's sign-outs (`PlayerService.sessionState`); a session
+ * signed out from another device or by support gets 401 SESSION_REVOKED, checked after SESSION_REPLACED. The isolate that
+ * served a sign-out forgets the entry at once (`forget`). A lookup may still answer the bare cut-off (older callers / tests).
  */
+export type SessionLookup = number | null | { cutoff: number | null; revoked?: SessionRevocations | null };
 export class SessionGuard {
-  private readonly cache = new Map<string, { cutoff: number | null; at: number }>();
-  constructor(private readonly lookup: (uid: string) => Promise<number | null>, private readonly clock: () => number = Date.now, private readonly ttlMs = 30_000, private readonly max = 5000) {}
-  note(uid: string, cutoff: number | null) {
+  private readonly cache = new Map<string, { cutoff: number | null; revoked: SessionRevocations | null; at: number }>();
+  constructor(private readonly lookup: (uid: string) => Promise<SessionLookup>, private readonly clock: () => number = Date.now, private readonly ttlMs = 30_000, private readonly max = 5000) {}
+  private put(uid: string, cutoff: number | null, revoked: SessionRevocations | null) {
     this.cache.delete(uid);
-    this.cache.set(uid, { cutoff, at: this.clock() });
+    this.cache.set(uid, { cutoff, revoked, at: this.clock() });
     if (this.cache.size > this.max) this.cache.delete(this.cache.keys().next().value!);
   }
+  /**
+   * The account moved (redeem): the new cut-off. The sign-outs survive a transfer, so a cached entry keeps its own; without
+   * one the next check reads both from the player object (where the redeem is already committed).
+   */
+  note(uid: string, cutoff: number | null) {
+    const hit = this.cache.get(uid);
+    if (hit) this.put(uid, cutoff, hit.revoked);
+    else this.cache.delete(uid);
+  }
+  /** REQ-DEV-008: a sign-out in this isolate — the next check reads the player object again. */
+  forget(uid: string) { this.cache.delete(uid); }
   async check(uid: string, authTimeSec: number | null): Promise<void> {
     const now = this.clock();
     let hit = this.cache.get(uid);
     if (!hit || now - hit.at > this.ttlMs) {
-      this.note(uid, await this.lookup(uid));
+      const r = await this.lookup(uid);
+      if (r === null || typeof r === 'number') this.put(uid, r, null);
+      else this.put(uid, r.cutoff, r.revoked ?? null);
       hit = this.cache.get(uid)!;
     }
     if (sessionReplaced(hit.cutoff, authTimeSec)) throw sessionReplacedError();
+    if (sessionRevoked(hit.revoked, authTimeSec)) throw sessionRevokedError();
   }
 }

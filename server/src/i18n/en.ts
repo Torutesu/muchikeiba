@@ -34,6 +34,24 @@ export const CODE_EN: Record<string, string> = {
   'よく使われるパスワードは使えません': 'No common passwords',
   'この端末のデータは別の端末に引き継がれました': 'This account has moved to another device',
 
+  // ---- ログイン中の端末とセキュリティ (devices.ts / sessionRevocation.ts, protocol §70; REQ-DEV-*). Neutral wording, no alarm words.
+  'この端末はログアウトされました': 'This device was signed out',
+  'この端末はここからはログアウトできません': 'This device cannot be signed out from here',
+  '今日はこれ以上ログアウトできません': 'No more sign-outs today',
+  'この端末でログインしてから{hours}時間たつと、前からある端末もログアウトできます': '{hours} hours after signing in on this device, you can also sign out devices that were signed in before it',
+  '新しい端末でログインがありました': 'A new device signed in',
+  'ほかの端末をログアウトしました': 'Signed out another device',
+  'この端末以外をすべてログアウトしました': 'Signed out all other devices',
+  'サポートが端末をログアウトしました': 'Support signed out a device',
+  '引き継ぎコードを発行しました': 'Issued a transfer code',
+  '引き継ぎコードを発行しました（パスワードを設定）': 'Issued a transfer code (password set)',
+  '引き継ぎコードを取り消しました': 'Cancelled the transfer code',
+  'サポートが引き継ぎコードを取り消しました': 'Support cancelled the transfer code',
+  '引き継ぎコードでこのアカウントが新しい端末に移りました': 'This account moved to a new device with a transfer code',
+  '{provider}の連携を追加しました': 'Linked {provider}',
+  '{provider}の連携を解除しました': 'Unlinked {provider}',
+  '新しい端末でログインがありました。心当たりがなければ「ログイン中の端末」で確かめられます': 'A new device signed in. If it was not you, you can check it under Signed-in devices',
+
   // ---- ディープリンク (deepLinks.ts SHARE_TEXT, protocol §63; REQ-LINK-003): no rewards, no urgency, no names
   'ムチ一閃のフレンド部屋に招待します': 'Join my friend room in Muchi Issen',
   'ムチ一閃の主催カップに招待します': 'Join my cup in Muchi Issen',

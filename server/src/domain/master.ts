@@ -211,6 +211,8 @@ export interface Progression {
   nextActions?: import('./nextAction.js').NextActionConfig;
   /** REQ-TRF-018: 引き継ぎコード (transferCode.ts, validated by transferProblems). Absent = defaults. */
   transfer?: import('./transferCode.js').TransferConfig;
+  /** REQ-DEV-*: ログイン中の端末とセキュリティ (devices.ts, validated by devicesProblems). Absent = defaults. */
+  devices?: Partial<import('./devices.js').DevicesConfig>;
   /** REQ-LINK-022: ディープリンク・再戦 (deepLinks.ts, validated by linksProblems). Absent = defaults. */
   links?: Partial<import('./deepLinks.js').LinksConfig>;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */

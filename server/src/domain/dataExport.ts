@@ -13,6 +13,7 @@
  * This module is pure state logic plus the document builder (no I/O). What every top-level PlayerState key becomes in
  * the export is decided in DEX_CLASSIFICATION — a test fails when a new key is added without a decision.
  */
+import { exportDevices as devicesExport } from './devices.js';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
 import type { HorseInstance, LedgerEntry, PlayerState } from './player.js';
@@ -412,6 +413,8 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   releaseNotes: x('play'),
   // Round 21 (§65, REQ-CAL-016): calendar rows marked for a reminder (ids, kinds, until)
   calendar: x('play'),
+  // Round 23 (§70, REQ-DEV-015): signed-in devices (labels, regions, times) and the security log — never auth_time or hashes
+  devices: x('account'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -515,6 +518,9 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
         issuesToday: clone(s.transfer.issues), lastTransferredAt: s.transfer.lastRedeemedAt, oldDeviceCutoffAt: s.transfer.cutoffAt,
         history: clone(s.transfer.history),
       } : null,
+      // §70 (Round 23): ログイン中の端末 — the coarse label, region and hour-rounded times of each signed-in session, and the
+      // security log. Never the sign-in time (auth_time), the install id hash, the revocations or the devices seen (internal keys)
+      ...devicesExport(s),
     },
     profile: {
       displayName: s.profile.displayName, titleId: s.profile.titleId, titles: [...s.titles], silks: clone(s.profile.silks) ?? null,

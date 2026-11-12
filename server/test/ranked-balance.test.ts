@@ -14,7 +14,7 @@ import { resolveBundle } from '../src/ops/config.js';
 import type { RaceEntry } from '../src/http/app.js';
 import type { Match } from '../src/domain/matchmaker.js';
 
-// Quality pass 2 (docs/quality/ranked.md, REQ-MM-008..011, docs/spec/balance-targets.md §2.5): the ranked card.
+// Quality pass 2 (docs/quality/ranked.md, REQ-MM-009..012, docs/spec/balance-targets.md §2.5): the ranked card.
 const rf = m.progression.rankedField!;
 const partner = () => toRaceHorse(m, createHorseFromTemplate(newPlayer('x', 0, '2026-11'), m.templateById.get('t_partner')!, 0));
 const entry = (o: Partial<RaceEntry> & { rankedRaces?: number }) => ({ playerId: 'a', horse: partner(), classId: 'C', statCap: 2800, rating: { r: 1500, rd: 120, vol: 0.06 }, beginner: false, firstRace: null, ...o }) as unknown as RaceEntry;
@@ -22,7 +22,7 @@ const match = (payloads: RaceEntry[], o: Partial<Match<RaceEntry>> = {}): Match<
   players: payloads.map((p, i) => ({ playerId: `p${i}`, rating: 1500, beginner: false, enqueuedAt: 0, payload: p })), cpuCount: 12 - payloads.length, cpuLevel: 3, beginner: false, quarantined: false, ...o,
 });
 
-describe('REQ-MM-008 the ranked course fits the horses', () => {
+describe('REQ-MM-009 the ranked course fits the horses', () => {
   it('a turf 1600–2400 horse only draws turf courses in its range; every one of them comes up', () => {
     const h = partner();
     const seen = new Set<string>();
@@ -66,7 +66,7 @@ describe('REQ-MM-008 the ranked course fits the horses', () => {
   });
 });
 
-describe('REQ-MM-009..011 CPU level, strength and the ramp per class', () => {
+describe('REQ-MM-010..011 CPU level, strength and the ramp per class', () => {
   it('the CPU level is the rating level clamped to the class band', () => {
     const cfg: RankedFieldConfig = { courseFitsHorses: true, cpuLevelByClass: { C: { min: 2, max: 3 }, S: { min: 4, max: 5 } } };
     expect(rankedCpuLevel(cfg, 'C', 5)).toBe(3);
@@ -156,7 +156,7 @@ describe('contracts/ranked-fields.sample.json (the fields the C# ranked harness 
       for (const r of set.races) {
         const cfg = expandRankedRace(small, r);
         expect(cfg.entrants[r.playerSlot]!.kind).toBe('human');
-        // the course always fits the player's horse (REQ-MM-008) and the CPUs race at the class total (REQ-MM-011)
+        // the course always fits the player's horse (REQ-MM-009) and the CPUs race at the class total (REQ-MM-012)
         expect(courseFits(cfg.track, cfg.entrants[r.playerSlot]!.horse)).toBe(true);
       }
     }

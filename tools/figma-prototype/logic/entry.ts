@@ -934,7 +934,7 @@ export const MuchiLogic = {
     const beginner = s.rating.rankedRaces < master.progression.beginnerRaces;
     const horse = toRaceHorse(master, h);
     const cls = classDef(master, s.season.classId);
-    // quality pass 2 (REQ-MM-008..011): the server's ranked card — a course that fits the horse, the class's CPU level band and
+    // quality pass 2 (REQ-MM-009..012): the server's ranked card — a course that fits the horse, the class's CPU level band and
     // strength, the ramp after the beginner matches (rankedMatchRules on a lone player's match, like the matchmaker's CPU fill)
     const tId = trackId ?? (master.progression.rankedField?.courseFitsHorses ? rankedCourse(master, [horse], cryptoRng) : master.tracks[Math.floor(Math.random() * master.tracks.length)]!.id);
     const rules = rankedMatchRules(master, {

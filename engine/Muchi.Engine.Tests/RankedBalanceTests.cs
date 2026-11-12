@@ -53,7 +53,7 @@ namespace Muchi.Engine.Tests
             _out.WriteLine("ruleset 1.3.0 (ranked today)\n" + RankedHarness.Markdown(cells));
             _out.WriteLine("ruleset 1.4.0 (ranked after the rollout)\n" + RankedHarness.Markdown(cells14));
 
-            // W9 (REQ-MM-008): the course always fits the player's horse
+            // W9 (REQ-MM-009): the course always fits the player's horse
             foreach (var s in sets13) Assert.All(s.Races, r => Assert.False(r.PlayerOffAptitude, s.Key + " " + r.Config.RaceId + " on " + r.Config.Track.Id));
 
             var fails = new List<string>();

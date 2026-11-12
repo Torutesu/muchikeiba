@@ -6,7 +6,7 @@ namespace Muchi.Client
     /// <summary>
     /// Quality pass 2 (docs/quality/ranked.md §4): after a ranked loss, which side of the result the player can work on — the
     /// horse or the riding. Compares the player's horse (stat total as it raced, after the class cap) with the CPU field of the
-    /// race (their average total; since REQ-MM-011 a class's CPUs race at the class strength). Clearly weaker → train the horse;
+    /// race (their average total; since REQ-MM-012 a class's CPUs race at the class strength). Clearly weaker → train the horse;
     /// otherwise → the gap was the riding (the 敗因 and 振り返り lines above it say what in the riding). From the race config
     /// only, deterministic, no invented numbers. Shown in the result's one 振り返り row (no new sheet).
     /// </summary>

@@ -55,7 +55,7 @@ export interface BuildRaceInput {
    */
   cpuStatPermille?: number;
   /**
-   * REQ-MM-011 (ranked, progression.rankedField.cpuStatTotalByClass): every CPU horse is scaled (up or down) to this stat
+   * REQ-MM-012 (ranked, progression.rankedField.cpuStatTotalByClass): every CPU horse is scaled (up or down) to this stat
    * total after the class normalization, keeping its balance between stats (each ≤ 1000); cpuStatPermille applies after.
    * Absent = the template's stats (capped), as before.
    */
@@ -86,7 +86,7 @@ function withSkill(h: RaceHorse, s: RaceHorse['skill'] | undefined): RaceHorse {
   return s ? { ...rest, skill: s } : rest;
 }
 
-/** REQ-MM-011: `h`'s stats scaled to `total` (floor per stat, each ≤ 1000; the balance between stats kept). */
+/** REQ-MM-012: `h`'s stats scaled to `total` (floor per stat, each ≤ 1000; the balance between stats kept). */
 export function scaleToTotal(h: Stats, total: number): Stats {
   const cur = STAT_KEYS.reduce((a, k) => a + h[k], 0);
   const out = {} as Stats;

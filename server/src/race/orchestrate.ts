@@ -45,7 +45,7 @@ export interface CreateRaceOptions {
   raceId?: string;
   /** REQ-UXS-003: beginner matches race against weaker CPU horses (permille of their normalized stats). */
   cpuStatPermille?: number;
-  /** REQ-MM-011: ranked CPU horses race at this stat total (rankedMatchRules; progression.rankedField). */
+  /** REQ-MM-012: ranked CPU horses race at this stat total (rankedMatchRules; progression.rankedField). */
   cpuStatTotal?: number | null;
 }
 
@@ -68,7 +68,7 @@ export async function createRace(m: Master, o: CreateRaceOptions): Promise<Creat
   const trackId = o.trackId
     ?? (room?.trackId && m.tracks.some((t) => t.id === room.trackId) ? room.trackId : undefined)
     ?? (ev ? ev.trackIds[randInt(o.rng, ev.trackIds.length)]! : o.mode === 'tutorial' ? 'aoba_turf_1600'
-      // REQ-MM-008: a ranked course fits the riders' horses (one draw, like the plain draw)
+      // REQ-MM-009: a ranked course fits the riders' horses (one draw, like the plain draw)
       : o.mode === 'ranked' && m.progression.rankedField?.courseFitsHorses ? rankedCourse(m, o.humans.map((h) => h.horse), o.rng)
       : m.tracks[randInt(o.rng, m.tracks.length)]!.id);
   const statCap = o.statCap !== undefined ? o.statCap : ev ? ev.rules.statCap : o.mode === 'ranked' ? Math.min(...o.humans.map((h) => h.statCap)) : null;
@@ -173,7 +173,7 @@ export function settleRace(config: RaceStartConfig, final: FinalOutcome, ratings
 /**
  * REQ-UXS-003 / REQ-MM-003: beginner matches race weaker CPUs (level and stats from progression.beginnerMatch,
  * balance target R10); a match of players who are all on their first ranked race may use a fixed course.
- * REQ-MM-009/010 (progression.rankedField): a regular match's CPU level is clamped to the class band (the class of the
+ * REQ-MM-010/010 (progression.rankedField): a regular match's CPU level is clamped to the class band (the class of the
  * match's stat cap), and while every rider is still in the ramp after the beginner matches the CPU horses are not yet
  * at full strength (an entry queued by an older build has no race count: full strength).
  */

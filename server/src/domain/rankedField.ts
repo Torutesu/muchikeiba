@@ -1,4 +1,4 @@
-// Quality pass 2 (docs/quality/ranked.md, REQ-MM-008..010): how a ranked race's card is made — which course, which CPU
+// Quality pass 2 (docs/quality/ranked.md, REQ-MM-009..012): how a ranked race's card is made — which course, which CPU
 // riders. Pure functions over the master; createRace / rankedMatchRules call them. Ranked fairness: nothing here depends on
 // anything purchasable — only the horses' own aptitudes (every horse has one), the class, and the player's ranked-race count.
 import type { Master } from './master.js';
@@ -6,25 +6,25 @@ import { randInt, type Rng } from './rng.js';
 
 export interface RankedFieldConfig {
   /**
-   * REQ-MM-008: the course is drawn among the courses inside the most human horses' distance and surface aptitude (every
+   * REQ-MM-009: the course is drawn among the courses inside the most human horses' distance and surface aptitude (every
    * course when none fits). Off = any course (before quality pass 2, about 45% of a turf horse's ranked races were on a
    * course it is not made for: −5% top speed and stamina per miss, almost never a win).
    */
   courseFitsHorses: boolean;
   /**
-   * REQ-MM-009: the CPU riders' level per class, clamped around the level the match rating gives (cpuLevelFor). C, the class
+   * REQ-MM-010: the CPU riders' level per class, clamped around the level the match rating gives (cpuLevelFor). C, the class
    * every player starts in, keeps average CPU riders; S meets the best. Absent class = the rating level as before.
    */
   cpuLevelByClass?: Record<string, { min: number; max: number }>;
   /**
-   * REQ-MM-011: the CPU horses of a class race at this stat total (scaled up or down from their template, the template's
+   * REQ-MM-012: the CPU horses of a class race at this stat total (scaled up or down from their template, the template's
    * balance between stats kept, each stat ≤ 1000) — a class is a field of that class's strength. Before quality pass 2 a CPU
    * horse was only scaled down to the cap, so above C most of the field (the R horses, ~2,800) stayed far under it and a
    * raised horse found the higher classes easier than C. Absent class = the template's stats capped as before.
    */
   cpuStatTotalByClass?: Record<string, number>;
   /**
-   * REQ-MM-010: after the beginner matches (progression.beginnerMatch, the first `beginnerRaces` races), the CPU horses' stats
+   * REQ-MM-011: after the beginner matches (progression.beginnerMatch, the first `beginnerRaces` races), the CPU horses' stats
    * come back to full strength over these steps (permille, one per ranked race) instead of in one jump — the first regular
    * races no longer fall off a cliff. Empty / absent = full strength at once (as before).
    */
@@ -37,7 +37,7 @@ export function courseFits(t: { distanceM: number; surface: string }, h: { distM
 }
 
 /**
- * REQ-MM-008: the ranked course — uniformly among the courses that fit the most human horses (one draw from `rng`, like the
+ * REQ-MM-009: the ranked course — uniformly among the courses that fit the most human horses (one draw from `rng`, like the
  * plain draw it replaces). A match of horses with nothing in common still gets a course that fits as many as possible.
  */
 export function rankedCourse(m: Pick<Master, 'tracks'>, horses: { distMinM: number; distMaxM: number; surface: string }[], rng: Rng): string {
@@ -47,18 +47,18 @@ export function rankedCourse(m: Pick<Master, 'tracks'>, horses: { distMinM: numb
   return pool[randInt(rng, pool.length)]!.id;
 }
 
-/** REQ-MM-009: the CPU level of a ranked match in `classId` (the rating level, clamped to the class's band). */
+/** REQ-MM-010: the CPU level of a ranked match in `classId` (the rating level, clamped to the class's band). */
 export function rankedCpuLevel(cfg: RankedFieldConfig | undefined, classId: string | null, ratingLevel: number): number {
   const band = classId ? cfg?.cpuLevelByClass?.[classId] : undefined;
   return band ? Math.max(band.min, Math.min(band.max, ratingLevel)) : ratingLevel;
 }
 
-/** REQ-MM-011: the CPU stat total of a ranked match in `classId` (null = the template's stats, capped as before). */
+/** REQ-MM-012: the CPU stat total of a ranked match in `classId` (null = the template's stats, capped as before). */
 export function rankedCpuStatTotal(cfg: RankedFieldConfig | undefined, classId: string | null): number | null {
   return (classId ? cfg?.cpuStatTotalByClass?.[classId] : undefined) ?? null;
 }
 
-/** REQ-MM-010: the CPU stat permille of a regular match for a player with `rankedRaces` races (1000 = full strength). */
+/** REQ-MM-011: the CPU stat permille of a regular match for a player with `rankedRaces` races (1000 = full strength). */
 export function rankedRampPermille(cfg: RankedFieldConfig | undefined, rankedRaces: number, beginnerRaces: number): number {
   const ramp = cfg?.rampCpuStatPermille ?? [];
   const i = rankedRaces - beginnerRaces;

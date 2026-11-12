@@ -144,6 +144,10 @@
 - REQ-MM-006 フレンド部屋は人間2人以上でないと開始できない（`ROOM_TOO_SMALL`）。部屋は永続化する。レースの開始に失敗した待ち行列の人は待ち時間を保ったまま戻す。
 - REQ-MM-007 マッチングの状態（待ち行列・割り当て・フレンド部屋・イベントの待ち行列）は**1行ずつ**SQLiteに保存し、変わった行だけを書く（1つの値にまとめると2 MiBの上限で全員のマッチングが止まるため）。フレンド部屋は**ホスト1人につき1つ**（作り直すと同じ部屋が返る）、全体の上限つき、期限切れはあらゆる操作のたびに掃除する。
 - REQ-MM-008 マッチしたプレイヤーは、レース部屋を作る（非同期の）前に「開始中」の印を同期的に付ける。この間の待ち行列への参加・イベントの取り消し・フレンド戦の開始は`ALREADY_IN_RACE`で拒否し、作成に失敗したら印を外して待ち行列（またはフレンド部屋）に戻す。フレンド戦・チュートリアルの開始時は、全メンバーがランク戦・イベントの待ち行列にいないことも確認する。
+- REQ-MM-009 ランク戦のコースは、人間の馬のうち最も多くの距離・馬場の適性に入るコースから等確率で選ぶ（誰にも合わなければ全コース）。`progression.rankedField.courseFitsHorses`（品質パス2、docs/quality/ranked.md）。
+- REQ-MM-010 ランク戦の CPU のレベルは、レートのレベルを試合のクラス（その試合の上限のクラス）の帯 `cpuLevelByClass` に収めたもの。隔離中の試合と初心者マッチは今までどおり。
+- REQ-MM-011 初心者マッチの後、試合の全員がランク戦 `beginnerRaces`〜`beginnerRaces`+N−1 戦目の時は、CPU の能力を `rampCpuStatPermille`[戦数−`beginnerRaces`]‰ にする（N はその長さ、上がるだけ・≤1000）。戦数を持たない古い待ち行列のエントリは元の強さ。
+- REQ-MM-012 ランク戦の CPU の馬は、能力の比をそのままに合計を `cpuStatTotalByClass`[クラス] にする（上げも下げもする、1能力 ≤ 1000、クラスの正規化の後・`cpuStatPermille` の前）。プレイヤーの馬は変えない。どれも買える物では変わらない（REQ-RATE-003）。結果画面は負けた時に馬と場の能力合計を比べて「能力の差（調教）」か「互角以上（乗り方）」を1行で言う（`RankedFieldCheck`）。
 
 ## 5. レート・クラス（TS）
 - REQ-RATE-001 Glicko-2。多人数レースは「人間同士の全ペアの勝ち負け」に分解して更新する。CPUとの結果はレートに入れない。
@@ -442,7 +446,7 @@
 ### 9.24 UX・オンボーディング（TS、`src/domain/onboarding.ts`・`nudges.ts`・`accountDeletion.ts`、`contracts/protocol.md` §8.7、docs/planning/06 §2〜§4・§8・§10.1）
 - REQ-UXS-001 規約同意の記録：`POST /v1/player/consent` で、同意した利用規約・プライバシーポリシーの版と時刻を記録する（履歴は直近20件）。今の版（`progression.consent`）と違う版は `CONSENT_VERSION_MISMATCH` で拒否する。`/v1/player`・bootstrap の `consent.required` は、未同意か版が上がったときに true（再同意を求める）。
 - REQ-UXS-002 最初の相棒：チュートリアルで乗った馬（`t_partner`、SR相当、`giftOnly`）を `POST /v1/player/partner`（冪等キー必須、`c:<path>:<key>`）で1回だけ付与し、同時に命名する（REQ-HORSE-003 の検証。名前が不正なら何も付与しない）。2回目は `PARTNER_ALREADY_GRANTED`。無料10連（REQ-GACHA-010）とは別の操作。`giftOnly` の馬はガチャの抽選表・券の表・CPUの出走馬に入らない（読み込み時の検証で、明示した抽選表に入れても `CONFIG_INVALID`）。
-- REQ-UXS-003 最初のランク戦：ランク戦が0戦の人は CPU 補完までの待ちを `beginnerMatch.firstRaceCpuFillAfterMs`（既定5秒、通常は15秒）にする。初心者マッチ（REQ-MM-003）の CPU はレベル `beginnerMatch.cpuLevel`（既定1）、能力をクラスの正規化の後に `cpuStatPermille`（既定780‰）倍にする（プレイヤーの馬は変えない）。最初のランク戦のコースは `firstRaceTrackId`（既定 null＝通常どおり、A/Bの `firstRankedTrackId` で上書き。全員が同じ値の時だけ使う）。目標は balance-targets の R10。
+- REQ-UXS-003 最初のランク戦：ランク戦が0戦の人は CPU 補完までの待ちを `beginnerMatch.firstRaceCpuFillAfterMs`（既定5秒、通常は15秒）にする。初心者マッチ（REQ-MM-003）の CPU はレベル `beginnerMatch.cpuLevel`（既定1）、能力をクラスの正規化の後に `cpuStatPermille`（既定860‰。品質パス2でコースが馬に合うようになり780から戻した、REQ-MM-009）倍にする（プレイヤーの馬は変えない）。最初のランク戦のコースは `firstRaceTrackId`（既定 null＝通常どおり、A/Bの `firstRankedTrackId` で上書き。全員が同じ値の時だけ使う）。目標は balance-targets の R10。
 - REQ-UXS-011 日付の切り替え：ゲーム日（ログボ・デイリーミッション・世話・配合・TAの回数・フレンド戦報酬の上限・種牡馬の貸し借り・通知の1日上限・その日の馬場・初勝利ボーナス・厩舎手当の受け取り日・マイ厩舎のいいねの1日上限、シーズンパスとオファーの残り日数（`gameDaysUntil`））は全て `gameDayKey`／`gameDayIndex`（`src/domain/time.ts`）で決める（テストで `jstDateKey` を使ってよいファイルを限定）。切り替え時刻は定数ではなく検証済みのマスター値 `progression.dayRollover`（既定 4:00 JST、REQ-DAY-001〜006）。定期実行の時刻（scheduled.ts）は時計の時刻なので動かない。
 - REQ-UXS-012 通知テンプレートの追加（既存の種類の中）：season「昇級まであと1勝」（昇級ラインまで `nudges.promotionNearPoints`（30pt）以内で、最後のランク戦から `promotionIdleMs`（24時間）たった時、1シーズン1回、プレイヤーのアラーム）、events「大会の受付締切まで」（締切 `tournamentClosingLeadMs`（1時間）前、今シーズンにランク戦を走った参加条件を満たす未登録の人へ1回、最大 `tournamentClosingMaxTargets` 人、5分ごとの定期実行）、friends「フレンドがTA記録を抜いた」（抜かれた側に1日1回まで）。1日の上限の既定は2（push.json）。静かな時間帯は従来どおり。
 - REQ-UXS-013 初心者ログインボーナス：最初の7日（1回だけ）は `beginnerLoginBonus`（2日目は繁殖牝馬1頭＝`broodmare` 報酬：`giftOnly` の牝馬を引退済みで付与）、その後は通常の7日周期（`loginBonus`）。応答に `track`（beginner / normal）。この表ができる前に受け取ったことのある人は通常の周期のまま。

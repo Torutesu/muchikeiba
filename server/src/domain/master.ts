@@ -180,7 +180,7 @@ export interface Progression {
   consent?: import('./onboarding.js').ConsentConfig;
   partner?: import('./onboarding.js').PartnerConfig;
   beginnerMatch?: import('./onboarding.js').BeginnerMatchConfig;
-  /** REQ-MM-008..010 (quality pass 2): how a ranked race's card is made (rankedField.ts). Absent = as before. */
+  /** REQ-MM-009..012 (quality pass 2): how a ranked race's card is made (rankedField.ts). Absent = as before. */
   rankedField?: import('./rankedField.js').RankedFieldConfig;
   beginnerLoginBonus?: ({ day: number } & Reward)[];
   unlocks?: import('./onboarding.js').UnlockDef[];

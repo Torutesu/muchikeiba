@@ -2800,7 +2800,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ```json
 { "v": 1, "rulesetVersion": "1.3.0",
   "fieldSize": { "min": 2, "max": 12, "default": 8 },
-  "strengths": [ { "id": "easy", "name": "やさしい", "note": "初心者マッチと同じ相手", "cpuLevel": 1, "cpuStatPermille": 780 },
+  "strengths": [ { "id": "easy", "name": "やさしい", "note": "初心者マッチと同じ相手", "cpuLevel": 1, "cpuStatPermille": 860 },
                  { "id": "normal", "name": "ふつう", "note": "ランク戦（レート1400〜1600）の相手", "cpuLevel": 3, "cpuStatPermille": 1000 } ],
   "defaultStrength": "normal",
   "courses": [ { "trackId": "minato_turf_2400", "name": "みなと競馬場 芝2400m", "surface": "turf", "distanceM": 2400, "segments": [ … ],

@@ -879,7 +879,8 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
 .fx-flash { position: absolute; inset: 0; background: #fff; animation: fxflash .5s ease-out both; pointer-events: none; }
 .fx-flash.tint { background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, .9), var(--fx-tint, rgba(255, 211, 79, .55)) 55%, rgba(0, 0, 0, 0) 100%); }
 @keyframes fxflash { from { opacity: .85; } to { opacity: 0; } }
-.fx-finish { position: absolute; left: 0; right: 0; top: 240px; text-align: center; --pc: var(--white); animation: fxstamp .6s var(--ease-spring) both; }
+.fx-finished .marker, .fx-finished .label.pop, .fx-finished .hintbox { opacity: 0; transition: opacity var(--dur-fast) ease; } /* the stamp is the one thing at the finish */
+.fx-finish { position: absolute; left: 0; right: 0; top: 270px; text-align: center; --pc: var(--white); animation: fxstamp .6s var(--ease-spring) both; }
 .fx-finish[data-place="1"] { --pc: var(--place-1); } .fx-finish[data-place="2"] { --pc: var(--place-2); } .fx-finish[data-place="3"] { --pc: var(--place-3); }
 .fx-finish .k { font-size: var(--fs-subhead); font-weight: 700; letter-spacing: .4em; color: var(--white); text-shadow: 0 3px 14px rgba(0, 0, 0, .8); }
 .fx-finish .t { font-size: 150px; font-weight: 700; line-height: 1.05; color: var(--pc); letter-spacing: .04em; font-variant-numeric: tabular-nums; text-shadow: 0 6px 34px rgba(0, 0, 0, .65); }

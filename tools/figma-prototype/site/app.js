@@ -1040,7 +1040,7 @@ function paintFx(f) {
   // 3. the finish (the horse's own line; the result follows when the race is done)
   if (f.finished && !fx.finished) {
     fx.finished = true;
-    fx.under.classList.add('calm');
+    fx.under.classList.add('calm'); cur.classList.add('fx-finished');
     const place = f.finishPlace > 0 ? f.finishPlace : 0;
     if (place) {
       const s = fxNode('fx-finish', fx.over); s.dataset.place = String(place); s.dataset.fx = 'finish';

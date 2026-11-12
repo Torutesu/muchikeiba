@@ -918,6 +918,11 @@ html[data-reduce-motion="on"] .cheer-line.pulse, html[data-reduce-motion="on"] .
 .hud .minimap, .hud .chip.banner, .hud .chip.cheer, .hud .caption, .hud .btn.quit, .hud .chip.assist { transition: opacity var(--dur-slow) ease; }
 .fx-straight .minimap, .fx-straight .chip.banner, .fx-straight .chip.cheer, .fx-straight .caption { opacity: 0; }
 .fx-straight .btn.quit, .fx-straight .chip.assist { opacity: .4; }
+/* integration (1.4 × the final straight, claude/quality-1): the 仕掛けバー has done its job once the go is made (until then it
+   stays, gold line and all) and the marker's gap / slipstream words step back with the rest; the whip button, its rings,
+   the one coaching line (which also calls a duel) and the place stay. The hint never repeats the pop (app.js paint). */
+.hud .gobar, .marker .gap, .marker .wind { transition: opacity var(--dur-slow) ease; }
+.fx-straight .gobar[data-phase="go"], .fx-straight .marker .gap, .fx-straight .marker .wind { opacity: 0; }
 .fx-pre .chip.banner { opacity: 0; }
 /* the place chip answers a gained place */
 .hud .chip.pos.gain { animation: fxgain .6s var(--ease-out); }
@@ -1023,7 +1028,7 @@ html[data-reduce-motion="on"] .gl-line { animation: fade .15s ease both; }
 .qr-rar i.r { background: #5b7488; } .qr-rar i.sr { background: var(--cyan); } .qr-rar i.ssr { background: var(--gold); }
 .qr-stageup { position: absolute; border-radius: var(--radius); background: linear-gradient(90deg, rgba(255, 211, 79, .22), rgba(255, 211, 79, .04)); box-shadow: inset 3px 0 0 var(--gold); animation: rise .6s cubic-bezier(.2, .7, .2, 1) .5s both; }
 .card.qr-parent { transition: box-shadow .15s ease; }
-.card.qr-parent.sel { box-shadow: inset 0 0 0 2px var(--cyan), 0 0 22px rgba(0, 210, 237, .25); }
+.card.qr-parent.sel { box-shadow: inset 0 0 0 2px var(--cyan), var(--elev-1); } /* integration: one panel shadow (the token), the selection is the cyan edge */
 .qr-hide { opacity: 0; transform: translateY(10px); transition: opacity .45s ease, transform .45s cubic-bezier(.2, .7, .2, 1); }
 .qr-hide.qr-show { opacity: 1; transform: none; }
 .qr-rar-big.qr-show { text-shadow: 0 0 24px currentColor; }

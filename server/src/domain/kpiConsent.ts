@@ -69,6 +69,8 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'link_create', 'link_resolve', 'link_revoke', 'rematch', 'deep_link_open',
   'release_notes_view', 'release_notes_target', 'release_notes_history',
   'calendar_view', 'calendar_entry_open', 'calendar_mark',
+  // Round 23: §71 血統図と系統 — engagement only (no id of a player or horse in either row)
+  'pedigree_view', 'bloodline_view',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

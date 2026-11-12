@@ -1,0 +1,27 @@
+{
+  "_note": "§71 系統（父系）の名前と説明。馬の line（仔は父の line を受け継ぐ）ごと。名前・説明は日英の組で持ち、見る人の言語で選ぶ（境界で訳さない）。創始の馬はテンプレートの架空の父の名前。すべて架空。系統の数・揃い具合に報酬を結び付けない（REQ-PED-013）。",
+  "version": 1,
+  "lines": [
+    { "id": "akatsuki", "ja": "アカツキ系", "en": "Akatsuki line",
+      "founder": { "ja": "アカツキオー", "en": "Akatsuki Oh" },
+      "note": { "ja": "夜明けの直線で伸びる芝の系統。差し・追込の馬が多い。", "en": "A turf line that kicks on in the dawn stretch. Many closers and late closers." } },
+    { "id": "hoshi", "ja": "ホシ系", "en": "Hoshi line",
+      "founder": { "ja": "ホシノオウ", "en": "Hoshi no Oh" },
+      "note": { "ja": "長い距離で粘る芝の系統。先行の馬が多い。", "en": "A turf line that keeps going over longer trips. Many stalkers." } },
+    { "id": "hayate", "ja": "ハヤテ系", "en": "Hayate line",
+      "founder": { "ja": "ハヤテマル", "en": "Hayate Maru" },
+      "note": { "ja": "スタートから飛ばす芝の系統。逃げの馬が多い。", "en": "A turf line that goes hard from the gate. Many front-runners." } },
+    { "id": "minamo", "ja": "ミナモ系", "en": "Minamo line",
+      "founder": { "ja": "ミナモノオウジ", "en": "Minamo no Ouji" },
+      "note": { "ja": "重い馬場にも強い芝の系統。脚質はさまざま。", "en": "A turf line that handles soft ground. Running styles vary." } },
+    { "id": "sunaarashi", "ja": "スナアラシ系", "en": "Sunaarashi line",
+      "founder": { "ja": "サバクノオウ", "en": "Sabaku no Oh" },
+      "note": { "ja": "ダートで前に行く系統。", "en": "A dirt line that likes to lead." } },
+    { "id": "dorobune", "ja": "ドロブネ系", "en": "Dorobune line",
+      "founder": { "ja": "ヌカルミボシ", "en": "Nukarumi Boshi" },
+      "note": { "ja": "ぬかるんだダートを苦にしない系統。", "en": "A dirt line that does not mind muddy going." } },
+    { "id": "kawarabi", "ja": "カワラビ系", "en": "Kawarabi line",
+      "founder": { "ja": "イシコロオー", "en": "Ishikoro Oh" },
+      "note": { "ja": "ダートの後方から伸びる系統。", "en": "A dirt line that runs on from behind." } }
+  ]
+}

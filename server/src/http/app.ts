@@ -37,6 +37,7 @@ import type { StableService } from '../domain/stable.js';
 import type { HallService } from '../domain/hallOfFame.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
+import { PedigreeService } from '../domain/pedigree.js';
 import { ShowcaseService, SHOWCASE_HARD_LIMITS, SHOWCASE_ID_RE, SHOWCASE_PIN_KINDS, SHOWCASE_REF_RE, type ShowcaseInput } from '../domain/showcase.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
@@ -119,6 +120,7 @@ export type PlayerMethod =
   | 'showcaseMine' | 'showcaseSave' | 'showcaseViewer' | 'showcaseForget'
   | 'releaseNotesCheck' | 'releaseNotesSeen' | 'releaseNotes'
   | 'calendar' | 'calendarMark'
+  | 'pedigreeMine' | 'pedigreePublic' | 'pedigreePair' | 'bloodlines'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
@@ -515,6 +517,26 @@ const playerIdParam = (s: string) => {
   if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
   return s;
 };
+/** REQ-PED-003: a horse id in a path or query (the stable's own ids, h<n>). */
+const horseParam = (s: string) => {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad horse id');
+  return s;
+};
+/** REQ-PED-008: a localized JSON body with an ETag; 304 when If-None-Match matches (private: per player). */
+const etagged = (r: Request, body: unknown, etag: string, lang: Locale) => {
+  const headers = { etag, 'cache-control': 'private, no-cache', 'content-language': lang, vary: 'accept-language' };
+  if (etagMatches(r.headers.get('if-none-match'), etag)) return new Response(null, { status: 304, headers });
+  return new Response(JSON.stringify(body), { status: 200, headers: { ...headers, 'content-type': 'application/json; charset=utf-8' } });
+};
+/** REQ-PED-*: the pedigree orchestration (owner names of borrowed stallions, block checks for others' horses). */
+const pedigreeService = (c: AppContext) => new PedigreeService({
+  mine: (u, h, l) => c.player(u).invoke('pedigreeMine', u, h, l),
+  publicOf: (o, h, l, rel) => c.player(o).invoke('pedigreePublic', o, h, l, rel),
+  pair: (u, a, b, l) => c.player(u).invoke('pedigreePair', u, a, b, l),
+  viewer: (u) => c.player(u).invoke('showcaseViewer', u),
+  blocks: (u) => c.player(u).invoke('blockIds', u),
+  profiles: (ids) => c.friends.profilesOf(ids),
+}, () => c.master);
 const teamIdParam = (s: string) => {
   if (!TEAM_ID_RE.test(s)) throw new AppError('BAD_REQUEST', 'bad team id');
   return s;
@@ -755,7 +777,14 @@ export const routes: Route[] = [
   } },
   { method: 'POST', path: '/v1/hall/ceremonies/:horseId/ack', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('hallAck', u, p.horseId!) },
   { method: 'GET', path: '/v1/hall/:playerId', auth: 'player', handler: async (r, p, c, u) => { const q = hallPage(r); return hall(c).visit(u, playerIdParam(p.playerId!), q.cursor, q.limit); } },
-  { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('pedigree', u, p.horseId!) },
+  // 血統図 (REQ-HORSE-007 + REQ-PED-003..008, §71; gate group `core`): my horse, or another player's horse while it is shown
+  // publicly (?playerId=). The answer is built from the stored lineage, so it carries an ETag (304 on If-None-Match).
+  { method: 'GET', path: '/v1/horses/:horseId/pedigree', auth: 'player', handler: async (r, p, c, u) => {
+    const q = new URL(r.url).searchParams.get('playerId');
+    const lang = resolveLocale(r);
+    const v = await pedigreeService(c).horse(u, horseParam(p.horseId!), q ? playerIdParam(q) : null, lang);
+    return etagged(r, localize(v, lang, catalogFor(c.master)), `"${v.rev}-${lang}"`, lang);
+  } },
   // stable care / bond (REQ-BOND-*): never affects ranked, event or time attack stats
   { method: 'GET', path: '/v1/bond', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('bondLevels', u) },
   { method: 'GET', path: '/v1/horses/:horseId/bond', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('bond', u, p.horseId!) },
@@ -785,6 +814,15 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ sireId: id, damId: id, useMaterial: z.boolean().optional() }));
     return c.player(u).invoke('breed', u, b.sireId, b.damId, idem(r), b.useMaterial ?? false);
   } },
+  // REQ-PED-009/010 (§71): the pair's trees, shared ancestors (= the inbreeding count) and the inheritance hints. Read only.
+  { method: 'GET', path: '/v1/breeding/pedigree', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    const sireId = q.get('sireId'), damId = q.get('damId');
+    if (!sireId || !damId) throw new AppError('BAD_REQUEST', 'sireId and damId are required');
+    return pedigreeService(c).pair(u, horseParam(sireId), horseParam(damId), resolveLocale(r));
+  } },
+  // REQ-PED-011..013 (§71): the bloodline (sire line) list of my stable. No reward for holding lines.
+  { method: 'GET', path: '/v1/bloodlines', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('bloodlines', u, resolveLocale(r)) },
   // stud lending (REQ-BREED-010..016): fees in free coins only
   { method: 'GET', path: '/v1/stud/mine', auth: 'player', handler: async (_r, _p, c, u) => stud(c).mine(u) },
   { method: 'PUT', path: '/v1/stud/listings/:horseId', auth: 'player', handler: async (r, p, c, u) => {

@@ -17,6 +17,7 @@ import { applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurch
 import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
 import { attachShortfall, coinShortfall } from './shortfall.js';
 import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { bloodlinesView, breedingPedigree, pedigreeMine, pedigreePublic } from './pedigree.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
 import {
@@ -1626,6 +1627,15 @@ export class PlayerService {
   }
   /** The viewer's side of GET /v1/showcase/:playerId: friends and the one block list (§47.1). No writes. */
   async showcaseViewer(id: string) { const s = await this.load(id); return { friendIds: [...s.friends.ids], blocked: [...blockIds(s)] }; }
+  // ---- 血統図と系統 (REQ-PED-*, contracts/protocol.md §71): read only, never writes ----
+  /** REQ-PED-003: my horse's tree (a draft: stud owner names are applied by PedigreeService). */
+  async pedigreeMine(id: string, horseId: string, lang: Locale = 'ja') { return pedigreeMine(this.d.master, await this.load(id), horseId, lang, this.d.clock()); }
+  /** REQ-PED-006: run in the OWNER's object — the horse only while it is shown publicly (stable copy / trainer card). */
+  async pedigreePublic(id: string, horseId: string, lang: Locale = 'ja', relation: 'friend' | 'other' = 'other') { return pedigreePublic(this.d.master, await this.load(id), horseId, lang, relation, this.d.clock()); }
+  /** REQ-PED-009/010: the breeding pair's trees, shared ancestors and hints (a draft, like pedigreeMine). */
+  async pedigreePair(id: string, sireId: string, damId: string, lang: Locale = 'ja') { return breedingPedigree(this.d.master, await this.load(id), sireId, damId, lang, this.d.clock()); }
+  /** REQ-PED-012: the bloodline list of my stable. */
+  async bloodlines(id: string, lang: Locale = 'ja') { return bloodlinesView(this.d.master, await this.load(id), lang); }
   /** REQ-SHOW-018: account deletion step (the copy leaves with the directory profile; the state is wiped at the end anyway). */
   showcaseForget(id: string) { return this.tx(id, null, (s) => forgetShowcase(s)); }
 

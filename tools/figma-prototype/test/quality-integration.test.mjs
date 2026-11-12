@@ -21,6 +21,13 @@ globalThis.localStorage = store;
 createRequire(import.meta.url)(join(here, '..', 'site', 'js', 'logic.js'));
 const L = globalThis.MuchiLogic;
 
+// The seeded days must stay in one season (a calendar month): seedDemo(3) plays today and the next two game days, and a season
+// end in between resets the pass (correctly), so its claim would leave the list. Near a month end, run on the 2nd of the next.
+{
+  const DAY = 86_400_000, jst = new Date(L.now() + 9 * 3_600_000);
+  const dim = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + 1, 0)).getUTCDate();
+  if (jst.getUTCDate() > dim - 3) L.setClockMs(L.now() + (dim - jst.getUTCDate() + 2) * DAY);
+}
 // a) day 3: the server lists missions_claim, pass_claim, feature_unlocked — the first two are on the ladder
 assert.strictEqual(typeof L.homeNextLine, 'function', 'MuchiLogic.homeNextLine (the one home rule for 次にやること)');
 for (const k of ['missions_claim', 'pass_claim', 'login_bonus', 'race', 'first_win', 'training_slots']) assert.ok(L.homeCoveredKinds.includes(k), `${k} is said by another home element`);

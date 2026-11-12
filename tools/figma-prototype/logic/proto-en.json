@@ -1718,6 +1718,12 @@
   "めくる": "Reveal",
   "すべて見る": "Show all",
   "馬カードを見る": "See the horse card",
-  "配合へ戻る": "Back to breeding"
+  "配合へ戻る": "Back to breeding",
+  "_qint": "---- quality integration (claude/quality-1): the ladder ↔ 馬カード links, the pass rewards on 目標",
+  "馬カードで見る": "See the horse card",
+  "馬カードで見る ›": "See the horse card ›",
+  "相棒の馬カード ›": "Partner's horse card ›",
+  "パスの報酬": "Pass rewards",
+  "パス報酬 {n}段 ›": "Pass rewards: {n} ›"
  }
 }

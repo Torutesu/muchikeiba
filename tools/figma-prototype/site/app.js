@@ -3745,7 +3745,7 @@ function glRungs(v) {
     out.push({ key: 'week', label: '今週', main: parts.join('　·　'), figure: null, fill: w.challenge ? w.challenge.cleared / Math.max(1, w.challenge.total) : 0, ready: !!w.rivalResult });
   }
   const s = v.season, cls = `${s.classId}級`;
-  const r = { key: 'season', label: 'シーズン', ready: s.missions.some((x) => x.claimable), fill: 0, figure: null };
+  const r = { key: 'season', label: 'シーズン', ready: L.ladderSeasonReady(v), fill: 0, figure: null }; // integration: the free pass rewards too
   if (s.status === 'rookie') r.main = 'ルーキー　·　ランク戦でクラスが決まります';
   else if (s.status === 'top') Object.assign(r, { main: `${cls}　·　最上位クラス`, figure: `${fmt(s.points)}pt`, fill: 1 });
   else if (s.status === 'line_reached') Object.assign(r, { main: `${cls}　·　昇級ラインに到達`, figure: `${fmt(s.points)}pt`, fill: 1 });
@@ -3870,7 +3870,12 @@ async function Goals() {
     Txt(pw.held === 0 ? 'いまのクラスで相棒の力をすべて出せています' : pw.nextUsable != null ? `${s.nextClassId}級なら ${fmt(pw.nextUsable)} まで出せます` : '', 0, 72, W - 64, 14, pw.held === 0 ? OK : GOLD, why, { weight: 500 });
   }
   TextLink('クラスの階段', 32, s.status === 'rookie' ? 180 : 300, 220, () => ClassLadder(v), c3, 'クラスの階段 ›').dataset.action = 'class-ladder';
+  // integration (claude/quality-1): the cap is the horse's story — the 馬カード shows each stat's training layer and the ranked
+  // line (training past the cap shows in the 配分 but not in the ranked total), so the ladder links there where it talks about the cap
+  if (s.power?.horseId) TextLink('馬カードで見る', 258, s.status === 'rookie' ? 180 : 300, 200, () => HorseCard(s.power.horseId, () => Goals()), c3, '馬カードで見る ›').dataset.action = 'cap-horse-card';
   Txt('シーズンミッション', 32, 344, 300, 12, CYAN, c3, { weight: 700, ls: '.16em' });
+  // integration: the season pass rewards the home ladder now says (次にやること no longer repeats them) — received on the pass
+  if (s.pass?.freeClaimable > 0) TextLink('パスの報酬', 258, 332, 200, () => SeasonPass(), c3, `パス報酬 ${s.pass.freeClaimable}段 ›`).dataset.action = 'goals-pass';
   s.missions.slice(0, 5).forEach((it, i) => GlMini(c3, it, 32, 368 + i * 44, W - 64));
   // the one claim (the only filled CTA on the screen); otherwise a quiet back
   if (v.claimable > 0) Cta(`まとめて受け取る（${v.claimable}件）`, 1074, 748, 490, () => GlClaim(), undefined).classList.add('gl-claim');
@@ -3956,6 +3961,8 @@ function ClassLadder(v) {
       if (c.rewards.top) Txt(`${c.rewards.top.maxRank === 1 ? '1位' : `上位${c.rewards.top.maxRank}位`} ${glReward(c.rewards.top.reward)}`, 150, 48, 398, 13, GOLD, row, { weight: 700, nowrap: true });
       if (c.rewards.floor) Txt(`出走した人みんな ${glReward(c.rewards.floor)}`, 150, 72, 398, 12, SOFT, row, { nowrap: true });
     });
+    // integration: where the cap meets the horse — its 馬カード (training layers and the ranked line)
+    if (s.power?.horseId) TextLink('馬カードで見る', 48, 818, 260, () => { close(); HorseCard(s.power.horseId, () => Goals()); }, sh, '相棒の馬カード ›').dataset.action = 'ladder-horse-card';
   }, 660, { solo: true }); // solo: the goals columns step aside while the ladder is open (largest text)
 }
 
@@ -4017,29 +4024,32 @@ function nxViews(v) {
 // Quality pass (home): kinds another home element already says — the ladder (today's / the first steps' / the season's
 // rewards, the week's challenge and rival, the team goal, the pinned horse goal), the menu (調教), 「レースへ」 (the first
 // race, the first-win bonus) and the automatic login bonus. Home never says a thing twice; 次にやること keeps the rest.
-const NX_HOME_DUP = ['race', 'first_race', 'first_win', 'login_bonus', 'missions_claim', 'missions_close', 'rival_week', 'weekly_challenge', 'team_goal_near', 'horse_goal_near', 'training_slots'];
-/** What home shows of the server's next list: the first item (the primary, then the chips) no other home element repeats. */
-const nxHomeItem = (v) => [v.primary, ...v.chips].find((i) => i && !NX_HOME_DUP.includes(i.kind)) ?? null;
+// Integration: the season pass's rewards are on the ladder's season rung too (pass_claim), and the list lives in the logic layer.
+const NX_HOME_DUP = L.homeCoveredKinds;
 async function NextCard() {
   if (cur?.dataset.screen !== 'home') return null;
   cur.querySelectorAll('[data-next]').forEach((n) => n.remove());
   const r = await L.nextActions();
   if (!r.ok || !r.value.enabled || cur?.dataset.screen !== 'home') return null;
   const v = r.value;
-  const p = nxHomeItem(v);
-  if (!p) return null;
-  const t = nxText(p);
-  // one slim line under the horse, left of 「レースへ」: kicker, what (and until when), its link; 今日は閉じる above it
+  // integration (claude/quality-1): the one rule (MuchiLogic.homeNextLine = NextActionModel.HomeLine) — nothing home does not
+  // already say → no line at all
+  const line = L.homeNextLine(v);
+  if (!line) return null;
+  const p = line.item, t = nxText(p);
+  // one slim line under the horse, left of 「レースへ」: kicker, what (and until when); the line itself opens it (›). At most
+  // one link: 今日は閉じる, when the server lets it be closed for the game day.
   const card = Glass('Next', NEXT_BOX.x, NEXT_BOX.y, NEXT_BOX.w, 72, undefined, .74);
-  card.dataset.next = p.kind; card.classList.add('next-card', 'next-line', 'rise');
+  card.dataset.next = p.kind; card.dataset.links = String(line.links.length); card.classList.add('next-card', 'next-line', 'rise');
   if (p.featureKey) card.dataset.feature = p.featureKey;
   if (p.deadlineAt) card.dataset.deadline = String(p.deadlineAt);
   Kicker('次にやること', 22, 10, card, { rule: false, size: 13 });
-  Txt(t.deadline ? t.title + '　·　' + t.deadline : t.title, 22, 36, NEXT_BOX.w - 190, 16, WHITE, card, { weight: 700, nowrap: true });
-  const go = TextLink(t.cta, NEXT_BOX.w - 168, p.dismissible ? 34 : 18, 150, () => { nxKpi('next_card_tap', p, 'primary'); nxGo(p); }, card, t.cta + ' ›');
-  go.dataset.nextGo = p.kind;
-  if (p.dismissible) {
-    const dm = TextLink('今日は閉じる', NEXT_BOX.w - 168, 0, 150, async () => {
+  const what = t.deadline ? t.title + '　·　' + t.deadline : p.kind === 'feature_unlocked' ? t.title + '　·　' + t.detail : t.title;
+  const tw = NEXT_BOX.w - (line.links.length ? 214 : 64);
+  Txt(what, 22, 36, tw, 16, WHITE, card, { weight: 700, nowrap: true }).dataset.nextGo = p.kind;
+  Txt('›', 22 + tw + 4, 30, 20, 22, CYAN, card, { weight: 700 });
+  if (line.links.includes('dismiss')) {
+    const dm = TextLink('今日は閉じる', NEXT_BOX.w - 168, 18, 150, async () => {
       const d = await L.dismissNext(p.kind);
       if (!d.ok) return toast(d.message);
       toast('今日はこのお知らせを閉じました');

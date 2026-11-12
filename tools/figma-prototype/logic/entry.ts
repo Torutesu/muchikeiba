@@ -1347,6 +1347,21 @@ export const MuchiLogic = {
   async claimGoals() {
     return wrap(async () => svc.claimGoals(ID, key(), { teamGoal: await nextTeamGoal() }));
   },
+  // quality integration (claude/quality-1): home says each thing once. The kinds another home element already says — the goal
+  // ladder (the daily / first-step / season missions and the season pass, its 「受け取れる報酬があります」 line; the week's
+  // challenge and rival; the team goal; the pinned horse goal), the menu (調教), 「レースへ」 (a race, the first race, the
+  // first-win bonus) and the automatic login bonus. Mirrors Muchi.Game.NextActionModel.HomeCovered.
+  homeCoveredKinds: ['race', 'first_race', 'first_win', 'login_bonus', 'missions_claim', 'missions_close', 'pass_claim', 'rival_week', 'weekly_challenge', 'team_goal_near', 'horse_goal_near', 'training_slots'] as string[],
+  /** Home's 次にやること: the first server item no other home element says, or null (no line). One link at most: 今日は閉じる. */
+  homeNextLine(v: { enabled?: boolean; primary?: { kind: string; dismissible?: boolean } | null; chips?: { kind: string; dismissible?: boolean }[] } | null) {
+    if (!v || !v.enabled) return null;
+    const item = [v.primary, ...(v.chips ?? [])].find((i) => i && !this.homeCoveredKinds.includes(i.kind)) ?? null;
+    return item ? { item, links: item.dismissible ? ['dismiss'] : [] } : null;
+  },
+  /** The ladder's season rung has something to receive: a season mission or a free pass reward (GoalLadderModel season Ready). */
+  ladderSeasonReady(g: { season: { missions: { claimable: boolean }[]; pass?: { freeClaimable?: number } | null } }) {
+    return g.season.missions.some((m) => m.claimable) || (g.season.pass?.freeClaimable ?? 0) > 0;
+  },
   async dismissNext(kind: string) {
     return wrap(async () => svc.dismissNextAction(ID, kind, await nextTeamGoal()));
   },

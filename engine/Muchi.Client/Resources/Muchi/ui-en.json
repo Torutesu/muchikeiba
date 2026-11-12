@@ -1565,6 +1565,9 @@
   "期待以上が{n}つ": "{n} above expectation",
   "見込みどおり": "As expected",
   "{r}（見込み {n}）": "{r} (chance {n})",
-  "脚質 {t}：{u}": "Style {t}: {u}"
+  "脚質 {t}：{u}": "Style {t}: {u}",
+  "_qint": "---- quality integration (claude/quality-1): the home line's one link, the ladder's link to the horse card",
+  "今日は閉じる": "Hide for today",
+  "馬カードで見る": "See the horse card"
  }
 }

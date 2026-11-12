@@ -76,6 +76,13 @@ namespace Muchi.Game
         public string LoginLine { get; private set; }
         /// <summary>The pace line, only from the server's own estimate: 「いまのペースで あと約9戦」.</summary>
         public string PaceLine { get; private set; }
+        /// <summary>Quality integration: 「パス報酬 2段」 on the goals sheet (opens the season pass), null when nothing to receive.
+        /// Home's 次にやること no longer says the pass rewards — the season rung's dot does.</summary>
+        public string PassLine { get; private set; }
+        /// <summary>Quality integration: where the ladder talks about the class cap it links to this horse's card
+        /// (HorseProfileModel: training layers and the ranked line). Null without a horse.</summary>
+        public string CapCardHorseId { get; private set; }
+        public string CapCardLink => CapCardHorseId == null ? null : "馬カードで見る";
         /// <summary>「まとめて受け取る（4件）」, null when nothing is claimable.</summary>
         public string ClaimText => View != null && View.Claimable > 0 ? "まとめて受け取る（" + View.Claimable + "件）" : null;
         /// <summary>After a claim: the lines of the moment (「無償コイン 45枚」「配合素材 ×1」…) and the total.</summary>
@@ -242,7 +249,9 @@ namespace Muchi.Game
             // シーズン
             var s = v.Season;
             var cls = s.ClassId + "級";
-            var rung = new GoalRung { Key = "season", Label = "シーズン", Ready = s.Missions.Any(x => x.Claimable) };
+            var rung = new GoalRung { Key = "season", Label = "シーズン", Ready = s.Missions.Any(x => x.Claimable) || s.PassFreeClaimable > 0 };
+            PassLine = s.PassFreeClaimable > 0 ? "パス報酬 " + s.PassFreeClaimable + "段" : null;
+            CapCardHorseId = s.HasPower && !string.IsNullOrEmpty(s.PowerHorseId) ? s.PowerHorseId : null;
             switch (s.Status)
             {
                 case "rookie": rung.Main = "ルーキー　·　ランク戦でクラスが決まります"; break;

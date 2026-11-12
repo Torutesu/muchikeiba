@@ -102,6 +102,16 @@ namespace Muchi.Game
             catch (ApiException e) { return Fail(e); }
         }
 
+        /// <summary>
+        /// R22 integration (§54, AccountChangeReset): the old account's series, its waiting outcome sheet and the offline copy go —
+        /// an outcome is never shown to (or acked for) the new account.
+        /// </summary>
+        public void ForgetAccount()
+        {
+            View = null; ResultBanner = null; OutcomeInline = null; OutcomeSheetVisible = false;
+            Kv.Set(KeyCache, "");
+        }
+
         private void SaveCache()
         {
             var s = View?.Series;

@@ -34,7 +34,10 @@ namespace Muchi.Game
     /// (<see cref="ErrorReporter.AccountChanged"/>), the review prompt starts a new session (<see cref="ReviewPromptModel.ResetSession"/>),
     /// R21 integration: a deferred deep link waiting on this device is dropped (<see cref="DeepLinkModel.ForgetPending"/> —
     /// it was received for the old account), the release notes' "shown this session" goes (<see cref="ReleaseNotesModel.NewSession"/>:
-    /// "seen" is per account on the server) and the one prompt gate starts a new session.
+    /// "seen" is per account on the server) and the one prompt gate starts a new session. R22 integration: the §67 play-time clock
+    /// and limits view (<see cref="SelfLimitsModel.ForgetAccount"/>), the §68 waiting outcome sheet and its offline copy
+    /// (<see cref="PromotionModel.ForgetAccount"/>), the §66 career map and keyed start (<see cref="CareerModel.ForgetAccount"/>) and
+    /// the §69 survey row / sheet (<see cref="SurveyModel.ResetSession"/>) go too.
     /// Any part may be null. Hook it with <see cref="Watch(MaintenanceModel)"/> and <see cref="Watch(TransferCodeModel)"/>.
     /// </summary>
     public sealed class AccountChangeReset
@@ -44,6 +47,12 @@ namespace Muchi.Game
         public ReviewPromptModel Review { get; set; }
         /// <summary>R22 §69: the old account's お知らせ survey row / sheet closes.</summary>
         public SurveyModel Surveys { get; set; }
+        /// <summary>R22 integration (§67): the play-time clock starts afresh, a sheet that was up and the old limits view go.</summary>
+        public SelfLimitsModel SelfLimits { get; set; }
+        /// <summary>R22 integration (§68): the old account's waiting outcome sheet and offline copy go (never shown to the new account).</summary>
+        public PromotionModel Promotion { get; set; }
+        /// <summary>R22 integration (§66): the old account's career map, a race in progress and a keyed start waiting to be re-sent go.</summary>
+        public CareerModel Career { get; set; }
         public SessionPrompts Prompts { get; set; }
         /// <summary>R21 integration (§63): the deferred deep link waiting on this device.</summary>
         public DeepLinkModel Links { get; set; }
@@ -61,6 +70,9 @@ namespace Muchi.Game
             Guard(() => Links?.ForgetPending());
             Guard(() => ReleaseNotes?.NewSession());
             Guard(() => Surveys?.ResetSession());
+            Guard(() => SelfLimits?.ForgetAccount());
+            Guard(() => Promotion?.ForgetAccount());
+            Guard(() => Career?.ForgetAccount());
             Prompts?.NewSession();
         }
 

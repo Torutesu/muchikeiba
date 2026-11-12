@@ -156,6 +156,14 @@ namespace Muchi.Game
         /// <summary>An account change on this device (§54): the clock starts afresh.</summary>
         public void ForgetClock() { Clock = new PlaytimeClock { LocalOffsetMin = Clock.LocalOffsetMin }; Sheet = null; SaveClock(); }
 
+        /// <summary>R22 integration (§54, AccountChangeReset): the clock starts afresh and the old account's limits view goes (the new account reads its own).</summary>
+        public void ForgetAccount()
+        {
+            ForgetClock();
+            View = null;
+            SpendingRows = new List<SpendingChoiceRow>(); SessionRows = new List<PlaytimeChoiceRow>(); DailyRows = new List<PlaytimeChoiceRow>(); QuietRows = new List<PlaytimeChoiceRow>();
+        }
+
         // ------------------------------------------------------------------------------------- internals
 
         private PlaytimeClock LoadClock()

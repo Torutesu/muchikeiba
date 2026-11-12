@@ -144,6 +144,13 @@ namespace Muchi.Game
             return ActionResult.Success();
         }
 
+        /// <summary>R22 integration (§54, AccountChangeReset): the old account's map, a race in progress and a keyed start waiting to be re-sent go.</summary>
+        public void ForgetAccount()
+        {
+            View = null; Phase = CareerPhase.Map; SelectedRaceId = null; Run = null; Session = null; Result = null; DeviceStars = null;
+            Kv.Set(KeyPendingStart, "");
+        }
+
         public void BackToMap() { if (Phase == CareerPhase.Detail || Phase == CareerPhase.Result) { Phase = CareerPhase.Map; Run = null; Session = null; Result = null; DeviceStars = null; } }
 
         public static readonly IReadOnlyDictionary<string, string> GoingTexts = WeeklyChallengeModel.GoingTexts;

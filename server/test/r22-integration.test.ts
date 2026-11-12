@@ -218,3 +218,23 @@ describe('§69 アンケート × §60 scrubber: free text loses every secret th
     expect(scrubFreeText('muchi://l/kmqxphrabcdefghjkmnpqr', 200)).toBe('<url>');
   });
 });
+
+describe('§54 AccountChangeReset × Round 22: the per-account device state of all four features goes', () => {
+  it('Unity: the reset holds SelfLimits, Promotion, Career and Surveys and calls their account methods; GameChecks covers it', () => {
+    const f = read('unity/Assets/Muchi/Game/SessionPromptGate.cs');
+    const cls = f.slice(f.indexOf('public sealed class AccountChangeReset'));
+    for (const [prop, call] of [['SelfLimitsModel SelfLimits', 'SelfLimits?.ForgetAccount()'], ['PromotionModel Promotion', 'Promotion?.ForgetAccount()'], ['CareerModel Career', 'Career?.ForgetAccount()'], ['SurveyModel Surveys', 'Surveys?.ResetSession()']]) {
+      expect(cls, prop).toContain(`public ${prop} { get; set; }`);
+      expect(cls, call).toContain(call);
+    }
+    const checks = read('unity/Checks~/GameChecks/Round22IntegrationChecks.cs');
+    expect(checks).toMatch(/new AccountChangeReset \{ SelfLimits = limits, Promotion = promo, Career = career/);
+    expect(read('unity/Checks~/GameChecks/Program.cs')).toContain('Round22IntegrationChecks.Run(');
+  });
+  it('prototype: deviceAccountChanged drops the play-time clock, a waiting outcome sheet and the survey sheet', () => {
+    const app = read('tools/figma-prototype/site/app.js');
+    const i = app.indexOf('function deviceAccountChanged(');
+    const body = app.slice(i, app.indexOf('\n}\n', i));
+    for (const s of ['svSession = null', 'promoDeferred = null', 'PT_KEY']) expect(body, s).toContain(s);
+  });
+});

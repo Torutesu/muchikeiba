@@ -7643,6 +7643,9 @@ function deviceAccountChanged() {
   lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
   try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
   revPrompted = false; svSession = null; // R22 (§69): the old account's survey sheet goes too
+  // R22 integration (§54 × §67 / §68): the play-time clock starts afresh; an outcome sheet that waited for the old account goes
+  try { localStorage.removeItem(PT_KEY); } catch { /* private mode */ }
+  promoDeferred = null;
   // R21 integration (§54 × §63 / §64): the link waiting on this device came for the old account; the release notes'
   // "shown this session" goes with the session ("seen" is per account on the server)
   lkInput = '';

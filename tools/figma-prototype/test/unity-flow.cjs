@@ -59,7 +59,12 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     .catch(async (e) => { const now = await screen().catch(() => '?'); throw new Error(`waitScreen(${JSON.stringify(name)}) timed out on "${now}"; errors: ${errors.slice(-5).join(' | ')}\n${e.message}`); });
   const state = () => page.evaluate(() => { const s = globalThis.__muchi.state(); const f = s.lastFrame; return { active: s.raceActive, f: f && { tick: f.tick, distanceM: f.distanceM, departed: f.departed, gateOpen: f.gateOpen, remainingM: f.remainingM, whips: f.whips, done: f.done, chance: f.feel?.whipChance, rank: f.rank } }; });
   const btn = (label) => page.locator(`.screen.in [data-label="${label}"]`).first();
-  const click = async (label) => { await btn(label).click(); await page.waitForTimeout(350); };
+  // R22 integration: a click that a sheet blocks says which sheet it was (a timeout alone hides it)
+  const overlayInfo = () => page.evaluate(() => [...document.querySelectorAll('.screen.in .scrim ~ *, .screen.in .sheet, .screen.in .dialog')].map((e) => `${e.className}[${e.dataset.name ?? ''}] ${(e.innerText || '').slice(0, 80).replace(/\s+/g, ' ')}`).join(' | ')).catch(() => '?');
+  const click = async (label) => {
+    try { await btn(label).click({ timeout: 30000 }); } catch (e) { throw new Error(`click(${label}) on "${await screen().catch(() => '?')}" blocked by: ${await overlayInfo()}\n${e.message}`); }
+    await page.waitForTimeout(350);
+  };
   const ready = () => page.waitForFunction(() => globalThis.__muchi?.ready === true, null, { timeout: 90000 });
 
   // round 11 (REQ-TRAIN-*): 調教 from the home row → the menu cards (fairness wording, no shop link) → 坂路 with the timing
@@ -538,7 +543,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     // the next session's home: the sheet that waited shows there once
     await page.evaluate(() => { globalThis.__muchi.prompts.reset(); return globalThis.__muchi.show('Home'); }); await waitScreen('home'); await waitIn('.pp-sheet.pass');
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(500);
-    await page.evaluate(async () => { globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.promotion.demo('near'); });
+    // R22 integration: the later steps (written before §68) race a lot; a real series would end with its outcome sheet over a
+    // later home and block their taps — switch the series off for them (as en-flow / a11y-flow do)
+    await page.evaluate(async () => { globalThis.__muchi.prompts.reset(); await globalThis.__muchi.logic.promotion.demo('near'); globalThis.__muchi.logic.promotion.setEnabled(false); });
     await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home');
   }
 

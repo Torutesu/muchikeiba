@@ -1254,8 +1254,12 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     if (r.lesson) ls.dataset.shift = String(r.lesson.shiftTicks);
     if (fieldLine) ls.dataset.field = r.field.weaker ? 'horse' : 'riding';
     const fits = () => ls.offsetTop + ls.offsetHeight <= CTA_TOP;
-    while (!fits() && parts.length > 1) { parts.pop(); ls.textContent = '振り返り：' + parts.join('　·　'); }
+    // what goes first: 会心, then — when the field says the horse is weaker — the lesson (the horse line is the news); when it
+    // says 「差は乗り方」 the general line goes before the specific 仕掛け lesson (the lesson says how to ride)
+    const drop = () => { if (parts.length > 2 || !r.field || r.field.weaker || !fieldLine || parts[0] !== fieldLine) parts.pop(); else parts.shift(); };
+    while (!fits() && parts.length > 1) { drop(); ls.textContent = '振り返り：' + parts.join('　·　'); }
     if (!fits() && tipEl.textContent) { tipEl.remove(); ly = 580; ls.style.top = ly + 'px'; }
+    if (fieldLine && !parts.includes(fieldLine)) delete ls.dataset.field;
     ls.dataset.parts = String(parts.length);
     ly = ls.offsetTop + ls.offsetHeight + 8;
   }
@@ -1338,6 +1342,10 @@ function PromoResultCard(ctx) {
     if (promoPending(v)) { if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {}); else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); } }
     return null;
   }
+  // quality-2 integration: when the outcome sheet shows (it claimed the session's prompt), it says the outcome — the card under it
+  // would only be a second 「昇級ならず」 whose words sit behind the sheet (an empty-looking navy panel). The card stays only
+  // when the sheet waits (another prompt took the session) or nothing is decided yet.
+  if (promoPending(v) && sessionPrompt.claim('promotion_outcome')) { PromoOutcome(v, () => {}); return null; }
   const c = Glass('Promotion series', 900, 180, 520, started ? 340 : 300, undefined, .86); c.classList.add('pp-card', 'rise');
   c.dataset.status = started ? 'start' : x.status;
   Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
@@ -1348,10 +1356,7 @@ function PromoResultCard(ctx) {
   Txt(promoRuleLine(x), 28, started ? 234 : 200, 464, 16, MUTED, c, { nowrap: true }).classList.add('pp-rule');
   const foot = x.status === 'failed' && x.setbackTo != null ? `ポイントは${fmt(x.setbackTo)}ptに戻りました` : x.status === 'passed' ? 'クラスが上がるのはシーズンの締め' : `ライン ${fmt(v.line ?? 0)}pt　·　いま ${fmt(v.points)}pt`;
   Txt(foot, 28, started ? 270 : 236, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
-  if (promoPending(v)) {
-    if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {});
-    else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); }
-  }
+  if (promoPending(v)) { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); } // the sheet waits for the next home
   return c;
 }
 /** The outcome sheet (passed / failed). Close = seen (POST /v1/promotion/ack); the sheet never shows again for this series. */

@@ -132,7 +132,7 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.deepEqual(res.overlaps, [], 'quality c: the lesson overlaps no other line');
   // the promotion card speaks only for a series this race was part of (started, counted or decided it)
   const promoAfter = await page.evaluate(async () => { const v = (await globalThis.__muchi.logic.promotion.view()).value; return v?.series ? { id: v.series.id, n: v.series.results.length, status: v.series.status } : null; });
-  const promoCard = await page.locator('.screen.in .pp-card').count();
+  const promoCard = await page.locator('.screen.in .pp-card, .screen.in .pp-sheet').count(); // the outcome sheet replaces the card
   const promoChanged = !!promoAfter && (!promoBefore || promoAfter.id !== promoBefore.id || promoAfter.n !== promoBefore.n || promoAfter.status !== promoBefore.status);
   assert.equal(promoCard > 0, promoChanged, `quality: the promotion card only for a series this race touched (before ${JSON.stringify(promoBefore)}, after ${JSON.stringify(promoAfter)})`);
   assert.equal(res.quiet, 4, 'quality c: the quiet keepsake row (highlights, photo, keep, share) is intact');
@@ -151,8 +151,31 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   });
   assert.ok(worst.above && worst.inPanel, 'quality-2: the fullest ranked-loss 振り返り row ends above the CTA, inside the panel: ' + JSON.stringify(worst));
   assert.ok(/^振り返り：能力の差/.test(worst.text) && worst.field === 'horse', 'quality-2: the horse-or-riding line is the part that stays: ' + worst.text);
-  assert.ok(worst.card, 'quality-2: the promotion card is on the same result');
+  // the decided series: its outcome sheet is up, and no panel on the result looks empty (every panel with words shows some of them
+  // — the card under the sheet used to keep only its cyan rule visible)
+  const emptyPanels = () => page.evaluate(() => [...document.querySelectorAll('.screen.in .glass')].filter((g) => {
+    // the dimming scrim is see-through: look under it (a panel under the scrim is still seen)
+    const top = (x, y) => document.elementsFromPoint(x, y).find((e) => !e.classList.contains('scrim'));
+    const labels = [...g.querySelectorAll('.label')].filter((l) => l.textContent.trim());
+    const r = g.getBoundingClientRect();
+    const pts = [[.5, .5], [.85, .5], [.5, .85], [.85, .15]].map(([x, y]) => top(r.left + r.width * x, r.top + r.height * y));
+    const panelSeen = pts.some((e) => e && g.contains(e));
+    const wordSeen = labels.some((l) => { const b = l.getBoundingClientRect(); const e = top(b.left + Math.min(8, b.width / 2), b.top + b.height / 2); return e && g.contains(e); }); // labels take no pointer events: the panel itself on top there counts
+    return panelSeen && (!labels.length || !wordSeen);
+  }).map((g) => g.dataset.name));
+  assert.ok(await page.locator('.screen.in .pp-sheet.fail').count(), 'quality-2: the decided series shows its outcome sheet');
+  assert.deepEqual(await emptyPanels(), [], 'quality-2: no visible empty panel on the result (behind the outcome sheet)');
   await shot('result-fullest', 600);
+  // a riding loss (「差は乗り方」): the specific 1.4 lesson is what stays; the general line goes first
+  await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'start', true, { place: 9, line: '仕掛けが早すぎて最後に脚が止まった',
+    tip: '仕掛ける前に長押しで溜めると、一閃の加速が長く続きます。直線の入口まで待ちましょう',
+    field: { weaker: false, line: '能力は互角以上（相棒 2798 ／ この場 2797）：差は乗り方' },
+    lesson: { line: '仕掛けがあと1.5秒遅ければ、0.8秒速くゴールできた', perfect: '会心のムチ 3/5', shiftTicks: 30 } }));
+  await waitScreen('result'); await page.waitForTimeout(600);
+  const riding = await page.evaluate(() => { const l = document.querySelector('.screen.in .go-lesson'), c = document.querySelector('.screen.in .btn.cta'); return { text: l.textContent, above: l.getBoundingClientRect().bottom <= c.getBoundingClientRect().top }; });
+  assert.ok(riding.above && /仕掛けがあと1\.5秒遅ければ/.test(riding.text), 'quality-2: a riding loss keeps the specific lesson: ' + riding.text);
+  assert.deepEqual(await emptyPanels(), [], 'quality-2: no visible empty panel on the result (series start card)');
+  await shot('result-riding', 600);
 
   // quality-2 integration (shop × first week): the receipt's step and the scout screen agree — the SR+ ticket bought is used on
   // the scout screen (the screen はじめの10歩 opens for its scout step); closing a first receipt brings the account-link prompt

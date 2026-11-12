@@ -1483,7 +1483,7 @@
   "昇級まで あと{n}pt": "{n} pt to promotion",
   "昇級ラインに到達": "Promotion line reached",
   "最上位クラス": "Top class",
-  "シーズンの締めで {c}級へ": "Moves up to class {c} at the season close",
+  "シーズンの締めで {c}級へ": "Up to class {c} at season end",
   "昇級戦 {n}/{m}": "Promotion series {n}/{m}",
   "能力の上限 {n}": "Stat cap {n}",
   "昇級 {n}pt": "Promotion at {n} pt",
@@ -1501,6 +1501,7 @@
   "支部 {n}/{m}段": "Branch tier {n}/{m}",
   "{t} {n}/{m}": "{t} {n}/{m}",
   "明日のログインボーナス：{r}": "Tomorrow's login bonus: {r}",
-  "今日のログインボーナス：{r}": "Today's login bonus: {r}"
+  "今日のログインボーナス：{r}": "Today's login bonus: {r}",
+  "ライバルの結果が出ました": "Your rival result is in"
  }
 }

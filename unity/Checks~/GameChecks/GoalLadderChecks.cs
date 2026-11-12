@@ -89,10 +89,18 @@ static class GoalLadderChecks
             f.Use(GoalLadderView.FromJson(Fresh));
             check(f.Rungs.Select(r => r.Key).SequenceEqual(new[] { "path", "season" }) && f.Rungs[1].Main.StartsWith("ルーキー"), "goals: a new player sees the path and the rookie season");
 
+            // the week beside the path: challenges and the rival; an unseen rival result is said first
+            const string WeekJson = "\"week\":{\"endsAt\":1797015600000,\"challenge\":{\"weekId\":\"2026-12-07\",\"endsAt\":1797015600000,\"cleared\":1,\"total\":3,\"reward\":{\"items\":[{\"itemId\":\"breeding_material\",\"qty\":3}]},\"badgeId\":\"b\",\"badgeName\":\"直線の覇者章\",\"badgeEarned\":false},\"rival\":{\"weekId\":\"2026-12-07\",\"endsAt\":1797015600000,\"kind\":\"cpu\",\"me\":2,\"them\":1,\"rankedRaces\":3,\"minRaces\":3,\"winReward\":{\"freeCoins\":20}},\"teamGoal\":null,\"rivalResult\":RR}";
+            var wk = new GoalLadderModel(b, () => Now);
+            wk.Use(GoalLadderView.FromJson(View.Replace("\"week\":null", WeekJson.Replace("RR", "null"))));
+            check(wk.Rungs.Select(r => r.Key).SequenceEqual(new[] { "today", "path", "week", "season" }) && wk.Rungs[2].Main == "チャレンジ 1/3　·　ライバル 2-1", "goals: the week rung beside the path (" + string.Join(",", wk.Rungs.Select(r => r.Key)) + " " + wk.Rungs[2].Main + ")");
+            wk.Use(GoalLadderView.FromJson(View.Replace("\"week\":null", WeekJson.Replace("RR", "{\"weekId\":\"2026-11-30\",\"outcome\":\"win\",\"me\":3,\"them\":1,\"freeCoins\":20}"))));
+            check(wk.Rungs[2].Main == "チャレンジ 1/3　·　ライバルの結果が出ました" && wk.View.Week.RivalResultCoins == 20, "goals: last week's rival result first while unseen (" + wk.Rungs[2].Main + ")");
+
             // wording: no urgency, no shop; and every line in English
             var all = m.Rungs.SelectMany(r => new[] { r.Label, r.Main, r.Figure, r.Sub }).Concat(m.Today.SelectMany(r => new[] { r.Title, r.RewardText, r.PurposeText }))
                 .Concat(m.SeasonMissions.SelectMany(r => new[] { r.Title, r.PurposeText })).Concat(m.Ladder.SelectMany(r => new[] { r.Title, r.CapText, r.LineText, r.RewardText }))
-                .Concat(new[] { m.PowerLine, m.WhyClimbLine, m.PaceLine, m.LoginLine, "まとめて受け取る（4件）" }).Concat(m.LastClaimLines).Concat(f.Rungs.SelectMany(r => new[] { r.Main, r.Sub }))
+                .Concat(new[] { m.PowerLine, m.WhyClimbLine, m.PaceLine, m.LoginLine, "まとめて受け取る（4件）" }).Concat(m.LastClaimLines).Concat(wk.Rungs.Select(r => r.Main)).Concat(f.Rungs.SelectMany(r => new[] { r.Main, r.Sub }))
                 .Concat(GoalLadderModel.KindTitles.Values).Where(x => !string.IsNullOrEmpty(x)).ToList();
             var text = string.Join("", all);
             check(!text.Contains("今だけ") && !text.Contains("残りわずか") && !text.Contains("お得") && !text.Contains("倍") && !text.Contains("ショップ") && !text.Contains("購入"), "goals: no urgency words, no shop or purchase");

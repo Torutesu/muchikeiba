@@ -7,6 +7,7 @@ import type { KpiRecord } from '../src/domain/kpi.js';
 import { kpiClassOf } from '../src/domain/kpiConsent.js';
 import { goalLadderView, PACE_MIN_RACES, type GoalLadderView } from '../src/domain/goals.js';
 import { nextActionsView } from '../src/domain/nextAction.js';
+import { weekIdAt } from '../src/domain/rival.js';
 import { handle, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 
 const DAY = 86_400_000;
@@ -103,6 +104,27 @@ describe('目標の階段 — the ladder (REQ-GOAL-001..008)', () => {
     expect(reached.season.status).toBe('line_reached');
     expect(reached.season.left).toBe(0);
     expect(reached.season.pace.racesToLine).toBeNull();
+  });
+
+  it('the week: the challenges of this week, the rival head to head, and last week\'s unseen rival result (REQ-GOAL-004)', async () => {
+    const w = world();
+    await w.player('p', Array(20).fill(4));
+    w.advance(4 * DAY);
+    const st = await w.svc.state('p');
+    const weekId = weekIdAt(m, w.now());
+    st.rival = {
+      optOut: false, weeksWon: 0, weeksPlayed: 1, unseen: 'prev',
+      weeks: [{ weekId, assignment: { kind: 'cpu', cpuId: m.progression.rival!.cpuRivals[0]!.id }, me: 2, them: 1, races: [], pending: [], rankedRaces: 3, ta: {}, rivalTa: {} }],
+      results: [{ weekId: 'prev', outcome: 'win', kind: 'cpu', rivalName: null, me: 3, them: 1, taMe: 0, taThem: 0, freeCoins: 20, settledAt: 0, newTitles: [] }],
+    } as unknown as typeof st.rival;
+    const v = goalLadderView(m, st, w.now());
+    expect(v.week?.challenge?.total).toBe(3);
+    expect(v.week?.challenge?.cleared).toBe(0);
+    expect(v.week?.rival).toMatchObject({ kind: 'cpu', me: 2, them: 1, rankedRaces: 3, minRaces: m.progression.rival!.minRacesForResult });
+    expect(v.week?.rivalResult).toMatchObject({ outcome: 'win', me: 3, them: 1, freeCoins: 20 });
+    expect(v.week!.endsAt).toBeGreaterThan(w.now());
+    st.rival!.optOut = true;
+    expect(goalLadderView(m, st, w.now()).week?.rival ?? null).toBeNull();
   });
 
   it('the next login bonus: today\'s when not claimed, tomorrow\'s after the claim (beginner week first, REQ-GOAL-011)', async () => {

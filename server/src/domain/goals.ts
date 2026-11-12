@@ -176,7 +176,15 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
     const reached = extras.teamGoal!.milestones.filter((x) => x.reached).length;
     return { endsAt: extras.teamGoal!.endsAt, progress: extras.teamGoal!.progress, nextTarget: next?.target ?? null, reached, tiers: extras.teamGoal!.milestones.length };
   })() : null;
-  const week = challenge || rival || tg ? { endsAt: Math.min(...[challenge?.endsAt, rival?.endsAt, tg?.endsAt].filter((x): x is number => typeof x === 'number')), challenge, rival, teamGoal: tg } : null;
+  // last week's rival result while the player has not looked at it (the home strip used to say 「結果が出ました」)
+  const rivalResult = rc && open('rival') && s.rival && !s.rival.optOut && s.rival.unseen ? (() => {
+    const r = s.rival!.results.find((x) => x.weekId === s.rival!.unseen);
+    return r ? { weekId: r.weekId, outcome: r.outcome, me: r.me, them: r.them, freeCoins: r.freeCoins } : null;
+  })() : null;
+  const week = challenge || rival || tg || rivalResult ? {
+    endsAt: Math.min(...[challenge?.endsAt, rival?.endsAt, tg?.endsAt, rivalResult ? weekEndMs(m, weekIdAt(m, now)) : undefined].filter((x): x is number => typeof x === 'number')),
+    challenge, rival, teamGoal: tg, rivalResult,
+  } : null;
 
   // ---- this season (REQ-GOAL-005..008)
   const classes = m.progression.classes;

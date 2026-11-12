@@ -229,7 +229,8 @@ namespace Muchi.Game
             {
                 var parts = new List<string>();
                 if (v.Week.HasChallenge) parts.Add("チャレンジ " + v.Week.ChallengeCleared + "/" + v.Week.ChallengeTotal);
-                if (v.Week.HasRival) parts.Add("ライバル " + v.Week.RivalMe + "-" + v.Week.RivalThem);
+                if (v.Week.HasRivalResult) parts.Add("ライバルの結果が出ました");
+                else if (v.Week.HasRival) parts.Add("ライバル " + v.Week.RivalMe + "-" + v.Week.RivalThem);
                 if (v.Week.HasTeamGoal) parts.Add("支部 " + v.Week.TeamReached + "/" + v.Week.TeamTiers + "段");
                 Rungs.Add(new GoalRung
                 {

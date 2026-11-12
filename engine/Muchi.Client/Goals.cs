@@ -77,10 +77,14 @@ namespace Muchi.Client
         public bool HasTeamGoal;
         public int TeamProgress, TeamReached, TeamTiers;
         public int? TeamNextTarget;
+        // last week's rival result, while unseen (null = nothing new)
+        public bool HasRivalResult;
+        public string RivalResultOutcome;
+        public int RivalResultMe, RivalResultThem, RivalResultCoins;
         internal static GoalWeek Parse(JsonNode o)
         {
             if (o == null) return null;
-            var c = J.Opt(o, "challenge"); var r = J.Opt(o, "rival"); var t = J.Opt(o, "teamGoal");
+            var c = J.Opt(o, "challenge"); var r = J.Opt(o, "rival"); var t = J.Opt(o, "teamGoal"); var rr = J.Opt(o, "rivalResult");
             return new GoalWeek
             {
                 EndsAt = J.Long(o, "endsAt"),
@@ -89,6 +93,7 @@ namespace Muchi.Client
                 HasRival = r != null, RivalKind = J.Str(r, "kind"), RivalMe = J.Int(r, "me"), RivalThem = J.Int(r, "them"), RivalRankedRaces = J.Int(r, "rankedRaces"),
                 RivalMinRaces = J.Int(r, "minRaces"), RivalWinCoins = J.Int(J.Opt(r, "winReward"), "freeCoins"),
                 HasTeamGoal = t != null, TeamProgress = J.Int(t, "progress"), TeamReached = J.Int(t, "reached"), TeamTiers = J.Int(t, "tiers"), TeamNextTarget = J.IntN(t, "nextTarget"),
+                HasRivalResult = rr != null, RivalResultOutcome = J.Str(rr, "outcome"), RivalResultMe = J.Int(rr, "me"), RivalResultThem = J.Int(rr, "them"), RivalResultCoins = J.Int(rr, "freeCoins"),
             };
         }
     }

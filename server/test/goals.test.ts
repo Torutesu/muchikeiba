@@ -8,6 +8,7 @@ import { kpiClassOf } from '../src/domain/kpiConsent.js';
 import { goalLadderView, PACE_MIN_RACES, type GoalLadderView } from '../src/domain/goals.js';
 import { nextActionsView } from '../src/domain/nextAction.js';
 import { weekIdAt } from '../src/domain/rival.js';
+import { endpointGroup } from '../src/domain/maintenance.js';
 import { handle, type AppContext, type PlayerInvoker } from '../src/http/app.js';
 
 const DAY = 86_400_000;
@@ -226,5 +227,6 @@ describe('目標の階段 — one claim (REQ-GOAL-009/010)', () => {
     expect(p.status).toBe(200);
     expect(p.body.claimed.length).toBeGreaterThan(0);
     expect((await call('POST', '/v1/home/goals/claim', { 'idempotency-key': 'abd' })).status).toBe(409);
+    for (const p of ['/v1/home/goals', '/v1/home/goals/claim']) expect(endpointGroup(p), p).toBe('core'); // §46: closed only by an 'all' window
   });
 });

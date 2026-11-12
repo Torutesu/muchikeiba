@@ -45,7 +45,7 @@ static class PromotionChecks
         var kv = new MemoryKeyValueStore();
         var b = new GameBackend(new GameSettings { BaseUrl = "http://fake" }, api, null, kv, ruleset);
         await b.InitializeAsync();
-        var gate = new SessionPromptGate();
+        var gate = new SessionPrompts(); // R22 integration: the one §58.11 mechanism
         var m = new PromotionModel(b) { Prompts = gate };
 
         // no series yet: nothing on the home
@@ -70,21 +70,27 @@ static class PromotionChecks
         check(mo.HomeLabel == "昇級戦 2/3" && mo.Marks == "○··", "promo: offline copy for the home (" + mo.HomeLabel + ")");
 
         // passed while another prompt already showed this session: inline only, the sheet waits
-        gate.Claim(SessionPromptKind.Consent);
+        gate.TryClaim(SessionPrompts.ConsentPrePrompt);
         view = View(Series("passed", "\"top\",\"top\",\"skip\"", 2, "null"));
         await m.AfterRankedResultAsync();
         check(!m.OutcomeSheetVisible && m.OutcomeInline == "B級へ昇級確定" && m.Passed, "promo: the gate was taken → inline only");
         // next session's home: the sheet shows
-        gate.Reset();
-        check(m.TryShowSheet() && m.OutcomeSheetVisible && gate.Shown == SessionPromptKind.PromotionOutcome, "promo: the sheet on the next home, through the gate");
+        gate.NewSession();
+        check(m.TryShowSheet() && m.OutcomeSheetVisible && gate.Claimed == SessionPrompts.PromotionOutcome, "promo: the sheet on the next home, through the gate");
         check(m.OutcomeTitle == "B級へ昇級確定" && m.OutcomeBody == "シーズンの締めでB級に上がります", "promo: pass sheet words");
+        // R22 integration (§58.11): the sheet took this session's one prompt; the table puts it after the release notes and
+        // before the reminders card / account link / review / survey
+        check(!gate.CanShow(SessionPrompts.RemindersPrePermission) && !gate.CanShow(SessionPrompts.Survey)
+            && !new SessionPrompts().TryClaim(SessionPrompts.PromotionOutcome, new[] { SessionPrompts.ReleaseNotes })
+            && new SessionPrompts().Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.RemindersPrePermission, SessionPrompts.PromotionOutcome }) == SessionPrompts.PromotionOutcome,
+            "promo: promotion_outcome in the one table (after release notes, before reminders)");
         await m.CloseOutcomeAsync();
         check(acks == 1 && !m.OutcomeSheetVisible && m.View.Series.Seen && !m.TryShowSheet(), "promo: closed = seen, never again");
         check(s.Sent.Any(r => r.Path == "/v1/promotion/ack" && r.Body.Contains("2026-11:C:1")), "promo: ack carries the series id");
 
         // failed: the setback line
         view = View(Series("failed", "\"miss\",\"miss\",\"skip\"", 0, "null", false, "260"));
-        gate.Reset();
+        gate.NewSession();
         await m.AfterRankedResultAsync();
         check(m.OutcomeSheetVisible && m.OutcomeTitle == "昇級ならず" && m.OutcomeBody == "ポイントは260ptに戻りました。あと40ptでもう一度挑めます", "promo: fail sheet with the setback (" + m.OutcomeBody + ")");
         await m.CloseOutcomeAsync();

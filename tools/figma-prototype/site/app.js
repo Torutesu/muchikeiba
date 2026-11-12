@@ -33,8 +33,10 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // interrupt the player — at most one per session (one launch, or until the account changes), none during the FTUE. The
 // first one shown claims the session; the others stay due for a later session. When several are due at one moment the
 // table decides (highest first). Round 20's consent → reminders → review gate and Round 21's release-notes list were two
-// gates for one rule; this is the one table both sections point at.
-const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'];
+// gates for one rule; this is the one table both sections point at. R22 integration: §68's outcome sheet (earned feedback,
+// right after the release notes) and §69's survey (an opinion only, the lowest) joined it; §67's play-time sheet is the
+// documented exception (the player asked for it: it neither takes nor waits for the session's prompt).
+const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'promotion_outcome', 'reminders_pre_permission', 'account_link', 'review_prompt', 'survey'];
 const sessionPrompt = {
   shown: null,
   can(kind) {
@@ -1004,7 +1006,7 @@ function PromoResultCard(ctx) {
   const foot = x.status === 'failed' && x.setbackTo != null ? `ポイントは${fmt(x.setbackTo)}ptに戻りました` : x.status === 'passed' ? 'クラスが上がるのはシーズンの締め' : `ライン ${fmt(v.line ?? 0)}pt　·　いま ${fmt(v.points)}pt`;
   Txt(foot, 28, started ? 270 : 236, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
   if (promoPending(v)) {
-    if (sessionPrompt.claim('promotion')) PromoOutcome(v, () => {});
+    if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {});
     else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); }
   }
   return c;
@@ -1385,7 +1387,7 @@ async function Home() {
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
-  if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
+  if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion_outcome')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -4441,7 +4443,7 @@ async function ReviewDemo(style = 'native') {
 // ================================================================= round 22: ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69)
 // Ops ask a few short questions; the real surveys.ts rules decide (never in the FTUE, a cool-down between surveys, one at a
 // time) and the real ops store keeps the answers. Two places only: the home card and the sheet after a race result is closed
-// (ホーム). Through the one-prompt-per-session gate with the lowest priority (§58.11: consent → reminders → review → survey).
+// (ホーム). Through the one-prompt-per-session gate with the lowest priority (§58.11: the one table, `survey` last).
 // Skip is one tap and that survey never comes back. Nothing is granted for answering. Mirrors unity SurveyModel.cs.
 const SV_LANG = () => (isJa() ? 'ja' : 'en');
 const SV_KEY = 'muchi.survey.key.';

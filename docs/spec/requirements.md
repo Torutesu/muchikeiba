@@ -1263,7 +1263,7 @@
 - REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
 - REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
 - REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
-- REQ-CNS-021 R20・R21 統合：お願いの画面は1セッションに1つ、FTUE と §46 の画面の間は出さない。重なる時の順は protocol §58.11 の1つの表（推奨の更新 → 同意の事前の画面 → 復帰の歓迎 → アップデートのお知らせ → 通知の前置き → 引き継ぎの案内 → レビュー）。仕組みは1つ：`Muchi.Client.SessionPrompts`（Unity の各モデルの `Prompts` に同じものを渡す）、プロトタイプ `sessionPrompt`／`PROMPT_PRIORITY`、テスト（C#・GameChecks・プロトタイプ・`r21-integration.test.ts` が表の一致を確かめる）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッション・待っているディープリンク（§63）・アップデートのお知らせの「このセッションで出した」（§64）とこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
+- REQ-CNS-021 R20・R21 統合：お願いの画面は1セッションに1つ、FTUE と §46 の画面の間は出さない。重なる時の順は protocol §58.11 の1つの表（推奨の更新 → 同意の事前の画面 → 復帰の歓迎 → アップデートのお知らせ → 昇級戦の結果（R22）→ 通知の前置き → 引き継ぎの案内 → レビュー → アンケート（R22）。遊ぶ時間のお知らせ §67 は表の外）。仕組みは1つ：`Muchi.Client.SessionPrompts`（Unity の各モデルの `Prompts` に同じものを渡す）、プロトタイプ `sessionPrompt`／`PROMPT_PRIORITY`、テスト（C#・GameChecks・プロトタイプ・`r21-integration.test.ts` が表の一致を確かめる）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッション・待っているディープリンク（§63）・アップデートのお知らせの「このセッションで出した」（§64）とこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、TS＋C#、`src/domain/reviewPrompt.ts`・`progression.reviewPrompt`・`Muchi.Client/ReviewPrompt.cs`・`Muchi.Game.ReviewPromptModel`、`contracts/protocol.md` §59、docs/planning/03「レビュー依頼」）
 拘束条件：レビューには何も配らない（Apple 5.6.1・Google Play のポリシー。E 番号なし）。OS の標準のアプリ内レビュー API だけを使い、独自の★の画面を作らない。負け・購入・エラー・返金・メンテナンスのお知らせの直後と FTUE の途中には頼まない。1セッションに1回まで。
@@ -1506,7 +1506,7 @@
 - REQ-SURVEY-003 公開：`draft` → `publish { startAt, endAt }`（90 日まで、`maxLive` 本まで）→ `scheduled`／`live`／`ended`、`close`。公開後は定義を変えない。保存は OpsDO の表（移行なし）。プレイヤーの経路は 30 秒キャッシュ。
 - REQ-SURVEY-004 設定 `progression.surveys`（`enabled`・`coolDownHours`・`maxShowsPerSurvey`・`maxLive`・`textMax`）。起動時と各リモート設定の版で検査。報酬のキー・知らないキーは問題。
 - REQ-SURVEY-005 出す判断（`GET /v1/surveys/current`）：§69.4 の順（disabled → account_closing → ftue → 続きの1本 → cool_down → 最初に当たる1本 → none）。読むだけ。同時に1本だけ。
-- REQ-SURVEY-006 出す場所：ホームのカードかレース結果の後のシートだけ。FTUE の間は端末もサーバーも出さない。`SessionPromptGate`／`sessionPrompt` の `survey`（最も低い優先度）を通る。
+- REQ-SURVEY-006 出す場所：ホームのカードかレース結果の後のシートだけ。FTUE の間は端末もサーバーも出さない。`SessionPrompts`／`sessionPrompt` の `survey`（§58.11 の表の最後）を通る。
 - REQ-SURVEY-007 `shown`：回数と `current`。`maxShowsPerSurvey` 回出して答えがなければもう出さない。
 - REQ-SURVEY-008 `skip`：1タップ。二度と出さない。間隔が始まる。何度送っても同じ。
 - REQ-SURVEY-009 `answers`：冪等キー必須。厳しい検査（知らない問い・型・選択肢・必須・長さ → 400）。1人1回（違うキーの2回目は 409）。終わったアンケートは 409 `SURVEY_CLOSED`、未公開・知らない id は 404。削除済みは 404、削除の予約中・対象外は 409 `NOT_ELIGIBLE`。

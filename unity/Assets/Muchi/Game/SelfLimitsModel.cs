@@ -14,7 +14,7 @@ namespace Muchi.Game
     // reminder), the refused-purchase sentence with its link, and the play-time sheet at safe points. The screen is opened from the
     // purchase history (その他 › 設定・サポート › 購入・コイン・ガチャ履歴 › 上限の設定), the purchase confirmation (上限を設定), a refused
     // purchase / the shortfall card, and the sheet itself — never a new row on either その他 page.
-    // The sheet is player-requested: it does NOT go through SessionPromptGate (§58.11) and does not use or take the session's one
+    // The sheet is player-requested: it does NOT go through SessionPrompts (the exempt row of the §58.11 table) and does not use or take the session's one
     // prompt; when it shows at a safe point, the other prompts wait for the next one (SheetVisible). Nothing here moves coins.
 
     public sealed class SpendingChoiceRow

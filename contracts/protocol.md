@@ -3503,7 +3503,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - サーバー：`POST /v1/client-errors` は認証された束でもプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（§60.6）。
 - 設定の画面では「プライバシー」の中に「広告と分析」と「エラーの自動送信」を並べ、エラーの自動送信の画面は「プレイヤーIDを添えるかは『分析への協力』に従います」と案内する。
 
-### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64 との関係、R20 統合・R21 統合で1つの表に）
+### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64・§67・§68・§69 との関係、R20 統合・R21 統合で1つの表に、R22 統合で2行と表の外の1行を足した）
 - **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。**FTUE の間はどれも出さない**。§46 のメンテナンス・強制アップデートの画面（`ApiClient.Outage` が `None` 以外）の上にも出さない（それは案内ではなく画面で、その間は判定もしない）。
 - **同じ時に2つ以上が出せる時の順（この表が唯一の決まり。§64.6 もこの表を指す。R21 統合）**：
 
@@ -3513,15 +3513,18 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | 2 | `consent_pre_prompt` | 広告・分析の同意の事前の画面（§58、続く ATT・CMP を含む） | 法令・ストアの決まり。パーソナライズ広告・分析を使う前に決めてもらう |
   | 3 | `comeback_welcome` | 復帰キャンペーンの歓迎画面（§20、ホームの代わり） | 期間のあるキャンペーンの入口 |
   | 4 | `release_notes` | アップデートのお知らせ（§64） | 新しい版の最初のホーム |
-  | 5 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
-  | 6 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
-  | 7 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
+  | 5 | `promotion_outcome` | 昇級戦の結果のシート（突破／届かず、§68.6。R22 統合） | 自分で勝ち取った結果の知らせ（お願いではない）。取れなければ結果画面の中の一言だけで、シートは次のホームで |
+  | 6 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
+  | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
+  | 8 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ |
+  | 9 | `survey` | ゲーム内アンケート（§69、ホームのカード・結果の後のシート。R22 統合） | 意見を聞くだけ。いちばん低い |
+  | — | `playtime_reminder` | 遊ぶ時間のお知らせ（§67.4）。**表の外**（R22 統合で決めた） | 本人が頼んだお知らせでお願いの画面ではない。枠を使わず・取られない。同じ区切りではこれを先に出し、表のものは次の区切り |
 
   だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューが他のどれかのすぐ後に出ることも無い。
 - 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
-- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts` に渡す。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を確かめる。
+- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts`・`PromotionModel.Prompts`（R22）・`SurveyModel.Prompts`（R22）に渡す。`SelfLimitsModel` には渡さない（表の外）。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を、`server/test/r22-integration.test.ts` が R22 の行と表の外の行を確かめる。
 - **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5。§65 の予定表の印から作った通知も含む）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、端末で待っているディープリンク（§63）を捨て（前のアカウントに届いたもの）、アップデートのお知らせの「このセッションで出した」（§64。見た印はサーバーのアカウントごと）を戻し、この1つの規則を最初に戻す（R21 統合）。
-- **Round 22（§67.4）遊ぶ時間のお知らせはこの規則の外**：本人が頼んだお知らせでお願いの画面ではないので、`sessionPrompt`／`SessionPromptGate` を通らず、枠を使わない・取られない。同じ区切りではこのシートを先に出し、お願いの画面は次の区切りに回す（Unity は `SelfLimitsModel.SheetVisible`）。
+- **Round 22（§67.4）遊ぶ時間のお知らせはこの規則の外**（上の表の `—` の行）：本人が頼んだお知らせでお願いの画面ではないので、`SessionPrompts`／プロトタイプの `sessionPrompt` を通らず、枠を使わない・取られない。同じ区切りではこのシートを先に出し、お願いの画面は次の区切りに回す（Unity は `SelfLimitsModel.SheetVisible`）。
 - **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
@@ -4424,7 +4427,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 68.10 端末（REQ-PROMO-017/018）
 - **ホーム**：昇級戦の間はランク戦のボタンに「昇級戦 {next}/{races}」と印（○ 上位・● 外れ・· まだ・– 走らずに決まった分）。猶予中はクラスの横に「降級の猶予 残り{n}戦」。
-- **結果画面**：ランク戦の結果の後に `GET /v1/promotion` を読み、昇級戦の始まり（帯「昇級戦 開始」）・その戦の印・決まった時の結果（突破／届かず）を出す。突破・届かずのシートは**1セッションに1つの案内**（§58.11 `SessionPromptGate`／プロトタイプ `sessionPrompt`）を通す。取れなかった時は結果画面の中の印と一言だけ（シートは次のホームで出す）。見たら `ack`。
+- **結果画面**：ランク戦の結果の後に `GET /v1/promotion` を読み、昇級戦の始まり（帯「昇級戦 開始」）・その戦の印・決まった時の結果（突破／届かず）を出す。突破・届かずのシートは**1セッションに1つの案内**（§58.11 の表の5番目 `promotion_outcome`：`SessionPrompts.PromotionOutcome`／プロトタイプ `sessionPrompt`。R22 統合）を通す。取れなかった時は結果画面の中の印と一言だけ（シートは次のホームで出す）。見たら `ack`。
 - 文言は煽らない（「今だけ」・作った残り時間・課金への誘導なし。§58.11）。押し付けのプッシュ・ローカル通知は足さない（§61 の表に足さない）。
 - 振り返り（§43）：昇級した月の名場面に「昇級戦を突破して B級へ」。アクティビティ（§40）に `class_promoted`（締めで昇級した時、`season` 区分、リンクはその月の振り返り）。
 - ヘルプ（§48）に記事 `promotion_series`（数字は `{{promo_races}}` などのトークン）、ヒント集（§57）に `promotion_series_tip`。
@@ -4465,7 +4468,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 ### 69.4 出すかどうか（`GET /v1/surveys/current?placement=home|result`、REQ-SURVEY-005/006）
 `{ "survey": { "id", "rev", "title", "intro", "questions": [ … 要求の言語の文言だけ … ], "placement" } | null, "reason": null | "disabled" | "account_closing" | "ftue" | "cool_down" | "none" }`
 判断の順（最初に当たった理由）：`disabled`（設定）→ `account_closing`（削除の予約中）→ `ftue`（無料10連が未使用＝FTUE の途中、§59 と同じ）→ 続きの1本（出したが答えていない `current`）があれば、それが `live` で対象のままならそれを返す（間隔に関係なく、**同時に1本**）→ `cool_down`（最後に答えた・スキップした時から `coolDownHours`）→ `live` の定義を `endAt` の早い順・id 順に見て、答えた・スキップした・`placement` が合わない・`maxShowsPerSurvey` に達した・対象外のものを除いた最初の1本。無ければ `none`。読むだけ（状態を変えない）。
-**端末の決まり**：ホームのカードか結果の後のシートとしてだけ出す（レース中・ガチャの演出中・購入の途中には出さない）。端末も FTUE なら聞かない。§58.11 の門（`SessionPromptGate`／プロトタイプ `sessionPrompt`）を `Survey`（`survey`）で通り、**優先度は最も低い**（同意 → 通知 → レビュー → アンケート）。ホームのカードは門を取る（同じセッションでほかのシートを出さない）。
+**端末の決まり**：ホームのカードか結果の後のシートとしてだけ出す（レース中・ガチャの演出中・購入の途中には出さない）。端末も FTUE なら聞かない。§58.11 の1つの仕組み（`SessionPrompts`／プロトタイプ `sessionPrompt`）を `SessionPrompts.Survey`（`survey`）で通り、**優先度は表の最後**（R22 統合）。ホームのカードは門を取る（同じセッションでほかのシートを出さない）。
 
 ### 69.5 出した・スキップ・答え（REQ-SURVEY-007〜011）
 - `POST /v1/surveys/:surveyId/shown { "placement" }`：出した回数を数え、`current` にする。KPI `survey_shown`。`live` でない → 409 `SURVEY_CLOSED`。
@@ -4510,7 +4513,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 69.10 クライアント（REQ-SURVEY-021/022）
 - `Muchi.Client`：`SurveyView`・`SurveyQuestion`・`SurveyOffer`・`SurveyAnswerBuilder`（種類ごとの検査をサーバーと同じ規則で、送る前に）・`SurveyRules`（`MaxTextLength`・FTUE）・`ApiClient.GetSurveyAsync`／`SurveyShownAsync`／`SkipSurveyAsync`／`AnswerSurveyAsync`（冪等キーは答えの組ごとに1回作り再送でも同じ）。
-- `Muchi.Game`：`SurveyModel`（ホームのカード・結果の後のシート・問いごとの画面・ありがとう、スキップ1タップ、`SessionPromptGate` の `Survey`（最も低い優先度）、FTUE・オフラインでは出さない、`SURVEY_CLOSED` は静かに閉じる）。描画は docs/handoff-codex-round22-surveys.md。
+- `Muchi.Game`：`SurveyModel`（ホームのカード・結果の後のシート・問いごとの画面・ありがとう、スキップ1タップ、`SessionPrompts.Survey`（§58.11 の表の最後）、FTUE・オフラインでは出さない、`SURVEY_CLOSED` は静かに閉じる）。描画は docs/handoff-codex-round22-surveys.md。
 - プロトタイプ：ホームのカード・アンケートのシート（4 種類）・ありがとう（ムチ一閃の見た目、日本語・英語、文字の大きさ §41）。運営の画面に一覧・作成・プレビュー・公開・結果・CSV。
 
 ### 69.11 ヘルプ（REQ-SURVEY-023）・法務（REQ-SURVEY-024）

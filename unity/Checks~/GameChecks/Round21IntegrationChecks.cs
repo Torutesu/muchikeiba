@@ -73,8 +73,8 @@ static class Round21IntegrationChecks
         var notes = new ReleaseNotesModel(notesApi, prompts, () => true, null, () => now);
         var link = new AccountLinkPrompt(new MemoryKeyValueStore()) { Prompts = prompts };
 
-        check(SessionPrompts.Priority.SequenceEqual(new[] { "recommended_update", "consent_pre_prompt", "comeback_welcome", "release_notes", "reminders_pre_permission", "account_link", "review_prompt" }),
-            "prompts: one table (§58.11 = §64.6) — update > consent > comeback > release notes > reminders > account link > review");
+        check(SessionPrompts.Priority.SequenceEqual(new[] { "recommended_update", "consent_pre_prompt", "comeback_welcome", "release_notes", "promotion_outcome", "reminders_pre_permission", "account_link", "review_prompt", "survey" }),
+            "prompts: one table (§58.11 = §64.6) — update > consent > comeback > release notes > promotion outcome (R22) > reminders > account link > review > survey (R22)");
 
         // during the FTUE nothing shows: not the consent sheet, not the release notes, not the reminders card, not the account link
         check(!consent.ShouldShowPrePrompt(ConsentMoment.Home) && !await notes.OnHomeArrivedAsync() && !reminders.OnTrainingStarted() && !link.ShouldShow(LinkPromptContext.Home, true, 3, true, true)

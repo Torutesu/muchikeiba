@@ -17,7 +17,7 @@ namespace Muchi.Client
     //    (PlaytimeClock: foreground only, a new session after 30 min in the background, the day rolls over at 4:00 local time) and
     //    asks PlaytimeReminderPolicy.Decide at safe points (after a race result, on the home) — the same pure rule as the server's
     //    decidePlaytimeReminder (contracts/self-limits.vectors.json). The sheet is player-requested: it does not go through
-    //    SessionPromptGate (§58.11) and is not a notification (§61).
+    //    SessionPrompts (the exempt row of the §58.11 table) and is not a notification (§61).
 
     public sealed class SelfLimitPending
     {

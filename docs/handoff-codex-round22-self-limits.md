@@ -54,7 +54,7 @@
 
 - `AtPlace` が `PlaytimeDecision` を返したらシートを出す：暗くした写真の上に紺の面（中くらいの大きさ、中央）。見出し（水色の小さな字）「遊ぶ時間のお知らせ」、タイトル `Title`（白・大きめ）、`Lines`（1行ずつ白）、`Note`（灰色の小さな字）。ボタンは `Buttons.Continue`・`Buttons.Stop` の**同じ大きさ・同じ強さの副ボタン2つ**（主ボタンにしない）、下にテキストリンク `Buttons.Settings`。音・振動・カウントダウン・アニメーションの点滅なし（動きを減らす設定 §41 に従う）。
 - 答え：`selfLimits.Answer("continue" | "stop" | "settings")` が KPI を送り、開く画面を返す（stop → `home`、settings → `self_limits`、continue → `null`＝そのまま）。「今日はここまで」はホームに戻るだけで、アプリを閉じたり遊べなくしたりしない。
-- **`SessionPromptGate` を通さない**：同意・通知の前置き・レビューと別。`selfLimits.SheetVisible` の間は、それらを**次の区切り**に回す（`ConsentModel`・`LocalNotificationModel`・`ReviewPromptModel` を呼ぶ前に `SheetVisible` を見る）。
+- **`SessionPrompts` を通さない**（§58.11 の表の外の行）：同意・通知の前置き・レビューと別。`selfLimits.SheetVisible` の間は、それらを**次の区切り**に回す（`ConsentModel`・`LocalNotificationModel`・`ReviewPromptModel` を呼ぶ前に `SheetVisible` を見る）。
 - シートの文は policy が `Loc.Current`（アプリの言語）で作る。`Loc.T` を通さない。
 
 ## 5. 入口（その他のページに行を足さない）

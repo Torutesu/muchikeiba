@@ -1,5 +1,5 @@
 // ゲーム内アンケート (REQ-SURVEY-005..011/022, contracts/protocol.md §69): SurveyModel over a routed fake server. Never offline /
-// during the FTUE / after another prompt claimed the session (SessionPromptGate.Survey, the lowest priority); the home card →
+// during the FTUE / after another prompt claimed the session (SessionPrompts.Survey, the lowest priority); the home card →
 // the sheet (one question per page, とばす for optional ones), skip in one tap, submit once with one kept key (a retry after a
 // network failure sends the same key), SURVEY_CLOSED closes quietly, an account change resets it, English, no reward words.
 using System.Linq;
@@ -61,18 +61,22 @@ static class SurveyChecks
         var m0 = new SurveyModel(off);
         check(!await m0.CheckAsync("home") && m0.LastReason == "offline", "survey: offline → not shown");
         bool ftue = true;
-        var gate = new SessionPromptGate();
+        var gate = new SessionPrompts(); // R22 integration: the one §58.11 mechanism
         var m1 = new SurveyModel(b, () => ftue) { Prompts = gate };
         check(!await m1.CheckAsync("home") && m1.LastReason == "ftue" && Gets() == 0, "survey: during the FTUE → not asked (no request)");
         ftue = false;
-        gate.Claim(SessionPromptKind.Review);
+        gate.TryClaim(SessionPrompts.ReviewPrompt);
         check(!await m1.CheckAsync("result") && m1.LastReason == "session_prompt" && Gets() == 0, "survey: the review showed this session → no survey (§58.11)");
-        check(gate.Pick(false, false, true, true) == SessionPromptKind.Review && new SessionPromptGate().Pick(false, true, false, true) == SessionPromptKind.Notifications && new SessionPromptGate().Pick(false, false, false, true) == SessionPromptKind.Survey,
-            "survey: the gate puts the survey last (consent → notifications → review → survey)");
-        gate.Reset();
+        check(gate.Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.Survey }) == SessionPrompts.ReviewPrompt
+            && new SessionPrompts().Pick(new[] { SessionPrompts.Survey, SessionPrompts.RemindersPrePermission }) == SessionPrompts.RemindersPrePermission
+            && new SessionPrompts().Pick(new[] { SessionPrompts.Survey, SessionPrompts.PromotionOutcome }) == SessionPrompts.PromotionOutcome
+            && new SessionPrompts().Pick(new[] { SessionPrompts.Survey }) == SessionPrompts.Survey
+            && !new SessionPrompts().TryClaim(SessionPrompts.Survey, new[] { SessionPrompts.ReviewPrompt }),
+            "survey: the one table puts the survey last (§58.11)");
+        gate.NewSession();
 
         // the home card → the sheet; required / optional pages; the card claims the session
-        check(await m1.CheckAsync("home") && m1.CardVisible && !m1.SheetVisible && placementAsked == "home" && gate.Shown == SessionPromptKind.Survey, "survey: home card shown and claims the session");
+        check(await m1.CheckAsync("home") && m1.CardVisible && !m1.SheetVisible && placementAsked == "home" && gate.Claimed == SessionPrompts.Survey, "survey: home card shown and claims the session");
         check(s.Sent.Any(r => r.Path == "/v1/surveys/sv_whip_feel/shown"), "survey: the show is reported");
         check(!await m1.CheckAsync("result") && m1.LastReason == "busy", "survey: one at a time");
         m1.Open();
@@ -97,7 +101,7 @@ static class SurveyChecks
         check(!await m1.CheckAsync("result") && m1.LastReason == "shown", "survey: never a second survey in one session");
 
         // skip: one tap from the result sheet (a new session)
-        var g2 = new SessionPromptGate();
+        var g2 = new SessionPrompts();
         var m2 = new SurveyModel(b) { Prompts = g2 };
         check(await m2.CheckAsync("result") && m2.SheetVisible && !m2.CardVisible, "survey: after a race result → the sheet directly");
         var sk = await m2.SkipAsync();
@@ -115,7 +119,7 @@ static class SurveyChecks
         check(!cl.Ok && !m3.SheetVisible && !m3.ThanksVisible && m3.Message == SurveyModel.ClosedText, "survey: SURVEY_CLOSED → the sheet closes with a neutral line");
         var reset = new AccountChangeReset { Surveys = m3, Prompts = g2 };
         reset.OnAccountChanged();
-        check(!m3.ShownThisSession && m3.Survey == null && g2.Shown == null, "survey: an account change starts a new survey session");
+        check(!m3.ShownThisSession && m3.Survey == null && g2.Claimed == null, "survey: an account change starts a new survey session");
 
         // English; no reward / urgency words anywhere on the card or sheet
         var texts = new[] { SurveyModel.Kicker, SurveyModel.AnswerLabel, SurveyModel.SkipLabel, SurveyModel.NextLabel, SurveyModel.BackLabel, SurveyModel.PassLabel, SurveyModel.SendLabel,

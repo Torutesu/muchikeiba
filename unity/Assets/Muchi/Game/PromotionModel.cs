@@ -24,8 +24,8 @@ namespace Muchi.Game
 
         public PromotionModel(GameBackend backend, IKeyValueStore kv = null) : base(backend, kv ?? backend?.Store) { }
 
-        /// <summary>R20 integration: the session's one-prompt gate (shared with consent, reminders and the review prompt).</summary>
-        public SessionPromptGate Prompts { get; set; }
+        /// <summary>R22 integration (§58.11): the session's ONE prompt mechanism (the same instance every model gets); the outcome sheet is `promotion_outcome`.</summary>
+        public SessionPrompts Prompts { get; set; }
         public PromotionView View { get; private set; }
 
         /// <summary>The result screen's banner when this race started a series (「昇級戦 開始」), else null.</summary>
@@ -80,7 +80,7 @@ namespace Muchi.Game
         {
             if (OutcomeSheetVisible) return true;
             if (View?.Series == null || !View.Series.OutcomePending) return false;
-            if (Prompts != null && !Prompts.Claim(SessionPromptKind.PromotionOutcome)) return false;
+            if (Prompts != null && !Prompts.TryClaim(SessionPrompts.PromotionOutcome)) return false;
             OutcomeSheetVisible = true;
             return true;
         }

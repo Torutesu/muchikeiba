@@ -7,10 +7,12 @@ namespace Muchi.Game
 {
     // R21 integration (§58.11 = §64.6): the Round 20 SessionPromptGate (consent → reminders → review) and the Round 21
     // SessionPrompts.TryClaim list were two gates for one rule. They are one now: Muchi.Client.SessionPrompts, with one priority
-    // table (recommended update > consent pre-prompt > comeback welcome > release notes > reminders pre-permission card >
-    // account-link prompt > review prompt), at most one per session, none in the FTUE, none over a §46 screen. Every model
-    // that can interrupt the player takes the same instance through its Prompts property (ReleaseNotesModel through its
-    // constructor). This file keeps the device-side pieces that go with it.
+    // table (recommended update > consent pre-prompt > comeback welcome > release notes > promotion outcome (R22 §68) >
+    // reminders pre-permission card > account-link prompt > review prompt > survey (R22 §69)), at most one per session, none
+    // in the FTUE, none over a §46 screen. Every model that can interrupt the player takes the same instance through its
+    // Prompts property (ReleaseNotesModel through its constructor; PromotionModel and SurveyModel since R22). The §67
+    // play-time sheet is the exempt row: player-requested, it never takes or waits for the prompt (SelfLimitsModel has no
+    // Prompts). This file keeps the device-side pieces that go with it.
 
     /// <summary>R20 integration (§58.10): <c>clientErrorModel.FollowConsent(consentModel)</c>.</summary>
     public static class ClientErrorConsentExtensions

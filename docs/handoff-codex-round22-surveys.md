@@ -17,7 +17,7 @@
 
 ## 2. モデルを呼ぶ場所
 
-アプリ起動ごとに `SurveyModel` を1つ作り、`Prompts` に同意・通知・レビューと**同じ** `SessionPromptGate` を渡す。`inFtue` には `OnboardingFlow.InFtue` を渡す。アカウントが変わった時の `AccountChangeReset` の `Surveys` にも入れる。
+アプリ起動ごとに `SurveyModel` を1つ作り、`Prompts` に同意・通知・レビューと**同じ** `Muchi.Client.SessionPrompts` を渡す（R22 統合）。`inFtue` には `OnboardingFlow.InFtue` を渡す。アカウントが変わった時の `AccountChangeReset` の `Surveys` にも入れる。
 
 | いつ | 呼ぶもの |
 |---|---|

@@ -11,7 +11,7 @@ namespace Muchi.Game
     // closed, then draws the home card (CardVisible) or the sheet (SheetVisible: one question per page, Index / Current) and the
     // thanks state (ThanksVisible). Skip is one tap from the card or any page of the sheet and that survey never comes back.
     // Nothing is granted for answering: this model has no reward, coins or shop link. Never offline, never during the FTUE, and
-    // only through the §58.11 one-prompt-per-session gate (SessionPromptKind.Survey, the lowest priority).
+    // only through the §58.11 one-prompt-per-session gate (SessionPrompts.Survey, the lowest priority).
 
     public sealed class SurveyModel : ScreenModel
     {
@@ -43,8 +43,8 @@ namespace Muchi.Game
             _inFtue = inFtue ?? (() => false);
         }
 
-        /// <summary>The session's one-prompt gate (shared with ConsentModel, LocalNotificationModel, ReviewPromptModel).</summary>
-        public SessionPromptGate Prompts { get; set; }
+        /// <summary>R22 integration (§58.11): the session's ONE prompt mechanism (the same instance every model gets); a survey is `survey`, the lowest.</summary>
+        public SessionPrompts Prompts { get; set; }
         public SurveyView Survey { get; private set; }
         /// <summary>home | result.</summary>
         public string Placement { get; private set; }
@@ -79,14 +79,14 @@ namespace Muchi.Game
             if (ShownThisSession) return Skip("shown");
             if (!ServerAvailable) return Skip("offline");
             if (_inFtue()) return Skip("ftue");
-            if (Prompts != null && !Prompts.CanShow(SessionPromptKind.Survey)) return Skip("session_prompt");
+            if (Prompts != null && !Prompts.CanShow(SessionPrompts.Survey)) return Skip("session_prompt");
             _busy = true;
             try
             {
                 var o = await B.Api.GetSurveyAsync(placement, ct);
                 if (o.Survey == null) return Skip(o.Reason ?? "none");
                 // another prompt may have claimed the session while we waited
-                if (Prompts != null && !Prompts.Claim(SessionPromptKind.Survey)) return Skip("session_prompt");
+                if (Prompts != null && !Prompts.TryClaim(SessionPrompts.Survey)) return Skip("session_prompt");
                 Survey = o.Survey; Placement = placement; Index = 0; Answers = new SurveyAnswerBuilder(o.Survey);
                 ShownThisSession = true;
                 if (placement == SurveyPlacements.Home) CardVisible = true; else SheetVisible = true;

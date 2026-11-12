@@ -2420,13 +2420,13 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 |---|---|
 | `gacha` | `/v1/gacha/*`・`/v1/items/*`（チケット） |
 | `shop` | `/v1/shop/*`・`/v1/silks/parts/*`・`/v1/commentary/packs/*` |
-| `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`・`/v1/race/*`・`/v1/races/*` |
+| `ranked` | `/v1/match/*`・`/v1/friend-rooms/*`（フレンド部屋の再戦 `/v1/friend-rooms/rematch/:raceId` §63 を含む：レースを始める口。R21 統合）・`/v1/race/*`・`/v1/races/*` |
 | `teams` | `/v1/teams/*`（定型チャット §52 の候補・投稿を含む：投稿先の支部フィードと同じグループ。Round 18 統合）・`/v1/league/*`・`/v1/stamps` |
 | `events` / `tournaments` / `training` | `/v1/events/*` / `/v1/tournaments/*` / `/v1/training/*` |
 | `time_attack` | `/v1/time-attack/*`・`/v1/challenges/*` |
-| `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*` |
+| `social` | `/v1/friends/*`（おすすめフレンド §49 を含む）・`/v1/invite*`・`/v1/stable*`・`/v1/rival*`・`/v1/showcase*`（§62、Round 21）・`/v1/links`（リンクを作る・一覧・取り消す `GET`／`POST /v1/links`・`DELETE /v1/links/:token`、§63） |
 | `cups` | `/v1/cups*`（主催カップ §42、Round 17 統合で追加。レースのグループ） |
-| `core` | それ以外のすべて（プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
+| `core` | それ以外のすべて（アップデートのお知らせ `/v1/release-notes*` §64・予定表 `/v1/calendar*` §65（R21 統合）・プレイヤー・馬・ミッション・プレゼントボックス・振り返り §43・厩舎の整理 §44・次にやること §45・馬ごとの目標 §53・練習レースのカタログ §50（止まっても端末の写しで練習できる）…） |
 
 **どの窓でも・どのバージョンでも止まらない**（`EXEMPT_ROUTES`）：
 - 状態を見る口：`GET /v1/health`・`/v1/config`・`/v1/maintenance`・`/v1/assets/catalog`・`/v1/visuals`。
@@ -2438,6 +2438,7 @@ PhotoRecord = PhotoInput ＋ { "id": "ph_12", "createdAt": ms }（一覧では `
 - **進行中のものの確定**：レースのソケット `GET /v1/race/:raceId/ws`（始まったレースは最後まで走り、`final` まで確定する）、`POST /v1/time-attack/submit`・`/v1/challenges/weekly/submit`・`/v1/training/:sessionId/finish`、待ち行列から抜ける `POST /v1/match/cancel`・`/v1/events/:eventId/cancel`。
 - KPI の送信 `POST /v1/analytics/events`（`maintenance_block`・`upgrade_prompt` はここを通る）と購入履歴 `GET /v1/history/*`・`POST /v1/history/support-ticket`。
 - 管理API `/v1/admin/*`（運用はメンテナンス中に作業する）。cron（`scheduled`）も止まらない。
+- **リンクを開く口**（§63、R21 統合）：`POST /v1/links/resolve` は止めない。窓の間・古いアプリからは、行き先の状態（`maintenance`／`update_required`）を答えの `state` で返し、リンクは捨てない（その画面がいつ開けるかを言う）。`/v1` の外にある Web の代わりのページ `GET /l/:token` と、ユニバーサルリンク・App Links の検証ファイル `GET /.well-known/apple-app-site-association`・`/.well-known/assetlinks.json` は入口の検査の外（窓の間も OS の検証が切れない）。
 - **サポートへの道**（Round 17 統合で決めたこと）：ヘルプセンター（§48）の `GET /v1/help`・`/v1/help/articles/:articleId`・`/v1/help/search`・お問い合わせ `GET/POST /v1/help/inquiries`・`GET /v1/help/inquiries/:ticketId`・`POST /v1/help/inquiries/:ticketId/read`、通報（§47）`GET /v1/reports/options`・`POST /v1/reports`、ブロック `GET/PUT/DELETE /v1/blocks*`。メンテナンス中も古いアプリからも、運営に知らせる・相手を避ける手段は閉じない（記事の「役に立った」`POST /v1/help/articles/:id/feedback` はサポートではないので止まる）。
 - **主催カップ**（§42）：窓が `cups`（か `all`）を含む間は作成・参加・次のレースの出走が止まる。走っているカップのレースはソケットと結果の確定（Durable Object の中の通知）で最後まで確定し、順位に入る。窓の間に `closesAt` を過ぎたカップは §42 のとおり走ったところまでで終わる（`partial`）。
 
@@ -2531,6 +2532,8 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 | リプレイ（§37） | 相手の公開リプレイを見られない。相手も自分のを見られない |
 | 大会・カップ（§20） | 同じレースに出ることはある（公平のため、組み合わせはブロックで変えない）。相手の名前は出るが、相手からの通知・応援は来ない |
 | 主催カップ（§42、Round 17 統合） | どちらかがブロックしていれば同じカップに入れない（参加の時に双方向で確かめる、REQ-CUP-006）。招待もしない。理由は言わない |
+| トレーナーカード（§62、R21 統合） | どちらかがブロックしていればお互いのカードは中立のカード（中立の名前だけ。開く・通報する物が無い）。退会・BAN と同じ見た目で、理由は言わない |
+| 共有リンク・再戦（§63、R21 統合） | 作った人と開いた人のどちらかがブロックしていればリンクは `unavailable`（見つからない時と同じ答え）。再戦では押した順に、もう入った人とどちらかがブロックしている人は入らない |
 
 - 相手には**ブロックしたことを知らせない**（見えない理由はいつも「見られません」・404 で、ブロックとは言わない）。
 
@@ -2540,7 +2543,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
   "effects": [ { "feature": "activity", "text": "相手からのお知らせが届かなくなります" } ] }
 ```
 - 新しくブロックした順。名前は公開プロフィール（ディレクトリ）から今の名前を引く。退会・BAN・見つからない相手は中立の名前「プレイヤー」（§40 と同じ）。プレイヤーが付けた名前なので訳さない。
-- `effects` は上の表の各行の短い説明（日本語で作り、英語は応答の境界で訳す）。`feature` は `activity`・`team_feed`・`rival`・`stable`・`hall`・`replays`・`cups`。
+- `effects` は上の表の各行の短い説明（日本語で作り、英語は応答の境界で訳す）。`feature` は `activity`・`team_feed`・`rival`・`stable`・`hall`・`replays`・`cups`・`links`（§63）・`showcase`（§62、R21 統合）。
 
 ### 47.3 `PUT /v1/blocks/:playerId`・`DELETE /v1/blocks/:playerId`（要認証、何度送っても同じ）
 - PUT でブロック、DELETE で解除。本文なし。→ `{ "playerId": "p_9", "blocked": true, "count": 1, "max": 100 }`。
@@ -2895,7 +2898,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 |---|---|
 | `format` `version` `requestId` `playerId` `generatedAt` `language` `timeUnit` `sections` `truncated` `notIncluded` `unclassified` | ヘッダー。`truncated` = `[{section, omitted}]`、`notIncluded` = 持っているが入れていないもの `[{key, reason}]`、`unclassified` = 分類されていないキー（常に空、テストで確認） |
 | `account` | `playerId`・`createdAt`・`lastSeenAt`・`age`（生年月・保護者の同意）・`consent`（規約・プライバシーポリシーの版と履歴）・`flags`・`deletion`（予定の状態・日時、確認トークンなし）・`moderation`（状態・期限・日時。検知の理由は入れない）・`transfer`（§54 引き継ぎコード、Round 19 統合：今のコードの種類・発行日時・期限・期限切れか、今日の発行数、前の端末の締め出しの時刻、発行・取り消し・引き継ぎの履歴。**コードの ID・パスワード・ハッシュ・塩・引き継ぎの再送用の記録は入れない**） |
-| `profile` | 表示名・称号・勝負服・勝負服エディタのプリセット・統計・レーティング（丸め）・シーズン・シーズンの記録 |
+| `profile` | 表示名・称号・勝負服・勝負服エディタのプリセット・統計・レーティング（丸め）・シーズン・シーズンの記録・`showcase`（§62 トレーナーカードの選択：自分の馬・ピン・コース・一言・背景の ID、Round 21） |
 | `settings` | アクセシビリティ（§41）・かんたん操作・実況パック・コース／部屋の条件・装備・厩舎の整理・プッシュの設定・広告の設定と視聴の記録（広告ネットワークの取引 ID なし）・殿堂の公開範囲・ライバルの不参加 |
 | `horses` | 馬（`studSire` は他のプレイヤーの ID を外し、馬の名前だけ）・絆・調教・`goals`（§53 馬ごとの目標の達成日時とホームのピン、Round 18 統合） |
 | `items` | アイテム・素材・アイテムの未精算・アイテムの記録 |
@@ -2925,6 +2928,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 - `third_party`：他のプレイヤーについての情報（申請・招待を送ってきた人、ライバル・種付けの相手、お知らせを送った人の ID）。**他のプレイヤーが自分について送った通報**は入れない（通報した人を特定できてしまい、第三者の権利利益を害するおそれ（法33条2項1号）と、モデレーションの業務に著しい支障（同2号）。弁護士の確認待ち、`docs/planning/03-legal-risk.md`）。
 - Round 19 統合：§55 の応援は誰が送ったかを保存しない（部屋の中で数えるだけ、`replays/<raceId>.cheers.json` も時間の区切りごとの数だけ）ので、エクスポートに入れるものは無い。§56 の画質・通信量の設定は端末だけに保存され、サーバーには無い。
 - Round 20 統合：§58 の `privacyChoices` は `account` に全部（選んだ値・版・時刻・端末の状態・履歴）。§59 の `reviewPrompt` は `analytics.reviewPrompts`（頼んだ時刻・瞬間・プラットフォーム・形・答え。セッション id は入れない）。§60 のエラー報告は状態のキーを足さず、自分の id が付いた見本を `analytics.clientErrors` に出す（読めない時は `available: false`）。§61 の端末のリマインダーは**端末の中だけ**（予約・前に予約した id・「ロック画面に詳しく表示」・前置きを出した回数はどれもサーバーに無い）ので出すものは無い（`reminders` の選択は既存の `push.prefs` と一緒に出る）。§58.11 の「1セッションに1つ」の記録も端末の中だけ。
+- Round 21 統合：§62 の `showcase` は `profile.showcase`（自分の馬・ピン・コース・一言・背景の id だけ）。§64 の `releaseNotes` は `play.releaseNotes`（見た版と `baseline`）、§65 の `calendar` は `play.calendar`（印の id・種類・期限）。§63 のリンクは状態のキーではないが、**自分が作ってまだ開くリンク**をディレクトリから読んで `social.links`（種類・作った時刻・期限。トークンは入れない＝リンクは行き先の鍵なので、ファイルが人に渡っても開けない。読めない時は `available: false`）。§64 の「このセッションで見た」・§63 の待っているリンク・§65 の印から作る端末の通知（§61）は**端末の中だけ**なので出すものは無い。
 - 新しい状態のキーは `DEX_CLASSIFICATION`（`Record<keyof PlayerState | 拡張キー, …>`）にどちらかを書かないと型チェックとテスト（`test/data-export.test.ts`：インターフェース・`PlayerState & { … }` の拡張・実際の状態）が失敗する。Round 18 統合で分類したキー：`friendSuggest`→`social`、`horseGoals`→`horses`、拡張キー `help`→`helpInquiries`、`reports`（通報の1日の数）→`reportsMade`。§46 メンテナンス・§50 練習レースはプレイヤーの状態に何も置かない。§52 定型チャットの投稿は支部のフィード（TeamDO）にあり、プレイヤーの状態には無い：支部のフィードは支部員の共有の場で、決まった文と選んだ値だけ・保存は `retainDays` 日と件数まで（§52.6）なので、エクスポートには入れない（`docs/planning/03-legal-risk.md` の確認事項）。
 
 ### 51.6 人が読める概要（`.txt`）
@@ -3473,12 +3477,13 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 ### 58.7 KPI の分類（REQ-CNS-012〜014、`server/src/domain/kpiConsent.ts`）
 - すべての KPI イベント名を **`essential`（必須：法定の記録・不正対策・同意の証跡）** か **`optional`（任意：分析）** に分類する（`KPI_EVENT_CLASS`）。分類の無い名前は `optional` として扱う（迷ったら送らない）。テストがサーバーのコードから出すイベント名・クライアントのイベント名を全部集め、分類が無ければ失敗する。
 - `essential`：`purchase`・`refund`・`pass_renew`・`pass_status`（資金決済法・返金の記録）、有償コインを使ったかもしれないもの `gacha_draw`・`silks_part_buy`・`commentary_pack_buy`（前払式支払手段の使用の記録）、`ad_reward`・`ad_reject`（広告ネットワークとの照合・不正対策）、`consent`・`consent_change`（同意の証跡）、`account_delete`・`dex_request`・`dex_ready`・`dex_download`（本人の権利の記録）、`report_submit`・`block_add`・`block_remove`・`inquiry_submit`・`inquiry_answered`（安全・サポートの記録）。それ以外はすべて `optional`（クライアントのイベントは全部 `optional`）。
-- **Round 19・20 のイベント（R20 統合で決めたこと）**：
+- **Round 19〜21 のイベント（R20・R21 統合で決めたこと）**：
   | イベント | 送り手 | 分類 | 理由 |
   |---|---|---|---|
   | `transfer_issue`・`transfer_redeem`（§54.9） | サーバー | `essential` | アカウントへの入口の監査（サインインと同じ扱い）。失敗の分類で総当たり・乗っ取りを見つける。ID・パスワード・IP は元から入れない |
   | `review_prompt_eligible`・`review_prompt_shown`・`review_soft_answer`（§59） | サーバー | `optional` | 頼む時の調整のための分析。分析がオフでもレビュー依頼の規則（間隔・回数）は状態 `reviewPrompt` で守られ、KPI に頼らない |
   | `cheer_send`・`cheer_seen`（§55）、`perf_setting_change`・`asset_predownload`（§56）、`tutorial_replay`・`tip_view`・`tip_context_open`（§57）、`lnotif_scheduled`・`lnotif_opened`・`lnotif_permission`（§61） | クライアント | `optional` | 遊び方・設定の分析だけ。端末の `ConsentState.AllowsClientEvent` が捨て、サーバーも捨てる |
+  | `showcase_save`（サーバー）・`showcase_view`・`showcase_share`（§62）、`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）・`deep_link_open`（§63）、`release_notes_view`・`release_notes_target`・`release_notes_history`（§64）、`calendar_view`・`calendar_entry_open`・`calendar_mark`（サーバー、§65）（R21 統合） | サーバー／クライアント | `optional` | カード・リンク・お知らせ・予定表の使われ方の分析だけ。支払い・法定・アカウントの入口の記録は無い。リンクの行はトークン・行き先・相手の id を元から入れない（§63.9）。分析がオフなら書かない（リンク・再戦・カードの見た目はそのまま動く） |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
@@ -3497,12 +3502,24 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
 - サーバー：`POST /v1/client-errors` は認証された束でもプレイヤーの `analytics.effective` を確かめ、true でなければ playerId を残さない（§60.6）。
 - 設定の画面では「プライバシー」の中に「広告と分析」と「エラーの自動送信」を並べ、エラーの自動送信の画面は「プレイヤーIDを添えるかは『分析への協力』に従います」と案内する。
 
-### 58.11 事前の画面は1セッションに1つ（§59・§61 との関係、R20 統合）
-- **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**：§58 の事前の画面（続く ATT・CMP を含む）、§61.4 の通知の前置き（続く OS の通知の許可を含む）、§59 のレビュー依頼（前置きの質問・OS のシート）。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。
-- **同じ時に2つ以上が出せる時の順**：① 同意（§58。パーソナライズ広告・分析を使う前に決めてもらう）→ ② 通知の前置き（§61。調教の直後に役に立つ）→ ③ レビュー（§59。お願いだけ）。どれも FTUE の間は出さない（それぞれの規則）。だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューがそのどちらかのすぐ後に出ることも無い。
+### 58.11 お願いの画面は1セッションに1つ（§20・§46.9・§59・§61・§64 との関係、R20 統合・R21 統合で1つの表に）
+- **1セッション（アプリの起動から終了まで、またはアカウントが変わるまで）に出す「お願いの画面」は1つだけ**。最初に出たものがそのセッションを取り、ほかは次のセッションに回る（それぞれの規則で「まだ出していない」ままなので、失われない）。**FTUE の間はどれも出さない**。§46 のメンテナンス・強制アップデートの画面（`ApiClient.Outage` が `None` 以外）の上にも出さない（それは案内ではなく画面で、その間は判定もしない）。
+- **同じ時に2つ以上が出せる時の順（この表が唯一の決まり。§64.6 もこの表を指す。R21 統合）**：
+
+  | 順 | 種類の id（`SessionPrompts`） | 画面 | 理由 |
+  |---|---|---|---|
+  | 1 | `recommended_update` | 推奨の更新の案内（§46.9、版ごとに1回） | 古いアプリのままだと他の案内の行き先が開けないことがある |
+  | 2 | `consent_pre_prompt` | 広告・分析の同意の事前の画面（§58、続く ATT・CMP を含む） | 法令・ストアの決まり。パーソナライズ広告・分析を使う前に決めてもらう |
+  | 3 | `comeback_welcome` | 復帰キャンペーンの歓迎画面（§20、ホームの代わり） | 期間のあるキャンペーンの入口 |
+  | 4 | `release_notes` | アップデートのお知らせ（§64） | 新しい版の最初のホーム |
+  | 5 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
+  | 6 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
+  | 7 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
+
+  だから ATT・同意の画面と通知の画面が続けて出ることは無く、レビューが他のどれかのすぐ後に出ることも無い。
 - 同意の事前の画面がこの規則で出せなかった時、最初の広告は今の効いている値（まだ選んでいなければ非パーソナライズ）で出る。報酬は同じ（58.6）。
-- 端末：Unity は `SessionPromptGate`（`ConsentModel.Prompts`・`LocalNotificationModel.Prompts`・`ReviewPromptModel.Prompts` に同じものを渡す）、プロトタイプは `sessionPrompt`。サーバーには状態を足さない（セッションは端末のもの）。
-- **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、この1つの規則を最初に戻す。
+- 端末：**1つの仕組み** `Muchi.Client.SessionPrompts`（`Priority`・`CanShow`・`TryClaim(kind, alsoDue)`・`Pick(due)`・`NewSession`。作る時に `ApiClient.Outage` と FTUE かどうかを渡す）。Unity は同じ1つを `MaintenanceModel.Prompts`・`ConsentModel.Prompts`・`ComebackModel.Prompts`・`ReleaseNotesModel`（コンストラクタ）・`LocalNotificationModel.Prompts`・`AccountLinkPrompt.Prompts`・`ReviewPromptModel.Prompts` に渡す。プロトタイプは `sessionPrompt`（`PROMPT_PRIORITY` は上の表と同じ）。R20 の `SessionPromptGate` と R21 の `SessionPrompts.TryClaim` の2つの仕組みは R21 統合でこの1つにした。サーバーには状態を足さない（セッションは端末のもの）。テスト：`server/test/r21-integration.test.ts` が表・C#・プロトタイプの一致を確かめる。
+- **アカウントが変わった時（§54）**：`SESSION_REPLACED`・引き継ぎコードの入力で `AccountChangeReset` がローカル通知を全部取り消し（§61.5。§65 の予定表の印から作った通知も含む）、エラー報告の溜まった分を ID なしにし（§60.6）、レビューのセッション（id と「このセッションで頼んだ」）を新しくし、端末で待っているディープリンク（§63）を捨て（前のアカウントに届いたもの）、アップデートのお知らせの「このセッションで出した」（§64。見た印はサーバーのアカウントごと）を戻し、この1つの規則を最初に戻す（R21 統合）。
 - **`reminders`（§61）と同意**：呼び戻しの種類なので既定オフで、前置きで選んだ人だけ（§3.5 の「新しい種類と同意」）。トラッキング・広告には使わず、パーソナライズ広告の選択とは関係しない。`lnotif_*` の KPI は `optional`（分析がオフなら送らない・書かない、58.7）。子どもにも同じ規則（購入・広告への誘いは無い、§61.1）。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、REQ-REV-001〜016、`server/src/domain/reviewPrompt.ts`・`progression.reviewPrompt`、C# `ReviewPrompt.cs`（`ReviewPromptPolicy`・`IStoreReview`）・`Muchi.Game.ReviewPromptModel`、共有ベクター `contracts/review-prompt.vectors.json`）
@@ -3656,14 +3673,14 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 2. ファイルのパスはファイル名だけ（`/Users/alice/proj/Assets/Muchi/Game/HudModel.cs:120` → `HudModel.cs:120`、`C:\Users\…\x.cs` も同じ）。
 3. 引用符の中（`"…"`・`'…'`・`「…」`）は自由な文やプレイヤーが付けた名前なので `"…"` に置き換える。
 4. ASCII 以外の文字の並び（日本語の文・名前）は `…` に置き換える。
-5. 長い id・トークンらしい並び（数字を含む 20 字以上の英数字、12 字以上の16進）→ `<id>`、`p_…`・`h_…` のような id → `<id>`、5 桁以上の数字 → `<n>`。
+5. 長い id・トークンらしい並び（数字を含む 20 字以上の英数字、12 字以上の16進）→ `<id>`、共有リンクのトークン（§63 の字（`2-9a-hjkmnp-z`）の 22 字ちょうど。数字を含まないこともあるので別の規則、R21 統合）→ `<token>`、`p_…`・`h_…` のような id → `<id>`、5 桁以上の数字 → `<n>`。
 6. 空白をまとめ、上限の長さで切る。
 **送ってよいもの**：端末の機種（`deviceModel`）と OS の版（`osVersion`、英数字と ` ,._()-` の 40 字まで。ほかの文字は `other`）、アプリの版、プラットフォーム。**送らないもの**：メール・トークン・プレイヤー名・馬の名前・自由な文・入力の列・位置・広告 id。`installId` はアプリが最初の起動で作る乱数（端末の識別子・広告 id から作らない）で、回数の制限と重複の判定にだけ使い、見本には残さない。
 
 ### 60.4 指紋（`fingerprint`、REQ-CERR-009）
 同じ原因のエラーを1行にまとめる鍵。**サーバーが**スクラブした中身から計算する（端末も同じ計算で列の中をまとめる）。FNV-1a 64 bit（UTF-8）の16進16字。元の文字列：
 - `exception|<type>|<message の型>|<上から5つのフレーム>`：message の型 = スクラブ後の数字を `#` に。フレーム = スタックの各行からアドレス（`[0x…]`・`<…>`）と行番号（`:120`）を消したもの。行番号は入れない（小さな修正で指紋が変わらないように）。
-- `api|<METHOD>|<route>|<status>|<code または ->`：`route` の id らしい部分（数字を含む 6 字以上・`x_…` の形）は `:id`。
+- `api|<METHOD>|<route>|<status>|<code または ->`：`route` の id らしい部分（数字を含む 6 字以上・`x_…` の形・共有リンクのトークン（§63、R21 統合））は `:id`。
 - `desync|<mode>`（ズレはモードごとに1行。どのレースかは見本で見る）。
 - `asset|<reason>|<assetKey の先頭2段>`、`stall|<kind>|<screen>`。
 
@@ -3712,6 +3729,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 | `rival_week_closing` | ライバル（§28）の週の終わり | `friends` | `weekEndsAt − leadHours` | 今週のライバルがいて、今週のランク戦がまだ0回 | `rival` |
 | `exchange_closing` | イベント交換所（§30）が閉まる | `events` | `closesAt − leadHours`（イベントごとに1つ） | ポイントが残っている。文言は「残ったポイントは素材になります」（§30、失われない） | `event_exchange` |
 | `gift_expiring` | プレゼント（§26）の受け取り期限 | `gifts` | 一番早い `expiresAt − leadHours` | 期限のある未受け取りの品がある。**開くだけ**（通知から受け取らない） | `gift_box` |
+| `calendar_mark`（R21 統合） | 予定表（§65）で印を付けた行の**始まり** | `reminders`（自分で付けた印なので呼び戻しと同じ種類、既定オフ） | `startAt − leadHours.calendar_mark`（既定 2 時間） | 印があり、まだ始まっていない（始まった行・印を外した行・`until` を過ぎた行は予約しない）。名前は文言に入れない（「印を付けた予定が{date}に始まります」） | `calendar` |
 
 - 持ち主が `server` の出来事（ローカルでは作らない）：push.json の全テンプレート（フレンド・支部・招待・シーズン開幕／終了・昇級まであと1勝・イベント開始・大会の締切／まもなく・TA記録・ライバルの記録・おかえり（`comeback`）・プレゼントが届いた（`gift_arrived`））。今の6つのローカルの種類と同じ出来事を送るテンプレートは無い。今後サーバーが同じ出来事を送るなら、ローカルの種類の方を外す。
 - 呼び戻しの通知（「調教ができます」「ログインボーナス」）は 06 §3.5 のとおり**新しい種類と同意**が要る：新しい種類 **`reminders`**（「リマインダー」、**既定オフ**、push.json `defaults.categories.reminders: false`）。サーバーはこの種類のプッシュを送らない（テンプレートが無い、テストで確かめる）。受け取るには 61.4 の前置きで本人が選ぶ。
@@ -3723,7 +3741,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 2. 61.1 の条件から候補を作る。種類の**カテゴリがオフ**なら外す（`category_off`）。設定 `kinds` に無い種類も外す。
 3. 時刻が `now` 以前なら外す（`past`。アプリを開いている間に期限の前の時刻が過ぎたら、もう知らせない）。`now + horizonDays` より後も外す（`horizon`）。
 4. **静かな時間帯**（プッシュと同じ JST の `quietHours`）：`training_session` は外す。`daily_bonus` は静かな時間帯の終わりへ遅らせる（次のゲーム日を越えるなら外す）。期限の種類は終わりへ遅らせ、それが期限の1時間前を過ぎるなら外す（`quiet_hours`）。
-5. **1日の上限** `dailyCap`（既定2、プッシュの上限とは別に数える）：予約する時刻のゲーム日ごとに、優先の高い順（`training_session` > `gift_expiring` > `exchange_closing` > `weekly_challenge_closing` > `rival_week_closing` > `daily_bonus`、同じなら早い時刻）に残す（`daily_cap`）。全体で `maxPending` 件まで（早い順、iOS の上限 64 より十分小さい）。
+5. **1日の上限** `dailyCap`（既定2、プッシュの上限とは別に数える）：予約する時刻のゲーム日ごとに、優先の高い順（`training_session` > `gift_expiring` > `exchange_closing` > `weekly_challenge_closing` > `rival_week_closing` > `calendar_mark` > `daily_bonus`、同じなら早い時刻）に残す（`daily_cap`）。全体で `maxPending` 件まで（早い順、iOS の上限 64 より十分小さい）。
 6. 出力 `items[]`：`id`（`lnotif.{kind}.{ref}`、出来事ごとに変わらない。ref = セッションID／ゲーム日／`endsAt`／イベントID／一番早い期限）・`kind`・`category`・`fireAt`・`screen`・`refId`・`title`・`body`。並びは時刻の順。外したものは `dropped[]`（`kind`・`reason`）。
 - **文言**（日本語・英語、端末の言語で選ぶ。両方の言語を planner が持つ）：時刻は JST で「11月16日 4:00」／“11/16 at 4:00”。プレイヤーが付けた名前（馬・支部・相手）は**既定で文言に入れない**（ロック画面の覗き見）。`showDetails: true` の時だけ件数・ポイント・調教の馬の名前を入れる（名前は訳さない）。共通の賭けの言葉（`bettingWords.ts`）と煽りの言葉を使わない（テストで全部の文言を確かめる）。
 
@@ -3733,7 +3751,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 { "v": 1, "enabled": true, "now": 1794880800000, "nextDayAt": 1794891600000, "nextDay": "2026-11-12",
   "config": { "kinds": ["training_session","daily_bonus","weekly_challenge_closing","rival_week_closing","exchange_closing","gift_expiring"],
               "dailyCap": 2, "dailyHourJst": 12, "horizonDays": 7, "maxPending": 8, "trainingLeadMin": 3,
-              "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },
+              "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24, "calendar_mark": 2 },
               "prePrompt": { "maxAsks": 2, "retryDays": 14 } },
   "categories": { "season": true, "friends": true, "invites": true, "events": true, "comeback": false, "gifts": true, "reminders": false },
   "quietHours": { "startHour": 22, "endHour": 8 },
@@ -3745,6 +3763,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
   "exchanges": [ { "eventId": "ev_autumn", "points": 120, "closesAt": 1795050000000 } ],
   "gifts": [ 1795000000000, 1795003600000 ] }
 ```
+- R21 統合：`calendarMarks`（`[{ id, startAt }]`）＝予定表（§65）の印のうち、まだ始まっていない行（始まりの早い順、30件まで）。R21 統合の前に付けた印は始まりを持たないので入らない。
 - `training` は開いたセッションが無ければ `{ sessionId: null, horseId: null, expiresAt: null, trainedEver }`（`trainedEver` = これまでに調教をしたか、61.4 の前置きのきっかけ）。`weeklyChallenge`・`rival` は無ければ `null`。`gifts` は期限のある未受け取りの品の `expiresAt`（早い順、20件まで）。
 - `enabled: false`（設定なし・無効）の時は `{ "v": 1, "enabled": false }` だけ。
 
@@ -3783,3 +3802,346 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 
 ### 61.10 アカウント削除
 サーバーに新しい状態は無い（`push.prefs.categories.reminders` は既存の `push` と一緒に消える）。端末は削除の予約・実行を見たら全部取り消す（61.5）。
+
+## 62. プロフィールのショーケース（トレーナーカード、REQ-SHOW-001〜018、`server/src/domain/showcase.ts`・`server/master/showcase.json`、C# `Showcase.cs`（`ShowcaseCard`・`ShowcaseEditor`・`ShowcaseSelection`・`ShowcaseShare`）・`Muchi.Game.ShowcaseCardModel`／`ShowcaseEditorModel`、docs/handoff-codex-round21-profile-showcase.md）
+公開プロフィール（REQ-SOCIAL-004：名前・称号・クラス・レート・戦績の要約・最終ログイン）に**トレーナーカード**を足す。カードには愛馬・自分で手に入れたもののピン留め・ベスト記録・決まった文の一言・実績で解放した背景を飾れる。**何も配らず、何も売らない**（E 番号なし、balance-targets の節なし。背景・ピン留めは見た目だけで、能力・レース・ランク戦の勝率に影響しない）。設定は `master/showcase.json`（リモート設定 `showcase` で置き換え可、`showcaseProblems` で検証。`config.enabled: false` なら機能ごと無し：API は `404 NOT_FOUND`、公開プロフィールにカードは載らない）。
+
+### 62.1 カードの中身（REQ-SHOW-001）
+| 欄 | 中身 | 出せる条件 |
+|---|---|---|
+| 愛馬 | 自分の馬 1 頭（名前・レア度・性別・見た目 §17、勝負服 §35 はプロフィールの `silks`） | 持っていて現役（`status: active`）で、種牡馬として**貸し出し中でない**（§44 厩舎の整理の `on_loan` と同じ：種付けの募集中・予約中）。引退・貸し出し・手元から消えた馬は外れる |
+| ピン留め | 最大 `pinsMax`（3）つ。種類 `title`（称号 §24）・`achievement`（実績 §24、到達した一番上の段）・`cup_trophy`（主催カップのトロフィー §42、終わったカップの結果に `trophy` があるもの）・`hall`（殿堂入りの馬 §34）・`goal_ribbon`（目標をすべて達成した馬 §53）・`tournament`（大会の 1〜3 位） | 自分の状態に今あるもの（`resolvePin`）。称号の取り消し・カードの結果の整理などで無くなれば外れる |
+| ベスト記録 | タイムアタックの全期間ベストを選んだコースごとに最大 `taMax`（2）つ（コース名・タイム・その時の馬の名前）、と**今シーズンのランク戦のクラス**（今シーズンにランク戦を 1 回以上走った時だけ。自動） | 記録があるコース（`timeAttack.allTimeBest`）。マスターから消えたコースは外れる |
+| 一言 | `phrases` の決まった文 1 つ（日本語と英語の組。§52 の定型チャットと同じく自由入力なし・スロットなし） | 一覧にある id |
+| 背景 | `backgrounds` の 1 つ。`unlock` は `default`（1 つだけ）か `achievement`（実績の段）。**購入で解放するものは無い**（検証で拒否） | 解放済み。解放されていない・消えた背景は既定の背景になる |
+
+### 62.2 保存と検証（REQ-SHOW-003/004）
+- `PUT /v1/showcase` は本文の id をプレイヤーの状態と照らし、**全部が今持っている／手に入れたもの**の時だけ保存する（置き換えなので冪等。キー不要）。持っていない馬 `404 HORSE_NOT_FOUND`、引退した馬 `409 HORSE_NOT_ACTIVE`、貸し出し中の馬・手に入れていないピン・記録の無いコース・解放されていない背景 `409 NOT_ELIGIBLE`、無いコース・一言・背景 `404 NOT_FOUND`、上限超え・重複 `400 BAD_REQUEST`、停止中のアカウント `403 BANNED`、削除の予約中 `409 DELETION_PENDING`。拒否された保存は何も残さない。
+- 同じ選択をもう一度送っても何も変わらない（`updatedAt` も KPI も変わらない）。
+- 本文は `{ horseId: string|null, pins: [{kind, id}] (≤3), taTrackIds: string[] (≤3), phraseId: string|null, backgroundId: string }`（strict。文字を書く欄は無い）。
+
+### 62.3 公開の写しと、読むときの再確認（REQ-SHOW-005〜007）
+- 他のプレイヤーが見るのは、状態から作る**言語によらない写し** `ShowcaseCopy`（id・数・プレイヤーが付けた名前だけ）で、公開プロフィールの `showcase` としてディレクトリに送る（REQ-SOCIAL-004 の送り方そのまま。新しい DO・表は無い）。写しはプレイヤーの**取引ごとに作り直し**、公開プロフィールの変更の判定（`profileKey`）に入れるので、引退・手放した馬・取り消された称号・整理されたカップの結果は（貸し出し中の馬も）次の送信で**黙って外れる**（選択そのものは残り、取り戻せばまた出る）。
+- 停止中のアカウント・削除の予約中／実行中は写しを作らない（`showcase` なし）。
+- `GET /v1/showcase/:playerId` はディレクトリの写しを読み（相手の状態は見ない。ブロックの一覧だけ相手から読む、厩舎の訪問 REQ-STABLE と同じ）、**今のマスターでもう一度確かめる**：消えた称号・実績・コース・一言は外れ、消えた背景は既定の背景になる。文言は**見る人の言語**で返す（一言と背景の名前は組から選んで返す＝境界で訳さない `phraseText`・`backgroundName`、他の文言は §23 の境界で訳す。プレイヤーが付けた名前 `displayName`・`horseName`・`cupName` は訳さない）。
+- 自分のカード（`:playerId` = 自分）は自分の状態から作る（保存前は既定の背景・ピン留めなしで基本の欄だけ）。
+- フレンドの一覧（`GET /v1/friends`）はカードを運ばない（`showcase` を落とす）。カードは開いた時に 1 枚ずつ読む。
+
+### 62.4 プライバシー（REQ-SHOW-009〜012）
+- **ブロック**（§47.1 の 1 つの一覧）：見る人が相手をブロックしている・相手が見る人をブロックしている、どちらでも**空のカード**（`state: "neutral"`）。空のカードは中立の名前（「プレイヤー」／"Player"、REQ-ACT-012 と同じ）と既定の背景だけで、称号・クラス・戦績・愛馬・ピン・一言・記録・通報・共有は無い。どちらがブロックしたか・削除か停止かは区別できない。
+- **削除・停止**：公開プロフィールが無い（削除済み・知らない id）・`banned` のプロフィールも同じ空のカード（エラーにしない）。
+- **13 歳未満**（登録した年齢が `minAgeFreeText` 未満）：写しに**表示名以外のプレイヤーが付けた文字を入れない**（愛馬・殿堂・目標のリボン・タイムアタックの馬の名前、カップの名前は `null`。カードは「愛馬」「殿堂入りの馬」「プレイヤー主催カップ」などの決まった名前を出す）。一言は決まった文なのでそのまま。`young: true`。
+- **通報**（§47）：他の人のカード（空でない）に通報の入口（`reportable: true`、`source: profile`）。内容は `display_name`・`player`、愛馬の名前を出している時だけ `horse_name`（`reportableHorseId`）。新しい通報の種類は足さない。
+
+### 62.5 API（要認証、ゲートのグループ `social`）
+| メソッド | パス | 本文 → 応答 |
+|---|---|---|
+| GET | `/v1/showcase` | → `ShowcaseEditor`（自分の選択・選べるもの・プレビュー） |
+| PUT | `/v1/showcase` | 62.2 の本文 → `ShowcaseEditor` |
+| GET | `/v1/showcase/:playerId` | → `ShowcaseCard` |
+```json
+{ "playerId": "a", "state": "ok", "displayName": "はやて", "titleId": "debut", "titleName": "デビュー", "classId": "C", "rating": 1500,
+  "stats": { "races": 12, "wins": 3, "top3": 0 }, "lastSeenAt": 1794366000000, "silks": { "pattern": "cross_sashes", "colors": ["green", "blue"], "cap": "star" },
+  "background": { "id": "turf_stretch", "key": "showcase/bg/turf_stretch", "backgroundName": "芝の直線" },
+  "phrase": { "id": "race_anytime", "phraseText": "いつでもレースしよう！" },
+  "horse": { "horseId": "h1", "horseName": "ミドリノカゼ", "rarity": "SR", "sex": "male", "appearance": { "coat": "chestnut", "face": "blaze", "legs": ["none", "none", "sock", "none"], "mane": "normal", "build": "standard" } },
+  "pins": [ { "kind": "title", "id": "debut", "label": "デビュー", "sub": "称号", "icon": "title/debut" },
+            { "kind": "cup_trophy", "id": "cup_aaaaaaaaaaaaaaaa", "label": "プレイヤー主催カップ", "sub": "金トロフィー", "icon": null, "cupName": "春の小さな杯" },
+            { "kind": "achievement", "id": "wins", "label": "勝利の記録", "sub": "実績 1段目", "icon": "badge/wins_1" } ],
+  "timeAttack": [ { "trackId": "aoba_turf_1600", "course": "青葉競馬場 芝1600m", "time": "1:35.4", "timeMs": 95400, "horseName": "ミドリノカゼ" } ],
+  "seasonClass": { "seasonId": "2026-11", "classId": "C", "label": "今シーズン Cクラス" }, "cupTrophies": { "gold": 1, "silver": 0, "bronze": 0 },
+  "relation": "other", "reportable": true, "reportableHorseId": "h1", "young": false }
+```
+- `ShowcaseEditor` = `{ saved, selection, limits: { pinsMax, taMax }, horses[] (現役の馬), pins[] (今ピン留めできるもの、`ShowcasePin` と同じ形), courses[] (記録のあるコース), phrases[] ({id, phraseText}), backgrounds[] ({id, key, backgroundName, unlocked, unlockText}), young, preview: ShowcaseCard, notice }`。
+- `icon`：称号は `title/<id>`、実績は `badge/<id>_<段>`（既存のキー）。それ以外は `null`（クライアントが種類の印を描く）。背景のアセットキーは新しい種類 **`showcase/bg/<id>`**（contracts/assets.md、未着は `showcase/bg/default`）。
+
+### 62.6 画面と開く場所（REQ-SHOW-008）
+- 編集：プロフィール＝「フレンド › 自分のトレーナーカード › カードを編集」（R21 統合：その他の2ページはどちらも8行で埋まっているので行を足さない。06 の「その他 のページ」）。愛馬・ピン留め・コース・一言・背景を選び、プレビューを見て保存。文字を書く欄は無い。
+- 開く：フレンド一覧・ライバル・お知らせ（§40）・カップの待合室（§42）・観戦（§55）・殿堂（§34）・厩舎の訪問・ランキング・支部から、名前を押すとカード（KPI の入口 `friends`・`rival`・`activity`・`cup_lobby`・`spectate`・`hall`・`stable`・`leaderboard`・`team`、自分の編集は `settings`）。
+- カードから：通報（§47 のシート、`source: profile`）、画像で共有（62.7）。空のカードには何も無い。
+
+### 62.7 共有の画像（REQ-SHOW-013）
+- 既存の共有の経路（§17 のリプレイの共有カード `ShareCard`・§38 のフォトモードと同じ。ウォーターマーク「ムチ一閃」、`#ムチ一閃`）で、`ShowcaseShare.Build(card)` → `Kind = "showcase_card"`。
+- 画像と共有の文に入るのは**表示名**と、カードの文言（称号・今シーズンのクラス・一言・ピン・記録。**見る人の言語**、サーバーが返したまま）と本人の馬の名前だけ。**プレイヤー ID・フレンドコード・他のプレイヤーの情報は入れない**。空のカードは共有できない。
+
+### 62.8 マスター `master/showcase.json`（REQ-SHOW-002）
+`{ version, config: { enabled, pinsMax (0..3), taMax (0..3), minAgeFreeText (13..18) }, phrases: [{ id, ja (1..20), en (1..40) }] (1..60), backgrounds: [{ id, ja (1..12), en (1..24), unlock }] (1..40) }`。検証：id の形・重複、既定の背景がちょうど 1 つ、実績と段が存在する、**購入の解放は無い**、文に `{スロット}`・URL を入れない、賭けの言葉（`bettingWords.ts`）・「倍」「お得」「今だけ」「残りわずか」「通常価格」・英語の禁止語を使わない、英語に日本語が残らない。上限は `SHOWCASE_HARD_LIMITS` を超えられない。
+
+### 62.9 KPI（REQ-SHOW-015）
+- `showcase_save`（サーバー、選択が変わった保存だけ）→ `s1` = 背景 id、`s2` = `horse` | `none`、`s3` = `phrase` | `none`、`count` = ピン留めの数、`value` = コースの数。
+- `showcase_view`（クライアント、`props: { source, relation: "self"|"friend"|"other", neutral: bool }`）→ `s1` = source、`s2` = relation、`s3` = `card` | `neutral`。
+- `showcase_share`（クライアント、`props: { pins: 0..3, records: 0..4, horse: bool }`）→ `count` = pins、`value` = records、`s1` = `horse` | `none`。
+- どれも相手のプレイヤー ID を持たない（strict）。§58 の必須／任意の分類は Round 20 の統合で決める。
+
+### 62.10 ゲート・データの開示・アカウント削除（REQ-SHOW-016〜018）
+- メンテナンスのゲート（§46）：`/v1/showcase*` はグループ **`social`**（フレンド・厩舎と同じ。例外にしない）。
+- 個人データの開示（§51）：状態の新しいキー `showcase` は **`profile`** の節（自分の馬・ピン・コース・一言・背景の id だけ。他のプレイヤーのことは無い）。
+- アカウント削除：状態の `showcase` は最後の `wipe` で消え、写しは公開プロフィールの行と一緒に `forget` で消える（他に写しは無い）。削除の予約中から写しは送らない。`PlayerService.showcaseForget` は明示の手順（冪等）。
+
+### 62.11 文言・法務（REQ-SHOW-014）
+- すべての文言に英語（`server-en.json`・`ui-en.json`・`proto-en.json`、`l10n:missing` 0）。一言と背景の名前はマスターに日英の組で持つ。
+- コンプガチャではない：ピン・背景はランダムな品の収集を条件にしない（実績の段・確定した成績だけ）。何も売らず、購入で近道できない。カードは能力・マッチング・ランク戦に影響しない。
+- 自由入力は無い（一言は決まった文、本文 strict）。英語の "favourite" は競馬の賭けの言葉に当たるので使わない（「愛馬」は "featured horse"）。
+
+### 62.12 クライアント
+- `Muchi.Client`：`ApiClient.GetShowcaseAsync`・`SaveShowcaseAsync(ShowcaseSelection)`・`GetShowcaseCardAsync(playerId)`、`ShowcaseCard`（`IsNeutral`）・`ShowcaseEditor`・`ShowcaseSelection`（`Problem`・`ToJson`）・`ShowcasePinKinds`・`ShowcaseSources`、`ShowcaseShare.Build`、`AnalyticsEvent.ShowcaseView`・`ShowcaseShared`、`AssetKeys.ShowcaseBg`。
+- `Muchi.Game`：`ShowcaseCardModel`（開く・行・空のカード・通報の対象・共有・KPI）、`ShowcaseEditorModel`（下書き・上限・解放されていない背景・保存）。描画は docs/handoff-codex-round21-profile-showcase.md。
+
+## 63. ディープリンク・招待リンクと再戦（deep links, invite links & rematch、REQ-LINK-001〜024、`server/src/domain/deepLinks.ts`・`linkService.ts`・`rematch.ts`・`server/src/do/matchmaker.ts`・`server/src/do/directory.ts`、C# `DeepLinks.cs`（`DeepLinkParser`・`DeepLinkRoutes`・`ResolvedLink`・`RematchView`）・`Muchi.Game.DeepLinkModel`／`RematchModel`、docs/handoff-codex-round21-deep-links.md、docs/ops/deep-links.md）
+共有できるもの（フレンド部屋・主催カップ・リプレイ・招待コード・フレンド申請（プロフィール）・支部への招待・ヘルプ記事）を、**1つの形のリンク**で送れるようにする。リンクは**短い不透明なトークン**で、中身はサーバーが引く。**リンクそのものは何も配らない**（E番号なし）。招待コードの報酬（§19）は今までどおり招待コードの入力（`POST /v1/invite/redeem`）でだけ動き、リンクは入力画面にコードを入れて開くだけ（自動で入力しない）。
+
+**決まりごと**
+- URL：`https://<リンクのホスト>/l/<token>`（ユニバーサルリンク／App Links）とアプリのスキーム `muchi://l/<token>`。ホストは `progression.links.baseUrl`（既定は仮の `https://link.muchi-issen.example`）。**URL にプレイヤー ID・表示名・部屋の合言葉・カップのコードなどを入れない**。
+- トークン：22文字、`23456789abcdefghjkmnpqrstuvwxyz`（31文字、0・1・o・i・l を使わない）。1文字目は作った人のディレクトリのシャード（文字の位置 mod 16）、残り21文字は暗号論的な乱数（約104ビット）。推測して当てられない。入力は NFKC・空白とハイフンを除く・小文字にする（手で入れても同じ）。
+- **オラクルを作らない**：知らない・期限切れ・取り消し・作った人が BAN／削除済み・ブロックの関係・行き先が無くなった（部屋が閉じた・カップが終わった・記事が消えた）は、どれも同じ `200 { "state": "unavailable" }`。形が違う文字列も同じ。
+- **引く回数の制限**：見る人ごと・IP ごと（SHA-256 にして数える）に1時間 `resolvesPerHour` 回（既定60）、`unavailable` の答えは失敗として1時間 `failuresPerHour` 回（既定10）。超えると `429 RATE_LIMITED`（`details.retryAfterSec`、`Retry-After`）で `lockMinutes` 分。トークンに関係しない制限なのでオラクルにならない。
+- **期限**：部屋のリンクは `roomMinutes`（既定30分＝部屋の寿命）、カップのリンクはカップの締め切り（`closesAt`）か `cupDaysMax` 日の早い方、他は `defaultDays`（既定30日）。
+
+### 63.1 種類と行き先（REQ-LINK-002/007）
+| `type` | 作る時の本文 `target` | 作れる人 | 開いた時の `target`（見る人に返す） | 画面（`screen`） | メンテナンスのグループ（§46） |
+|---|---|---|---|---|---|
+| `room` | `{ "passphrase": "123456" }` | その部屋の参加者 | `{ "passphrase" }`（参加は見る人が馬を選んで `POST /v1/friend-rooms/:passphrase/join`） | `friend_room_join` | `ranked` |
+| `cup` | `{ "cupId": "…" }` | 主催者・参加者（コードが見える人） | `{ "code", "preview": CupPreview }`（参加は `POST /v1/cups/join`、§42。コードの試行回数に数える） | `cup_join` | `cups` |
+| `replay` | `{ "raceId": "…" }` | 自分の**公開**した保存リプレイ（§37） | `{ "ownerId", "raceId", "replayTitle" }`（フレンドだけ。フレンドでなければ `state: "friends_only"`） | `friend_replay` | `social` |
+| `invite` | `{}` | 誰でも（自分の招待コード） | `{ "code" }`（§19 の入力画面に入れるだけ。入力の条件・報酬は §19 のまま） | `invite_redeem` | `social` |
+| `friend` | `{}` | 誰でも（自分のフレンドコード） | `{ "friendCode", "displayName" }`（申請は見る人が押す。自分のリンクは `self: true`） | `friend_request` | `social` |
+| `team` | `{}` | 支部の仲間 | `{ "teamId", "teamName" }`（参加の申請は §18 のまま） | `team_view` | `teams` |
+| `help` | `{ "articleId": "…" }` | 誰でも | `{ "articleId" }` | `help_article` | （止めない：ヘルプは §46 の EXEMPT） |
+
+### 63.2 `POST /v1/links`（要認証、グループ `social`）
+- 本文 `{ "type": "room", "target": { … } }` → `{ "token", "url": "https://…/l/<token>", "appUrl": "muchi://l/<token>", "type", "createdAt", "expiresAt", "created": true | false, "shareText" }`。
+- **冪等**：同じ人・同じ種類・同じ行き先で、期限内の取り消していないリンクがあれば、それを返す（`created: false`、日の回数に数えない）。
+- 作れるのはゲーム日（04:00 JST）ごとに `createsPerDay` 本（既定30）まで → 超えたら `429 LINK_LIMIT`。BAN 中は `403 BANNED`、削除の予約中は `409 DELETION_PENDING`。行き先を共有できない（部屋の参加者でない・公開していない・支部にいない・記事が無いなど）→ `404 NOT_FOUND`。`progression.links.enabled` が false → `404 NOT_FOUND`。
+- `shareText`：OS の共有シートにそのまま渡す文（例「ムチ一閃のフレンド部屋に招待します」＋改行＋URL）。報酬・額・煽り（「今だけ」など）を入れない。プレイヤーの名前を入れない。
+
+### 63.3 `POST /v1/links/resolve`（要認証、**メンテナンスの窓でも古いアプリからでも止めない**＝§46 の EXEMPT。代わりに答えの `state` で言う）
+本文 `{ "token": "…" }` または `{ "url": "https://…/l/…" | "muchi://l/…" }`。順番：
+1. 制限（63 の決まりごと）→ `429 RATE_LIMITED`。
+2. トークンを引く。無い・期限切れ・取り消し・作った人が退会済み／BAN・見る人と作った人のどちらかがブロック（§47 の1つの一覧）・見る人が BAN（ヘルプ以外）→ `{ "state": "unavailable" }`。
+3. 種類が新しいアプリを要る（`minClientVersion[type]` より `x-client-version` が古い）→ `{ "state": "update_required", "type", "minVersion", "storeUrl" }`（§46 のストアの URL）。版の分からない要求は止めない。
+4. その種類のグループにメンテナンスの窓がある → `{ "state": "maintenance", "type", "endAt", "endsAtJst", "message" }`（§46 と同じ窓。リンクは消えない。終わったらもう一度開く）。
+5. 行き先を確かめる（63.1）。無くなっていれば `unavailable`。
+6. `{ "state": "ok", "type", "screen", "target": { … }, "expiresAt" }`。自分のリンクも開ける。
+- 答えに作った人のプレイヤー ID を入れない（例外：`replay` はフレンドにだけ、既存のフレンドのリプレイの口に要る `ownerId`）。
+
+### 63.4 `GET /v1/links`・`DELETE /v1/links/:token`（要認証、グループ `social`）
+- `GET` → `{ "enabled", "links": [ { "token", "url", "type", "createdAt", "expiresAt" } ]（期限内・取り消していないもの、新しい順）, "createsToday", "createsPerDay" }`。
+- `DELETE` は自分のリンクを取り消す → `{ "revoked": true | false }`（無い・他人の・もう取り消したものは `false`、何度送っても同じ）。取り消したリンクは `unavailable`。
+
+### 63.5 アプリが入っていない時（REQ-LINK-010/011、docs/ops/deep-links.md）
+- `GET /l/:token`（認証なし、Worker の最小のテンプレート）：静的な案内の文（日英）・アプリで開くボタン（`muchi://l/<token>`）・App Store／Google Play への案内。**トークンを引かない**（どの文字列でも同じページ＝オラクルなし、個人のデータなし）。`x-robots-tag: noindex`、`referrer-policy: no-referrer`。
+- **あとから開く（deferred deep link、クリップボードを使わない）**：
+  - Android：Google Play の URL に `referrer=link%3D<token>` を付ける。初回起動で Install Referrer を読み、`DeepLinkParser.FromInstallReferrer` がトークンを取り出して `DeepLinkModel` に渡す。
+  - iOS：App Store はインストールに値を運べない。ページにトークンを区切って見せ、インストール後に「リンクを開く」に入れてもらう（正直に書く：自動では開かない。クリップボードは読まない）。
+- `GET /.well-known/apple-app-site-association`・`GET /.well-known/assetlinks.json`：`progression.links.apple.appIds`／`progression.links.android`（`packageName`・`sha256CertFingerprints`）が設定されている時だけ返す（無ければ 404）。リポジトリに置くのは仮の値だけ。
+
+### 63.6 再戦（REQ-LINK-014〜019）
+フレンド部屋のレースが終わったら、参加者は全員「再戦」を押せる。
+- `POST /v1/friend-rooms/rematch/:raceId`（本文 `{ "horseId" }`）・`GET /v1/friend-rooms/rematch/:raceId`・`DELETE /v1/friend-rooms/rematch/:raceId`（やめる）→ `RematchView`：
+```json
+{ "raceId": "r-…", "state": "waiting" | "opened" | "closed", "reason": null | "too_few" | "not_included" | "expired",
+  "you": "pressed" | "declined" | "none", "pressed": 2, "eligible": 4, "windowSec": 20, "deadlineAt": 1794279620000,
+  "room": { "passphrase": "123456", "members": 3, "host": true } | null }
+```
+- フレンド部屋のレースが始まった時、マッチメーカーが**再戦の受付**（参加者・主催者・部屋の条件の写し）を `rematchOfferMinutes`（既定15分）だけ覚える。参加者でない・知らない `raceId` は `404 NOT_FOUND`。
+- **最初に押した時から `rematchWindowSec` 秒**（既定20、5〜120）の間に押した人が入る。全員（やめた人を除く）が押したらすぐ締める。締めた時に2人以上なら、**同じ条件**（前のレースの部屋の条件の写し。主催者がその後に条件を変えても前のまま）で**新しいフレンド部屋**を開き、押した人を全員入れる。主催者は前の主催者（入っていて、他の部屋を主催していなければ）、いなければ最初に押した人。シードは新しく引く（`createRace` の乱数、同じレースにならない）。始めるのは主催者の「出走」（今のフレンド部屋のまま、2人以上）。
+- **入れない人**：押していない・やめた（抜けた）・BAN 中（押せない、`403 BANNED`）・削除の手続き中（押せない、`409 DELETION_PENDING`。予約中はフレンド部屋と同じく遊べる）・締めた時に他のレース中／キュー中・**お互いのどちらかがブロック**している人（押した順に入れ、先に入った人とブロックの関係がある人を飛ばす。誰が誰をかは言わない：`not_included`）。
+- **安全**：押すのは何度でも同じ（馬を選び直すだけ）。2人が同時に押しても、マッチメーカーの1つのオブジェクトで順に処理する。締め切りはアラームでも、次の要求でも処理する（オフラインの人は戻った時に `GET` で見る。部屋は通常の寿命30分）。締めた後に押した人は `closed`（`not_included`）。
+- **ランクに関係しない**：フレンド部屋のレース（`mode: "friend"`）のまま。レート・報酬の扱いはフレンド部屋と同じ。何も買わない・何も配らない。
+
+### 63.7 保存
+- **ディレクトリ**（`DirectoryDO` のシャード＝トークンの1文字目＝作った人のシャード。新しい表を足すだけで wrangler の移行は不要）：
+  - `links`：`token`・`owner_id`・`type`・`target_key`・`data`（行き先の JSON：部屋の合言葉・カップの ID とコード・リプレイの raceId・招待コード・フレンドコード・支部の ID・記事の ID）・`day`・`created_at`・`expires_at`・`revoked_at`。期限から7日で消す。
+  - `link_limits`：`key`（`lu:<hash>`／`lip:<hash>`、ハッシュの先頭でシャード）・`window_start`・`lookups`・`failures`・`locked_until`。
+- **再戦**：マッチメーカーの行 `m|<raceId>`（受付・押した人・締めた結果）。
+- **プレイヤーの状態に新しいキーは足さない**（§51 の分類の追加なし）。
+- **個人データの開示（§51、R21 統合）**：自分が作ってまだ開くリンクを `social.links` に出す（種類・作った時刻・期限。トークンは出さない）。ディレクトリが読めない時は `available: false` で、エクスポートは止めない。
+- **アカウント削除**：ディレクトリの `forget` がその人の `links` の行を消す（＝全部のリンクが `unavailable` になる）。
+
+### 63.8 設定 `progression.links`（起動時とリモート設定の版ごとに検査）
+`{ enabled, baseUrl（https）, appScheme, createsPerDay 1..200, roomMinutes 5..120, cupDaysMax 1..30, defaultDays 1..90, resolvesPerHour 10..600, failuresPerHour 3..100（≤ resolvesPerHour）, lockMinutes 5..1440, minClientVersion: { <type>: "x.y.z" }, rematchWindowSec 5..120, rematchOfferMinutes 5..60, apple?: { appIds: string[] }, android?: { packageName, sha256CertFingerprints: string[] } }`。
+
+### 63.9 KPI（REQ-LINK-021）
+| イベント | 送り手 | s1 | s2 | count |
+|---|---|---|---|---|
+| `link_create` | サーバー（作った人） | 種類 | `new` / `existing` | |
+| `link_resolve` | サーバー（見た人） | 種類（`unavailable` は `none`） | `ok`・`unavailable`・`friends_only`・`maintenance`・`update_required` | |
+| `link_revoke` | サーバー | 種類 | | |
+| `rematch` | サーバー | `press`・`decline`・`opened`（主催者に1行）・`too_few` | | 部屋の人数 |
+| `deep_link_open` | クライアント | 入口 `universal`・`scheme`・`referrer`・`typed` | 種類 | |
+
+トークン・行き先・プレイヤー ID は入れない。クエリは docs/ops/kpi-queries.md「ディープリンク・再戦」。
+
+### 63.10 クライアント
+- `Muchi.Client`：`DeepLinkParser`（URL・スキーム・手入力・Install Referrer → トークン。サーバーと同じ正規化）、`DeepLinkRoutes`（種類 → 画面）、`CreatedLink`・`ResolvedLink`・`LinkList`・`RematchView`、`ApiClient.CreateLinkAsync`・`ResolveLinkAsync`・`ListLinksAsync`・`RevokeLinkAsync`・`RematchPressAsync`・`RematchStatusAsync`・`RematchDeclineAsync`。
+- `Muchi.Game`：`DeepLinkModel`（受け取ったトークンを引いて画面へ。**FTUE の間は1つだけ貯めて、終わってから開く**。オフラインも貯める。メンテナンス・更新・`unavailable` は案内の文。**何も自動で使わない・入力しない・参加しない**：開く画面は確認から始まる）、`RematchModel`（押す・待つ・締め切りの表示・部屋へ）。
+- 画面が守ること：docs/handoff-codex-round21-deep-links.md。
+
+## 64. アップデートのお知らせ（新機能の紹介、What's New、REQ-NEW-001〜020、`server/src/domain/releaseNotes.ts`・`server/master/release-notes.json`、C# `ReleaseNotes.cs`（`ReleaseNotesCheck`・`ReleaseNotesHistory`・`SessionPrompts`）・`Muchi.Game.ReleaseNotesModel`、docs/handoff-codex-round21-whats-new.md）
+アプリを**更新した人**が、更新後はじめてホームに来たときに1回だけ、その版の新しい機能を絵付きのページ（1〜5枚）で紹介する。過去の版の紹介は「お知らせ › アップデート情報」でいつでも読める。**何も配らない**（E番号なし、経済は変わらない。お詫びや記念の配布を付けたいときは既存のプレゼントボックスの補填 §26 を使い、この節の外）。
+
+§20 の「新着情報」（`GET /v1/whats-new`、バナー・イベント・調整など**サーバーの中身**が変わったこと）とは別物：こちらは**アプリの版**ごとの紹介で、元はアプリの版と結びついた運営の原稿だけ。
+
+**決まりごと**
+- 原稿は運営がデータで書く：`server/master/release-notes.json`（リモート設定の `releaseNotes` で丸ごと置き換え）。版（`x.y.z`）ごとに1〜5ページ。各ページは**既にある絵のキー**（§57 のヒントの絵 `TIP_ARTS`。新しい絵は作らない）・短い題と本文（日本語と英語の両方）・任意の行き先（アプリの画面・ヘルプ記事 §48・ヒントのカード §57）。
+- **数字は書かない**：ヘルプセンター（§48.1）の `{{トークン}}` を同じ仕組み（`fillTokens`）で埋める。トークンの外に数字を置けない（「10連」だけ例外、§48 と同じ）。
+- 言葉：§48 と同じ（日本語の「倍」「今だけ」「残りわずか」「お得」「通常価格」・賭けの言葉（`bettingWords.ts`）・英語の `EN_BANNED`）。
+- **ショップへ連れていかない**：ページの行き先はそのページの**ただ1つの CTA**なので、ショップ・スカウト（`shop`・`gacha`・`gacha_odds`）や有償の商品の画面は行き先にできない（検査で落とす）。
+- 出す相手：**更新した人だけ**。FTUE の途中の人・その版から始めた新しい人（FTUE が代わりに案内する）には出さない。古いアプリ（版のヘッダーが無い）・オフラインでは何も出さない。
+- 見た記録は**アカウントに保存**（`releaseNotes.seen`、版の文字列の有限のリスト）。入れ直しても同じ版は二度と出ない。
+- 1つのアプリのセッションで出す「システムの案内」は1つだけ（§64.6 の優先順位）。メンテナンス・更新の画面（§46）の上には決して出さない。
+
+### 64.1 マスター（`server/master/release-notes.json`）
+```json
+{ "version": 1,
+  "config": { "enabled": true, "titleMaxChars": 24, "bodyMaxChars": 140, "seenMax": 30, "historyMax": 20 },
+  "notes": [
+    { "appVersion": "1.2.0", "releasedOn": "2026-11-05",
+      "pages": [
+        { "art": "cups", "title": { "ja": "観戦中に応援できる", "en": "Cheer while you watch" },
+          "body": { "ja": "フレンドのレースを見ながらスタンプで応援。{{cheer_interval_sec}}秒ごとに送れます。", "en": "Send a stamp while you watch a friend race, once every {{cheer_interval_sec}} seconds." },
+          "target": { "kind": "help", "id": "spectator_cheer" } } ] } ] }
+```
+- `config`：`titleMaxChars` 8〜40、`bodyMaxChars` 40〜240、`seenMax` 10〜100、`historyMax` 5〜50。
+- `notes`（50件まで）：`appVersion` は `x.y.z`（§46 の `parseVersion`）で重ならない。`releasedOn` はストアに出した日（`YYYY-MM-DD`、日本時間）。版の順に並べたとき `releasedOn` は戻らない。
+- `pages`（1〜5枚）：`art` は `TIP_ARTS` のどれか。`title`・`body` は日本語・英語とも必須（`titleMaxChars`・`bodyMaxChars` 文字まで、制御文字なし、英語に日本語を入れない、日本語と英語でトークンの組が同じ、トークンは埋められる）。
+- `target`（任意）：`{ "kind": "screen", "id": <§48.1 の画面のうち shop・gacha・gacha_odds 以外> }`・`{ "kind": "help", "id": <存在するヘルプ記事> }`・`{ "kind": "tip", "id": <存在するヒントのカード> }`。リモート設定でヘルプやヒントから記事・カードを外す版は、それを指すページがある限り有効にできない。
+- 検査は起動時（`index.ts`）とリモート設定の版ごと（`ops/config.ts`、`CONFIG_INVALID`）。
+
+### 64.2 `POST /v1/release-notes/check`（要認証。ホームに来たたびに呼ぶ。本文なし）
+アプリの版は `x-client-version`（§46.3 のヘッダー）。
+```json
+{ "enabled": true, "appVersion": "1.2.0", "reason": null,
+  "show": { "appVersion": "1.2.0", "releasedOn": "2026-11-05", "skipped": 1, "hasPast": true,
+    "pages": [ { "art": "cups", "title": "観戦中に応援できる", "body": "…2秒ごとに送れます。",
+                 "target": { "kind": "help", "id": "spectator_cheer", "label": "観戦中の応援" } } ] } }
+```
+- `show` は次の全部を満たす版のうち**いちばん新しい1つ**（無ければ `null` と `reason`）：
+  1. 版 ≤ アプリの版（新しいサーバーと古いアプリの組み合わせで、まだ持っていない機能を紹介しない）。
+  2. 版 > `baseline`（そのアカウントがはじめて紹介の判定を受けた版。下の 4）と、版 > 見た版のいちばん新しいもの（一度見たら、それより古い版は出ない）。
+  3. アカウントの作成時刻 < その版の `releasedOn`（日本時間 0:00）。その版の後に始めた人には「新しくなったこと」は無い。
+- `reason`：`disabled`（止まっている）・`unknown_version`（ヘッダーが無い・読めない：Round 21 より前のアプリ・ボット）・`ftue`（FTUE の途中：相棒がまだいない、または `nextActions.onboardingRaces` 回のレースが済んでいない。§45 と同じ判定）・`new_install`（3 で外れた）・`seen`（見た）・`none`（紹介のある版が無い）。
+- **FTUE の途中の呼び出しだけが書き込む**：`baseline` = max(`baseline`, アプリの版)。だから FTUE の途中で更新した人にも、FTUE を終えた後にその版は出ない。
+- `skipped`：同じ条件を満たすが、それより古い版の数（いくつか飛ばして更新した人）。`hasPast`：アプリの版以下の紹介が他にもある（最後のページに「過去のアップデート情報」へのリンク）。
+- `target` はその人が開けるものだけ（閉じているヒントのカード・止まっているヘルプやヒントは `null`）。`label` は行き先の名前（画面は §48.1 の画面のラベル、ヘルプは記事の題、ヒントはカードの題）。
+- 見た印はここでは付けない（アプリが他の案内を先に出すことがあるため）。
+
+### 64.3 `POST /v1/release-notes/seen`（要認証）
+`{ "appVersion": "1.2.0" }` → `{ "marked": true, "seen": ["1.1.0", "1.2.0"] }`。シートを出したら（1ページ目が見えたら）送る。何度送っても同じ（2回目は `marked: false`）。マスターに無い版は 404 `NOT_FOUND`（何も記録しない）、止まっているときも 404。リストは版の順で、いちばん古いものから落として `seenMax` 件まで。
+
+### 64.4 `GET /v1/release-notes`（要認証、読むだけ）
+「お知らせ › アップデート情報」の一覧。`{ "enabled": true, "appVersion": "1.2.0", "notes": [ { "appVersion", "releasedOn", "seen", "pages": [ …64.2 と同じ… ] } ] }`。新しい順、`historyMax` 件まで。アプリの版以下だけ（ヘッダーが無いときは全部）。一覧には FTUE・作成時刻の条件をかけない（読みたい人はいつでも読める）。止まっているときは `notes: []`。
+
+### 64.5 ゲート・削除・データの開示
+- `/v1/release-notes*` はエンドポイントのグループ `core`（`all` のメンテナンスだけが閉じる）。サポートではないので免除のルートには入れない。
+- 新しい PlayerState のキー `releaseNotes`（`{ seen: string[], baseline?: string }`）。データの開示（§51）では `play`（見た版と `baseline`）。アカウント削除で状態ごと消える。
+
+### 64.6 1セッションに1つの案内
+クライアントは**アプリのセッション（起動から次の起動まで、またはアカウントが変わるまで）ごとに「お願いの画面」を1つだけ**出す。**順と決まりは §58.11 の表が唯一の正**（R21 統合：R20 の `SessionPromptGate` とこの節の `SessionPrompts.TryClaim` の一覧を1つの `Muchi.Client.SessionPrompts` にした）。アップデートのお知らせは表の4番目 `release_notes`：推奨の更新・同意の事前の画面・復帰の歓迎が同じ時に出せるならそれらが先、通知の前置き・引き継ぎの案内・レビューより先。
+
+出せなかった案内は次のセッションに回る（§64 は見た印を付けていないので、次のホームでまた `show` が返る）。FTUE の間・§46 の画面の間はどれも出さない。
+
+### 64.7 画面
+- **シート**（ホームの上、1回だけ）：ページ送り（絵・題・本文・行き先のリンク「〇〇を開く ›」）。「次へ »」、最後のページは「はじめる »」。いつでも「スキップ」で閉じられる。行き先を押すとシートを閉じてその画面へ。飛ばした版があれば最後のページに「過去のアップデート情報 ›」。
+- **「お知らせ › アップデート情報」**：アクティビティ（§40、お知らせの一覧）の右の欄のリンクから開く一覧。版ごとに日付とページ。アクティビティに新しい種類は足さない（自分に起きたことではない、§46.5 と同じ考え）。
+- **設定 › ヒント（§57）** からも同じ一覧へリンクする。
+- 文字の大きさの設定（§41）の最大でもはみ出さない。日本語・英語。
+
+### 64.8 運用コンソール（`/v1/admin/release-notes*`、`tools/ops-console` の「アップデート情報」）
+| メソッド・パス | 役割 | 内容 |
+|---|---|---|
+| `GET /v1/admin/release-notes` | viewer | 有効な版の原稿：版ごとのページを日本語・英語で（トークンを埋めた形）、行き先の名前、検査の結果 |
+| `POST /v1/admin/release-notes/preview` | viewer | `{ releaseNotes }`（下書きの区画まるごと）を有効な版のヘルプ・ヒント・ガチャで検査し、同じ形で返す。何も保存しない |
+
+変更は §22 のリモート設定の版（`releaseNotes` の区画）で出す（検査・監査ログ・切り戻しがそのまま効く）。
+
+### 64.9 KPI（クライアントのイベント）
+| イベント | いつ | s1 | s2 | s3 | value | count |
+|---|---|---|---|---|---|---|
+| `release_notes_view` | シートを出した（`shown`）・最後まで見た（`finished`）・途中で閉じた（`skipped`） | 版 | 段 | — | 閉じたときのページ（1〜5） | ページ数 |
+| `release_notes_target` | ページの行き先を押した | 版 | `screen`・`help`・`tip` | 行き先の id | ページ | — |
+| `release_notes_history` | アップデート情報の一覧を開いた | 入口 `notices`・`tips`・`sheet` | — | — | — | — |
+
+個人を特定する情報は入れない。§58 の必須／任意の分類は Round 20 の統合で付ける（3つとも「任意」の想定）。クエリは `docs/ops/kpi-queries.md`「アップデートのお知らせ」。
+
+### 64.10 クライアント
+- `Muchi.Client`：`ReleaseNotesCheck`・`ReleaseNotesHistory`・`ReleaseNotePage`・`ReleaseNoteTarget`、`ApiClient.CheckReleaseNotesAsync`・`MarkReleaseNotesSeenAsync`・`GetReleaseNotesAsync`、`SessionPrompts`（1セッション1つ・優先順位・`Outage` で止める）、analytics `AnalyticsEvent.ReleaseNotesView`・`ReleaseNotesTarget`・`ReleaseNotesHistory`。
+- `Muchi.Game`：`ReleaseNotesModel`（ホームに来たら判定 → `SessionPrompts` を取れたらシート・ページ送り・スキップ・行き先・見た印（出した時に送る。失敗しても出し直さない＝同じセッションで二度出さない）・オフライン／メンテナンス中は何もしない・一覧の読み込み）。
+- 画面が守ること：docs/handoff-codex-round21-whats-new.md。
+
+## 65. イベントカレンダー（予定表、REQ-CAL-001〜020、`server/src/domain/calendar.ts`、C# `Calendar.cs`・`Muchi.Game.CalendarModel`、docs/handoff-codex-round21-event-calendar.md）
+プレイヤーが参加できる予定を1つの読むだけの予定表にまとめる。**予定のデータは写さない**：どの行も、その機能が持っている唯一の正（マスター・リモート設定・プレイヤーの状態・大会やカップのオブジェクト）を読んだ時に組み立てる。**何も配らない・何も売らない**（E番号なし、経済は変わらない）。
+
+**集める予定（`kind`）**
+| kind | 正（読むだけ） | 時刻の決まり（`rule`） | 見える人 |
+|---|---|---|---|
+| `event` | `master.events`（§ イベント）の `startAtMs`〜`endAtMs` | `exact`（ms で指定、REQ-DAY-004） | 開放キー `events` |
+| `event_exchange` | 交換所のある イベント の開始〜 `exchangeClosesAt`（§30、REQ-EXCH-005） | `game_day`（締めはゲーム日の切り替え） | `events` |
+| `weekly_challenge` | `weekAt`（§31）の週（`gameWeekId`、月曜 04:00） | `game_day` | `weekly_challenge` |
+| `team_goal` | 支部の共同目標の週（§32 `weekKeyOf`） | `game_day` | 支部のメンバーだけ（`team.teamId`）・`teams` |
+| `league_season` | 支部対抗シーズン（league、暦の月 `seasonStartMs`〜月末） | `calendar_month` | 支部のメンバーだけ・`teams` |
+| `season` | ランク戦のシーズン（暦の月、`seasonIdFor`） | `calendar_month` | `season` |
+| `season_pass` | シーズンパスを買える月（`passPurchaseInfo` と同じ暦の月）。期間だけ | `calendar_month` | `season_pass`・パスの商品があるとき（その月のパスを買った人には出さない） |
+| `banner` | スカウトのバナーのうち **予告中・開催中** のもの（`bannerStatus` が `upcoming`／`active`、期間のあるものだけ）。予告前は出さない | `exact`（`startDay`/`endDay` のバナーは読み込み時にゲーム日の切り替えの ms になっている） | `scout` |
+| `tournament_registration` | 大会の受付（`TournamentSummary` の `registrationOpensAtMs`〜`registrationClosesAtMs`） | `exact` | `tournaments` |
+| `tournament` | 大会の開始（`startsAtMs`、終わりの時刻は決まっていないので時刻1点）。観戦できるとき（`spectate`）は `spectate: true` | `exact` | `tournaments` または `spectate` |
+| `cup` | 参加しているプレイヤー主催カップ（§42、`GET /v1/cups` と同じ：自分が出走者の開いているカップ）の `opensAt`〜`closesAt` | `exact` | 参加者だけ |
+| `maintenance` | プレイヤーに見えるメンテナンス（§46 `visibleWindows`：予告中・実施中。予告前・取り消しは出さない） | `exact` | 全員 |
+| `comeback` | 復帰キャンペーン（§20 `comebackView` が `active` のときだけ、`startDay`〜`endDay`） | `game_day` | その期間を持つ本人だけ |
+
+**決まりごと**
+- 時刻は全部 JST。行は `startAt`（含む）・`endAt`（含まない、ms）と、画面に出す `startJst`／`endJst`（`MM/DD HH:mm`、§46 の `shortJst` と同じ）、行が触れる日 `firstDay`〜`lastDay` を持つ。`game_day` と `exact` の日はゲーム日（`gameDayKey`、04:00 の切り替え、REQ-DAY-001）、`calendar_month` の日は暦の日（`jstDateKey`、0:00、REQ-DAY-004）。時刻1点の行（`tournament`）は `endAt = startAt`。
+- 英語でも時刻は JST のまま。応答の `timeZone`（「日本時間」→ 英語は "JST"）を時刻の横に出す。
+- **偽の急かしをしない**：「今だけ」「残りわずか」「お得」「倍」「通常価格」・賭けの言葉（`bettingWords.ts`）・英語の `EN_BANNED` を使わない（検査あり）。残り時間のカウントダウンは出さない（行は日付と時刻だけ。終わりは実際のデータの `endAt`）。
+- **有料のもの（パス・バナー）は日付だけ**：価格・コイン・「買う」の導線を持たない（`paid: true`、`link` はパスは `null`、バナーはスカウトの提供割合の画面 `{ "screen": "gacha_rates", "id": "<bannerId>" }`）。
+- 行の名前：マスターの名前（イベント・バナー）は応答の境界で訳す。大会の名前は運営の書いたまま。カップの名前はプレイヤーの書いたもので訳さない（`cupName`）。
+- 見える範囲：開放キーは `unlocksView`（§4.3）と同じ判定（表にないキーは最初から開いている）。支部の行はメンバーだけ、カップは参加者だけ、復帰キャンペーンは本人の期間だけ。
+- 大会・カップは別のオブジェクトにある。読めなかったとき（落ちている・無い）はその種類を飛ばして `partial: ["tournaments"]` のように返す（予定表そのものは失敗しない）。
+
+### 65.1 `GET /v1/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD`（要認証、読むだけ）
+- `from`・`to` はゲーム日（含む）。省略時は `from` = 今日のゲーム日、`to` = `from` + 34 日。期間は **35日まで**（`to - from + 1 ≤ 35`）、`from` は今日の35日前より後、`to` は今日の90日後まで。形がおかしい・逆・長すぎ・範囲外は 400 `BAD_REQUEST`。
+- 範囲 = `gameDayStartMs(from)`〜`gameDayStartMs(to + 1)`。`endAt > 範囲の始まり` かつ `startAt < 範囲の終わり` の行（時刻1点は `startAt` が範囲の中）。`startAt`・種類の順で最大200行。
+```json
+{ "from": "2026-11-11", "to": "2026-12-15", "today": "2026-11-11", "serverNow": 1794380400000, "timeZone": "日本時間",
+  "partial": [], "marks": { "count": 1, "max": 30 },
+  "entries": [ { "id": "event:sprint_cup_2026_11", "kind": "event", "title": "イベントレース", "name": "青葉スプリント杯",
+                 "startAt": 1793458800000, "endAt": 1796050800000, "startJst": "11/01 00:00", "endJst": "12/01 00:00",
+                 "firstDay": "2026-10-31", "lastDay": "2026-11-30", "rule": "exact", "status": "open",
+                 "paid": false, "link": { "screen": "event", "id": "sprint_cup_2026_11" }, "spectate": false, "groups": null,
+                 "markable": true, "marked": true },
+               { "id": "banner:winter_2026", "kind": "banner", "title": "スカウト", "name": "季節限定：聖夜のセイヤノカネ", "paid": true,
+                 "link": { "screen": "gacha_rates", "id": "winter_2026" }, "…": "…" },
+               { "id": "cup:cup_abcdefghijklmnop", "kind": "cup", "title": "主催カップ", "name": null, "cupName": "週末カップ", "…": "…" } ] }
+```
+- `status`：`upcoming`・`open`・`ended`（`now` と `startAt`／`endAt`）。`groups`：`maintenance` の行だけ、閉じる機能のグループ（§46、`all` は全部）。
+- 行の `id` は `<kind の短い名>:<正の id>`：`event:<eventId>`・`exch:<eventId>`・`wch:<weekId>`・`tgoal:<weekId>`・`league:<YYYY-MM>`・`season:<YYYY-MM>`・`pass:<YYYY-MM>`・`banner:<bannerId>`・`treg:<tournamentId>`・`tour:<tournamentId>`・`cup:<cupId>`・`mnt:<windowId>`・`comeback:<windowId>`（`^[a-z]{3,8}:[A-Za-z0-9_-]{1,64}$`）。
+
+### 65.2 印（リマインダーの準備、`PUT`／`DELETE /v1/calendar/marks/:entryId`、要認証）
+- 行に「印」を付けられる（`markable` = まだ終わっていない行）。サーバーは **印だけ** を持つ：`calendar.marks`（`{ id, kind, until }`、`until` = 行の `endAt`（時刻1点は `startAt`）、30件まで、`until` を過ぎた印は読む・書くたびに落とす）。
+- `PUT`：今日から `GET` が見せられる最も先の日（90日後）までの予定表を同じ組み立てで（200行の上限なしで）作り、その `id` の行があって終わっていなければ付ける（何度でも同じ、`{ "marked": true, "id": "…", "count": n, "max": 30 }`）。行が無い・見えない → 404 `NOT_FOUND`、終わっている → 409 `CONFLICT`（`details.reason: "ended"`）、30件ある → 409 `CONFLICT`（`details.reason: "limit"`）。
+- `DELETE`：外す（無い印でも 200、`{ "marked": false, … }`）。
+- **サーバーからは通知を送らない**（プッシュもメールも無し）。
+- **§61（端末の通知）との結び方（R21 統合で実装）**：印は `startAt`（行の始まり）も持つ（`{ id, kind, until, startAt }`）。端末は §61 の1つの計画（`planLocalNotifications`／C# `LocalNotificationPlanner`）で、まだ始まっていない印の行に種類 `calendar_mark` の通知を `startAt − leadHours.calendar_mark` に予約する。種類（カテゴリ）は `reminders`（既定オフ）、静かな時間帯・1日の上限・`horizonDays`・止めるスイッチ（`kinds`）は §61 のまま。持ち主は端末（`LNOTIF_OWNERSHIP.local`、サーバーのプッシュのテンプレートは無い）。印を外す・行が終わる・始まる → 次の計画で予約が消える。アカウントが変わる・削除の予約・サインアウト → §61.5 のとおり全部取り消す。開催中の行の終わりは知らせない（交換所・週替わりチャレンジの締めは §61 の他の種類が受け持つ）。KPI の `calendar_mark` は `optional`（§58.7）。
+
+### 65.3 運営コンソール（`GET /v1/admin/calendar?from&to&versionId`、viewer）
+- 指定の版（省略時は有効な版）の **全体の** 予定表：イベント・交換所・週替わりチャレンジ・支部の共同目標とリーグ・シーズン・パス・**予告前を含む** バナー（`announced: false` を付ける）・大会・**予告前を含む** メンテナンス（取り消しは出さない）。プレイヤーだけのもの（カップ・復帰キャンペーン）は出さない。期間は 35 日まで。
+- `overlaps`：重なりの一覧。`maintenance_closes`（メンテナンスが閉じるグループの行と重なる：event/exchange → `events`、tournament → `tournaments`、banner → `gacha`、weekly_challenge → `time_attack`、team_goal/league → `teams`、season_pass → `shop`）と `same_kind`（同じ種類の期間のある行どうし：イベント・バナー・大会）。コンソールの「予定表」の画面で表と重なりを見る。
+
+### 65.4 ゲートのグループ
+`/v1/calendar*` はグループ `core`（`all` のメンテナンスだけが閉じる）。予定表は読むだけで、ガチャやイベントのメンテナンス中にも「いつ戻るか」を見られるようにする。
+
+### 65.5 次にやること（§45）との関係
+新しいカードは足さない。終わりの近い予定のうちホームに出す価値のあるものは既存のカード（`exchange_closing`・`weekly_challenge`・`team_goal_near`）が同じ正を読んで出している。予定表は「次にやること」に何も足さない（二重の呼びかけにしない）。
+
+### 65.6 KPI
+- クライアント：`calendar_view`（`props.view`：`month`・`week`、`props.entries`：0〜200）→ s1 = 表示、value = 行の数。`calendar_entry_open`（`props.kind`：65 の13種類）→ s1 = 種類。
+- サーバー：`calendar_mark`（s1 = 種類、s2 = `on`／`off`）。印が実際に変わった時だけ。
+- クエリは `docs/ops/kpi-queries.md`「予定表」。
+
+### 65.7 データのダウンロード（§51）・アカウント削除
+- `calendar`（印）は `play` に分類し、印の一覧（`id`・`kind`・`until`）を出す。アカウント削除の wipe で消える。
+
+### 65.8 クライアント
+- `Muchi.Client`：`CalendarView`（`Parse`）・`CalendarEntry`・`CalendarMarkResult`・`CalendarKinds`、`ApiClient.GetCalendarAsync(from, to)`・`MarkCalendarAsync(id, on)`、analytics `AnalyticsEvent.CalendarView`・`CalendarEntryOpen`。
+- `Muchi.Game`：`CalendarModel`（月・週の切り替え、日ごとの行、時刻の文字（日本時間／JST）、印の切り替え（オフラインは端末に貯めて後で送る）、行から画面へ（バナーは提供割合、パスは行き先なし））。
+- 画面が守ること：docs/handoff-codex-round21-event-calendar.md。

@@ -7,6 +7,7 @@ import type { Master } from '../domain/master.js';
 import { bannerStatus, carryOverRule, findBanner, finalPityGroup, oddsDisclosure, pityLabel } from '../domain/gacha.js';
 import { eventStatus } from '../domain/events.js';
 import { exchangeClosesAt } from '../domain/exchange.js';
+import { opsCalendar } from '../domain/calendar.js';
 import { dayRule, gameDayKey } from '../domain/time.js';
 import { normalizeInviteCode } from '../domain/invite.js';
 import { requireRole, type AdminPrincipal, type AdminRole, type AuditEntry, type AuditInput, type AuditQuery } from '../ops/admin.js';
@@ -22,6 +23,8 @@ import { REPORT_ACTIONS, type PlayerReport, type PlayerReportFilter, type Report
 import { REPORT_CATEGORIES, REPORT_CONTENT_KINDS, reportsConfig, type ReportCategory, type ReportContentKind, type ReportsConfig } from '../domain/reports.js';
 import { adminWindowView, bannerPreview, DEFAULT_MAINTENANCE, maintenanceConfigSchema, maintenanceProblems, windowFromInput, windowInputSchema, type MaintenanceConfig, type MaintenanceWindow } from '../domain/maintenance.js';
 import { INQUIRY_CATEGORIES, type InquiryCategory, type InquirySummary } from '../domain/help.js';
+import { releaseNotesPreview, type ReleaseNotesMaster } from '../domain/releaseNotes.js';
+import { DEFAULT_RULESET } from '../domain/ruleset.js';
 import { INQUIRY_STATUSES, type InquiryQuery } from '../ops/inquiries.js';
 import { DEAD_LETTER_SOURCES, type DeadLetterApi, type DeadLetterSource, type DeadLetterStatus } from '../ops/deadLetter.js';
 import { CLIENT_ERROR_CATEGORIES, CLIENT_ERROR_PLATFORMS, clientErrorsConfig, type ClientErrorBatch, type ClientErrorCategory, type ClientErrorPlatform, type ClientErrorsConfig } from '../domain/clientErrors.js';
@@ -370,6 +373,12 @@ export const adminRoutes: AdminRoute[] = [
     const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
     return { result: { versionId, odds: oddsDisclosure(master, findBanner(master, r.params.bannerId!)) } };
   } },
+  // ---- イベントカレンダー (REQ-CAL-012, §65.3): the whole calendar of a version (unannounced banners and scheduled windows too) and its overlaps ----
+  { method: 'GET', path: '/v1/admin/calendar', role: 'viewer', write: false, action: 'calendar.view', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
+    const tournaments = r.ctx.tournaments ? await r.ctx.tournaments.list().then((x) => x.tournaments).catch(() => null) : [];
+    return { result: { versionId, ...opsCalendar(master, { from: r.query.get('from'), to: r.query.get('to') }, r.now, tournaments), partial: tournaments === null ? ['tournaments'] : [] } };
+  } },
   // ---- events (REQ-EVENT-*) ----
   { method: 'GET', path: '/v1/admin/events', role: 'viewer', write: false, action: 'events.list', handler: async (r) => {
     const { versionId, master } = await masterFor(r.ctx, r.query.get('versionId'), r.now);
@@ -397,6 +406,18 @@ export const adminRoutes: AdminRoute[] = [
     const before = await r.ctx.ops.config.active(r.now, 'x');
     const a = await r.ctx.ops.config.rollback(b.versionId, r.principal.id, r.reason!, r.now);
     return { result: a, target: `config:${a.versionId}`, before: { activeVersion: before.versionId }, after: { activeVersion: a.versionId } };
+  } },
+
+  // ---- アップデートのお知らせ (REQ-NEW-016, §64.8): read-only previews; changes go through a remote-config version ----
+  { method: 'GET', path: '/v1/admin/release-notes', role: 'viewer', write: false, action: 'release_notes.view', handler: async (r) => {
+    const { versionId, master } = await masterFor(r.ctx, null, r.now);
+    return { result: { versionId, ...releaseNotesPreview(master, undefined, Number(DEFAULT_RULESET.maxWhips), r.now) } };
+  } },
+  /** A draft `releaseNotes` section checked against the active version's help, tips and gacha, in both languages. Nothing is stored. */
+  { method: 'POST', path: '/v1/admin/release-notes/preview', role: 'viewer', write: false, action: 'release_notes.preview', handler: async (r) => {
+    const b = parse(z.object({ releaseNotes: z.record(z.string(), z.unknown()) }).strict(), r.body);
+    const { versionId, master } = await masterFor(r.ctx, null, r.now);
+    return { result: { versionId, ...releaseNotesPreview(master, b.releaseNotes as unknown as ReleaseNotesMaster, Number(DEFAULT_RULESET.maxWhips), r.now) } };
   } },
 
   // ---- maintenance & client versions (REQ-MNT-011, §46.6) ----

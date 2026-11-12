@@ -36,7 +36,7 @@ namespace Muchi.Game
         public const string YesLabel = "はい";
         public const string NoLabel = "いまいち";
         public const string CloseLabel = "閉じる";
-        public const string SoftKicker = "ひとこと";
+        public const string SoftKicker = "ちょっと質問";
         public const string FeedbackLead = "ご意見をお聞かせください。お問い合わせの画面を開きます。";
 
         private readonly IStoreReview _store;
@@ -54,8 +54,8 @@ namespace Muchi.Game
 
         /// <summary>One per app launch (a new model each launch).</summary>
         public string SessionId { get; private set; }
-        /// <summary>R20 integration: the session's one-prompt gate (shared with ConsentModel and LocalNotificationModel).</summary>
-        public SessionPromptGate Prompts { get; set; }
+        /// <summary>§58.11 (R21 integration): the session's one prompt gate, shared by every model that can interrupt the player.</summary>
+        public SessionPrompts Prompts { get; set; }
 
         /// <summary>
         /// R20 integration (§54): the account changed on this device (SESSION_REPLACED, a redeemed transfer code): a new session
@@ -96,7 +96,7 @@ namespace Muchi.Game
             if (!_store.Available) return Skip("unavailable");
             if (!ServerAvailable) return Skip("offline");
             if (SessionPrompted) return Skip("session");
-            if (Prompts != null && !Prompts.CanShow(SessionPromptKind.Review)) return Skip("session_prompt"); // R20: consent / reminders sheet shown
+            if (Prompts != null && !Prompts.CanShow(SessionPrompts.ReviewPrompt)) return Skip("session_prompt"); // §58.11: another prompt took this session
             if (_inFtue()) return Skip("ftue");
             _busy = true;
             try
@@ -107,7 +107,7 @@ namespace Muchi.Game
                 var c = await B.Api.CheckReviewPromptAsync(moment, _store.Platform, SessionId, _inFtue(), Since(_lossAt), Since(_errorAt), Since(_noticeAt), null, ct);
                 if (!c.Show) return Skip(c.Reason);
                 SessionPrompted = true;
-                Prompts?.Claim(SessionPromptKind.Review);
+                Prompts?.TryClaim(SessionPrompts.ReviewPrompt);
                 PromptId = c.PromptId;
                 Moment = moment;
                 Status = null; // the history changed: fetch again next session's first moment

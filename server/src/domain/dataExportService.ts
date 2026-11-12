@@ -49,6 +49,8 @@ export interface DataExportJobPorts {
   kpiEvents?(uid: string): Promise<{ rows: Record<string, unknown>[]; windowDays: number } | null>;
   /** REQ-CERR-019 (§60.9): client error samples tied to the player (ClientErrorsDO). Optional; null = could not be read. */
   clientErrors?(uid: string): Promise<DexClientErrorRow[]>;
+  /** R21 integration (§63.7): the share links this player made that still open (DirectoryDO). Optional; a failure → null. */
+  linksMade?(uid: string): Promise<{ type: string; createdAt: number; expiresAt: number }[]>;
   store: ExportStore;
   ready(uid: string, requestId: string, info: DexReadyInfo): Promise<unknown>;
   failed(uid: string, requestId: string, reason: string): Promise<unknown>;
@@ -83,6 +85,7 @@ export async function runDataExportJob(p: DataExportJobPorts, uid: string): Prom
       playerReportsMade: p.playerReportsMade ? await soft(() => p.playerReportsMade!(uid)) : [],
       kpiEvents: await soft(p.kpiEvents ? () => p.kpiEvents!(uid) : undefined),
       clientErrors: p.clientErrors ? await soft(() => p.clientErrors!(uid)) : [],
+      linksMade: p.linksMade ? await soft(() => p.linksMade!(uid)) : [],
     };
     let doc = buildExportDocument(m, s, ext, t.requestId, t.lang, src.now);
     if (t.lang === 'en') {

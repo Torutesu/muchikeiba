@@ -3,9 +3,10 @@ import type { Master } from '../domain/master.js';
 import type { PlayerService } from '../domain/service.js';
 import type { DataExportJobPorts, ExportStore } from '../domain/dataExportService.js';
 import type { DexClientErrorRow, PlayerReportMade } from '../domain/dataExport.js';
-import { shardedDirectory } from './directory.js';
+import { shardedDirectory, shardedLinkDirectory } from './directory.js';
 import { unwrap, type Envelope } from './rpc.js';
 import { kpiEventSourceFromEnv } from '../push/kpiExport.js';
+import { dayRule, gameDayKey } from '../domain/time.js';
 
 /** REQ-DEX-009: the private R2 bucket (REPLAYS) under `private/data-export/` — never the public SNAPSHOTS bucket. */
 export function r2ExportStore(bucket: R2Bucket): ExportStore {
@@ -46,6 +47,8 @@ export function dataExportPortsFromEnv(env: Env, svc: PlayerService, master: () 
         return unwrap(await s.ceMadeBy(uid));
       },
     } : {}),
+    // §63.7 (R21 integration): the share links this player made that still open (the owner's directory shard)
+    linksMade: async (uid: string) => (await shardedLinkDirectory(env.DIRECTORY).listOf(uid, gameDayKey(Date.now(), dayRule(master())), Date.now())).links,
     store,
     ready: (uid, rid, info) => svc.dataExportReady(uid, rid, info),
     failed: (uid, rid, reason) => svc.dataExportFailed(uid, rid, reason),

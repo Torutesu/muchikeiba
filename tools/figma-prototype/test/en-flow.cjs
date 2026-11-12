@@ -495,7 +495,32 @@ await shot('diagnostics', 600);
   await show('LessonBrief', 'race_stamina'); await waitScreen('tip-lesson'); await shot('tip-lesson', 400);
   await show('StartLesson', 'race_whip'); await waitScreen('race-tutorial'); await waitScreen('lesson-result', 90000); await shot('lesson-result', 600);
 
+  // round 21: アップデートのお知らせ in English (REQ-NEW-014): the sheet's pages and target labels from the master's English
+  await show('ReleaseNotes'); await waitScreen('release-notes'); await shot('release-notes', 500);
+  assert.match(await page.locator('.screen.in .rn-title').innerText(), /[A-Za-z]/, 'release notes: the page title in English');
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400); await shot('release-notes-last', 400);
+  await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Cheer while you watch/, 'release notes: the list in English');
+
+  // round 21: 予定表 in English (REQ-CAL-003/009): rows, day labels and notes in English; times stay JST and say so
+  await show('Calendar'); await waitScreen('calendar'); await shot('calendar', 500);
+  assert.match(await page.locator('.screen.in .cal-list').innerText(), / JST/, 'calendar: the times say JST in English');
+  await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', 400);
+  await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
+
+  // round 21: トレーナーカード in English (REQ-SHOW-014): the phrase and background from their JA + EN pair, labels from the
+  // server's table, names as typed; the editor tabs, the share image and the neutral card
+  await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
+  await show('ShowcaseCard', 'demo_sc_1', 'friends'); await waitScreen('showcase'); await shot('showcase-card', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Hooked on time attack/, 'showcase: the phrase in English');
+  assert.match(await page.locator('.screen.in').innerText(), /Pinned/, 'showcase: the labels in English');
+  await show('ShowcaseShare', 'demo_sc_1'); await waitScreen('showcase-share'); await shot('showcase-share', 400);
+  await show('ShowcaseCard', 'demo_sc_blk', 'activity'); await waitScreen('showcase'); await shot('showcase-neutral', 400);
+  assert.match(await page.locator('.screen.in').innerText(), /Player/, 'showcase: the neutral name in English');
+  for (const tab of ['horse', 'pins', 'courses', 'phrase', 'background']) { await show('ShowcaseEdit', tab); await waitScreen('showcase-edit'); await shot('showcase-edit-' + tab, 400); }
   await show('TeamGoal'); await waitScreen('team-goal', 20000); await shot('team-goal', 600);
   assert.match(await page.locator('.screen.in').innerText(), /as a branch/, 'team goal: the goal label in English');
   await click('みんなでレース（デモ）'); await waitScreen('team-goal'); await shot('team-goal-progress', 700);
@@ -604,6 +629,23 @@ await shot('diagnostics', 600);
   await shot('transfer-done', 300);
   await show('TransferReplaced'); await waitScreen('transfer-replaced'); await shot('transfer-replaced', 400);
   assert.match(await page.locator('.screen.in').innerText(), /Moved to another device/);
+  // round 21: ディープリンク・再戦 in English (REQ-LINK-024): the links hub, the share sheet, 「リンクを開く」 with a notice, the
+  // confirmation, the friend-room result with 再戦 waiting and opened, the new room
+  await show('Links'); await waitScreen('links', 30000); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-share="room"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
+  await shot('link-share-sheet', 300);
+  assert.match(await page.locator('.screen.in .lk-sheet').innerText(), /Join my friend room in Muchi Issen/, 'links: the share text in English');
+  await page.locator('.screen.in .lk-sheet-close').click(); await waitScreen('links'); await shot('links', 300);
+  await show('OpenLink'); await waitScreen('open-link');
+  await page.locator('.screen.in [data-lk-demo="expired"]').click(); await page.waitForTimeout(900);
+  await shot('open-link', 300);
+  assert.match(await page.locator('.screen.in .lk-notice').innerText(), /This link cannot be opened/, 'links: the neutral notice in English');
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await waitScreen('link-confirm', 10000); await shot('link-confirm', 300);
+  await show('FriendRoomResult'); await waitScreen('friend-room-result'); await shot('friend-room-result', 300);
+  await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(700); await shot('rematch-waiting', 100);
+  await page.locator('.screen.in .rm-demo-others').click(); await page.waitForTimeout(700); await shot('rematch-opened', 300);
+  assert.match(await page.locator('.screen.in .rm-status').innerText(), /A new room is ready/, 'rematch: the outcome in English');
+  await page.locator('.screen.in .rm-room').click(); await waitScreen('room-lobby'); await shot('room-lobby', 300);
   const misses = await page.evaluate(() => globalThis.__muchi.l10n.misses());
   fs.writeFileSync(path.join(out, 'en-report.json'), JSON.stringify({ report, misses }, null, 2));
   await ctx.close();

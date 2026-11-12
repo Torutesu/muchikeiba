@@ -1263,7 +1263,7 @@
 - REQ-CNS-018 文言：日本語・英語（`l10n:missing` 0）。ATT の事前の画面は理由（広告を出すため・断っても遊べる・あとで変えられる）を書き、煽らない・報酬で釣らない（Apple の指針）。
 - REQ-CNS-019 プロトタイプ：事前の画面のシートと設定 › プライバシーの「広告と分析」（ムチ一閃のトーン、日本語・英語、文字の大きさ §41）。e2e・en-flow・a11y-flow。
 - REQ-CNS-020 法務：`docs/planning/03-legal-risk.md` に方針（個人情報保護法・電気通信事業法の外部送信・GDPR／ePrivacy・Apple ATT）と弁護士の確認事項。
-- REQ-CNS-021 R20 統合：お願いの画面（§58 の事前の画面・§61 の通知の前置き・§59 のレビュー依頼）は1セッションに1つ、重なる時は 同意 → 通知 → レビュー の順（`SessionPromptGate`、プロトタイプ `sessionPrompt`、テスト）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッションとこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
+- REQ-CNS-021 R20・R21 統合：お願いの画面は1セッションに1つ、FTUE と §46 の画面の間は出さない。重なる時の順は protocol §58.11 の1つの表（推奨の更新 → 同意の事前の画面 → 復帰の歓迎 → アップデートのお知らせ → 通知の前置き → 引き継ぎの案内 → レビュー）。仕組みは1つ：`Muchi.Client.SessionPrompts`（Unity の各モデルの `Prompts` に同じものを渡す）、プロトタイプ `sessionPrompt`／`PROMPT_PRIORITY`、テスト（C#・GameChecks・プロトタイプ・`r21-integration.test.ts` が表の一致を確かめる）。エラー報告の同意は分析の選択（§58.10）。アカウントが変わったら（§54）ローカル通知を取り消し、エラー報告の溜まった分を ID なしにし、レビューのセッション・待っているディープリンク（§63）・アップデートのお知らせの「このセッションで出した」（§64）とこの規則を最初に戻す（`AccountChangeReset`）。protocol §58.10・§58.11。
 
 ## 59. レビュー依頼のタイミング（in-app store review prompt、TS＋C#、`src/domain/reviewPrompt.ts`・`progression.reviewPrompt`・`Muchi.Client/ReviewPrompt.cs`・`Muchi.Game.ReviewPromptModel`、`contracts/protocol.md` §59、docs/planning/03「レビュー依頼」）
 拘束条件：レビューには何も配らない（Apple 5.6.1・Google Play のポリシー。E 番号なし）。OS の標準のアプリ内レビュー API だけを使い、独自の★の画面を作らない。負け・購入・エラー・返金・メンテナンスのお知らせの直後と FTUE の途中には頼まない。1セッションに1回まで。
@@ -1309,7 +1309,7 @@
 
 ## 61. 端末のローカル通知（TS＋C#、`src/domain/localNotify.ts`・`Muchi.Client/LocalNotifications.cs`・`Muchi.Game.LocalNotificationModel`、`contracts/protocol.md` §61）
 
-- REQ-LNOTIF-001 種類：`training_session`（調教の仕上げの期限）・`daily_bonus`（次のゲーム日のログインボーナス、1日1回）・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`。期限はデータの本当の時刻だけ。購入・ショップ・ガチャへ誘う種類は無く、開く画面はコードで固定。
+- REQ-LNOTIF-001 種類：`training_session`（調教の仕上げの期限）・`daily_bonus`（次のゲーム日のログインボーナス、1日1回）・`weekly_challenge_closing`・`rival_week_closing`・`exchange_closing`・`gift_expiring`・`calendar_mark`（R21 統合：予定表で印を付けた行の始まり、`reminders`）。期限はデータの本当の時刻だけ。購入・ショップ・ガチャへ誘う種類は無く、開く画面はコードで固定。
 - REQ-LNOTIF-002 持ち主：出来事ごとにプッシュかローカルのどちらか1つ（`LNOTIF_OWNERSHIP`）。push.json の全テンプレートが表にあり、ローカルの種類と同じ出来事を持たない（テスト）。
 - REQ-LNOTIF-003 純粋な関数：`planLocalNotifications(snapshot)`。同じスナップショットなら同じ結果。TS と C# は共有ベクター `contracts/local-notifications.vectors.json` で同じ。
 - REQ-LNOTIF-004 カテゴリ：各種類はプッシュの種類に対応（`reminders`／`events`／`friends`／`gifts`）。カテゴリがオフなら予約しない。設定画面の「通知」1か所で両方を切り替える。
@@ -1329,3 +1329,97 @@
 - REQ-LNOTIF-018 プライバシー：予定はサーバーに送らない（KPI の種類だけ）。`showDetails` は端末の設定。
 - REQ-LNOTIF-019 設定 `progression.localNotifications`（`localNotificationsProblems`、起動時と各版で検証）。`enabled: false` は停止スイッチ。
 - REQ-LNOTIF-020 ヘルプ：ヘルプセンター（§48）に「端末のお知らせ（リマインダー）」の記事。
+
+## 62. プロフィールのショーケース（トレーナーカード、TS＋C#、`src/domain/showcase.ts`・`server/master/showcase.json`・`Muchi.Client/Showcase.cs`・`Muchi.Game.ShowcaseCardModel`／`ShowcaseEditorModel`、`contracts/protocol.md` §62）
+拘束条件：何も配らず何も売らない（E番号なし）。カードに出せるのは本人が今持っている／手に入れたものだけ（保存時と、写しを作る時・読む時に確かめ直す）。自由入力なし。ブロック・削除・停止は空のカード。13歳未満はプレイヤーが付けた名前を出さない。
+- REQ-SHOW-001 カード：公開プロフィール（REQ-SOCIAL-004）に、愛馬（見た目・勝負服）、ピン留め最大3つ（称号・実績・カップのトロフィー・殿堂入りの馬・目標のリボン・大会の表彰台）、ベスト記録（選んだコースのタイムアタックの全期間ベスト最大2つ・今シーズンのランク戦のクラス）、決まった文の一言、実績で解放した背景を出す。
+- REQ-SHOW-002 マスター：`master/showcase.json`（一言の日英の組・背景・上限）を起動時とリモート設定の版ごとに検査する（既定の背景がちょうど1つ、実績と段が存在、購入の解放なし、スロット・URL・賭けの言葉・「倍」「お得」「今だけ」「残りわずか」「通常価格」・英語の禁止語なし、上限は固定の上限を超えない）。
+- REQ-SHOW-003 保存：`PUT /v1/showcase` は id だけを受け取り、全部が本人のもののときだけ置き換える（冪等）。`GET /v1/showcase` は選択・選べるもの・プレビューを返す。
+- REQ-SHOW-004 検証：持っていない馬・引退した馬・種牡馬として貸し出し中の馬・手に入れていないピン・記録の無いコース・解放されていない背景・無い一言は拒否し、何も残さない。上限超え・重複は 400。停止中・削除の予約中は編集できない。
+- REQ-SHOW-005 写し：公開の写しは言語によらない形で公開プロフィールに載せ、取引ごとに作り直す（変更の判定に入る）。引退・貸し出し中・手放した馬、取り消された称号、整理された結果は黙って外れる。停止中・削除中は載せない。フレンド一覧はカードを運ばない。
+- REQ-SHOW-006 背景：実績の段で解放する見た目だけ。アセットキー `showcase/bg/<id>`。解放されていない・消えた背景は既定の背景になる。
+- REQ-SHOW-007 読む：`GET /v1/showcase/:playerId` は相手の状態を読まずにディレクトリの写しを今のマスターで確かめ直し（消えたものは外れる）、見る人の言語で返す。自分のカードは自分の状態から。
+- REQ-SHOW-008 画面：プロフィール（フレンド › 自分のトレーナーカード）の「カードを編集」で編集（R21 統合）。フレンド・ライバル・お知らせ・カップの待合室・観戦・殿堂（と厩舎の訪問・ランキング・支部）から開く。
+- REQ-SHOW-009 ブロック：どちらがブロックしていても空のカード（中立の名前・既定の背景だけ）。どちらがブロックしたかはわからない。
+- REQ-SHOW-010 削除・停止：プロフィールの無い（削除済み）・停止中の相手も同じ空のカード。エラーにしない。
+- REQ-SHOW-011 通報：空でない他の人のカードから既存の通報（§47、`source: profile`。表示名・プレイヤー・出している時だけ馬の名前）。
+- REQ-SHOW-012 13歳未満：登録した年齢が13歳未満なら、表示名以外のプレイヤーが付けた名前（馬・カップ）を写しに入れず、決まった名前を出す。一言は決まった文のまま。
+- REQ-SHOW-013 共有：既存の共有カード（§17・§38）で画像にする。表示名とカードの文言（見る人の言語）だけで、プレイヤーIDなどは入れない。空のカードは共有できない。
+- REQ-SHOW-014 文言・法務：すべての文言に英語。コンプガチャではない。何も売らない。ランク戦に影響しない。英語で "favourite" を使わない（賭けの言葉）。
+- REQ-SHOW-015 KPI：`showcase_save`（サーバー）・`showcase_view`・`showcase_share`（クライアント）。相手のIDを持たない。
+- REQ-SHOW-016 ゲート：`/v1/showcase*` はメンテナンスのグループ `social`。
+- REQ-SHOW-017 データの開示：新しい状態のキー `showcase` は `profile` の節に分類し、開示に含める。
+- REQ-SHOW-018 アカウント削除：状態の `showcase` は wipe で消え、写しは公開プロフィールの行と一緒に消える。削除の予約中から写しを送らない。プロトタイプ・ヘルプの記事 `showcase`・ヒントのカード `showcase_tip`・Codex 向けの引き継ぎ。
+
+## 63. ディープリンク・招待リンクと再戦（TS＋C#、`src/domain/deepLinks.ts`・`src/domain/linkService.ts`・`src/domain/rematch.ts`・`src/do/matchmaker.ts`・`src/do/directory.ts`・`Muchi.Client/DeepLinks.cs`・`Muchi.Game.DeepLinkModel`／`RematchModel`、`contracts/protocol.md` §63）
+拘束条件：リンクは何も配らない（E番号なし）。招待コードの報酬（§19）は今までどおり。URL にプレイヤー ID・個人のデータを入れない。知らない・期限切れのリンクは1つの答え（オラクルなし）。再戦はランクに関係しない。
+- REQ-LINK-001 1つの形：`https://<host>/l/<token>` と `muchi://l/<token>`。部屋・カップ・リプレイ・招待コード・フレンド申請・支部・ヘルプ記事の7種類。
+- REQ-LINK-002 トークン：22文字（31文字の読みやすい文字）、1文字目がシャード、21文字が暗号論的な乱数（約104ビット）。入力は NFKC・空白とハイフンを除く・小文字。
+- REQ-LINK-003 作る：`POST /v1/links`。同じ人・種類・行き先の期限内のリンクは同じものを返す（冪等、回数に数えない）。ゲーム日ごとに `createsPerDay` 本（`429 LINK_LIMIT`）。BAN は `BANNED`、削除の予約中は `DELETION_PENDING`、共有できない行き先は `404`。
+- REQ-LINK-004 期限：部屋は `roomMinutes`、カップは締め切りか `cupDaysMax` 日の早い方、他は `defaultDays`。
+- REQ-LINK-005 開く：`POST /v1/links/resolve` が種類・画面・見る人に要る行き先を返す。答えに作った人の ID を入れない（`replay` のフレンドだけ例外）。
+- REQ-LINK-006 オラクルなし：知らない・期限切れ・取り消し・形の違う・作った人が退会／BAN・ブロックの関係・行き先が無い、はどれも `{ state: "unavailable" }`。
+- REQ-LINK-007 確かめる行き先：部屋が開いている・カップのコードが生きている（§42 の検査と試行回数）・リプレイが公開でフレンド（違えば `friends_only`）・支部がある・記事がある。
+- REQ-LINK-008 制限：見る人ごと・IP ごとに1時間の回数と失敗の回数。超えたら `429 RATE_LIMITED`（`retryAfterSec`）。IP はハッシュで数える。
+- REQ-LINK-009 メンテナンスと版：resolve は §46 の EXEMPT。行き先のグループに窓があれば `maintenance`、種類の `minClientVersion` より古いアプリには `update_required`（ストアの URL）で答える。
+- REQ-LINK-010 Web の案内：`GET /l/:token` はトークンを引かない静的な日英の案内（アプリで開く・ストアへ）。個人のデータを出さない。
+- REQ-LINK-011 あとから開く：Android はストアの referrer（`link=<token>`）を初回起動で読む。iOS は自動では開けないので、ページのトークンを「リンクを開く」に入れてもらう（クリップボードは使わない）。
+- REQ-LINK-012 アプリの関連付け：`apple-app-site-association`・`assetlinks.json` は設定があれば Worker が返す。リポジトリには仮の値だけ（docs/ops/deep-links.md）。
+- REQ-LINK-013 取り消し・一覧：`DELETE /v1/links/:token`（自分のものだけ、冪等）、`GET /v1/links`。
+- REQ-LINK-014 再戦の受付：フレンド部屋のレースが始まると、マッチメーカーが参加者・主催者・条件の写しを `rematchOfferMinutes` 覚える。
+- REQ-LINK-015 再戦の締め：最初に押してから `rematchWindowSec` 秒、または全員が押した時に締める。2人以上なら同じ条件・新しいシードで新しいフレンド部屋を開き、押した人を入れる。
+- REQ-LINK-016 入れない人：押していない・やめた・BAN・削除の手続き中・他のレース中・ブロックの関係（押した順に入れ、先に入った人とブロックの関係がある人を飛ばす）。理由は分けて言わない。
+- REQ-LINK-017 安全：二度押しは同じ、同時に押しても1つのオブジェクトで順に処理、締め切りはアラームと次の要求の両方で処理、オフラインの人は戻って状態を見る。
+- REQ-LINK-018 ランク：再戦はフレンド部屋（`mode: "friend"`）のまま。レート・報酬に影響しない。
+- REQ-LINK-019 再戦の画面：結果画面の「再戦」・待ち・締め切り・部屋へ。
+- REQ-LINK-020 アカウント削除：その人のリンクを全部消す（`unavailable` になる）。プレイヤーの状態に新しいキーは足さない。
+- REQ-LINK-021 KPI：`link_create`・`link_resolve`・`link_revoke`・`rematch`（サーバー）、`deep_link_open`（クライアント）。トークン・行き先・ID は入れない。
+- REQ-LINK-022 設定：`progression.links`（起動時とリモート設定で範囲を検査）。
+- REQ-LINK-023 クライアント：C# `DeepLinkParser`・`DeepLinkRoutes`・API、Unity `DeepLinkModel`（FTUE の間は貯める・何も自動で使わない）・`RematchModel`。
+- REQ-LINK-024 プロトタイプとヘルプ：共有シート・「リンクを開く」の画面・フレンド部屋の結果の「再戦」（ムチ一閃の調子、日英、最大の文字でもはみ出さない）、ヘルプ記事「リンクで招待・共有する」。
+
+## 64. アップデートのお知らせ（新機能の紹介、What's New、TS＋C#、`src/domain/releaseNotes.ts`・`server/master/release-notes.json`・`Muchi.Client/ReleaseNotes.cs`・`Muchi.Game.ReleaseNotesModel`、`contracts/protocol.md` §64）
+拘束条件：何も配らない（E番号なし。配布を付けるなら既存のプレゼントボックスの補填 §26 で、この節の外）。更新した人に1回だけ。FTUE・新しい人・古いアプリ・オフライン・メンテナンス中には出さない。数字はトークン、言葉は §48 と同じ決まり、ショップへは連れていかない。
+- REQ-NEW-001 原稿：運営がアプリの版（`x.y.z`）ごとに1〜5ページの紹介をデータで書く（`server/master/release-notes.json`、リモート設定 `releaseNotes` で置き換え）。各ページは既にある絵のキー（§57 `TIP_ARTS`）・日本語と英語の短い題と本文・任意の行き先（画面・ヘルプ記事・ヒントのカード）。
+- REQ-NEW-002 検査：起動時とリモート設定の版ごとに、版の形と重なり・日付の順・ページ数・長さ・絵のキー・行き先が存在すること・トークン・英語に日本語が無いこと・日英のトークンの組を検査する。ヘルプやヒントから行き先の記事・カードを外す版は有効にできない。
+- REQ-NEW-003 数字：数字はヘルプ（§48）と同じ `{{トークン}}` で埋める。トークンの外に数字を置けない（「10連」だけ例外）。
+- REQ-NEW-004 言葉：「倍」「今だけ」「残りわずか」「お得」「通常価格」と賭けの言葉（`bettingWords.ts`）、英語の禁止語を使わない。
+- REQ-NEW-005 ショップへ連れていかない：ページの行き先（そのページのただ1つの CTA）にショップ・スカウト・有償の商品の画面（`shop`・`gacha`・`gacha_odds`）を指定できない。
+- REQ-NEW-006 出すとき：更新後はじめてホームに来たとき、その人に1回だけ（`POST /v1/release-notes/check` の `show`）。版 ≤ アプリの版、版 > 初めて判定した版（`baseline`）、版 > 見た版、アカウントの作成 < その版の公開日。
+- REQ-NEW-007 出さないとき：FTUE の途中（§45 と同じ判定。この間の判定は `baseline` を進める）・その版から始めた新しい人・版のヘッダーが無い古いアプリ・オフライン・止まっているとき。
+- REQ-NEW-008 飛ばした版：いくつか飛ばして更新した人には、いちばん新しい版の紹介と、飛ばした数・「過去のアップデート情報」へのリンク。
+- REQ-NEW-009 見た印：`POST /v1/release-notes/seen` でアカウントに保存（版の有限のリスト `seenMax`、何度送っても同じ、無い版は 404 で何も記録しない）。入れ直しても同じ版は出ない。
+- REQ-NEW-010 一覧：`GET /v1/release-notes` がアプリの版以下の紹介を新しい順に返す（`historyMax` 件まで、要求の言語、トークンを埋めた形、見たかどうか）。
+- REQ-NEW-011 行き先：開けるものだけ返す（閉じたヒントのカード・止まったヘルプ／ヒントは `null`）。名前は画面のラベル・記事の題・カードの題。
+- REQ-NEW-012 1セッションに1つ：「お願いの画面」はアプリのセッションごとに1つだけ。順は protocol §58.11 の1つの表（R21 統合：推奨の更新＞同意の事前案内（§58）＞復帰の歓迎（§20）＞アップデートのお知らせ（§64）＞通知の前置き（§61）＞引き継ぎの案内＞レビューの依頼（§59））。メンテナンス・強制アップデート（§46）の間と FTUE の間は何も出さない。出せなかった案内は次のセッションへ。
+- REQ-NEW-013 画面：ホームの上のページ送りのシート（次へ・スキップ・行き先・最後に過去へのリンク）、「お知らせ › アップデート情報」の一覧（アクティビティの右の欄から）、設定 › ヒントからのリンク。アクティビティに新しい種類は足さない。
+- REQ-NEW-014 英語：原稿は日本語と英語を並べて持ち、要求の言語で返す。英語の応答に日本語が残らない。画面の文言すべてに英語。
+- REQ-NEW-015 文字の大きさ：最大の文字でもシートと一覧がはみ出さない。
+- REQ-NEW-016 運用コンソール：有効な版の原稿を日本語・英語で見る（トークンを埋めた形・行き先の名前・検査の結果）、下書きの区画を保存せずに検査して同じ形で見る。
+- REQ-NEW-017 ゲート：`/v1/release-notes*` はグループ `core`（`all` のメンテナンスだけが閉じる）。
+- REQ-NEW-018 データ：新しい PlayerState のキー `releaseNotes` はデータの開示（§51）で `play`。アカウント削除で消える。
+- REQ-NEW-019 KPI：`release_notes_view`（版・段・ページ）・`release_notes_target`（版・種類・行き先）・`release_notes_history`（入口）。§58 の分類は Round 20 の統合で付ける。
+- REQ-NEW-020 クライアント：C# の API とモデル・`SessionPrompts`、Unity `ReleaseNotesModel`、プロトタイプ（ムチ一閃の調子のシートと一覧、日英、文字の大きさ、e2e・英語の流れ・アクセシビリティの流れ）、Codex 向けの引き継ぎ。
+
+## 65. イベントカレンダー（予定表、TS＋C#、`src/domain/calendar.ts`・`Muchi.Client/Calendar.cs`・`Muchi.Game.CalendarModel`、`contracts/protocol.md` §65）
+拘束条件：読むだけ。予定のデータを写さず、各機能の唯一の正から組み立てる。何も配らない・何も売らない（E番号なし）。偽の急かしをしない。
+- REQ-CAL-001 集める予定：イベントレースと交換所（§30）・週替わりチャレンジ（§31）・支部の共同目標と支部対抗シーズン（§32・league）・ランク戦のシーズン・シーズンパスを買える月・大会の受付と開始（観戦）・参加しているプレイヤー主催カップ（§42）・予告中と開催中のスカウトのバナー・プレイヤーに見えるメンテナンス（§46）・本人の復帰キャンペーン（§20）。
+- REQ-CAL-002 唯一の正：どの行もその機能の正（`master.events`・`exchangeClosesAt`・`weekAt`・`weekKeyOf`・`seasonStartMs`・`seasonIdFor`・`passPurchaseInfo` の月・`bannerStatus`・`TournamentSummary`・カップのオブジェクト・`visibleWindows`・`comebackView`）を読んだ時に作る。予定表のための保存データは無い（印だけ）。
+- REQ-CAL-003 時刻：JST。`game_day` の行と `exact` の行の日はゲーム日（`progression.dayRollover`、REQ-DAY-001）、シーズン・パス・リーグは暦の月（REQ-DAY-004）。英語でも JST のまま「JST」と書く。
+- REQ-CAL-004 範囲：`GET /v1/calendar?from&to`（ゲーム日、含む）。35日まで。`from` は今日の35日前より後、`to` は今日の90日後まで。省略時は今日から35日。最大200行。
+- REQ-CAL-005 見える範囲：§4.3 の開放キー（`unlocksView` と同じ判定）。支部の行はメンバーだけ、カップは参加者だけ、復帰キャンペーンは本人の期間だけ。予告前のバナー・予告前や取り消したメンテナンスは出さない。
+- REQ-CAL-006 他のオブジェクト：大会・カップが読めないときはその種類を飛ばし `partial` に書く（予定表は失敗しない）。
+- REQ-CAL-007 有料のもの：パスとバナーは日付だけ（`paid: true`）。価格・コイン・購入の導線なし。バナーはスカウトの提供割合の画面へ、パスは行き先なし。
+- REQ-CAL-008 言葉：「今だけ」「残りわずか」「お得」「倍」「通常価格」・賭けの言葉（共通の表）・英語の禁止語を使わない。カウントダウンを出さない（終わりは実データの時刻だけ）。
+- REQ-CAL-009 名前：マスターの名前は応答の境界で訳す。大会の名前は運営の書いたまま。カップの名前（`cupName`）はプレイヤーの文字で訳さない。英語の応答に組み立てた日本語が残らない。
+- REQ-CAL-010 印：`PUT`／`DELETE /v1/calendar/marks/:entryId`。見えていて終わっていない行だけ（無い → 404、終わった → 409 `ended`、30件 → 409 `limit`）。何度でも同じ。過ぎた印は落とす。
+- REQ-CAL-011 通知：印でサーバーからプッシュ・メールを送らない。R21 統合：端末が §61 の計画で、まだ始まっていない印の行の始まりの `leadHours.calendar_mark` 前に通知を予約する（種類 `calendar_mark`、カテゴリ `reminders`＝既定オフ、静かな時間帯・1日の上限・アカウントが変わった時の取り消しは §61 のまま。protocol §61.1・§65.2）。
+- REQ-CAL-012 運営コンソール：`GET /v1/admin/calendar` で版ごとの全体の予定表（予告前のバナー・メンテナンスも）と重なり（メンテナンスが閉じるグループの行・同じ種類の行どうし）を見る。
+- REQ-CAL-013 ゲート：`/v1/calendar*` はグループ `core`（`all` のメンテナンスだけが閉じる）。
+- REQ-CAL-014 次にやること：新しいカードは足さない（既存の `exchange_closing`・`weekly_challenge`・`team_goal_near` が同じ正を読む）。
+- REQ-CAL-015 KPI：クライアント `calendar_view`（表示・行の数）・`calendar_entry_open`（種類）、サーバー `calendar_mark`（種類・on/off、変わった時だけ）。
+- REQ-CAL-016 データのダウンロード・削除：`calendar` は `play` に分類して印を出す。アカウント削除で消える。
+- REQ-CAL-017 ヘルプ：記事 `calendar`（予定表の見方・時刻・印・有料のものは日付だけ）と、ヒントのカード `calendar_tip`（記事へのリンク）。
+- REQ-CAL-018 クライアント：C# `ApiClient.GetCalendarAsync`・`MarkCalendarAsync`、Unity `CalendarModel`（月・週・日ごとの行・JST の表示・印の切り替えとオフラインの貯め置き・行き先）。
+- REQ-CAL-019 プロトタイプ：お知らせ・イベントの画面の「予定表 ›」から月・週の一覧（R21 統合：その他の行には置かない）。ムチ一閃の調子（写真の背景・半透明の紺のパネル・シアンの小さなラベル・斜めのシアンの » ボタン）。日本語と英語、文字「特大」ではみ出さない。e2e・英語の流れ・アクセシビリティの流れで確かめる。
+- REQ-CAL-020 Codex への引き継ぎ：docs/handoff-codex-round21-event-calendar.md。

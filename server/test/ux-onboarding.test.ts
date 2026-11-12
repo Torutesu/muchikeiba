@@ -370,7 +370,9 @@ describe('REQ-UXS-011 game day rollover', () => {
     const dir = join(__dirname, '..', 'src');
     const calendarOk = new Set(['domain/time.ts', 'domain/kpi.ts', 'domain/accounting.ts', 'domain/service.ts', 'domain/push.ts',
       // REQ-CB-006: the catch-up target uses the day of the season, and seasons are calendar months (REQ-DAY-004)
-      'domain/comeback.ts']);
+      'domain/comeback.ts',
+      // REQ-CAL-003 (§65): the calendar's month rows (seasons, the pass month, the branch league) are calendar months (REQ-DAY-004)
+      'domain/calendar.ts']);
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d, { withFileTypes: true })) f.isDirectory() ? walk(join(d, f.name)) : f.name.endsWith('.ts') && files.push(join(d, f.name)); };
     walk(dir);

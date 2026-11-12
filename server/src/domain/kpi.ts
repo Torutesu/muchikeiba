@@ -15,6 +15,9 @@ import { NEXT_KINDS, NEXT_SLOTS } from './nextKinds.js';
 import { PRACTICE_ID_RE, PRACTICE_RESTARTS } from './practiceKinds.js';
 import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS } from './lnotifKinds.js';
 
+/** REQ-LINK-021: how a link reached the app (universal / app link, the custom scheme, the Android install referrer, typed). */
+export const DEEP_LINK_ENTRIES = ['universal', 'scheme', 'referrer', 'typed'] as const;
+export const DEEP_LINK_KPI_TYPES = ['room', 'cup', 'replay', 'invite', 'friend', 'team', 'help', 'none'] as const;
 const PRACTICE_TRACK = z.string().regex(/^[a-z0-9_]{1,64}$/);
 const PRACTICE_FIELD = z.number().int().min(2).max(12);
 const PRACTICE_STRENGTH = z.string().regex(PRACTICE_ID_RE);
@@ -142,6 +145,20 @@ const perfSettingProps = z.object({
 export const TIP_VIEW_SOURCES = ['list', 'context', 'tour', 'lesson'] as const;
 export const TIP_CONTEXT_NAMES = ['gacha_odds', 'breeding', 'training', 'roster_bulk_retire'] as const;
 const tipId = z.string().regex(/^[a-z0-9_]{2,40}$/);
+/** REQ-SHOW-015 (§62): where a trainer card was opened (the screens of protocol §62.6). */
+export const SHOWCASE_SOURCES = ['settings', 'friends', 'rival', 'activity', 'cup_lobby', 'spectate', 'hall', 'stable', 'leaderboard', 'team'] as const;
+/** REQ-NEW-019 (§64): the release notes sheet's stages, where a page's target leads, and where the past notes were opened from. */
+export const RELEASE_NOTES_STAGES = ['shown', 'finished', 'skipped'] as const;
+export const RELEASE_TARGET_KIND_NAMES = ['screen', 'help', 'tip'] as const;
+export const RELEASE_HISTORY_SOURCES = ['notices', 'tips', 'sheet'] as const;
+const appVersionStr = z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/);
+const releasePage = z.number().int().min(1).max(5);
+/** REQ-CAL-015 (§65): the calendar's kinds and views (calendar.ts CALENDAR_KINDS; repeated here to keep kpi.ts import-free, a test keeps them equal). */
+export const CALENDAR_KPI_KINDS = [
+  'event', 'event_exchange', 'weekly_challenge', 'team_goal', 'league_season', 'season', 'season_pass', 'banner',
+  'tournament_registration', 'tournament', 'cup', 'maintenance', 'comeback',
+] as const;
+export const CALENDAR_VIEWS = ['month', 'week'] as const;
 /** REQ-CHEER-013: the watchable modes (domain/cheer.ts CHEER_MODES; repeated here to keep kpi.ts import-free). */
 export const CHEER_KPI_MODES = ['friend', 'cup', 'ranked', 'event', 'tournament'] as const;
 /** Events only the client can observe. Server-known events (purchase, gacha, race results…) are not accepted from clients. */
@@ -217,10 +234,25 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   z.object({ name: z.literal('tutorial_replay'), at: z.number().int(), props: z.object({ tutorialId: tipId, kind: z.enum(['race', 'tour']), stage: z.enum(['start', 'finish']) }).strict() }),
   z.object({ name: z.literal('tip_view'), at: z.number().int(), props: z.object({ tipId, source: z.enum(TIP_VIEW_SOURCES) }).strict() }),
   z.object({ name: z.literal('tip_context_open'), at: z.number().int(), props: z.object({ context: z.enum(TIP_CONTEXT_NAMES), tipId }).strict() }),
+  // REQ-NEW-019 (§64): the what's-new sheet (shown / read to the end / closed early, on which page of how many), a page's
+  // target tapped (its kind and id), and the past notes list opened (from お知らせ, ヒント or the sheet's last page)
+  z.object({ name: z.literal('release_notes_view'), at: z.number().int(), props: z.object({ appVersion: appVersionStr, stage: z.enum(RELEASE_NOTES_STAGES), page: releasePage, pages: releasePage }).strict().refine((p) => p.page <= p.pages, { message: 'page is past the last page', path: ['page'] }) }),
+  z.object({ name: z.literal('release_notes_target'), at: z.number().int(), props: z.object({ appVersion: appVersionStr, page: releasePage, kind: z.enum(RELEASE_TARGET_KIND_NAMES), target: tipId }).strict() }),
+  z.object({ name: z.literal('release_notes_history'), at: z.number().int(), props: z.object({ source: z.enum(RELEASE_HISTORY_SOURCES) }).strict() }),
+  // REQ-CAL-015 (§65): the calendar shown (month / week and how many rows) and a row opened (its kind). Marks are server events (calendar_mark).
+  z.object({ name: z.literal('calendar_view'), at: z.number().int(), props: z.object({ view: z.enum(CALENDAR_VIEWS), entries: z.number().int().min(0).max(200) }).strict() }),
+  z.object({ name: z.literal('calendar_entry_open'), at: z.number().int(), props: z.object({ kind: z.enum(CALENDAR_KPI_KINDS) }).strict() }),
   // REQ-CHEER-013 (§55.7): ONE row per race, never per tap — cheers this spectator sent / cheers shown to this player (racer
   // with the indicator on, or spectator) in that race. No horse, no target player, no sender ids.
   z.object({ name: z.literal('cheer_send'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), count: z.number().int().min(1).max(1000) }).strict() }),
   z.object({ name: z.literal('cheer_seen'), at: z.number().int(), props: z.object({ mode: z.enum(CHEER_KPI_MODES), role: z.enum(['racer', 'spectator']), count: z.number().int().min(1).max(100_000) }).strict() }),
+  // REQ-SHOW-015 (§62): a trainer card was opened (where from, whose: self / friend / other, neutral or not) / its image
+  // handed to the OS share sheet (how many pins and records it showed). Never the other player's id.
+  z.object({ name: z.literal('showcase_view'), at: z.number().int(), props: z.object({ source: z.enum(SHOWCASE_SOURCES), relation: z.enum(['self', 'friend', 'other']), neutral: z.boolean() }).strict() }),
+  z.object({ name: z.literal('showcase_share'), at: z.number().int(), props: z.object({ pins: z.number().int().min(0).max(3), records: z.number().int().min(0).max(4), horse: z.boolean() }).strict() }),
+  // REQ-LINK-021 (§63.9): a link reached the app — how it arrived and its type once resolved (`none` when it did not open).
+  // Never the token, the target or any id (strict).
+  z.object({ name: z.literal('deep_link_open'), at: z.number().int(), props: z.object({ entry: z.enum(DEEP_LINK_ENTRIES), type: z.enum(DEEP_LINK_KPI_TYPES) }).strict() }),
 ]);
 export type ClientEvent = z.infer<typeof clientEventSchema>;
 
@@ -275,10 +307,18 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'tutorial_replay': return { name: e.name, s1: e.props.tutorialId, s2: e.props.kind, s3: e.props.stage };
     case 'tip_view': return { name: e.name, s1: e.props.tipId, s2: e.props.source };
     case 'tip_context_open': return { name: e.name, s1: e.props.context, s2: e.props.tipId };
+    case 'release_notes_view': return { name: e.name, s1: e.props.appVersion, s2: e.props.stage, value: e.props.page, count: e.props.pages };
+    case 'release_notes_target': return { name: e.name, s1: e.props.appVersion, s2: e.props.kind, s3: e.props.target, value: e.props.page };
+    case 'release_notes_history': return { name: e.name, s1: e.props.source };
+    case 'calendar_view': return { name: e.name, s1: e.props.view, value: e.props.entries };
+    case 'calendar_entry_open': return { name: e.name, s1: e.props.kind };
     case 'cheer_send': return { name: e.name, s1: e.props.mode, count: e.props.count };
     case 'cheer_seen': return { name: e.name, s1: e.props.mode, s2: e.props.role, count: e.props.count };
     case 'lnotif_scheduled': case 'lnotif_opened': return { name: e.name, s1: e.props.kind };
     case 'lnotif_permission': return { name: e.name, s1: e.props.result };
+    case 'showcase_view': return { name: e.name, s1: e.props.source, s2: e.props.relation, s3: e.props.neutral ? 'neutral' : 'card' };
+    case 'showcase_share': return { name: e.name, count: e.props.pins, value: e.props.records, s1: e.props.horse ? 'horse' : 'none' };
+    case 'deep_link_open': return { name: e.name, s1: e.props.entry, s2: e.props.type };
   }
 }
 

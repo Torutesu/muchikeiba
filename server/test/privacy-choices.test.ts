@@ -246,12 +246,15 @@ describe('REQ-CNS-012 every KPI event is classified', () => {
       const t = readFileSync(f, 'utf8');
       for (const mm of t.matchAll(/name: '([a-z][a-z0-9_]*)'/g)) if (!NOT_KPI.has(mm[1]!)) names.add(mm[1]!);
       for (const mm of t.matchAll(/emit\(\{ name: [^'{}]*\? '([a-z0-9_]+)' : '([a-z0-9_]+)'/g)) { names.add(mm[1]!); names.add(mm[2]!); }
+      // R21 integration: names passed through a typed parameter (e.g. linkService's `LinkKpi` union → service.linkNote)
+      for (const mm of t.matchAll(/type \w*Kpi = ((?:'[a-z0-9_]+'(?: \| )?)+);/g)) for (const x of mm[1]!.matchAll(/'([a-z0-9_]+)'/g)) names.add(x[1]!);
     }
     expect(names.size).toBeGreaterThan(80);
     const missing = [...names].filter((n) => !(n in KPI_EVENT_CLASS));
     expect(missing).toEqual([]);
     for (const n of ['purchase', 'refund', 'consent_change', 'consent', 'account_delete', 'ad_reward', 'gacha_draw']) expect(kpiClassOf(n), n).toBe('essential');
     for (const n of ['race_finish', 'login_bonus', 'session_start', 'a11y_setting_change']) expect(kpiClassOf(n), n).toBe('optional');
+    for (const n of ['link_resolve', 'link_revoke', 'rematch']) expect(names.has(n), n).toBe(true); // collected from the LinkKpi union
     expect(kpiClassOf('something_new')).toBe('optional');
   });
   it('client events: every accepted name (after clientToKpi) has a class, and none is essential', () => {

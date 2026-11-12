@@ -7,6 +7,11 @@ import { eventPlayersFrom, friendIdsFrom, handle, makeFriendSuggestService, make
 import { bearer, verifyFirebaseSession } from './http/auth.js';
 import { signerFromEnv } from './http/customToken.js';
 import { TransferService } from './domain/transferService.js';
+import { LinkService } from './domain/linkService.js';
+import { linksConfig } from './domain/deepLinks.js';
+import { maintenanceOf } from './domain/maintenance.js';
+import { dayRule } from './domain/time.js';
+import type { RematchResult } from './http/app.js';
 import { SessionGuard, transferConfig } from './domain/transferCode.js';
 import { parseStoreNotification, storeSettingsFromEnv } from './http/stores.js';
 import { accountingStoreIndex } from './do/storeIndex.js';
@@ -48,6 +53,8 @@ import { photoProblems } from './domain/photoMode.js';
 import { helpProblems } from './domain/help.js';
 import { practiceProblems } from './domain/practice.js';
 import { tipsProblems } from './domain/tips.js';
+import { showcaseProblems } from './domain/showcase.js';
+import { releaseNotesProblems } from './domain/releaseNotes.js';
 import type { TeamSummary } from './domain/teams.js';
 import { EventsService } from './domain/eventService.js';
 import { eventBoardKey, eventCronPlan, validateEvents } from './domain/events.js';
@@ -58,7 +65,7 @@ import { authenticateAdmin, parseAdminTokens, parseConsoleOrigins, RateLimiter, 
 import { DeadLetterService, type DeadLetterOwner, type DeadLetterRegistry, type DeadLetterSource } from './ops/deadLetter.js';
 import { activeConfig } from './ops/activeConfig.js';
 import type { ResolvedConfig } from './ops/config.js';
-import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory, shardedTransferDirectory } from './do/directory.js';
+import { shardedDirectory, shardedHallDirectory, shardedInviteDirectory, shardedStableDirectory, shardedStudDirectory, shardedSuggestDirectory, shardedTransferDirectory, shardedLinkDirectory } from './do/directory.js';
 import { makeStableService } from './http/stablePorts.js';
 import { makeHallService } from './http/hallPorts.js';
 import { RivalService, rivalPlayersFrom } from './domain/rivalService.js';
@@ -130,6 +137,8 @@ validateItems(baseMaster); // REQ-ITEM-*: tickets may not reach paid-only banner
 { const hp = helpProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (hp.length) throw new Error('master/help.json: ' + hp.join('; ')); } // REQ-HELP-003
 { const pr = practiceProblems(baseMaster); if (pr.length) throw new Error('master/practice.json: ' + pr.join('; ')); } // REQ-PRAC-003
 { const tp = tipsProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (tp.length) throw new Error('master/tips.json: ' + tp.join('; ')); } // REQ-TUT-010
+{ const sp = showcaseProblems(baseMaster); if (sp.length) throw new Error('master/showcase.json: ' + sp.join('; ')); } // REQ-SHOW-002
+{ const rp = releaseNotesProblems(baseMaster, undefined, Number(DEFAULT_RULESET.maxWhips)); if (rp.length) throw new Error('master/release-notes.json: ' + rp.join('; ')); } // REQ-NEW-002
 validateEvents(baseMaster, baseMaster.events); // REQ-EVENT-001
 validateLeagueAndWeather(baseMaster); // REQ-LEAGUE-* and per-course climate (REQ-TRACK-003)
 validateUx(baseMaster, new Set(collectItemIds(baseMaster))); // REQ-UXS-*: onboarding, missions, experiments, deletion
@@ -464,6 +473,16 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       ...(env.KPI_SALT ? { limitSalt: env.KPI_SALT } : {}),
       onRedeemed: (uid, cutoffAt) => sessionGuardFor(env).note(uid, cutoffAt),
     }),
+    // REQ-LINK-*: ディープリンク (directory shards + player objects; the targets come from this context per request)
+    links: new LinkService({
+      party: (u) => player(u).invoke('linkParty', u),
+      checkCreate: (u) => player(u).invoke('linkCheckCreate', u),
+      note: (u, name, s1, s2, count) => player(u).invoke('linkNote', u, name, s1, s2, count),
+    }, shardedLinkDirectory(env.DIRECTORY), () => linksConfig(master), {
+      ...(env.KPI_SALT ? { limitSalt: env.KPI_SALT } : {}),
+      maintenance: () => maintenanceOf(master),
+      dayRule: () => dayRule(master),
+    }),
     player,
     match: {
       enqueue: (p, e: RaceEntry) => call(mm().enqueue!(p, e)),
@@ -474,6 +493,11 @@ export function makeContext(env: Env, cfg?: ResolvedConfig): AppContext {
       friendStart: (pass, p) => call(mm().friendStart!(pass, p)),
       tutorial: (p, e) => call(mm().tutorial!(p, e)),
       friendMember: async (pass, p) => (await call(mm().friendMember!(pass, p))) as boolean,
+      // REQ-LINK-007 / REQ-LINK-014..017 (§63)
+      friendRoomOpen: async (pass) => (await call(mm().friendRoomOpen!(pass))) as boolean,
+      rematchPress: async (r, p, e, b) => (await call(mm().rematchPress!(r, p, e, b))) as RematchResult,
+      rematchDecline: async (r, p) => (await call(mm().rematchDecline!(r, p))) as RematchResult,
+      rematchStatus: async (r, p) => (await call(mm().rematchStatus!(r, p))) as RematchResult,
     },
     race: {
       websocket: (raceId, req) => (env.RACE_ROOM.get(env.RACE_ROOM.idFromName(raceId)) as unknown as { fetch(r: Request): Promise<Response> }).fetch(req),

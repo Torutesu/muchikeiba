@@ -122,21 +122,21 @@ namespace Muchi.Game
         public bool ShouldShowPrePrompt(ConsentMoment moment, bool online = true)
         {
             if (!online || !ServerAvailable || Busy || State == null || !State.Required) return false;
-            if (Prompts != null && !Prompts.CanShow(SessionPromptKind.Consent)) return false; // R20 integration: one prompt per session
+            if (Prompts != null && !Prompts.CanShow(SessionPrompts.ConsentPrePrompt)) return false; // §58.11: one prompt per session (R21: the one table)
             if (moment == ConsentMoment.BeforeAdOffer) return State.Prompt == ConsentPrompt.AdOffer || State.Prompt == ConsentPrompt.NextHome;
             if (moment == ConsentMoment.Home) return State.Prompt == ConsentPrompt.NextHome;
             return false;
         }
 
-        /// <summary>R20 integration: the session's one-prompt gate (shared with LocalNotificationModel and ReviewPromptModel).</summary>
-        public SessionPromptGate Prompts { get; set; }
+        /// <summary>§58.11 (R21 integration): the session's one prompt gate, shared by every model that can interrupt the player.</summary>
+        public SessionPrompts Prompts { get; set; }
         /// <summary>R20 integration (§58.10): the error reporter's consent = the analytics choice (true before the first view).</summary>
         public bool AllowsDiagnostics => State?.AllowsDiagnostics ?? true;
 
         /// <summary>The sheet's content; building it means the sheet is on screen (it claims the session's prompt).</summary>
         public ConsentPrePrompt BuildPrePrompt()
         {
-            Prompts?.Claim(SessionPromptKind.Consent);
+            Prompts?.TryClaim(SessionPrompts.ConsentPrePrompt);
             bool ios = _platform.Os == "ios";
             var p = new ConsentPrePrompt
             {

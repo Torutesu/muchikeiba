@@ -11,6 +11,8 @@ import type { HallDirectory, HallSnapshot } from '../domain/hallOfFame.js';
 import { byShard, type FsugCard, type SuggestDirectory } from '../domain/friendSuggest.js';
 import { AUDIT_DAYS, AUDIT_KEEP, beginStep, limitStep, PURGE_AFTER_MS, type AuditRow, type BeginResult, type LimitRule, type TransferDirectory, type TransferRecord } from '../domain/transferService.js';
 import { codeShard } from '../domain/transferCode.js';
+import { isLive, LINK_PURGE_AFTER_MS, linkLimitStep, type LinkDirectory, type LinkLimitRow, type LinkLimitRules, type LinkRecord, type PutResult } from '../domain/linkService.js';
+import { tokenShard } from '../domain/deepLinks.js';
 
 /**
  * Friend codes and public profiles (REQ-SOCIAL-001/004), sharded by player id into DIRECTORY_SHARDS
@@ -48,6 +50,73 @@ export class DirectoryDO extends DurableObject<Env> {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS transfer_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, failures INTEGER NOT NULL, locked_until INTEGER NOT NULL)`);
     this.sql.exec(`CREATE TABLE IF NOT EXISTS transfer_audit (id INTEGER PRIMARY KEY AUTOINCREMENT, player_id TEXT NOT NULL, at INTEGER NOT NULL, event TEXT NOT NULL, code_ref TEXT NOT NULL, ip_ref TEXT, dev_ref TEXT)`);
     this.sql.exec(`CREATE INDEX IF NOT EXISTS transfer_audit_player ON transfer_audit (player_id, id)`);
+    // REQ-LINK-003/008/020 (§63.7): ディープリンク — link records (shard = the token's first character = the owner's shard, so
+    // the account deletion's forget finds them) and lookup limits (shard = the key hash). New tables: no wrangler migration.
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS links (token TEXT PRIMARY KEY, owner_id TEXT NOT NULL, type TEXT NOT NULL, target_key TEXT NOT NULL, data TEXT NOT NULL, day TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, revoked_at INTEGER)`);
+    this.sql.exec(`CREATE INDEX IF NOT EXISTS links_owner ON links (owner_id, type, target_key)`);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS link_limits (key TEXT PRIMARY KEY, window_start INTEGER NOT NULL, lookups INTEGER NOT NULL, failures INTEGER NOT NULL, locked_until INTEGER NOT NULL)`);
+  }
+
+  // ---- ディープリンク (REQ-LINK-*): one shard's rows; the sharding is in shardedLinkDirectory ----
+  private linkRows(where: string, ...args: (string | number)[]): LinkRecord[] {
+    type Row = { token: string; owner_id: string; type: string; target_key: string; data: string; day: string; created_at: number; expires_at: number; revoked_at: number | null };
+    return this.sql.exec<Row>(`SELECT * FROM links WHERE ${where}`, ...args).toArray().map((r) => ({
+      token: r.token, ownerId: r.owner_id, type: r.type as LinkRecord['type'], targetKey: r.target_key, data: JSON.parse(r.data) as Record<string, string>,
+      day: r.day, createdAt: r.created_at, expiresAt: r.expires_at, revokedAt: r.revoked_at,
+    }));
+  }
+  async linkPut(rec: LinkRecord, perDay: number, now: number): Promise<Envelope<PutResult>> {
+    return wrap((): PutResult => {
+      this.sql.exec('DELETE FROM links WHERE expires_at < ?', now - LINK_PURGE_AFTER_MS);
+      this.sql.exec('DELETE FROM link_limits WHERE locked_until < ? AND window_start < ?', now, now - 3_600_000);
+      const same = this.linkRows('owner_id = ? AND type = ? AND target_key = ?', rec.ownerId, rec.type, rec.targetKey).find((x) => isLive(x, now));
+      if (same) return { status: 'existing', rec: same };
+      const made = this.sql.exec<{ n: number }>('SELECT COUNT(*) AS n FROM links WHERE owner_id = ? AND day = ?', rec.ownerId, rec.day).toArray()[0]?.n ?? 0;
+      if (made >= perDay) return { status: 'limit' };
+      if (this.sql.exec('SELECT 1 FROM links WHERE token = ?', rec.token).toArray().length) return { status: 'taken' };
+      this.sql.exec('INSERT INTO links (token, owner_id, type, target_key, data, day, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+        rec.token, rec.ownerId, rec.type, rec.targetKey, JSON.stringify(rec.data), rec.day, rec.createdAt, rec.expiresAt);
+      return { status: 'created', rec };
+    });
+  }
+  async linkGet(token: string): Promise<Envelope<LinkRecord | null>> {
+    return wrap(() => this.linkRows('token = ?', token)[0] ?? null);
+  }
+  async linkRevoke(token: string, ownerId: string, now: number): Promise<Envelope<LinkRecord | null>> {
+    return wrap(() => {
+      const r = this.linkRows('token = ? AND owner_id = ?', token, ownerId)[0];
+      if (!r || !isLive(r, now)) return null;
+      this.sql.exec('UPDATE links SET revoked_at = ? WHERE token = ?', now, token);
+      return { ...r, revokedAt: now };
+    });
+  }
+  async linkListOf(ownerId: string, day: string, now: number): Promise<Envelope<{ links: LinkRecord[]; madeToday: number }>> {
+    return wrap(() => {
+      const mine = this.linkRows('owner_id = ? ORDER BY created_at DESC LIMIT 500', ownerId);
+      return { links: mine.filter((x) => isLive(x, now)), madeToday: mine.filter((x) => x.day === day).length };
+    });
+  }
+  async linkLimitCheck(keys: string[], now: number): Promise<Envelope<number | null>> {
+    return wrap(() => {
+      let wait: number | null = null;
+      for (const k of keys) {
+        const u = this.sql.exec<{ locked_until: number }>('SELECT locked_until FROM link_limits WHERE key = ?', k).toArray()[0]?.locked_until ?? 0;
+        if (u > now) wait = Math.max(wait ?? 0, u - now);
+      }
+      return wait;
+    });
+  }
+  async linkLimitNote(keys: string[], now: number, failed: boolean, rules: LinkLimitRules): Promise<Envelope<boolean>> {
+    return wrap(() => {
+      for (const k of keys) {
+        const row = this.sql.exec<{ window_start: number; lookups: number; failures: number; locked_until: number }>('SELECT window_start, lookups, failures, locked_until FROM link_limits WHERE key = ?', k).toArray()[0];
+        const cur: LinkLimitRow | null = row ? { windowStart: row.window_start, lookups: row.lookups, failures: row.failures, lockedUntil: row.locked_until } : null;
+        const n = linkLimitStep(cur, now, failed, rules);
+        this.sql.exec('INSERT INTO link_limits (key, window_start, lookups, failures, locked_until) VALUES (?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET window_start = excluded.window_start, lookups = excluded.lookups, failures = excluded.failures, locked_until = excluded.locked_until',
+          k, n.windowStart, n.lookups, n.failures, n.lockedUntil);
+      }
+      return true;
+    });
   }
 
   // ---- 引き継ぎコード (REQ-TRF-*): one shard's rows; the sharding is in shardedTransferDirectory ----
@@ -244,6 +313,8 @@ export class DirectoryDO extends DurableObject<Env> {
       // REQ-TRF-017: the player's 引き継ぎコード and its audit live in the player's shard (the code's first character)
       this.sql.exec('DELETE FROM transfer_codes WHERE player_id = ?', playerId);
       this.sql.exec('DELETE FROM transfer_audit WHERE player_id = ?', playerId);
+      // REQ-LINK-020: the player's links live in the player's shard (the token's first character): every link stops opening
+      this.sql.exec('DELETE FROM links WHERE owner_id = ?', playerId);
       return true;
     });
   }
@@ -316,7 +387,39 @@ type DirStub = {
   transferLimitFail(keys: string[], now: number, rules: LimitRule[], lockMs: number): Promise<Envelope<boolean>>;
   transferAudit(row: AuditRow): Promise<Envelope<boolean>>;
   transferAuditOf(playerId: string, limit: number): Promise<Envelope<AuditRow[]>>;
+  linkPut(rec: LinkRecord, perDay: number, now: number): Promise<Envelope<PutResult>>;
+  linkGet(token: string): Promise<Envelope<LinkRecord | null>>;
+  linkRevoke(token: string, ownerId: string, now: number): Promise<Envelope<LinkRecord | null>>;
+  linkListOf(ownerId: string, day: string, now: number): Promise<Envelope<{ links: LinkRecord[]; madeToday: number }>>;
+  linkLimitCheck(keys: string[], now: number): Promise<Envelope<number | null>>;
+  linkLimitNote(keys: string[], now: number, failed: boolean, rules: LinkLimitRules): Promise<Envelope<boolean>>;
 };
+
+/**
+ * REQ-LINK-*: ディープリンク over the directory shards. A link lives in the shard its token's first character names (= the
+ * owner's shard: idempotency, the daily count and the deletion's forget are one shard's work); limit keys in their hash's shard.
+ */
+export function shardedLinkDirectory(ns: DurableObjectNamespace): LinkDirectory {
+  const shard = (n: number) => ns.get(ns.idFromName(`dir:${n}`)) as unknown as DirStub;
+  const keyShard = (k: string) => parseInt(k.slice(k.indexOf(':') + 1, k.indexOf(':') + 3), 16) % DIRECTORY_SHARDS;
+  const byKey = (keys: string[]) => {
+    const g = new Map<number, string[]>();
+    for (const k of keys) g.set(keyShard(k), [...(g.get(keyShard(k)) ?? []), k]);
+    return [...g];
+  };
+  return {
+    async put(rec, perDay, now) { return unwrap(await shard(tokenShard(rec.token)).linkPut(rec, perDay, now)); },
+    async get(token) { return unwrap(await shard(tokenShard(token)).linkGet(token)); },
+    async revoke(token, owner, now) { return unwrap(await shard(tokenShard(token)).linkRevoke(token, owner, now)); },
+    async listOf(owner, day, now) { return unwrap(await shard(shardOf(owner)).linkListOf(owner, day, now)); },
+    async limitCheck(keys, now) {
+      const waits = await Promise.all(byKey(keys).map(async ([s, ks]) => unwrap(await shard(s).linkLimitCheck(ks, now))));
+      const w = waits.filter((x): x is number => x !== null);
+      return w.length ? Math.max(...w) : null;
+    },
+    async limitNote(keys, now, failed, rules) { await Promise.all(byKey(keys).map(async ([s, ks]) => unwrap(await shard(s).linkLimitNote(ks, now, failed, rules)))); },
+  };
+}
 
 /**
  * REQ-TRF-*: 引き継ぎコード over the directory shards. A code lives in the shard its first character names (= the owner's

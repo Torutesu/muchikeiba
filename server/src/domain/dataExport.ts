@@ -406,6 +406,12 @@ export const DEX_CLASSIFICATION: Record<keyof PlayerState | DexExtensionKey, Dex
   help: x('helpInquiries'), reports: x('reportsMade'),
   // Round 19 integration: §57 tip cards read (ids) and §54 transfer code history / expiry (never the code id or password hash)
   tips: x('play'), transfer: x('account'),
+  // §62 (Round 21): the showcase selection (own horse / pin / course ids, phrase and background ids; nothing about other players)
+  showcase: x('profile'),
+  // Round 21 (§64): the app versions whose release notes were shown, and the FTUE baseline
+  releaseNotes: x('play'),
+  // Round 21 (§65, REQ-CAL-016): calendar rows marked for a reminder (ids, kinds, until)
+  calendar: x('play'),
 };
 /** Keys some modules add to the state without declaring them on PlayerState (see the test). */
 export const DEX_EXTENSION_KEYS = ['collection', 'silksEditor', 'stable', 'teamFeed', 'teamGoal', 'help', 'reports'] as const;
@@ -441,6 +447,11 @@ export interface DexExternal {
   kpiEvents: { rows: Record<string, unknown>[]; windowDays: number } | null;
   /** REQ-CERR-019 (§60.9): client error samples that carry this player's id. Absent = none; null = could not be read. */
   clientErrors?: DexClientErrorRow[] | null;
+  /**
+   * R21 integration (§63.7): the share links this player made that still open (DirectoryDO). Never the token (a link is a
+   * key to its target; the links screen shows it). Absent = none read; null = could not be read.
+   */
+  linksMade?: { type: string; createdAt: number; expiresAt: number }[] | null;
 }
 /** One client error sample as its player sees it in the export (ops/clientErrors.ts madeBy). */
 export interface DexClientErrorRow { at: number; category: string | null; title: string | null; appVersion: string; platform: string; deviceModel: string; osVersion: string }
@@ -510,6 +521,8 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       silksEditor: clone(st.silksEditor) ?? null,
       stats: clone(s.stats), rating: { r: Math.round(s.rating.r), rd: Math.round(s.rating.rd), rankedRaces: s.rating.rankedRaces },
       season: clone(s.season), seasonHistory: clone(s.seasonHistory),
+      // §62: the trainer card selection as saved (what others see is derived from it)
+      showcase: clone(s.showcase) ?? null,
     },
     settings: {
       accessibility: clone(s.accessibility) ?? null, assist: clone(s.assist) ?? null, commentaryPack: clone(s.commentaryPack) ?? null,
@@ -565,6 +578,9 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
       } : null,
       team: s.team ? { teamId: s.team.teamId, joinedAt: s.team.joinedAt, cooldownUntil: s.team.cooldownUntil, joinRequests: s.team.outgoing.map((o) => ({ teamId: o.teamId, at: o.at })) } : null,
       teamFeedTeams: [...(feed?.postedIn ?? [])],
+      // §63 (R21 integration): the links this player made that still open — the kind and the dates, never the token
+      links: ext.linksMade === null ? { available: false, items: [] as { type: string; createdAt: number; expiresAt: number }[] }
+        : { available: true, items: (ext.linksMade ?? []).map((l) => ({ type: l.type, createdAt: l.createdAt, expiresAt: l.expiresAt })) },
       stable: stable ? { layout: clone(stable.layout) ?? null, likesReceived: stable.likes ?? 0 } : null,
       invite: ref ? {
         redeemedCode: ref.invitedBy?.code ?? null, redeemedAt: ref.invitedBy?.at ?? null, milestones: [...(ref.invitedBy?.milestones ?? [])],
@@ -596,6 +612,10 @@ export function buildExportDocument(m: Master, s: PlayerState, ext: DexExternal,
     play: {
       // §57 (Round 19 integration): the tip cards this player has read (ids only)
       tips: s.tips ? { seen: [...s.tips.seen] } : null,
+      // §64 (Round 21): which app versions' release notes were shown (version strings only)
+      releaseNotes: s.releaseNotes ? { seen: [...s.releaseNotes.seen], baseline: s.releaseNotes.baseline ?? null } : null,
+      // §65 (Round 21): the calendar rows this player marked (flags only; no reminder is sent by the server)
+      calendar: s.calendar ? { marks: s.calendar.marks.map((x) => ({ id: x.id, kind: x.kind, until: x.until, ...(x.startAt !== undefined ? { startAt: x.startAt } : {}) })) } : null,
       seasonPass: clone(s.seasonPass), passHistory: clone(s.passHistory) ?? [], loginBonus: clone(s.loginBonus), missions: clone(s.missions),
       seasonMissions: clone(s.seasonMissions) ?? null, onboarding: clone(s.onboarding) ?? null, breeding: clone(s.breeding),
       breedingExtra: clone(s.breedingExtra) ?? null, dailyWins: clone(s.dailyWins) ?? null, friendRewards: clone(s.friendRewards),

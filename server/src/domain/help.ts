@@ -15,6 +15,7 @@
  * Pure functions on master + state; the PlayerService runs the state changes inside its transaction.
  */
 import { CHEER_MIN_INTERVAL_MS } from './cheer.js';
+import { CALENDAR_LIMITS } from './calendar.js';
 import helpJson from '../../master/help.json';
 import { AppError } from './errors.js';
 import type { Master } from './master.js';
@@ -51,6 +52,10 @@ export const HELP_SCREENS = [
   'privacy_choices',
   // Round 20: settings › notifications (push categories, quiet hours and the device reminders, §61)
   'notifications',
+  // Round 21 (§62): the トレーナーカード editor (settings)
+  'showcase',
+  // Round 21 (§65): the 予定表 (event calendar)
+  'calendar',
 ] as const;
 export type HelpScreen = typeof HELP_SCREENS[number];
 /** The existing legal pages (利用規約・プライバシーポリシー・特定商取引法に基づく表記・資金決済法に基づく表示). */
@@ -61,7 +66,11 @@ export const HELP_CONTEXTS = ['gacha_odds', 'coin_shortfall', 'purchase', 'race_
   // Round 20 (§58): settings › privacy › ads and analytics, and the pre-prompt sheet
   'privacy_choices',
   // Round 20 (§61): settings › notifications (the device reminders article)
-  'notifications'] as const;
+  'notifications',
+  // Round 21 (§62): the トレーナーカード editor
+  'showcase',
+  // Round 21 (§65): the 予定表 (event calendar)
+  'calendar'] as const;
 export type HelpContext = typeof HELP_CONTEXTS[number];
 
 export type HelpLink =
@@ -124,7 +133,11 @@ const SCREEN_LABEL: Record<HelpScreen, Loc> = {
   storage: { ja: 'ストレージを開く', en: 'Open storage' },
   tips: { ja: 'ヒントを開く', en: 'Open tips' },
   privacy_choices: { ja: '広告と分析の設定を開く', en: 'Open the ads and analytics settings' },
+  showcase: { ja: 'トレーナーカードを開く', en: 'Open the trainer card' },
+  calendar: { ja: '予定表を開く', en: 'Open the calendar' },
 };
+/** Round 21 (§64 release notes): the link label of an in-app screen, in the request's language. */
+export function screenLabel(screen: HelpScreen, lang: Locale): string { return pick(SCREEN_LABEL[screen], lang); }
 const LEGAL_LABEL: Record<LegalDoc, Loc> = {
   terms: { ja: '利用規約', en: 'Terms of service' },
   privacy: { ja: 'プライバシーポリシー', en: 'Privacy policy' },
@@ -194,6 +207,10 @@ function tokenValue(env: TokenEnv, name: string, a?: string, b?: string): string
     case 'cheer_interval_sec': return String(CHEER_MIN_INTERVAL_MS / 1000); // §55 REQ-CHEER-004
     // Round 20: §61 the device reminders' daily cap (remote config)
     case 'lnotif_daily_cap': return String(m.progression.localNotifications?.dailyCap ?? 2);
+    // Round 21 (§65, REQ-CAL-017): the calendar's range and marks, and the game-day rollover hour (progression.dayRollover)
+    case 'calendar_days': return String(CALENDAR_LIMITS.maxRangeDays);
+    case 'calendar_marks': return String(CALENDAR_LIMITS.marksMax);
+    case 'day_rollover_hour': return String(dayRule(m).hourJst);
     default: throw new Error(`unknown token ${name}`);
   }
 }

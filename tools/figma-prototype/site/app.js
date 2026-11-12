@@ -29,14 +29,26 @@ const prefs = {
   int(k, d) { const v = parseInt(this.get(k, ''), 10); return Number.isFinite(v) ? v : d; },
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-// R20 integration (contracts/protocol.md §58.11; = unity SessionPromptGate): at most ONE system-ish prompt per session — the
-// ads / analytics pre-prompt (then ATT), the reminders pre-permission card (then the OS dialog) or the review request. The
-// first one shown claims the session; the others stay due for a later session. Order when several are due: consent →
-// notifications → review. A change of account (transfer) starts a new session.
+// R21 integration (contracts/protocol.md §58.11 = §64.6; = Muchi.Client.SessionPrompts): ONE gate for every prompt that can
+// interrupt the player — at most one per session (one launch, or until the account changes), none during the FTUE. The
+// first one shown claims the session; the others stay due for a later session. When several are due at one moment the
+// table decides (highest first). Round 20's consent → reminders → review gate and Round 21's release-notes list were two
+// gates for one rule; this is the one table both sections point at.
+const PROMPT_PRIORITY = ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'];
 const sessionPrompt = {
   shown: null,
-  can(kind) { return this.shown === null || this.shown === kind; },
-  claim(kind) { if (!this.can(kind)) return false; this.shown = kind; (globalThis.__muchiPrompts ??= []).push(kind); return true; },
+  can(kind) {
+    if (!PROMPT_PRIORITY.includes(kind)) throw new Error(`unknown prompt ${kind}`);
+    return !ftue && (this.shown === null || this.shown === kind);
+  },
+  /** Claims the session unless another prompt took it, the FTUE is on, or a higher prompt in `alsoDue` is due now. */
+  claim(kind, alsoDue = []) {
+    if (!this.can(kind)) return false;
+    if (this.shown !== kind && alsoDue.some((k) => PROMPT_PRIORITY.indexOf(k) >= 0 && PROMPT_PRIORITY.indexOf(k) < PROMPT_PRIORITY.indexOf(kind))) return false;
+    this.shown = kind; (globalThis.__muchiPrompts ??= []).push(kind); return true;
+  },
+  /** Of the prompts due at one moment, the one to show (or null). */
+  pick(due) { return PROMPT_PRIORITY.find((k) => due.includes(k) && this.can(k)) ?? null; },
   reset() { this.shown = null; },
 };
 
@@ -190,7 +202,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -1214,12 +1226,14 @@ async function Home() {
   if (player.loginBonus?.lastClaimDate !== today) { const r = await L.claimLogin(); if (r.ok) { bonus = r.value; await refresh(); } }
   const p = partner();
   if (p) horseName = p.name;
-  // REQ-CB-*: the comeback welcome replaces home once per window (decided before home is drawn)
+  // REQ-CB-*: the comeback welcome replaces home once per window; round 20 (REQ-CNS-008): a new privacy policy version asks
+  // again on the next home. Both are decided before home is drawn; R21 integration (§58.11 = §64.6): when both are due the
+  // one table decides (the consent sheet first), and neither shows once another prompt took this session.
   const comeback = await cbView();
-  if (comeback.active && comeback.window.showWelcome) return ComebackWelcome(comeback);
-  // round 20 (REQ-CNS-008): a new privacy policy version asks again on the next home (decided before home is drawn)
   const cnsDue = await consentHomeDue();
-  if (cnsDue) return ConsentPrompt(Home, cnsDue);
+  const firstPrompt = sessionPrompt.pick([...(comeback.active && comeback.window.showWelcome ? ['comeback_welcome'] : []), ...(cnsDue ? ['consent_pre_prompt'] : [])]);
+  if (firstPrompt === 'consent_pre_prompt') return ConsentPrompt(Home, cnsDue);
+  if (firstPrompt === 'comeback_welcome') return ComebackWelcome(comeback);
   const [missions, fw, bond, training] = await Promise.all([L.missions(), L.firstWinBonus(), p ? L.bond(p.id) : null, unlock('training').unlocked ? L.training() : null]);
   Clear('home'); SetArt('Art/home-paddock');
   const u = player.unlocks;
@@ -1278,6 +1292,7 @@ async function Home() {
   await NextCard(); // round 16: 次にやること, bottom centre (the top bar stays as it is)
   await GoalPinStrip(); // round 18: the pinned horse goal, above the next card
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
+  if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   MaybeLinkPrompt('Home', Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
@@ -1913,12 +1928,14 @@ function linkArgs(context) {
 }
 /** Home / after a result / after a purchase: shows the prompt when the rules say so; returns true when it did. */
 function MaybeLinkPrompt(context, next) {
+  if (!sessionPrompt.can('account_link')) return false; // §58.11 = §64.6 (R21 integration): another prompt took this session
   const r = linkOp('eval', linkArgs(context));
   if (!r.show) return false;
   LinkPrompt(r.trigger, next);
   return true;
 }
 function LinkPrompt(trigger, next = Home) {
+  sessionPrompt.claim('account_link'); // §58.11 = §64.6: one prompt per session (R21 integration: the one gate)
   const v = linkOp('show', { trigger, ios: true }).view; // counts as shown now (once only)
   currentScreen = next; Clear('link-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
   const box = Dialog('Link prompt', 940, 600); box.dataset.trigger = trigger;
@@ -2607,6 +2624,9 @@ async function Settings(tab) {
       ['出走前アドバイス', () => { advice.setEnabled(!advice.enabled()); Settings(); }, 'advice', advice.enabled() ? 'オン' : 'オフ'],
       ['レース中の応援表示', () => { prefs.set(CHEER_INDICATOR_KEY, cheerIndicatorOn() ? '0' : '1'); Settings(); }, 'cheer-indicator', cheerIndicatorOn() ? 'オン' : 'オフ']],
     // round 10: 支部の応援 and 友達招待 next to the looks / care entries; round 14: 実況パック after the looks entries
+    // R21 integration (06 §その他): eight rows, the page's limit. Round 21's three entries live on their hubs instead of a 9th–11th
+    // row: トレーナーカード → フレンド › 自分のトレーナーカード › カードを編集 (the profile), 予定表 → イベント (日程) and お知らせ,
+    // リンクで招待・共有 → 友達招待. The release notes history stays in お知らせ and ヒント (no row).
     looks: [['衣装', Wardrobe], ['実況パック', () => CommentaryPacks('settings'), 'commentary-packs'], ['コースの見た目', CourseThemes], ['レース条件', Conditions],
       ['お世話', Care], ['支部の応援', TeamFeed, 'team-feed'], ['友達招待', () => Invite(), 'invite'],
       // round 17 (REQ-RPT-011): the block list and what a block does (R20 integration: on this page, see above)
@@ -2748,20 +2768,20 @@ const cnsDevice = { get att() { return prefs.get('muchi.att', 'not_determined');
 const cnsView = () => L.privacy.view();
 /** Before the first rewarded ad: the pre-prompt when the server names this moment (never in the FTUE). */
 async function ConsentBeforeAd(next) {
-  if (ftue || !sessionPrompt.can('consent')) return next(); // §58.11: another prompt showed this session → the ad as is
+  if (ftue || !sessionPrompt.can('consent_pre_prompt')) return next(); // §58.11: another prompt showed this session → the ad as is
   const v = await cnsView();
   if (!v.prompt) return next();
   return ConsentPrompt(next, v);
 }
 /** On the home after a policy update (decided before, asked again): drawn before home like the comeback welcome. */
 async function consentHomeDue() {
-  if (ftue || !sessionPrompt.can('consent')) return null;
+  if (ftue || !sessionPrompt.can('consent_pre_prompt')) return null;
   const v = await cnsView();
   return v.prompt === 'next_home' && v.decidedVersion ? v : null;
 }
 async function ConsentPrompt(next, v0) {
   const v = v0 ?? await cnsView();
-  sessionPrompt.claim('consent');
+  sessionPrompt.claim('consent_pre_prompt');
   currentScreen = () => ConsentPrompt(next); Clear('consent-prompt'); SetArt('Art/home-paddock', false); Shade('dim');
   const box = Dialog('Consent prompt', 1040, 700);
   box.dataset.prompt = v.prompt ?? '';
@@ -3396,6 +3416,8 @@ async function Demo(kind) {
   if (kind === 'next') { await L.seedNext(); try { localStorage.removeItem(NEXT_VIEWED); } catch { /* */ } await refresh(); if (partner()) await L.horseGoals.pin(partner().id); return Home(); } // round 18: the partner's goal pinned too
   // round 17: two inquiries — one answered by the real ops reply (unread, an activity entry), one waiting (§48)
   if (kind === 'help') { await L.seedDemo(3, [2, 2, 2]); await L.seedInquiries(); await refresh(); helpState.sel = null; helpState.draft = null; return MyInquiries(); }
+  // round 21 (REQ-CAL-019): a week of play with 28 races — events, tournaments, the weekly challenge and seasons are open
+  if (kind === 'calendar') { await L.seedDemo(7, [4, 4, 4, 4, 4, 4, 4]); ftue = false; await refresh(); calState.mode = 'month'; calState.weekStart = null; return Calendar(); }
   const spec = { day1: [1, [1]], day3: [3, [2, 2, 2]], day7: [7, [3, 3, 3, 3, 3, 3, 3]] }[kind];
   await L.seedDemo(spec[0], spec[1]);
   await refresh();
@@ -3532,6 +3554,8 @@ async function Invite(demoNote = '') {
   }, me).dataset.action = 'share';
   Ghost('コピー', 444, 290, 130, 60, async () => { try { await navigator.clipboard?.writeText(v.displayCode); } catch { /* */ } toast('コードをコピーしました'); }, me, 'small');
   TextLink('規約', 600, 302, 96, () => Legal('terms', Invite), me, '規約').dataset.terms = v.termsKey;
+  // R21 integration (§63): the links hub (room, cup, replay, friend request, branch, help links and 「リンクを開く」) from here
+  TextLink('リンクで招待・共有', 44, 352, 652, () => Links(), me, 'リンクで招待・共有 ›').dataset.action = 'links';
   Hair(44, 394, 652, me);
   Kicker(`招待ボーナス　/　${v.cap}人まで`, 44, 420, me, { rule: false, size: 16 });
   Txt('友達1人につき、友達が到達したときに届きます（インストールだけでは届きません）', 44, 452, 652, 14, SOFT, me);
@@ -3658,6 +3682,7 @@ async function ComebackWelcome(v) {
   currentScreen = () => ComebackWelcome();
   v ??= await cbView();
   if (!v.active) return Home();
+  sessionPrompt.claim('comeback_welcome'); // §58.11 = §64.6: the welcome takes this session
   const w = v.window;
   Clear('comeback-welcome'); SetArt('Art/first-ride'); Shade('left');
   Kicker('おかえりなさい　/　復帰キャンペーン', 82, 112, undefined, { size: 18 });
@@ -4041,12 +4066,12 @@ let revPrompted = false;
 function revLog(x) { (globalThis.__muchiReview ??= []).push(x); }
 /** A happy moment's screen was closed: ask (or not) on the real rules. Returns the outcome. */
 async function reviewMoment(moment, after = Home) {
-  if (!sessionPrompt.can('review')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11: another prompt showed
+  if (!sessionPrompt.can('review_prompt')) { revLog({ moment, skipped: 'session_prompt' }); return 'skipped'; } // §58.11: another prompt showed
   if (revPrompted) { revLog({ moment, skipped: 'session' }); return 'skipped'; }
   const r = await L.reviewPrompt.check(moment, REV_SESSION, { inFtue: false, minutesSinceLoss: null, minutesSinceError: null, minutesSinceMaintenanceNotice: null });
   if (!r.ok || !r.value.show) { revLog({ moment, skipped: r.ok ? r.value.reason : r.code }); return 'skipped'; }
   revPrompted = true;
-  sessionPrompt.claim('review');
+  sessionPrompt.claim('review_prompt');
   revLog({ moment, style: r.value.style, promptId: r.value.promptId });
   if (r.value.style === 'soft') { ReviewSoft(r.value.promptId, moment, after); return 'soft'; }
   await ReviewNativeSim(r.value.promptId, moment, after); return 'native';
@@ -4062,7 +4087,7 @@ function ReviewSoft(promptId, moment, after = Home) {
   revScene('review-ask', moment);
   const d = Dialog('Review ask', 720, 400);
   d.classList.add('rev-soft'); d.dataset.prompt = promptId;
-  Kicker('ひとこと', 48, 36, d, { w: 400 });
+  Kicker('ちょっと質問', 48, 36, d, { w: 400 });
   Txt('ムチ一閃を楽しんでいますか？', 48, 118, 624, 30, WHITE, d, { weight: 700, nowrap: true }).classList.add('rev-question');
   Txt('答えなくてもかまいません。ゲームの内容は何も変わりません。', 48, 172, 624, 15, MUTED, d, { lh: 1.5 });
   const answer = async (step) => {
@@ -4873,6 +4898,8 @@ async function EventTop(eventId) {
   // ② the schedule and what the exchange has (from the definition)
   const rp = Glass('Event schedule', 760, 134, 804, 676, undefined, .84);
   Kicker('日程', 36, 30, rp);
+  // R21 integration (§65): every date in one list — the calendar opens from the event hub
+  TextLink('予定表', 528, 30, 240, () => Calendar(() => EventTop(eventId)), rp, '予定表 ›').dataset.action = 'calendar';
   const row = (y, k, val) => { Txt(k, 36, y, 220, 15, MUTED, rp, { weight: 500 }); Txt(val, 260, y - 2, 508, 17, WHITE, rp, { weight: 700, nowrap: true }); Hair(36, y + 34, 732, rp); };
   row(110, 'イベント', `${jstDate(v.startAtMs)} 〜 ${jstDate(v.endAtMs - 60_000)}`);
   row(166, '交換の締切', `${jstDate(v.closesAtMs - 60_000)}（終了後 ${v.graceDays} 日）`);
@@ -5185,6 +5212,8 @@ async function Rival() {
   if (rv.kind === 'human' && !rv.dissolved && rv.card) {
     const pt = rv.card.partner;
     Txt(`${rv.card.classId}級${pt ? `　·　相棒 ${pt.name}（${STYLE_JA[pt.style] ?? pt.style}）` : ''}`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
+    // round 21 (REQ-SHOW-008): the rival's トレーナーカード
+    if (rv.playerId) TextLink('トレーナーカード', 36, 196, 300, () => ShowcaseCard(rv.playerId, 'rival', () => Rival()), lp).dataset.scOpen = rv.playerId;
   } else if (rv.kind === 'cpu') {
     Txt(`${STYLE_JA[rv.style] ?? rv.style}　·　目標${rv.targetPlace}着以内`, 36, 156, 488, 16, GOLD, lp, { weight: 700, ls: '.04em' });
     Txt(`「${rv.line}」`, 36, 188, 488, 15, MUTED, lp, { lh: 1.5 }).classList.add('rv-line');
@@ -5319,6 +5348,8 @@ async function Hall(owner = null, page = 0) {
     Ghost('自分の殿堂', 30, 600, 320, 50, () => Hall(), lp, 'quiet small');
     // round 17 (REQ-RPT-001): report this player's name from their hall
     Ghost('通報する', 30, 536, 320, 50, () => ReportSheet({ playerId: v.owner.playerId, name: v.owner.displayName, kind: 'display_name', source: 'hall' }), lp, 'quiet small').classList.add('rpt-open');
+    // round 21 (REQ-SHOW-008): the owner's トレーナーカード
+    Ghost('トレーナーカード', 30, 472, 320, 50, () => ShowcaseCard(v.owner.playerId, 'hall', () => Hall(owner, page)), lp, 'quiet small').dataset.scOpen = v.owner.playerId;
   }
   // ② the plaques, 6 per page, newest first
   const grid = el('hof-grid', 440, 134, 1124, 676);
@@ -5386,6 +5417,125 @@ function PlaqueDetail(p) {
     (p.highlights ?? []).slice(0, 5).forEach((h, i) => Txt(h.text, 48, y + 350 + i * 34, 564, 15, WHITE, s, { weight: 500, nowrap: true }));
     if (p.frame) Txt('殿堂の額縁つき', 48, y + 530, 564, 13, DIM, s);
   });
+}
+
+// ================================================================= round 21: イベントカレンダー（予定表） (REQ-CAL-*, contracts/protocol.md §65)
+// Mirrors unity/Assets/Muchi/Game/CalendarModel.cs on the real server rules (MuchiLogic.calendar = GET /v1/calendar on
+// calendar.ts): every row comes from its feature's own data — events and the exchange, weekly challenge weeks, the branch
+// goal and league (members only), seasons and the month the pass can be bought, announced banners, tournaments, the cups
+// the player is in, visible maintenance and the comeback window. A month list (35 game days, rows under the day they
+// start; rows already running at the top) or a week list (7 days, every row that touches the day). Times are JST in both
+// languages. Paid rows (pass, banners) carry dates only: no price and no buy button; a banner row opens the rates page, the
+// pass row opens nothing. A mark is a flag (PUT / DELETE, idempotent); the server sends no notification for it — R21 integration:
+// the device plans one through the §61 planner (`calendar_mark`, reminders category, before the start).
+// KPI calendar_view / calendar_entry_open (globalThis.__muchiKpi, the shape the client sends).
+const calState = { mode: 'month', weekStart: null, view: null, back: null };
+const calKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+const CAL_WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土'];
+/** 「11/14（土）」 for a game day "2026-11-14" (EN: proto-en templates → "Sat 11/14"). */
+const calDay = (day) => { const d = new Date(day + 'T00:00:00Z'); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}（${CAL_WEEKDAYS[d.getUTCDay()]}）`; };
+const calMd = (day) => { const d = new Date(day + 'T00:00:00Z'); return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`; };
+/** The JST line of a row (CalendarModel.TimeText): a span, or one time for a time point. */
+const calTime = (e) => (e.endAt <= e.startAt ? `${e.startJst}（日本時間）` : `${e.startJst}〜${e.endJst}（日本時間）`);
+const CAL_STATUS = { open: '開催中', upcoming: 'これから', ended: '終了' };
+function calDays(from, to) { const out = []; for (let d = from; d <= to && out.length < 62; d = new Date(Date.parse(d + 'T00:00:00Z') + 86_400_000).toISOString().slice(0, 10)) out.push(d); return out; }
+/** Where a row leads in the prototype (the link the server chose; the pass has none). */
+const calGo = (link) => ({
+  event: () => RaceLobby(), event_exchange: () => Exchange(link.id), weekly_challenge: () => WeeklyChallenge(), team_goal: () => TeamGoal(), league: () => TeamGoal(),
+  season: () => RaceLobby(), gacha_rates: () => Odds(link.id), tournament: () => Spectate(), cup: () => CupLobby(link.id), comeback: () => ComebackTrack(),
+})[link.screen];
+async function Calendar(back = null) {
+  if (back) calState.back = back;
+  currentScreen = () => Calendar();
+  const r = await L.calendar({});
+  if (!r.ok) { toast(r.message); return (calState.back ?? Settings)(); }
+  const V = r.value; calState.view = V;
+  const days = calDays(V.from, V.to);
+  if (!calState.weekStart || !days.includes(calState.weekStart)) calState.weekStart = V.from;
+  Clear('calendar'); SetArt('Art/Courses/autumn-course', false); Shade('left');
+  TopBar('予定表', '参加できる予定　·　時刻はすべて日本時間', { wallet: false });
+  // left: view, range, marks and the notes
+  const side = Glass('Calendar side', 36, 134, 440, 676, undefined, .88); side.classList.add('cal-side');
+  Kicker('表示', 36, 30, side, { size: 15 });
+  [['month', '月ごと'], ['week', '週ごと']].forEach(([k, label], i) => {
+    const b = Btn(label, 36 + i * 180, 96, 170, 48, () => { if (calState.mode !== k) { calState.mode = k; Calendar(); } }, 'choice' + (calState.mode === k ? ' on' : ''), side);
+    b.dataset.calMode = k; b.setAttribute('aria-pressed', String(calState.mode === k)); b.style.fontSize = '17px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+  });
+  const wk = days.slice(days.indexOf(calState.weekStart), days.indexOf(calState.weekStart) + 7);
+  const shown = calState.mode === 'month' ? days : wk;
+  Txt(`${calMd(shown[0])} – ${calMd(shown[shown.length - 1])}`, 36, 170, 368, 30, WHITE, side, { weight: 700, cls: 'num', nowrap: true }).dataset.calRange = `${shown[0]}..${shown[shown.length - 1]}`;
+  Txt('今日', 36, 216, 120, 15, CYAN, side, { weight: 700, ls: '.14em', nowrap: true });
+  Txt(calDay(V.today), 120, 214, 248, 17, WHITE, side, { weight: 500, nowrap: true }).dataset.calToday = V.today;
+  if (calState.mode === 'week') {
+    const i = days.indexOf(calState.weekStart);
+    const prev = Ghost('前の週', 36, 256, 170, 48, () => { calState.weekStart = days[i - 7]; Calendar(); }, side, 'small quiet'); prev.dataset.action = 'cal-prev';
+    if (i - 7 < 0) disable(prev);
+    const next = Ghost('次の週', 216, 256, 170, 48, () => { calState.weekStart = days[i + 7]; Calendar(); }, side, 'small quiet'); next.dataset.action = 'cal-next';
+    if (i + 7 >= days.length) disable(next);
+  }
+  Hair(36, 330, 368, side);
+  Kicker('印', 36, 350, side, { size: 15 });
+  Txt(`${V.marks.count} / ${V.marks.max}`, 36, 414, 200, 26, WHITE, side, { weight: 700, cls: 'num', nowrap: true }).dataset.calMarks = String(V.marks.count);
+  Txt('印の予定は、通知のリマインダーがオンなら始まる前に知らせます', 36, 456, 368, 15, MUTED, side, { lh: 1.6 }).dataset.calMarkNote = '1';
+  Txt('パスとスカウトは期間だけ。中身はそれぞれの画面で', 36, 506, 368, 14, SOFT, side, { lh: 1.6 }).dataset.calPaidNote = '1';
+  if (V.partial.length) Txt('一部の予定を読み込めませんでした', 36, 556, 368, 14, GOLD, side, { lh: 1.5 }).dataset.calPartial = V.partial.join(',');
+  TextLink('予定表のヘルプ', 36, 596, 200, () => HelpArticle('calendar', 'link', () => Calendar()), side, '予定表のヘルプ ›').dataset.action = 'cal-help';
+  Ghost('デモ：28戦の厩舎で見る', 220, 592, 184, 44, () => Demo('calendar'), side, 'small quiet').dataset.action = 'cal-demo';
+  // right: the list
+  const list = Glass('Calendar list', 496, 134, 1068, 676, undefined, .9); list.classList.add('cal-panel');
+  Kicker(calState.mode === 'month' ? '期間の予定' : '週の予定', 36, 30, list, { size: 15, rule: false });
+  const box = el('cal-list', 36, 72, 996, 580, list);
+  const groups = [];
+  if (calState.mode === 'month') {
+    const running = V.entries.filter((e) => e.firstDay < V.from);
+    if (running.length) groups.push(['始まっている予定', running, 'running']);
+    for (const d of days) { const xs = V.entries.filter((e) => e.firstDay === d); if (xs.length) groups.push([calDay(d), xs, d]); }
+  } else {
+    for (const d of wk) groups.push([calDay(d), V.entries.filter((e) => e.firstDay <= d && d <= e.lastDay), d]);
+  }
+  for (const [title, rows, key] of groups) {
+    const h = document.createElement('div'); h.className = 'cal-scale cal-day' + (key === V.today ? ' today' : ''); h.textContent = title; h.dataset.calDay = key; box.appendChild(h);
+    if (!rows.length) { const n = document.createElement('div'); n.className = 'cal-scale cal-empty'; n.textContent = '予定はありません'; box.appendChild(n); continue; }
+    for (const e of rows) box.appendChild(calRow(e));
+  }
+  if (!groups.length) { const n = document.createElement('div'); n.className = 'cal-scale cal-empty'; n.textContent = '予定はありません'; box.appendChild(n); }
+  calKpi('calendar_view', { view: calState.mode, entries: Math.min(200, calState.mode === 'month' ? V.entries.length : new Set(groups.flatMap((g) => g[1].map((e) => e.id))).size) });
+  Back(() => (calState.back ?? Settings)(), '戻る', 40, 834);
+}
+function calRow(e) {
+  const row = document.createElement('div');
+  row.className = 'cal-row' + (e.link ? ' go' : '') + (e.status === 'ended' ? ' ended' : '') + (e.marked ? ' marked' : '');
+  Object.assign(row.dataset, { calEntry: e.id, calKind: e.kind, paid: e.paid ? '1' : '0', link: e.link ? e.link.screen : '' });
+  const main = document.createElement('div'); main.className = 'cal-main';
+  const meta = document.createElement('div'); meta.className = 'cal-meta';
+  const kind = document.createElement('span'); kind.className = 'cal-scale cal-kind'; kind.textContent = e.title; meta.appendChild(kind);
+  const st = document.createElement('span'); st.className = 'cal-scale cal-status ' + e.status; st.textContent = CAL_STATUS[e.status] ?? ''; meta.appendChild(st);
+  main.appendChild(meta);
+  const name = document.createElement('div'); name.className = 'cal-scale cal-name' + (e.cupName ? ' player-text' : ''); name.textContent = e.cupName ?? e.name ?? e.title; main.appendChild(name);
+  const time = document.createElement('div'); time.className = 'cal-scale cal-time num'; time.textContent = calTime(e); main.appendChild(time);
+  const note = e.paid ? '期間だけを載せています' : e.spectate ? '観戦できます' : null;
+  if (note) { const n = document.createElement('div'); n.className = 'cal-scale cal-note' + (e.paid ? ' paid' : ''); n.textContent = note; main.appendChild(n); }
+  row.appendChild(main);
+  const side = document.createElement('div'); side.className = 'cal-actions';
+  if (e.markable || e.marked) {
+    const m = document.createElement('button'); m.className = 'cal-scale cal-mark' + (e.marked ? ' on' : ''); m.textContent = e.marked ? '印を外す' : '印を付ける';
+    m.dataset.action = 'cal-mark'; m.setAttribute('aria-pressed', String(!!e.marked));
+    m.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const res = await L.calendarMark(e.id, !e.marked);
+      if (!res.ok) { toast(res.code === 'CONFLICT' ? (res.details?.reason === 'limit' ? '印はこれ以上付けられません' : '終わった予定には印を付けられません') : res.code === 'NOT_FOUND' ? 'この予定は表示できなくなりました' : res.message); return Calendar(); }
+      toast(res.value.marked ? '印を付けました' : '印を外しました'); lnRefresh().catch(() => {}); // §61 (R21 integration): plan / cancel the device reminder now
+      return Calendar();
+    });
+    side.appendChild(m);
+  }
+  if (e.link) { const go = document.createElement('span'); go.className = 'cal-go'; go.textContent = '›'; side.appendChild(go); }
+  row.appendChild(side);
+  if (e.link) {
+    row.setAttribute('role', 'button');
+    row.addEventListener('click', () => { const f = calGo(e.link); if (!f) return; calKpi('calendar_entry_open', { kind: e.kind }); f(); });
+  }
+  return row;
 }
 
 // ================================================================= round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
@@ -5575,7 +5725,9 @@ async function CupLobby(cupId) {
   Kicker(`参加者　/　${c.entrants.length}/${c.capacity}人`, 36, 76, lp).classList.add('cup-seats');
   c.entrants.slice(0, 8).forEach((e, i) => {
     const row = el('cup-entrant', 36 + (i % 2) * 380, 156 + Math.floor(i / 2) * 72, 360, 64, lp); row.dataset.playerId = e.playerId;
-    cupTyped(Txt(e.displayName, 0, 4, 250, 18, e.withdrawn ? DIM : WHITE, row, { weight: 700, nowrap: true }));
+    const en = cupTyped(Txt(e.displayName, 0, 4, 250, 18, e.withdrawn ? DIM : WHITE, row, { weight: 700, nowrap: true }));
+    // round 21 (REQ-SHOW-008): the name opens the entrant's トレーナーカード
+    if (en) { en.style.cursor = 'pointer'; en.setAttribute('role', 'button'); en.dataset.scOpen = e.playerId; en.addEventListener('click', () => ShowcaseCard(e.playerId, 'cup_lobby', () => CupLobby(cupId))); }
     if (e.horseName) cupTyped(Txt(e.horseName, 0, 34, 250, 13, MUTED, row, { nowrap: true }));
     const badge = e.withdrawn ? ['棄権', 'warn'] : e.playerId === c.hostId ? ['主催', 'gold'] : e.playerId === player?.id ? ['あなた', 'cyan'] : null;
     if (badge) Pills([badge], 260, 8, 100, row);
@@ -6491,9 +6643,12 @@ async function Activity() {
     if (it.unread) el('act-dot', 0, 28, 10, 10, row);
     Txt(ACT_LABEL[it.kind] ?? 'お知らせ', 22, 8, 160, 12, it.kind === 'gift_arrived' ? GOLD : CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(jstDate(it.at), 190, 8, 220, 12, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
-    const tx = Txt(it.text, 22, 30, 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
+    const actor = it.actors?.[0]?.playerId ?? null;
+    const tx = Txt(it.text, 22, 30, actor ? 744 : 760, 18, it.unread ? WHITE : MUTED, row, { weight: 700, nowrap: true });
     tx.style.overflow = 'hidden'; tx.style.textOverflow = 'ellipsis'; // a long course name never runs under the link
-    const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', 800, 10, 200, 46, () => {
+    // round 21 (REQ-SHOW-008): who did it → their トレーナーカード (the 見る button gets narrower beside it)
+    if (actor) Ghost('カード', 776, 10, 104, 46, () => ShowcaseCard(actor, 'activity', () => Activity()), row, 'small quiet').dataset.scOpen = actor;
+    const go = Ghost(it.link.screen === 'gift_box' ? 'プレゼントボックスへ' : '見る', actor ? 892 : 800, 10, actor ? 108 : 200, 46, () => {
       (globalThis.__muchiKpi ??= []).push({ name: 'activity_tap', kind: it.kind, screen: it.link.screen });
       actGo(it.link.screen, it.link.id);
     }, row, 'small quiet');
@@ -6508,12 +6663,16 @@ async function Activity() {
   const d = Glass('Activity summary', 1116, 134, 448, 676, undefined, .9);
   Kicker('未読', 36, 30, d, { size: 16 });
   Txt(`${P.unread}件`, 36, 100, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.actUnread = String(P.unread);
-  if (P.links.whatsNew > 0) TextLink('新着情報があります', 36, 172, 376, () => Home(), d).dataset.actWhatsnew = String(P.links.whatsNew);
-  Hair(36, 236, 376, d);
+  if (P.links.whatsNew > 0) TextLink('新着情報があります', 36, 152, 376, () => Home(), d).dataset.actWhatsnew = String(P.links.whatsNew);
+  // round 21 (REQ-NEW-013): お知らせ › アップデート情報 (past release notes; no new activity kind)
+  TextLink('アップデート情報', 36, 192, 376, () => rnOpenHistory('notices', Activity), d, 'アップデート情報 ›').dataset.action = 'release-notes';
+  Hair(36, 240, 376, d);
   Kicker('お知らせのきまり', 36, 258, d, { rule: false, size: 14 });
   Txt('いいね・応援スタンプ・プレゼントは、まとめて1件で表示します。', 36, 292, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プレゼントの受け取りはプレゼントボックスで行います。', 36, 366, 376, 13, MUTED, d, { lh: 1.6 });
   Txt('プッシュ通知の設定はプッシュだけに効きます。この一覧はいつでも見られます。', 36, 440, 376, 13, SOFT, d, { lh: 1.6 });
+  // R21 integration (§65): お知らせ › 予定表 (the home's bell is one tap from home)
+  TextLink('予定表', 36, 520, 376, () => Calendar(Activity), d, '予定表 ›').dataset.action = 'calendar';
   Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
   Back(Home, 'ホームへ', 40, 834);
 }
@@ -6592,7 +6751,7 @@ async function ReportSheet(t) {
   }, 700, { solo: true });
 }
 
-const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ' };
+const BLOCK_ICON = { activity: 'お知らせ', team_feed: '支部', rival: 'ライバル', stable: 'マイ厩舎', hall: '殿堂', replays: 'リプレイ', cups: 'カップ', links: 'リンク・再戦', showcase: 'トレーナーカード' }; // R21 integration: §62
 /** 通報とブロック: the one block list, what a block does in each feature, and how to report. */
 async function BlockList() {
   currentScreen = BlockList;
@@ -6618,13 +6777,14 @@ async function BlockList() {
   const e = Glass('Block effects', 676, 134, 888, 676, undefined, .86);
   e.classList.add('bl-effects');
   Kicker('ブロックするとどうなる？', 36, 30, e);
+  // R21 integration: nine features (§62 showcase) — the note moves above the list
+  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 104, 816, 14, MUTED, e, { nowrap: true });
   v.effects.forEach((x, i) => {
-    const row = el('bl-effect', 36, 112 + i * 70, 816, 60, e);
+    const row = el('bl-effect', 36, 136 + i * 60, 816, 54, e); // R21: nine features (§62 showcase, §63 links), the note above
     row.dataset.feature = x.feature;
     Txt(BLOCK_ICON[x.feature] ?? '', 0, 4, 150, 12, CYAN, row, { weight: 700, ls: '.18em', nowrap: true });
     Txt(x.text, 0, 26, 816, 17, WHITE, row, { weight: 500, nowrap: true });
   });
-  Txt('相手には、ブロックしたことも通報したことも知らされません。', 36, 620, 816, 14, MUTED, e, { lh: 1.5 });
   Back(Settings, 'BACK', 40, 834);
 }
 function UnblockConfirm(b) {
@@ -6641,6 +6801,203 @@ function UnblockConfirm(b) {
     BlockList();
   }, box, 'small bl-yes');
   Ghost('やめる', 456, 306, 200, 50, () => BlockList(), box, 'quiet').classList.add('bl-no');
+}
+
+// ================================================================= round 21: ディープリンク・招待リンクと再戦 (REQ-LINK-*, contracts/protocol.md §63)
+// The same flows as the Unity DeepLinkModel / RematchModel on the real LinkService and Rematches (L.links / L.rematch): send a
+// link from the share sheet (one link per target, no id or name in the URL, the server's text), the links you shared (revoke),
+// 「リンクを開く」 (a URL or the code typed from the web page) → the screen the link opens, which always starts on a confirmation
+// (nothing is joined, redeemed or spent by the link), and 再戦 on the friend-room result. ムチ一閃 tone.
+const LK_TYPE = { room: 'フレンド部屋', cup: '主催カップ', replay: 'リプレイ', invite: '友達招待コード', friend: 'フレンド申請', team: '支部', help: 'ヘルプの記事' };
+const LK_NOTICE = {
+  unavailable: 'このリンクは開けません', friends_only: 'このリプレイはフレンドだけが見られます', maintenance: 'メンテナンス中です。終わってからもう一度開いてください',
+  update_required: 'このリンクを開くにはアプリの更新が必要です', RATE_LIMITED: 'しばらくしてからお試しください', invalid: 'リンクの形が正しくありません',
+};
+const lkErr = (r) => (r.code === 'LINK_LIMIT' ? '今日はこれ以上リンクを作れません' : r.code === 'NOT_FOUND' ? '共有できるものがありません' : r.code === 'RATE_LIMITED' ? LK_NOTICE.RATE_LIMITED : 'リンクを作れませんでした');
+let lkInput = '';
+async function lkShare(type, target, back) {
+  const r = await L.links.create(type, target);
+  if (!r.ok) { toast(lkErr(r)); return; }
+  ShareSheet(r.value, back);
+}
+/** その他 › 見た目・お世話・仲間 › リンクで招待・共有. */
+async function Links() {
+  currentScreen = Links;
+  const r = await L.links.list();
+  Clear('links'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('リンクで招待・共有', 'リンクを開いても、何ももらえず、何も使いません');
+  const lp = Glass('Send links', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('lk-send');
+  Kicker('リンクを送る', 36, 30, lp);
+  [['フレンド申請（あなたのプロフィール）', () => lkShare('friend', {}, Links), 'friend'], ['友達招待コード', () => lkShare('invite', {}, Links), 'invite'],
+    ['フレンド部屋（デモ）', () => lkShare('room', { passphrase: L.links.demoMyRoom() }, Links), 'room'], ['ヘルプ：リンクについて', () => lkShare('help', { articleId: 'share_links' }, Links), 'help']]
+    .forEach(([label, go, type], i) => { const b = Ghost(label, 36, 92 + i * 66, 688, 56, go, lp, 'small'); b.dataset.lkShare = type; });
+  Hair(36, 368, 688, lp);
+  Kicker('共有したリンク', 36, 388, lp, { rule: false, size: 15 });
+  const links = r.ok ? r.value.links : [];
+  if (!links.length) Txt('まだありません', 36, 430, 688, 16, MUTED, lp).classList.add('lk-none');
+  links.slice(0, 4).forEach((x, i) => {
+    const row = el('lk-row', 36, 424 + i * 54, 688, 50, lp);
+    row.dataset.lkType = x.type;
+    Txt(LK_TYPE[x.type] ?? x.type, 0, 4, 260, 17, WHITE, row, { weight: 700, nowrap: true });
+    Txt(`期限 ${jstDate(x.expiresAt)}`, 0, 28, 360, 13, SOFT, row, { nowrap: true });
+    TextLink('取り消す', 520, 6, 168, async () => { const v = await L.links.revoke(x.token); toast(v.ok && v.value.revoked ? 'リンクを取り消しました' : 'もう取り消されています'); Links(); }, row).dataset.lkRevoke = x.type;
+    Hair(0, 49, 688, row);
+  });
+  if (r.ok) Txt(`今日作ったリンク ${r.value.createsToday} / ${r.value.createsPerDay}`, 36, 642, 688, 13, SOFT, lp, { nowrap: true });
+  const rp = Glass('Open a link', 820, 134, 744, 676, undefined, .86);
+  Kicker('リンクを開く', 36, 30, rp);
+  Txt('受け取ったリンクや、ストアのページに出ていたコードを入れて開けます', 36, 92, 672, 16, MUTED, rp, { lh: 1.6 });
+  Cta('リンクを開く', 36, 170, 420, () => OpenLink(), rp).dataset.action = 'open-link';
+  Hair(36, 290, 672, rp);
+  Kicker('デモ（レビュー用）', 36, 310, rp, { rule: false, size: 15, color: SOFT });
+  Ghost('フレンド部屋の結果（再戦）', 36, 356, 420, 56, () => FriendRoomResult(), rp, 'quiet small').dataset.action = 'rematch-demo';
+  Txt('フレンド部屋のレースの後、押した人どうしで同じ条件の新しい部屋に入ります。ランク戦には影響しません', 36, 432, 672, 14, SOFT, rp, { lh: 1.6 });
+  Back(() => Invite(), 'BACK', 40, 834); // R21 integration: the links hub opens from 友達招待
+}
+/** The share sheet: the server's text and link (no id, no name), expiry, share / copy. */
+function ShareSheet(link, back) {
+  Shade('dim heavy');
+  const box = Dialog('Share sheet', 920, 500);
+  box.classList.add('lk-sheet'); box.dataset.lkType = link.type;
+  Kicker('共有', 52, 44, box);
+  Txt(link.shareText.split('\n')[0], 52, 104, 816, 26, WHITE, box, { weight: 700, nowrap: true });
+  Txt(link.url, 52, 160, 816, 18, CYAN, box, { cls: 'keep-ja lk-url', nowrap: true }).style.overflow = 'hidden';
+  Txt(`リンクにあなたのIDや名前は入りません。期限は${jstDate(link.expiresAt)}までです。`, 52, 210, 816, 15, MUTED, box, { lh: 1.6 });
+  Cta('共有する', 52, 300, 420, async () => {
+    try { if (navigator.share) await navigator.share({ text: link.shareText }); else await navigator.clipboard?.writeText(link.shareText); } catch { /* cancelled / no clipboard */ }
+    toast('共有しました');
+  }, box, 'small lk-share-go');
+  Ghost('閉じる', 496, 306, 220, 50, () => (back ?? Links)(), box, 'quiet').classList.add('lk-sheet-close');
+  Txt('リンクを開くと画面が開くだけです。参加や申請は、受け取った人が決めます', 52, 400, 816, 13, SOFT, box, { lh: 1.5 });
+}
+/** 「リンクを開く」: a URL, the muchi:// link or the typed code → the screen (FTUE: waits until the tutorial is over). */
+function OpenLink(state = {}) {
+  currentScreen = () => OpenLink(state);
+  Clear('open-link'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('リンクを開く', 'リンクを開くだけでは、何も使わず、何にも参加しません', { wallet: false });
+  const lp = Glass('Open link', 36, 134, 760, 676, undefined, .9);
+  lp.classList.add('lk-open');
+  Kicker('リンクまたはコード', 36, 30, lp);
+  trfField(lp, 36, 96, 688, lkInput, 'リンクまたはコード', 'lk-input', (s) => { lkInput = s; }, { placeholder: 'https://… / abcd-efgh-…', size: 18, ls: '.02em', max: 300 });
+  const note = Txt(state.notice ?? '', 36, 186, 688, 16, state.notice ? WARN : MUTED, lp, { weight: 500, lh: 1.5, cls: 'lk-notice' });
+  note.dataset.state = state.state ?? '';
+  Cta('開く', 36, 260, 420, () => lkOpen(), lp).classList.add('lk-open-go');
+  Txt('iPhoneでストアから入れた時は、リンクのページに出ているコードをここに入れてください（自動では開きません）', 36, 370, 688, 14, SOFT, lp, { lh: 1.6 });
+  const rp = Glass('Demo links', 820, 134, 744, 676, undefined, .86);
+  Kicker('デモ（レビュー用）', 36, 30, rp, { color: SOFT });
+  Txt('フレンドのミドリカワさんから届いたリンク', 36, 88, 672, 15, MUTED, rp);
+  [['フレンド部屋のリンク', 'room'], ['ヘルプのリンク', 'help'], ['フレンド申請のリンク', 'friend'], ['閉じた部屋のリンク', 'expired']].forEach(([label, kind], i) => {
+    Ghost(label, 36, 130 + i * 70, 420, 56, async () => {
+      const r = await L.links.demoIncoming(kind);
+      if (!r.ok) { toast(r.message); return; }
+      lkInput = r.value; lkOpen();
+    }, rp, 'quiet small').dataset.lkDemo = kind;
+  });
+  Back(() => Links(), 'BACK', 40, 834);
+}
+async function lkOpen() {
+  if (!L.links.parse(lkInput)) return OpenLink({ notice: LK_NOTICE.invalid, state: 'invalid' });
+  if (!player?.flags?.partnerHorseId) return OpenLink({ notice: 'チュートリアルの後で開きます', state: 'queued' }); // REQ-LINK-023: FTUE first
+  const r = await L.links.resolve(lkInput);
+  if (!r.ok) return OpenLink({ notice: LK_NOTICE[r.code] ?? LK_NOTICE.unavailable, state: r.code });
+  (globalThis.__muchiKpi ??= []).push({ name: 'deep_link_open', entry: lkInput.startsWith('https://') ? 'universal' : 'typed', type: r.value.state === 'ok' ? r.value.type : 'none' });
+  if (r.value.state !== 'ok') return OpenLink({ notice: LK_NOTICE[r.value.state] ?? LK_NOTICE.unavailable, state: r.value.state });
+  lkInput = '';
+  LinkConfirm(r.value);
+}
+/** Where a link leads — always a confirmation first (the link itself joins, redeems, requests and spends nothing). */
+async function LinkConfirm(v) {
+  currentScreen = () => LinkConfirm(v);
+  const t = v.target ?? {};
+  const help = v.type === 'help' ? await L.helpArticle(t.articleId, helpLang()) : null;
+  Clear('link-confirm'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('リンク', LK_TYPE[v.type] ?? '', { wallet: false });
+  const p = Glass('Link target', 36, 134, 900, 676, undefined, .9);
+  p.classList.add('lk-confirm'); p.dataset.lkType = v.type; p.dataset.screen = v.screen;
+  Kicker(LK_TYPE[v.type] ?? 'リンク', 36, 30, p);
+  const head = { room: `部屋 ${t.passphrase}`, help: help?.ok ? help.value.title : 'ヘルプ', friend: t.displayName, invite: t.code, cup: t.preview?.cupName, team: t.teamName, replay: t.replayTitle ?? 'リプレイ' }[v.type] ?? '';
+  Txt(head ?? '', 36, 96, 828, 34, WHITE, p, { weight: 700, nowrap: true, cls: v.type === 'friend' || v.type === 'team' || v.type === 'cup' ? 'keep-ja lk-head' : 'lk-head' });
+  Txt('まだ何もしていません。どうするかを選んでください', 36, 164, 828, 16, MUTED, p, { lh: 1.6 });
+  const go = {
+    room: ['この部屋に参加する', async () => { const r = await L.links.joinRoom(t.passphrase); if (!r.ok) { toast('この部屋には入れませんでした'); return Links(); } toast('部屋に入りました'); RoomLobby(t.passphrase, r.value.members); }],
+    help: ['記事を読む', () => HelpArticle(t.articleId, 'list')],
+    friend: [t.self ? 'あなたのリンクです' : 'フレンド画面へ', () => Friends()],
+    invite: ['招待コードの入力へ', () => Invite()],
+    cup: ['カップの画面へ', () => HostedCups()],
+    team: ['支部の画面へ', () => TeamFeed()],
+    replay: ['リプレイの画面へ', () => MyReplays()],
+  }[v.type];
+  if (go) Cta(go[0], 36, 250, 460, go[1], p).classList.add('lk-confirm-go');
+  Ghost('開かない', 520, 257, 220, 60, () => Links(), p, 'quiet').classList.add('lk-confirm-no');
+  if (v.type === 'invite') Txt('招待コードの特典は、これまでどおり入力した時だけです', 36, 370, 828, 14, SOFT, p, { lh: 1.6 });
+  Back(() => Links(), 'BACK', 40, 834);
+}
+/** A friend room as the lobby shows it (members, the same conditions, the room link). */
+function RoomLobby(passphrase, names) {
+  currentScreen = () => RoomLobby(passphrase, names);
+  const info = L.rematch.room(passphrase);
+  Clear('room-lobby'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('フレンド部屋', `部屋 ${passphrase}`, { wallet: false });
+  const p = Glass('Room', 36, 134, 900, 676, undefined, .9);
+  p.classList.add('lk-room');
+  Kicker('参加している人', 36, 30, p);
+  (info?.members ?? names ?? []).forEach((n, i) => Txt(n, 36, 96 + i * 44, 600, 22, i === 0 ? GOLD : WHITE, p, { weight: 700, nowrap: true, cls: n === 'あなた' ? '' : 'keep-ja' }));
+  if (info?.conditions) Txt('前のレースと同じ条件・新しいレース', 36, 300, 828, 16, CYAN, p, { weight: 700, ls: '.06em' }).classList.add('lk-same');
+  Txt('出走は主催者が押します（2人から）。順位は表示しますが、ランク戦の点・レートには入りません', 36, 340, 828, 14, MUTED, p, { lh: 1.6 });
+  Cta('部屋のリンクを送る', 36, 420, 460, () => lkShare('room', { passphrase }, () => RoomLobby(passphrase, names)), p, 'small').classList.add('lk-room-share');
+  Back(() => Links(), 'BACK', 40, 834);
+}
+// ---- 再戦 on the friend-room result (REQ-LINK-014..019)
+let rmTimer = null;
+const RM_REASON = { too_few: '人数がそろわず、再戦は開きませんでした', not_included: 'この再戦には入れませんでした', expired: '再戦の受付は終わりました' };
+function rmStatus(v) {
+  if (!v) return '';
+  if (v.state === 'opened') return '新しい部屋ができました';
+  if (v.state === 'closed') return RM_REASON[v.reason] ?? RM_REASON.not_included;
+  if (v.you !== 'pressed') return '';
+  return `再戦を待っています（${v.pressed}/${v.eligible}人・あと${v.secondsLeft ?? 0}秒）`; // the server's deadline on the server's clock
+}
+async function FriendRoomResult(fin, view) {
+  const f = fin ?? L.rematch.demoFinish();
+  currentScreen = () => FriendRoomResult(f, view);
+  clearTimeout(rmTimer);
+  Clear('friend-room-result'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('フレンド部屋　/　結果', 'ランク戦の点・レートには入りません', { wallet: false });
+  const lp = Glass('Friend room result', 36, 134, 760, 676, undefined, .9);
+  Kicker('着順', 36, 30, lp);
+  f.places.forEach((x, i) => {
+    const row = el('lk-place', 36, 96 + i * 62, 688, 56, lp);
+    Txt(`${x.place}着`, 0, 10, 120, 26, x.place === 1 ? GOLD : WHITE, row, { weight: 700, cls: 'num' });
+    Txt(x.name, 140, 14, 520, 22, x.you ? CYAN : WHITE, row, { weight: 700, nowrap: true, cls: x.you ? '' : 'keep-ja' }); // names as typed; 「あなた」 is UI text
+    Hair(0, 55, 688, row);
+  });
+  const rp = Glass('Rematch', 820, 134, 744, 676, undefined, .86);
+  rp.classList.add('rm-panel'); rp.dataset.state = view?.state ?? 'none';
+  Kicker('再戦', 36, 30, rp);
+  Txt('押した人どうしで、同じ条件の新しい部屋に入ります。最初に押されてから20秒で締め切ります', 36, 92, 672, 16, MUTED, rp, { lh: 1.6 });
+  const status = Txt(rmStatus(view), 36, 190, 672, 18, view?.state === 'closed' ? WARN : WHITE, rp, { weight: 700, lh: 1.5, cls: 'rm-status' });
+  if (!view || view.state === 'waiting') {
+    const b = Cta(view?.you === 'pressed' ? '待っています' : '再戦', 36, 270, 420, async () => { const r = await L.rematch.press(); if (!r.ok) { toast('今は再戦できません'); return; } FriendRoomResult(f, r.value); }, rp);
+    b.classList.add('rm-press'); if (view?.you === 'pressed') disable(b);
+    Ghost('再戦をやめる', 480, 277, 236, 60, async () => { await L.rematch.decline(); toast('再戦をやめました'); Links(); }, rp, 'quiet').classList.add('rm-decline');
+  }
+  if (view?.state === 'opened') Cta('新しい部屋へ', 36, 270, 420, () => RoomLobby(view.room.passphrase), rp).classList.add('rm-room');
+  Hair(36, 400, 672, rp);
+  Kicker('デモ（レビュー用）', 36, 420, rp, { rule: false, size: 15, color: SOFT });
+  Txt('ハヤテさんは押しました。クロサキさんは抜けました', 36, 456, 672, 14, SOFT, rp, { lh: 1.5 });
+  if (view?.state === 'waiting' && view.you === 'pressed') Ghost('ナギサさんも押す', 36, 500, 420, 56, async () => { const r = await L.rematch.demoOthers(); FriendRoomResult(f, r.value); }, rp, 'quiet small').classList.add('rm-demo-others');
+  if (view?.state === 'waiting' && view.you === 'pressed') {
+    const tick = async () => {
+      if (!document.querySelector('.screen.in .rm-status')) return;
+      const r = await L.rematch.status();
+      if (r.ok && r.value.state !== 'waiting') return FriendRoomResult(f, r.value);
+      status.textContent = rmStatus(r.ok ? r.value : view);
+      rmTimer = setTimeout(tick, 1000);
+    };
+    rmTimer = setTimeout(tick, 1000);
+  }
+  Back(() => { clearTimeout(rmTimer); Links(); }, 'BACK', 40, 834);
 }
 
 // ================================================================= round 19: 引き継ぎコード (REQ-TRF-*, contracts/protocol.md §54)
@@ -6813,12 +7170,17 @@ function TransferDone(v) {
 /**
  * R20 integration (§58.11, §54 × §59–§61; = unity AccountChangeReset): the account on this device changed (SESSION_REPLACED on the
  * old device, a redeemed code on the new one) — the device reminders are cancelled and forgotten, the error reporter sends what it
- * queued without a player id, and the review / one-prompt session starts again.
+ * queued without a player id, and the review / one-prompt session starts again (R21: and the waiting link and the release
+ * notes' session state go).
  */
 function deviceAccountChanged() {
   lnSet(LN_SCHEDULED, JSON.stringify({ ids: {} }));
   try { if (ceReady) { engine.CeAccountChanged(); ceSave(); } } catch { /* the reporter never throws into the page */ }
   revPrompted = false;
+  // R21 integration (§54 × §63 / §64): the link waiting on this device came for the old account; the release notes'
+  // "shown this session" goes with the session ("seen" is per account on the server)
+  lkInput = '';
+  rnState.shown = false;
   sessionPrompt.reset();
   globalThis.__muchiAccountChanges = (globalThis.__muchiAccountChanges ?? 0) + 1;
 }
@@ -6986,7 +7348,9 @@ async function Friends(newVisit = true) {
   const d = Glass('Friends summary', 1116, 134, 448, 676, undefined, .9);
   Kicker('フレンド', 36, 30, d, { size: 16 });
   Txt(`${F.friends.length}人`, 36, 90, 376, 40, WHITE, d, { weight: 700, cls: 'num' }).dataset.fsugFriends = String(F.friends.length);
-  Txt(F.friends.slice(0, 3).map((x) => x.displayName).join('　') || 'まだいません', 36, 150, 376, 15, MUTED, d, { nowrap: true }).style.overflow = 'hidden';
+  // round 21 (REQ-SHOW-008): a friend's name opens their トレーナーカード (names as typed)
+  if (!F.friends.length) Txt('まだいません', 36, 150, 376, 15, MUTED, d, { nowrap: true });
+  F.friends.slice(-3).reverse().forEach((x, i) => { const n = TextLink(x.displayName, 36 + i * 126, 140, 120, () => ShowcaseCard(x.playerId, 'friends', () => Friends(false)), d); n.classList.add('keep-ja', 'sc-open'); n.dataset.scOpen = x.playerId; n.style.overflow = 'hidden'; });
   if (F.outgoing.length) Txt(`申請中 ${F.outgoing.length}人`, 36, 182, 376, 14, CYAN, d, { weight: 700, ls: '.1em' }).dataset.fsugOutgoing = String(F.outgoing.length);
   TextLink('フレンドコード・友達招待', 36, 214, 376, () => Invite(), d);
   Hair(36, 270, 376, d);
@@ -7000,7 +7364,223 @@ async function Friends(newVisit = true) {
   sw.dataset.fsugHidden = S.settings.hidden ? '1' : '0';
   Txt('オンにすると、ほかのプレイヤーのおすすめにあなたが出なくなります', 36, 508, 376, 12, SOFT, d, { lh: 1.5 });
   Cta('ホームへ', 36, 576, 376, () => Home(), d, 'small');
+  TextLink('自分のトレーナーカード', 36, 636, 376, () => ShowcaseCard(player?.id ?? 'local', 'friends', () => Friends(false)), d).dataset.action = 'sc-mine';
   Back(Home, 'ホームへ', 40, 834);
+}
+
+// ================================================================= round 21: トレーナーカード (REQ-SHOW-*, contracts/protocol.md §62)
+// The same screens as the Unity ShowcaseCardModel / ShowcaseEditorModel on the real rules (showcase.ts + ShowcaseService):
+// a player's card (the featured horse, up to three pins they earned, best records, one fixed phrase, the background their
+// achievements unlocked), opened from friends, the rival, activity, the cup lobby, spectating and the hall; the neutral card
+// for a block either way / a deleted or banned player; the report entry (§47, source profile); the share image built by the
+// real C# ShowcaseShare (WASM, no player id); the editor (その他 › 見た目・お世話・仲間): only what the player has can be picked,
+// no text field anywhere. ムチ一閃 tone: the background art, translucent navy panels, letter-spaced cyan kickers, one cyan CTA ».
+// Names players typed (display names, horse and cup names) are never translated (.keep-ja).
+const scLang = () => (isJa() ? 'ja' : 'en');
+const SC_BG_ART = { dawn: 'Art/title-screen', turf_stretch: 'Art/Courses/spring-course', night_lights: 'Art/Weather/cloudy', dirt_dust: 'Art/Courses/autumn-course',
+  stopwatch: 'Art/first-ride', every_course: 'Art/home-paddock', golden_gate: 'Art/race-result' };
+const SC_COAT = { bay: 0, dark_bay: 0, brown: 0, chestnut: 1, gray: 2, white: 2, black: 3 };
+const SC_KIND = { title: '称号', achievement: '実績', cup_trophy: 'カップ', hall: '殿堂', goal_ribbon: 'リボン', tournament: '大会' };
+const SC_TABS = [['horse', '愛馬'], ['pins', 'ピン留め'], ['courses', 'ベスト記録'], ['phrase', '一言'], ['background', '背景']];
+const SC_SOURCES = ['settings', 'friends', 'rival', 'activity', 'cup_lobby', 'spectate', 'hall', 'stable', 'leaderboard', 'team'];
+const scState = { viewed: '', tab: 'horse', editor: null, draft: null };
+/** showcase_view / showcase_share through the server's strict client schema (no player id), kept for the tests. */
+async function scKpi(name, props) {
+  const r = await L.showcase.kpi(name, props);
+  if (r.ok) (globalThis.__muchiKpi ??= []).push({ name, ...props });
+}
+const scTyped = (n, typed = true) => { if (typed) { n.classList.add('keep-ja'); n.dataset.typed = '1'; } return n; };
+
+async function ShowcaseCard(playerId, source = 'friends', back = null) {
+  const backTo = back ?? (() => Friends(false));
+  if (!SC_SOURCES.includes(source)) source = 'friends';
+  currentScreen = () => ShowcaseCard(playerId, source, back);
+  const r = await L.showcase.card(playerId, scLang());
+  if (!r.ok) { toast('トレーナーカードはオンラインで見られます'); return backTo(); }
+  const c = r.value;
+  const neutral = c.state === 'neutral';
+  const key = `${playerId}:${source}:${c.state}`;
+  if (scState.viewed !== key) { scState.viewed = key; scKpi('showcase_view', { source, relation: c.relation, neutral }); }
+  Clear('showcase'); SetArt(SC_BG_ART[c.background.id] ?? 'Art/title-screen', false); Shade('left');
+  cur.dataset.bg = c.background.id;
+  TopBar('トレーナーカード', neutral ? 'このカードは表示できません' : '自分で手に入れたものだけが並びます　·　一言は決まった文から', { wallet: false });
+  // ① the featured horse (its look and the rider's silks colours)
+  const lp = Glass('Showcase horse', 36, 134, 500, 676, undefined, .8);
+  lp.classList.add('sc-horse');
+  Kicker('愛馬', 30, 30, lp, { w: 440 });
+  if (c.horse) {
+    ArtImage(partnerPreview(SC_COAT[c.horse.appearance?.coat] ?? 0), 30, 96, 440, 320, lp, 'sc-horse-art');
+    const hn = Txt(c.horse.horseName ?? '愛馬', 30, 432, 440, 30, GOLD, lp, { weight: 700, nowrap: true, ls: '.04em' });
+    hn.classList.add('sc-horse-name'); scTyped(hn, !!c.horse.horseName);
+    Txt(`${c.horse.rarity}　/　${c.horse.sex === 'female' ? '牝馬' : '牡馬'}`, 30, 478, 440, 15, MUTED, lp, { weight: 500, nowrap: true });
+  } else Txt(neutral ? '' : '愛馬はまだ選ばれていません', 30, 110, 440, 17, MUTED, lp, { lh: 1.5 });
+  if (c.silks) {
+    Kicker('勝負服', 30, 530, lp, { rule: false, size: 13 });
+    c.silks.colors.forEach((id, i) => { const chip = el('sc-silk', 30 + i * 46, 562, 36, 36, lp); chip.style.background = L.showcase.hex(id); chip.dataset.silk = id; });
+  }
+  // ② the card
+  const rp = Glass('Showcase card', 556, 134, 1008, 676, undefined, .88);
+  rp.classList.add('sc-card'); rp.dataset.state = c.state; rp.dataset.relation = c.relation;
+  const nm = Txt(c.displayName, 36, 30, 680, 34, WHITE, rp, { weight: 700, nowrap: true, ls: '.04em' });
+  nm.classList.add('sc-name'); scTyped(nm, !neutral);
+  if (neutral) {
+    // REQ-SHOW-009/010: the neutral name and the default background only — no reason, no report, no share
+    Txt('このカードは表示できません', 36, 100, 900, 19, MUTED, rp, { lh: 1.5 }).classList.add('sc-neutral');
+    Back(backTo, 'BACK', 40, 834);
+    return;
+  }
+  Txt(`${c.titleName ?? '称号なし'}　·　クラス ${c.classId}　·　レート ${fmt(c.rating)}`, 36, 82, 920, 16, GOLD, rp, { weight: 700, nowrap: true }).classList.add('sc-title');
+  Txt(`${fmt(c.stats.races)}戦${fmt(c.stats.wins)}勝　·　3着以内 ${fmt(c.stats.top3)}回`, 36, 112, 920, 14, MUTED, rp, { weight: 500, nowrap: true });
+  Kicker('ピン留め', 36, 146, rp, { w: 440, size: 15 });
+  if (!c.pins.length) Txt('まだピン留めはありません', 36, 226, 900, 16, SOFT, rp);
+  c.pins.slice(0, 3).forEach((p, i) => {
+    const card = Card('Showcase pin', 36 + i * 316, 222, 300, 118, rp, p.kind === 'cup_trophy' || p.kind === 'tournament' ? 'var(--gold)' : 'var(--cyan)');
+    card.classList.add('sc-pin'); card.dataset.kind = p.kind; card.dataset.pin = p.id;
+    Txt(SC_KIND[p.kind] ?? '', 20, 16, 260, 12, CYAN, card, { weight: 700, ls: '.18em', nowrap: true });
+    const typed = p.horseName ?? p.cupName ?? null;
+    scTyped(Txt(typed ?? p.label, 20, 40, 260, 20, WHITE, card, { weight: 700, nowrap: true }), !!typed).classList.add('sc-pin-head');
+    Txt(p.sub, 20, 76, 260, 14, MUTED, card, { weight: 500, nowrap: true });
+  });
+  Kicker('ベスト記録', 36, 362, rp, { w: 440, size: 15 });
+  const rec = [...c.timeAttack.map((t) => [t.course, t.time]), ...(c.seasonClass ? [[c.seasonClass.label, '']] : [])];
+  if (!rec.length) Txt('まだ記録はありません', 36, 440, 900, 16, SOFT, rp);
+  rec.slice(0, 3).forEach(([a, b], i) => {
+    const row = el('sc-rec', 36, 436 + i * 36, 936, 34, rp); row.dataset.rec = String(i);
+    Txt(a, 0, 4, 700, 17, WHITE, row, { weight: 500, nowrap: true });
+    if (b) Txt(b, 720, 0, 216, 22, GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
+  });
+  if (c.phrase) Txt(`「${c.phrase.phraseText}」`, 36, 548, 936, 20, WHITE, rp, { weight: 500, nowrap: true }).classList.add('sc-phrase');
+  Cta('画像で共有', 36, 596, 320, () => ShowcaseShareView(c, () => ShowcaseCard(playerId, source, back)), rp, 'small').dataset.action = 'sc-share';
+  if (c.relation === 'self') Ghost('カードを編集', 376, 600, 260, 52, () => ShowcaseEdit(() => ShowcaseCard(playerId, source, back)), rp, 'quiet small').dataset.action = 'sc-edit';
+  if (c.reportable) {
+    // REQ-SHOW-011: the existing report sheet (§47, source profile); the horse name only when the card shows one
+    Ghost('通報する', 376, 600, 220, 52, () => ReportSheet({ playerId: c.playerId, name: c.displayName, kind: 'display_name', source: 'profile' }), rp, 'quiet small').classList.add('rpt-open');
+    if (c.reportableHorseId) Ghost('馬の名前を通報', 612, 600, 260, 52, () => ReportSheet({ playerId: c.playerId, name: c.horse.horseName, kind: 'horse_name', ref: c.reportableHorseId, source: 'profile' }), rp, 'quiet small').classList.add('rpt-open-horse');
+  }
+  Back(backTo, 'BACK', 40, 834);
+}
+
+/** REQ-SHOW-013: the share image (the real C# ShowcaseShare in WASM): the display name and the card's texts, never an id. */
+function ShowcaseShareView(c, back) {
+  const s = JSON.parse(engine.ShowcaseShareCard(JSON.stringify(c)));
+  if (!s.ok) { toast('このカードは共有できません'); return back(); }
+  currentScreen = () => ShowcaseShareView(c, back);
+  Clear('showcase-share'); SetArt(SC_BG_ART[c.background.id] ?? 'Art/title-screen', false); Shade('dim');
+  const card = Glass('Showcase share card', 420, 70, 760, 700, undefined, .9);
+  card.classList.add('sc-share'); card.dataset.kind = s.kind;
+  Kicker(s.watermark, 44, 40, card, { size: 17 });
+  Txt(s.mode, 44, 108, 660, 15, MUTED, card, { weight: 500, nowrap: true });
+  scTyped(Txt(s.name, 44, 136, 660, 40, WHITE, card, { weight: 700, nowrap: true, ls: '.04em' })).dataset.share = 'name';
+  if (s.horse) scTyped(Txt(s.horse, 44, 196, 660, 24, GOLD, card, { weight: 700, nowrap: true })).dataset.share = 'horse';
+  Hair(44, 240, 672, card);
+  // a line may hold a player-typed name (cup / horse): each part is translated on its own and the names stay as typed
+  const scLine = (l) => (isJa() ? l : l.split('　').map((x) => (JP_RE.test(x) ? L.l10n.translate(x) ?? x : x)).join('  '));
+  s.lines.slice(0, 8).forEach((l, i) => { const t = Txt(scLine(l), 44, 258 + i * 34, 672, 17, WHITE, card, { weight: 500, nowrap: true }); t.classList.add('sc-share-line', 'keep-ja'); });
+  const st = Txt(isJa() ? '共有の文：' + s.shareText : 'Share text: ' + scLine(s.shareText), 44, 548, 672, 13, MUTED, card, { lh: 1.5 }); st.dataset.share = 'text'; st.classList.add('keep-ja');
+  Cta('共有する', 44, 612, 380, () => { scKpi('showcase_share', { pins: s.pins, records: s.records, horse: s.hasHorse }); toast('共有はアプリ（IShareSheet）で行います'); }, card, 'small').dataset.action = 'sc-share-send';
+  Ghost('戻る', 444, 616, 272, 52, back, card, 'quiet small');
+  Caption('画像にはプレイヤーIDを入れません（名前だけ）', 424, 790, undefined, 14, MUTED).classList.add('tshadow');
+}
+
+/** The editor: tabs over what the player may pick, a summary of the draft, one Save CTA. */
+async function ShowcaseEdit(back = null, tab = null) {
+  const backTo = back ?? (() => Friends()); // R21 integration: the editor lives under フレンド › 自分のトレーナーカード
+  if (tab) scState.tab = tab;
+  currentScreen = () => ShowcaseEdit(back);
+  if (!scState.editor || !tab) {
+    const r = await L.showcase.mine(scLang());
+    if (!r.ok) { toast('トレーナーカードはオンラインで編集できます'); return backTo(); }
+    if (!scState.editor || !scState.draft) scState.draft = JSON.parse(JSON.stringify(r.value.selection));
+    scState.editor = r.value;
+  }
+  const E = scState.editor, D = scState.draft;
+  Clear('showcase-edit'); SetArt(SC_BG_ART[D.backgroundId] ?? 'Art/title-screen', false); Shade('left');
+  TopBar('トレーナーカードの編集', '手に入れたものだけが並びます　·　文字を書く欄はありません', { wallet: false });
+  const lp = Glass('Showcase options', 36, 134, 760, 676, undefined, .88);
+  lp.classList.add('sc-options'); lp.dataset.tab = scState.tab;
+  SC_TABS.forEach(([k, label], i) => {
+    const b = Btn(label, 30 + i * 142, 26, 134, 46, () => ShowcaseEdit(back, k), 'choice' + (scState.tab === k ? ' on' : ''), lp);
+    b.dataset.scTab = k; b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.padding = '0';
+  });
+  const row = (label, i, on, action, o = {}) => {
+    const col = o.cols === 2 ? i % 2 : 0, line = o.cols === 2 ? Math.floor(i / 2) : i;
+    const w = o.cols === 2 ? 340 : 700;
+    const b = Btn(label, 30 + col * 360, 96 + line * 56, w, 48, action, 'choice sc-opt' + (on ? ' on' : '') + (o.locked ? ' locked' : ''), lp);
+    b.style.fontSize = '16px'; b.style.whiteSpace = 'nowrap'; b.style.overflow = 'hidden';
+    if (o.typed) b.classList.add('keep-ja');
+    return b;
+  };
+  const redraw = () => ShowcaseEdit(back, scState.tab);
+  if (scState.tab === 'horse') {
+    row('選ばない', 0, D.horseId === null, () => { D.horseId = null; redraw(); }).dataset.scHorse = '';
+    E.horses.slice(0, 8).forEach((h, i) => { row(h.horseName, i + 1, D.horseId === h.horseId, () => { D.horseId = h.horseId; redraw(); }, { typed: true }).dataset.scHorse = h.horseId; });
+    if (!E.horses.length) Txt('現役の馬がいません（引退した馬・貸し出し中の馬は選べません）', 30, 160, 700, 15, SOFT, lp, { lh: 1.5 });
+  } else if (scState.tab === 'pins') {
+    Txt(`${D.pins.length} / ${E.limits.pinsMax}`, 560, 610, 170, 20, GOLD, lp, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).classList.add('sc-pin-count');
+    if (!E.pins.length) Txt('まだピン留めできるものがありません。称号・実績・トロフィーを手に入れると並びます', 30, 110, 700, 15, SOFT, lp, { lh: 1.6 });
+    E.pins.slice(0, 16).forEach((p, i) => {
+      const on = D.pins.some((x) => x.kind === p.kind && x.id === p.id);
+      const typed = p.horseName ?? p.cupName ?? null;
+      const b = row(`${SC_KIND[p.kind]}　${typed ?? p.label}`, i, on, () => {
+        if (on) D.pins = D.pins.filter((x) => !(x.kind === p.kind && x.id === p.id));
+        else if (D.pins.length >= E.limits.pinsMax) { toast('ピン留めはこれ以上できません'); return; }
+        else D.pins.push({ kind: p.kind, id: p.id });
+        redraw();
+      }, { cols: 2, typed: !!typed });
+      b.dataset.scPin = `${p.kind}:${p.id}`;
+    });
+  } else if (scState.tab === 'courses') {
+    if (!E.courses.length) Txt('タイムアタックの記録がまだありません', 30, 110, 700, 15, SOFT, lp);
+    E.courses.slice(0, 8).forEach((t, i) => {
+      const on = D.taTrackIds.includes(t.trackId);
+      row(`${t.course}　${t.time}`, i, on, () => {
+        if (on) D.taTrackIds = D.taTrackIds.filter((x) => x !== t.trackId);
+        else if (D.taTrackIds.length >= E.limits.taMax) { toast('コースはこれ以上選べません'); return; }
+        else D.taTrackIds.push(t.trackId);
+        redraw();
+      }).dataset.scCourse = t.trackId;
+    });
+    Txt('今シーズンのランク戦のクラスは、走ると自動で出ます', 30, 610, 700, 13, SOFT, lp);
+  } else if (scState.tab === 'phrase') {
+    row('なし', 0, D.phraseId === null, () => { D.phraseId = null; redraw(); }, { cols: 2 }).dataset.scPhrase = '';
+    E.phrases.slice(0, 15).forEach((p, i) => { row(p.phraseText, i + 1, D.phraseId === p.id, () => { D.phraseId = p.id; redraw(); }, { cols: 2 }).dataset.scPhrase = p.id; });
+  } else {
+    E.backgrounds.slice(0, 14).forEach((b, i) => {
+      const x = row(b.unlocked ? b.backgroundName : `🔒 ${b.backgroundName}`, i, D.backgroundId === b.id, () => {
+        if (!b.unlocked) { toast(b.unlockText); return; }
+        D.backgroundId = b.id; redraw();
+      }, { cols: 2, locked: !b.unlocked });
+      x.dataset.scBg = b.id; x.dataset.unlocked = String(b.unlocked);
+    });
+  }
+  // ② the draft in words, the rules and the one CTA
+  const rp = Glass('Showcase draft', 816, 134, 748, 676, undefined, .9);
+  rp.classList.add('sc-draft');
+  Kicker('カードの中身', 36, 30, rp, { size: 15 });
+  const horse = E.horses.find((h) => h.horseId === D.horseId);
+  const lines = [
+    ['愛馬', horse ? horse.horseName : '選ばない', !!horse],
+    ['ピン留め', D.pins.length ? `${D.pins.length}つ` : 'なし', false],
+    ['記録', D.taTrackIds.length ? `${D.taTrackIds.length}コース` : 'なし', false],
+    ['一言', E.phrases.find((p) => p.id === D.phraseId)?.phraseText ?? 'なし', false],
+    ['背景', E.backgrounds.find((b) => b.id === D.backgroundId)?.backgroundName ?? '', false],
+  ];
+  lines.forEach(([k, v, typed], i) => {
+    Txt(k, 36, 104 + i * 52, 150, 14, MUTED, rp, { weight: 700, ls: '.12em', nowrap: true });
+    scTyped(Txt(v, 196, 100 + i * 52, 520, 18, WHITE, rp, { weight: 700, nowrap: true }), typed);
+  });
+  Txt(E.notice, 36, 376, 676, 13, SOFT, rp, { lh: 1.6 });
+  if (E.young) Txt('13歳未満のため、馬の名前などはカードに出ません', 36, 470, 676, 13, WARN, rp, { lh: 1.5 }).classList.add('sc-young');
+  Cta('保存する', 36, 524, 400, async () => {
+    const r = await L.showcase.save(D, scLang());
+    if (!r.ok) { toast(r.code === 'NOT_ELIGIBLE' ? 'まだ条件を満たしていません' : r.message); return; }
+    scState.editor = r.value; scState.draft = JSON.parse(JSON.stringify(r.value.selection));
+    toast('カードを保存しました');
+    ShowcaseEdit(back, scState.tab);
+  }, rp, 'small').dataset.action = 'sc-save';
+  TextLink('カードを見る', 456, 536, 260, () => ShowcaseCard(player?.id ?? 'local', 'settings', () => ShowcaseEdit(back)), rp).dataset.action = 'sc-view';
+  { const q = Ghost('？', 660, 26, 52, 52, () => TipCard('showcase_tip', 'list', () => ShowcaseEdit(back, scState.tab)), rp, 'small quiet tip-q'); q.setAttribute('aria-label', 'ヒント'); q.dataset.action = 'sc-tip'; }
+  Back(() => { scState.editor = null; scState.draft = null; backTo(); }, 'BACK', 40, 834);
 }
 
 // ================================================================= round 13: 購入履歴・コイン履歴・ガチャ履歴 (REQ-HIST-*, contracts/protocol.md §33)
@@ -7508,6 +8088,8 @@ async function Tips(back = null) {
     card.addEventListener('click', () => (c.unlocked ? TipCard(c.id, 'list', () => Tips()) : toast('機能が開くと読めます')));
   });
   Back(() => (tipsState.back ?? Settings)(), '戻る', 40, 834);
+  // round 21 (REQ-NEW-013): the past release notes from ヒント
+  Ghost('アップデート情報', 1300, 826, 264, 52, () => rnOpenHistory('tips', () => Tips()), undefined, 'quiet small').dataset.action = 'release-notes';
 }
 /** One card: `source` = list | context | tour (tip_view once per opening). In a tour, 次へ / おわり instead of 閉じる. */
 async function TipCard(id, source = 'list', back = null) {
@@ -7634,6 +8216,141 @@ function LessonResult(f) {
   EnToggle();
 }
 
+// ================================================================= round 21: アップデートのお知らせ (REQ-NEW-*, contracts/protocol.md §64)
+// The same sheet and list as the Unity ReleaseNotesModel on the real rules (releaseNotes.ts + PlayerService): at a home
+// arrival POST /v1/release-notes/check (the prototype stands in for the store build 1.2.0 here), the sheet only when the
+// server shows a note and no other system prompt took this session (the comeback welcome, the account-link prompt;
+// protocol §64.6), marked seen once when it opens, paged (次へ » / はじめる »), スキップ at any time, a page's one target
+// (a screen, a help article or a tip card — never the shop), 「過去のアップデート情報 ›」 on the last page when versions were
+// skipped, and お知らせ › アップデート情報 (from the activity screen and ヒント). Nothing is granted.
+// KPI release_notes_view / release_notes_target / release_notes_history (globalThis.__muchiKpi, the shape the client sends).
+const RN_VERSION = '1.2.0';
+const rnState = { shown: false, sheet: null, page: 0, back: null, open: null };
+const rnLang = () => (isJa() ? 'ja' : 'en');
+const rnKpi = (name, props) => (globalThis.__muchiKpi ??= []).push({ name, ...props });
+/** Placeholder art per art key: the §57 tip card art (Codex draws them once for both: docs/handoff-codex-round21-whats-new.md). */
+const rnArt = (key) => TIP_ART[key] ?? 'Art/home-paddock';
+const rnDate = (d) => String(d ?? '').replace(/-/g, '.');
+/** At a home arrival: shows the sheet when the server says so and the session is free. Returns true when it opened. */
+async function MaybeReleaseNotes() {
+  if (rnState.shown || !sessionPrompt.can('release_notes') || sessionPrompt.shown) return false;
+  const r = await L.releaseNotesCheck(RN_VERSION, rnLang());
+  if (!r.ok || !r.value.show || !r.value.show.pages.length) return false;
+  if (!sessionPrompt.claim('release_notes')) return false;
+  rnState.shown = true;
+  await L.releaseNotesSeen(r.value.show.appVersion); // marked when it opens (idempotent)
+  rnState.sheet = r.value.show; rnState.page = 0;
+  rnKpi('release_notes_view', { appVersion: rnState.sheet.appVersion, stage: 'shown', page: 1, pages: rnState.sheet.pages.length });
+  ReleaseNotesSheet();
+  return true;
+}
+/** The paged sheet over the home (one page at a time: art, title, short body, the one target link). */
+function ReleaseNotesSheet() {
+  const n = rnState.sheet;
+  if (!n) return Home();
+  const i = Math.min(rnState.page, n.pages.length - 1), pg = n.pages[i], last = i >= n.pages.length - 1;
+  currentScreen = () => ReleaseNotesSheet();
+  Clear('release-notes'); SetArt(rnArt(pg.art), false); Shade('dim heavy');
+  const p = Glass('Release notes', 136, 96, 1328, 708, undefined, .93); p.classList.add('rn-sheet', 'rise');
+  p.dataset.version = n.appVersion; p.dataset.page = String(i + 1); p.dataset.pages = String(n.pages.length);
+  ArtImage(rnArt(pg.art), 36, 36, 560, 636, p, 'cover rn-art');
+  Kicker('アップデート情報', 640, 40, p, { size: 15 });
+  Txt(`Ver. ${n.appVersion}　·　${rnDate(n.releasedOn)}`, 640, 112, 420, 15, MUTED, p, { weight: 700, nowrap: true, cls: 'num' });
+  // page dots (1..5)
+  const dots = el('rn-dots', 1100, 116, 190, 14, p);
+  n.pages.forEach((_, k) => { const d = document.createElement('i'); if (k === i) d.className = 'on'; dots.appendChild(d); });
+  dots.setAttribute('aria-label', `${i + 1} / ${n.pages.length}`);
+  Txt(pg.title, 640, 168, 650, 34, WHITE, p, { weight: 700, lh: 1.3, h: 96 }).classList.add('rn-title');
+  Txt(pg.body, 640, 284, 650, 20, WHITE, p, { weight: 500, lh: 1.75, h: 196 }).classList.add('rn-body');
+  if (pg.target) {
+    const t = pg.target;
+    TextLink(t.label, 640, 494, 650, () => ReleaseNotesTarget(i), p, `${t.label} ›`).dataset.rnTarget = `${t.kind}:${t.id}`;
+  }
+  if (last && (n.skipped > 0 || n.hasPast)) {
+    TextLink('過去のアップデート情報', 640, 540, 650, () => { rnClose('skip'); rnKpi('release_notes_history', { source: 'sheet' }); ReleaseNotesHistory(Home); }, p, n.skipped > 0 ? `過去のアップデート情報（ほか${n.skipped}件） ›` : '過去のアップデート情報 ›').dataset.rnPast = String(n.skipped);
+  }
+  Ghost('スキップ', 640, 600, 200, 60, () => { rnClose('skip'); Home(); }, p, 'quiet small').dataset.action = 'rn-skip';
+  Cta(last ? 'はじめる' : '次へ', 880, 600, 410, () => {
+    if (last) { rnClose('finish'); return Home(); }
+    rnState.page += 1; ReleaseNotesSheet();
+  }, p, 'small').dataset.action = last ? 'rn-start' : 'rn-next';
+  EnToggle();
+}
+/** Closes the sheet: finished on the last page (or はじめる), otherwise skipped on the page shown. */
+function rnClose(how) {
+  const n = rnState.sheet;
+  if (!n) return;
+  const page = Math.min(rnState.page, n.pages.length - 1) + 1;
+  const stage = how === 'finish' || page >= n.pages.length ? 'finished' : 'skipped';
+  rnKpi('release_notes_view', { appVersion: n.appVersion, stage, page, pages: n.pages.length });
+  rnState.sheet = null; rnState.page = 0;
+}
+/** A page's target: closes the sheet and opens the screen / help article / tip card (back = home). */
+function ReleaseNotesTarget(i) {
+  const n = rnState.sheet, t = n?.pages[i]?.target;
+  if (!t) return;
+  rnKpi('release_notes_target', { appVersion: n.appVersion, page: i + 1, kind: t.kind, target: t.id });
+  rnClose('skip');
+  return rnGo(t, Home);
+}
+function rnGo(t, back) {
+  if (t.kind === 'help') return HelpArticle(t.id, 'link', back);
+  if (t.kind === 'tip') return TipCard(t.id, 'list', back);
+  return helpGo(t.id, back);
+}
+/** お知らせ › アップデート情報: versions on the left (newest first), the pages of the one selected on the right. */
+async function ReleaseNotesHistory(back = null, version = null) {
+  if (back) rnState.back = back;
+  currentScreen = () => ReleaseNotesHistory(null, rnState.open);
+  const r = await L.releaseNotes(RN_VERSION, rnLang());
+  if (!r.ok) { toast('アップデート情報はオンラインで見られます'); return (rnState.back ?? Activity)(); }
+  const H = r.value;
+  const sel = H.notes.find((x) => x.appVersion === (version ?? rnState.open)) ?? H.notes[0] ?? null;
+  rnState.open = sel?.appVersion ?? null;
+  Clear('release-notes-history'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('アップデート情報', 'アプリの版ごとの新しい機能　·　お知らせから、いつでも読めます');
+  const lp = Glass('Release versions', 36, 134, 400, 676, undefined, .88); lp.classList.add('rn-versions');
+  Kicker('新しい順', 36, 30, lp, { size: 15 });
+  if (!H.notes.length) Txt('まだアップデート情報はありません', 36, 110, 328, 17, MUTED, lp, { lh: 1.6 }).dataset.rnEmpty = '1';
+  H.notes.slice(0, 6).forEach((x, k) => {
+    const row = el('help-row rn-version' + (x.appVersion === rnState.open ? ' on' : ''), 24, 92 + k * 92, 352, 80, lp);
+    row.dataset.rnVersion = x.appVersion; row.setAttribute('role', 'button');
+    Txt(`Ver. ${x.appVersion}`, 18, 12, 200, 20, WHITE, row, { weight: 700, nowrap: true, cls: 'num' });
+    Txt(rnDate(x.releasedOn), 18, 46, 200, 13, SOFT, row, { weight: 500, nowrap: true, cls: 'num' });
+    if (!x.seen) Pills([['NEW', 'gold']], 250, 26, 90, row).classList.add('rn-new');
+    row.addEventListener('click', () => ReleaseNotesHistory(null, x.appVersion));
+  });
+  const rp = Glass('Release pages', 456, 134, 1108, 676, undefined, .9); rp.classList.add('rn-pages');
+  if (sel) {
+    rp.dataset.version = sel.appVersion;
+    Kicker(`Ver. ${sel.appVersion}`, 36, 30, rp, { size: 15 });
+    sel.pages.slice(0, 5).forEach((pg, k) => {
+      const card = el('help-row rn-page', 24, 92 + k * 112, 1060, 102, rp); card.dataset.rnPage = String(k + 1);
+      ArtImage(rnArt(pg.art), 12, 11, 128, 80, card, 'cover tip-thumb');
+      Txt(pg.title, 160, 12, 520, 18, WHITE, card, { weight: 700, nowrap: true });
+      const b = Txt(pg.body, 160, 42, 560, 13, MUTED, card, { lh: 1.5, h: 52 }); b.classList.add('rn-page-body');
+      if (pg.target) Ghost(pg.target.label, 740, 22, 300, 56, () => rnGo(pg.target, () => ReleaseNotesHistory(null, sel.appVersion)), card, 'small quiet').dataset.rnTarget = `${pg.target.kind}:${pg.target.id}`;
+    });
+  }
+  Back(() => (rnState.back ?? Activity)(), '戻る', 40, 834);
+}
+/** The entry points: お知らせ (activity) and ヒント. */
+function rnOpenHistory(source, back) { rnKpi('release_notes_history', { source }); return ReleaseNotesHistory(back); }
+/** Demo: the store builds come out after this account was created (an updater), nothing seen yet; the sheet shows now. */
+async function ReleaseNotesDemo() {
+  await L.releaseNotesDemo();
+  rnState.shown = false; sessionPrompt.reset();
+  if (!(await MaybeReleaseNotes())) {
+    // an account still in the FTUE gets no sheet on the real rules: show the newest note as the sheet for the demo
+    const h = await L.releaseNotes(RN_VERSION, rnLang());
+    const top = h.ok ? h.value.notes[0] : null;
+    if (!top) return Home();
+    rnState.sheet = { ...top, skipped: Math.max(0, h.value.notes.length - 1), hasPast: h.value.notes.length > 1 }; rnState.page = 0;
+    rnState.shown = true; sessionPrompt.claim('release_notes'); // R21 integration: the demo sheet counts as this session's sheet too
+    ReleaseNotesSheet();
+  }
+}
+
 // ================================================================= boot
 // ================================================================= round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
 // The same screens as the Unity HelpCenterModel on the real rules (help.ts + PlayerService): categories, search with the
@@ -7658,6 +8375,8 @@ const helpGo = (screen, back) => ({
   privacy_choices: () => PrivacyChoices(), // round 20 (§58)
   // round 20: settings › notifications (push and the device reminders, §61)
   notifications: () => NotifySettings(),
+  // round 21 (§65): the calendar
+  calendar: () => Calendar(),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -7955,6 +8674,8 @@ function SpectateDraw(start = false) {
   f.classList.add('cheer-field');
   Kicker('出走馬　/　ライブ', 36, 30, f, { size: 15 });
   const field = el('cheer-rows', 24, 92, 552, 560, f);
+  // round 21 (REQ-SHOW-008): the friend in the room → their トレーナーカード (the demo friend)
+  TextLink('部屋のフレンドのカード', 300, 30, 276, async () => { await L.showcase.demo(); ShowcaseCard('demo_sc_1', 'spectate', () => SpectateDraw()); }, f).dataset.action = 'sc-spectate';
   const drawRows = () => {
     field.innerHTML = '';
     st.names.forEach((nm, i) => {
@@ -8082,6 +8803,7 @@ const LN_SCHEDULED = 'muchi.lnotif.scheduled';
 const LN_KIND_LABEL = {
   training_session: '調教の仕上げ', daily_bonus: 'ログインボーナス（1日1回）', weekly_challenge_closing: '週替わりチャレンジの入れ替わり',
   rival_week_closing: 'ライバルの週の締め', exchange_closing: 'イベント交換所が閉まる', gift_expiring: 'プレゼントの受け取り期限',
+  calendar_mark: '予定表で印を付けた予定', // R21 integration (§65 × §61)
 };
 const LN_CAT_LABEL = { season: 'シーズン', events: 'イベント', friends: 'フレンド', invites: '招待', gifts: 'プレゼント', comeback: 'お知らせ（復帰）', reminders: 'リマインダー' };
 const LN_CATS = ['season', 'events', 'friends', 'invites', 'gifts', 'comeback', 'reminders'];
@@ -8132,8 +8854,8 @@ async function LnotifPrePromptCard(after) {
   if (cur?.dataset.screen !== 'training-result') return null;
   lnSet(LN_TRAINED, '1');
   const d = await L.localNotify.digest();
-  if (!lnPrePromptDue(d) || !sessionPrompt.can('notifications') || cur?.dataset.screen !== 'training-result') return null; // §58.11
-  sessionPrompt.claim('notifications');
+  if (!lnPrePromptDue(d) || !sessionPrompt.can('reminders_pre_permission') || cur?.dataset.screen !== 'training-result') return null; // §58.11
+  sessionPrompt.claim('reminders_pre_permission');
   const c = Glass('Reminders primer', 836, 134, 640, 420, undefined, .9);
   c.classList.add('ln-primer', 'rise');
   lnPrimerBody(c, d, after, 600);
@@ -8199,13 +8921,14 @@ async function NotifySettings() {
     Txt(LN_CAT_LABEL[x.category], 0, 22, 200, 12, SOFT, row, { nowrap: true, ls: '.08em' });
     Txt(x.on ? 'オン' : 'オフ', 300, 6, 100, 16, x.on ? CYAN : DIM, row, { weight: 700, align: 'right', nowrap: true });
   });
-  Hair(36, 470, 400, r);
-  Txt('ロック画面に詳しく表示', 36, 486, 400, 16, WHITE, r, { weight: 500, nowrap: true });
+  // R21 integration: seven kinds (calendar_mark) — the details switch moves down one row
+  Hair(36, 512, 400, r);
+  Txt('ロック画面に詳しく表示', 36, 524, 400, 16, WHITE, r, { weight: 500, nowrap: true });
   [[true, 'オン'], [false, 'オフ']].forEach(([v, l], j) => {
-    const b = Btn(l, 36 + j * 128, 520, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
+    const b = Btn(l, 36 + j * 128, 554, 116, 46, () => { lnSet(LN_DETAILS, v ? '1' : null); NotifySettings(); }, 'choice' + (lnDetails() === v ? ' on' : ''), r);
     b.dataset.lnDetails = String(v); b.style.whiteSpace = 'nowrap';
   });
-  Txt('オンにすると、件数や馬の名前が通知に出ます（オフでは出しません）。', 36, 574, 400, 13, SOFT, r, { lh: 1.55 });
+  Txt('オンで件数や馬の名前が出ます', 36, 608, 400, 13, SOFT, r, { nowrap: true });
   // what comes next (in the app language; the notifications themselves follow the device language)
   Kicker('次の予定', 472, 168, r, { size: 15, rule: false, w: 400 });
   const up = el('ln-upcoming', 472, 200, 400, 410, r);
@@ -8218,7 +8941,7 @@ async function NotifySettings() {
     Txt(it.body, 0, 42, 400, 12, MUTED, row, { nowrap: true });
   });
   if (plan.status === 'no_permission' && items.length) Txt('通知が許可されると、この予定で届きます', 472, 616, 400, 12, SOFT, r, { nowrap: true });
-  TextLink('端末のお知らせについて（ヘルプ）', 36, 630, 400, () => HelpArticle(L.helpContext('notifications'), 'context', () => NotifySettings()), r).dataset.helpContext = 'notifications';
+  TextLink('端末のお知らせについて（ヘルプ）', 36, 636, 400, () => HelpArticle(L.helpContext('notifications'), 'context', () => NotifySettings()), r).dataset.helpContext = 'notifications';
   // review only: the demo state and the simulated OS permission
   const demo = el('ln-demo', 472, 640, 400, 30, r);
   Ghost('デモの予定', 0, -6, 132, 36, async () => { await L.localNotify.seedDemo(); ftue = false; await refresh(); NotifySettings(); }, demo, 'quiet small').dataset.action = 'ln-demo';
@@ -8258,10 +8981,12 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
-    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win') },
+    prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),
+      // R21 integration (§58.11 = §64.6): the one table and the pick among prompts due at one moment
+      priority: () => [...PROMPT_PRIORITY], pick: (due) => sessionPrompt.pick(due), can: (k) => sessionPrompt.can(k), ftue: (on) => { ftue = !!on; } },
     offer: () => OfferThen(Home),
     state: () => ({ player, lastFrame, raceActive, raceInfo, ftue, tutorialAttempt }),
     logic: L, view: () => view,

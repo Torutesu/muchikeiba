@@ -175,7 +175,7 @@ function ensureTips(s: PlayerState): TipsState {
 }
 
 /** Which unlock keys are open now (a key the progression does not list is open, like the home's tiles). */
-function openKeys(m: Master, s: PlayerState, now: number): (k: UnlockKey | null) => boolean {
+export function openKeys(m: Master, s: PlayerState, now: number): (k: UnlockKey | null) => boolean {
   const f = new Map(unlocksView(m, s, now).features.map((x) => [x.key, x.unlocked]));
   return (k) => k === null || (f.get(k) ?? true);
 }

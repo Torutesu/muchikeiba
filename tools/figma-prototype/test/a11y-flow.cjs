@@ -23,7 +23,8 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   const shots = [], report = [];
   let n = 0;
   const screen = () => page.evaluate(() => globalThis.__muchi?.screen ?? '');
-  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 });
+  const waitScreen = (name, timeout = 30000) => page.waitForFunction((x) => { const s = globalThis.__muchi?.screen ?? ''; return Array.isArray(x) ? x.includes(s) : s === x; }, name, { timeout, polling: 50 })
+    .catch(async (e) => { const now = await page.evaluate(() => globalThis.__muchi?.screen ?? '').catch(() => '?'); throw new Error(`waitScreen(${JSON.stringify(name)}) timed out on "${now}"\n${e.message}`); });
   const show = async (fn, ...a) => { await page.evaluate(([f, args]) => globalThis.__muchi.show(f, ...args), [fn, a]); await page.waitForTimeout(500); };
   const choose = async (row, value) => { await page.locator(`.screen.in [data-a11y-row="${row}"] [data-a11y-choice="${value}"]`).click(); await page.waitForTimeout(500); await waitScreen('a11y-settings'); };
   const a11y = () => page.evaluate(() => globalThis.__muchi.a11y.get());
@@ -130,7 +131,9 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
   const HOME_ALL = [...HOME_BAR, '[data-name="Partner"]', '.next-card', '.next-chip', '.btn.cta.hero', '.hg-pin-strip']; // round 18: the pinned goal strip (demo('next') pins the partner's goal)
   /** demo('next') = a player with a next card and two chips (a gift expiring, scout tickets); waits for the card. */
   const homeWithNext = async () => {
-    await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt'], 60000);
+    await page.evaluate(() => globalThis.__muchi.demo('next')); await waitScreen(['home', 'link-prompt', 'release-notes'], 60000);
+    // R21 integration (§58.11 = §64.6): a demo state is a new launch, so the release notes may take its first home
+    if ((await screen()) === 'release-notes') { await page.locator('.screen.in [data-action="rn-skip"]').click(); await waitScreen('home'); }
     if ((await screen()) === 'link-prompt') { await page.locator('.screen.in [data-label="あとで"]').click(); await waitScreen('home'); }
     await page.waitForSelector('.screen.in .next-card', { timeout: 15000 }); await page.waitForTimeout(700);
   };
@@ -242,6 +245,22 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('TipCard', 'scout_pity_tip', 'list'); await waitScreen('tip-card'); await shot('tip-card', english, 500);
     await show('TipTour', 'tour_scout'); await waitScreen('tip-card'); await shot('tip-tour', english, 500);
     await show('LessonBrief', 'race_whip'); await waitScreen('tip-lesson'); await shot('tip-lesson', english, 500);
+    // Round 21: ディープリンク・再戦 (the links hub, 「リンクを開く」, the confirmation, the friend-room result with 再戦) (REQ-LINK-024)
+    await show('Links'); await waitScreen('links'); await shot('links', english, 500);
+    await show('OpenLink'); await waitScreen('open-link'); await shot('open-link', english, 500);
+    await show('LinkConfirm'); await waitScreen('link-confirm'); await shot('link-confirm', english, 500);
+    await show('FriendRoomResult'); await waitScreen('friend-room-result'); await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(600); await shot('rematch-waiting', english, 200);
+    await show('RoomLobby'); await waitScreen('room-lobby'); await shot('room-lobby', english, 500);
+    // Round 21: アップデートのお知らせ (the sheet's first and last page, the past list) at the largest size (REQ-NEW-015)
+    await show('ReleaseNotes'); await waitScreen('release-notes'); await shot('release-notes', english, 500);
+    for (let i = 0; i < 4 && (await page.locator('.screen.in [data-action="rn-next"]').count()); i++) { await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(450); }
+    await shot('release-notes-last', english, 500);
+    await show('ReleaseNotesHistory', 'notices'); await waitScreen('release-notes-history'); await shot('release-notes-history', english, 500);
+    // Round 21: 予定表 (the month list, the week list, the その他 looks page with its eighth row) at the largest size (REQ-CAL-019)
+    await show('Calendar'); await waitScreen('calendar'); await shot('calendar', english, 500);
+    await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', english, 400);
+    await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+    await show('Settings', 'looks'); await waitScreen('settings'); await shot('settings-looks', english, 400);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)
@@ -274,6 +293,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await show('Storage'); await waitScreen('storage'); await shot('storage', english, 500);
     // Round 19: 観戦中の応援 (the spectate screen with a window of cheers) at the largest size
     await show('Spectate'); await waitScreen('spectate'); await page.waitForTimeout(1300); await shot('spectate', english, 300);
+    // Round 21: トレーナーカード — a friend's card, the neutral card, the share image and the editor's tabs (REQ-SHOW-*)
+    await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
+    await show('ShowcaseCard', 'demo_sc_1', 'friends'); await waitScreen('showcase'); await page.waitForSelector('.screen.in .sc-card', { timeout: 15000 }); await shot('showcase-card', english, 500);
+    await show('ShowcaseCard', 'demo_sc_blk', 'activity'); await waitScreen('showcase'); await shot('showcase-neutral', english, 400);
+    await show('ShowcaseShare', 'demo_sc_1'); await waitScreen('showcase-share'); await shot('showcase-share', english, 400);
+    for (const tab of ['horse', 'pins', 'phrase', 'background']) { await show('ShowcaseEdit', tab); await waitScreen('showcase-edit'); await shot('showcase-edit-' + tab, english, 400); }
     // Round 19: 引き継ぎコード — the issue screen (checklist, ID), the redeem screen and the old device's notice (REQ-TRF-020)
     await show('TransferIssue'); await waitScreen('transfer-issue'); await shot('transfer-issue', english, 600);
     await show('TransferRedeem'); await waitScreen('transfer-redeem'); await shot('transfer-redeem', english, 500);

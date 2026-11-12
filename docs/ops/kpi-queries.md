@@ -1418,3 +1418,118 @@ WHERE blob1 = 'lnotif_permission' AND timestamp > NOW() - INTERVAL '28' DAY
 GROUP BY result
 ORDER BY n DESC
 ```
+
+## トレーナーカード：保存・閲覧・共有（REQ-SHOW-015、contracts/protocol.md §62.9、Round 21）
+
+**カードを飾る人がいるか、どこから開かれているか、画像が共有されているか**。`showcase_save`（サーバー、選んだものが変わった保存のときだけ。`blob8` = 背景 id、`blob9` = `horse` / `none`、`blob10` = `phrase` / `none`、`double5`（count）= ピン留めの数、`double9`（value）= タイムアタックのコースの数）、`showcase_view`（クライアント、カードを開いたとき。`blob8` = 入口 `settings`・`friends`・`rival`・`activity`・`cup_lobby`・`spectate`・`hall`・`stable`・`leaderboard`・`team`、`blob9` = `self` / `friend` / `other`、`blob10` = `card` / `neutral`）、`showcase_share`（クライアント、画像を共有シートに渡したとき。`double5` = ピン留めの数、`double9` = 記録の数、`blob8` = `horse` / `none`）。どれも相手のプレイヤー ID を持たない。
+
+```sql
+-- 入口ごとの閲覧（自分・フレンド・その他）と、空のカード（ブロック・削除・停止）の割合
+SELECT blob8 AS source, blob9 AS relation,
+  sum(_sample_interval) AS views,
+  sum(if(blob10 = 'neutral', _sample_interval, 0)) AS neutral
+FROM muchi_kpi
+WHERE blob1 = 'showcase_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY source, relation ORDER BY views DESC
+```
+
+```sql
+-- 保存で選ばれた背景とピン留めの数（背景が既定のままの人が多いなら、解放の条件を見直す）
+SELECT blob8 AS background, avg(double5) AS avg_pins, sum(_sample_interval) AS saves
+FROM muchi_kpi
+WHERE blob1 = 'showcase_save' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY background ORDER BY saves DESC
+```
+
+- `showcase_share` ÷ `showcase_view`（`relation = self`）が共有の割合。共有は何も配らない（報酬なし）。
+
+## ディープリンク・再戦：作った・開いた・開けなかった・再戦（REQ-LINK-021、contracts/protocol.md §63.9、Round 21）
+
+**リンクで人が来ているか、開けないリンクが多くないか、再戦が使われているか**。サーバーのイベント：`link_create`（作った人、`blob8` = 種類 `room`・`cup`・`replay`・`invite`・`friend`・`team`・`help`、`blob9` = `new` / `existing`）、`link_resolve`（開いた人、`blob8` = 種類（開けなかった時は `none`）、`blob9` = `ok`・`unavailable`・`friends_only`・`maintenance`・`update_required`）、`link_revoke`（`blob8` = 種類）、`rematch`（`blob8` = `press`・`decline`・`opened`・`too_few`、`double5` = 部屋の人数。`opened`／`too_few` は窓を締めた要求の人に1行）。クライアントのイベント：`deep_link_open`（`blob8` = 入口 `universal`・`scheme`・`referrer`・`typed`、`blob9` = 種類か `none`）。**トークン・行き先・プレイヤー ID は入れていない**。
+
+```sql
+-- 種類ごとの、作ったリンクと開いた結果（30日）
+SELECT blob1 AS event, blob8 AS kind, blob9 AS outcome, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('link_create', 'link_resolve', 'link_revoke') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, kind, outcome ORDER BY event, n DESC
+```
+
+```sql
+-- アプリへの入口（あとから開く＝referrer / typed がどれだけあるか）
+SELECT blob8 AS entry, blob9 AS kind, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 = 'deep_link_open' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY entry, kind ORDER BY n DESC
+```
+
+```sql
+-- 再戦：押した・やめた・開いた（部屋の平均の人数）・人数不足
+SELECT blob8 AS step, sum(_sample_interval) AS n, sum(double5 * _sample_interval) / sum(_sample_interval) AS avg_members
+FROM muchi_kpi
+WHERE blob1 = 'rematch' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY step ORDER BY n DESC
+```
+
+- **`unavailable` が急に増えた**：総当たりか、期限の短い部屋のリンクが遅れて開かれている。`link_resolve` の `none` を IP の制限（`429 RATE_LIMITED`、KPI には出ない）と合わせて見る。部屋のリンクの期限は `progression.links.roomMinutes`。
+- **`update_required` が多い**：`minClientVersion` を上げすぎ。ストアの審査が終わる前に上げていないか。
+- **`referrer` が少なく `typed` が多い**：iOS の人がコードを入れている（期待どおり）。Android で `referrer` が 0 なら、案内のページの Google Play の URL（`storeUrl`）を確かめる。
+- **再戦の `too_few` が `opened` より多い**：窓が短い。`rematchWindowSec` を延ばす（最大120秒）。
+
+## アップデートのお知らせ：出した・最後まで見た・行き先・一覧（REQ-NEW-019、contracts/protocol.md §64.9、Round 21）
+
+**更新した人にシートが届いているか、最後まで読まれているか、どのページの行き先が押されるか**。どれもクライアントのイベント。`release_notes_view`（`blob8` = 版、`blob9` = 段 `shown`・`finished`・`skipped`、`double9` = 閉じたページ、`double5` = ページ数）、`release_notes_target`（`blob8` = 版、`blob9` = `screen`・`help`・`tip`、`blob10` = 行き先の id、`double9` = ページ）、`release_notes_history`（`blob8` = 入口 `notices`・`tips`・`sheet`）。個人を特定する情報は入れない。§58 の必須／任意の分類は Round 20 の統合で付ける（3つとも任意の想定）。
+
+```sql
+-- 版ごとに、出した・最後まで見た・途中で閉じた（最後まで見た率が低い版はページを減らす）
+SELECT blob8 AS version,
+  sum(if(blob9 = 'shown', _sample_interval, 0)) AS shown,
+  sum(if(blob9 = 'finished', _sample_interval, 0)) AS finished,
+  sum(if(blob9 = 'skipped', _sample_interval, 0)) AS skipped
+FROM muchi_kpi
+WHERE blob1 = 'release_notes_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY version ORDER BY version DESC
+```
+
+```sql
+-- 途中で閉じたページ（同じページで閉じる人が多いなら、そのページを短くするか外す）
+SELECT blob8 AS version, double9 AS page, sum(_sample_interval) AS closes
+FROM muchi_kpi
+WHERE blob1 = 'release_notes_view' AND blob9 = 'skipped' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY version, page ORDER BY version DESC, page
+```
+
+```sql
+-- 行き先ごとの押された回数と、一覧の入口
+SELECT blob1 AS event, blob8, blob9, blob10, sum(_sample_interval) AS n
+FROM muchi_kpi
+WHERE blob1 IN ('release_notes_target', 'release_notes_history') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY event, blob8, blob9, blob10 ORDER BY n DESC
+```
+
+- `shown` に比べて `finished`＋`skipped` が少ない版は、シートが他の案内に押し出されたか、アプリが落ちている（§64.6 の優先順位と §60 のエラー報告を見る）。
+
+## 予定表：見た・開いた・印（REQ-CAL-015、contracts/protocol.md §65.6、Round 21）
+
+**予定表が見られているか、どの種類の行から画面へ進むか、印が使われているか**。`calendar_view`（クライアント、`blob8` = `month` / `week`、`double9` = 行の数）、`calendar_entry_open`（クライアント、`blob8` = 種類：`event`・`event_exchange`・`weekly_challenge`・`team_goal`・`league_season`・`season`・`season_pass`・`banner`・`tournament_registration`・`tournament`・`cup`・`maintenance`・`comeback`）、`calendar_mark`（サーバー、`blob8` = 種類、`blob9` = `on` / `off`、印が実際に変わった時だけ）。印でサーバーが通知を送ることは無い（§65.2）。
+
+```sql
+-- 表示の種類ごとの回数と平均の行の数（行が多すぎる表示は分ける）
+SELECT blob8 AS view, sum(_sample_interval) AS views, sum(double9 * _sample_interval) / sum(_sample_interval) AS avg_entries
+FROM muchi_kpi
+WHERE blob1 = 'calendar_view' AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY view
+```
+
+```sql
+-- 種類ごとの「行を開いた」と「印を付けた」
+SELECT blob8 AS kind,
+  sum(if(blob1 = 'calendar_entry_open', _sample_interval, 0)) AS opens,
+  sum(if(blob1 = 'calendar_mark' AND blob9 = 'on', _sample_interval, 0)) AS marks_on,
+  sum(if(blob1 = 'calendar_mark' AND blob9 = 'off', _sample_interval, 0)) AS marks_off
+FROM muchi_kpi
+WHERE blob1 IN ('calendar_entry_open', 'calendar_mark') AND timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY kind ORDER BY opens DESC
+```
+
+- `banner` の行を開いた先は提供割合の画面（購入の画面ではない）。`season_pass` の行には行き先が無いので `calendar_entry_open` は来ない。

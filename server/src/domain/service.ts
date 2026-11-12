@@ -75,6 +75,9 @@ import {
 import { claimAllGifts, claimGift, expireGifts, giftBadge, giftBoxView, giftGiver, giftsNeedExpiry, nextGiftWake, type OpsTitleKey } from './giftBox.js';
 import { activityBadge, activityPage, markActivityRead, recordActivity } from './activity.js';
 import { markTipsSeen, tipsBadge, tipsIndex } from './tips.js';
+import { forgetShowcase, setShowcase, showcaseCopy, showcaseCopyKey, showcaseMine, type ShowcaseInput } from './showcase.js';
+import { checkReleaseNotes, markReleaseNotesSeen, releaseNotesHistory } from './releaseNotes.js';
+import { calendarView, markCalendar, type CalendarExternal } from './calendar.js';
 import { helpBadge, inquiryDetail, inquiryList, markIndexed, markInquiryRead, replyInquiry, submitInquiry, unindexedSummaries, voteHelp, type InquiryInput } from './help.js';
 import { fsugCard, fsugCardKey, fsugDismiss, fsugSelf, fsugSetHidden, ensureFsug, noteFsugRace, type FsugCard, type FsugDismissed, type FsugKind } from './friendSuggest.js';
 import { finishTraining, startTraining, trainingDelta, trainingTick, trainingView, useTrainingItem } from './training.js';
@@ -97,7 +100,7 @@ import {
 } from './history.js';
 import { buildSupportTicket } from '../ops/support.js';
 import { reportOptions, reportSnapshotOf, takeReportAllowance, type ReportCategory, type ReportContent, type ReportSource } from './reports.js';
-import { blockIds, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
+import { blockIds, blockListOf, isBlocking, setBlocked, type BlockOrigin } from './blocks.js';
 import { raceAdviceFor, type AdviceQuery } from './raceAdviceService.js';
 import { practiceCatalog } from './practice.js';
 import { dismissNextAction, nextActionsView, noteFeatures, type TeamGoalBrief } from './nextAction.js';
@@ -220,7 +223,8 @@ export interface PlayerServiceDeps {
 }
 
 const standingKey = (s: PlayerState) => JSON.stringify([s.season.id, s.season.classId, s.season.points, s.season.races, Math.round(s.rating.r), s.profile.displayName, s.profile.titleId]);
-const profileKey = (s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned', s.cups?.trophies ?? null]);
+// REQ-SHOW-005: the showcase copy is part of the key, so a retired / gone horse or a revoked title leaves the card on the next push
+const profileKey = (m: Master, s: PlayerState, now: number) => JSON.stringify([s.profile.displayName, s.profile.titleId, s.season.classId, Math.round(s.rating.r), s.stats.races, s.stats.wins, s.stats.top3, moderationOf(s, now) === 'banned', s.cups?.trophies ?? null, showcaseCopyKey(m, s, now)]);
 
 const IDEM_KEEP = 200;
 /**
@@ -275,7 +279,7 @@ export class PlayerService {
     settlePityGroups(this.d.master, draft, now);
     const paidBefore = draft.wallet.paid;
     const standingBefore = standingKey(draft);
-    const profileBefore = profileKey(draft, now);
+    const profileBefore = profileKey(this.d.master, draft, now);
     const wakeBefore = nextWake(draft);
     const stableBefore = this.d.onStable ? stableSnapshotKey(this.d.master, draft, now) : '';
     const rivalBefore = this.d.onRival ? rivalOutbound(this.d.master, draft, now) : null;
@@ -305,7 +309,7 @@ export class PlayerService {
     // directory profile and board rows step by step; a later transaction of the same run or a retry must not put them
     // back), and after the balances were forfeited the paid balance is not reported (retainDeleted removes that row).
     const deleting = draft.deletion?.status === 'deleting';
-    const pushProfile = !deleting && this.d.onProfile && (profileKey(draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
+    const pushProfile = !deleting && this.d.onProfile && (profileKey(this.d.master, draft, now) !== profileBefore || now - draft.profile.lastPushedAt >= this.d.master.progression.social.profilePushIntervalMs);
     if (pushProfile) draft.profile.lastPushedAt = now;
     // REQ-FSUG-011: the card is re-derived on every transaction and written when it changed (first write included), and
     // again with the periodic profile push, so a write lost to a directory outage heals within profilePushIntervalMs
@@ -319,7 +323,7 @@ export class PlayerService {
     const wake = nextWake(draft);
     if (wake !== null && wake !== wakeBefore && this.d.onPushWake) await this.d.onPushWake(wake);
     if (kpi.length > 0 && this.d.onKpi) await this.writeKpi(id, draft, now, kpi); // REQ-CNS-013: optional events only with analytics on
-    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks, now));
+    if (pushProfile) await this.d.onProfile!(publicProfile(draft, this.d.master.bannedSilks, now, showcaseCopy(this.d.master, draft, now)));
     if (this.d.onStable && stableSnapshotKey(this.d.master, draft, now) !== stableBefore) await this.d.onStable(id, stableSnapshot(this.d.master, draft, now));
     if (this.d.onHall && hallSnapshotKey(this.d.master, draft, now) !== hallBefore) {
       // best effort like the stable copy: the transaction is saved; the next change re-writes the copy
@@ -1527,6 +1531,28 @@ export class PlayerService {
     return { exists: s !== null, code: t?.code ? { codeId: formatCodeId(t.code.id), mode: t.code.mode, issuedAt: t.code.issuedAt, expiresAt: t.code.expiresAt } : null, cutoffAt: t?.cutoffAt ?? null, lastRedeemedAt: t?.lastRedeemedAt ?? null, history: t?.history ?? [] };
   }
 
+  // ---- ディープリンク・再戦: per-player steps, orchestrated by LinkService / the HTTP layer (REQ-LINK-*, contracts/protocol.md §63) ----
+  /** REQ-LINK-006: ban / deletion / block list of an owner or viewer (read only; a never-stored or wiped account does not exist). */
+  async linkParty(id: string) {
+    const s = await this.repo.get(id);
+    if (!s) return { exists: false, banned: false, deleting: false, blocks: [] as string[], displayName: '' };
+    return { exists: true, banned: moderationOf(s, this.d.clock()) === 'banned', deleting: deletionScheduled(s), blocks: blockListOf(s), displayName: s.profile.displayName };
+  }
+  /** REQ-LINK-003: banned → BANNED, deletion scheduled → DELETION_PENDING (read only). */
+  async linkCheckCreate(id: string) {
+    const s = await this.load(id);
+    if (moderationOf(s, this.d.clock()) === 'banned') throw new AppError('BANNED', 'links are disabled for this account');
+    if (deletionScheduled(s)) throw new AppError('DELETION_PENDING', 'the account is scheduled for deletion');
+    return { ok: true as const };
+  }
+  /** REQ-LINK-021: one KPI row (the type / outcome categories only — never a token, a target or an id). */
+  linkNote(id: string, name: 'link_create' | 'link_resolve' | 'link_revoke' | 'rematch', s1: string, s2?: string, count?: number) {
+    return this.tx(id, null, (_s, _now, emit) => {
+      emit({ name, s1, ...(s2 !== undefined ? { s2 } : {}), ...(count !== undefined ? { count } : {}) });
+      return { ok: true as const };
+    });
+  }
+
   // ---- friend invite codes: per-player steps, orchestrated by InviteService (REQ-INV-*) ----
   inviteView(id: string, installHash: string | null) {
     return this.tx(id, null, (s, now) => {
@@ -1590,6 +1616,32 @@ export class PlayerService {
   async tips(id: string, lang: Locale = 'ja', maxWhips = 6) { return tipsIndex(this.d.master, await this.load(id), this.d.clock(), lang, maxWhips); }
   /** REQ-TUT-007: mark open cards seen (idempotent; never grants anything). */
   tipsSeen(id: string, ids: string[]) { return this.tx(id, null, (s, now) => markTipsSeen(this.d.master, s, ids, now)); }
+
+  // ---- プロフィールのショーケース (REQ-SHOW-*, protocol §62)
+  /** GET /v1/showcase: the selection, every choice with eligibility and the self preview (read only). */
+  async showcaseMine(id: string, lang: Locale = 'ja') { return showcaseMine(this.d.master, await this.load(id), this.d.clock(), lang); }
+  /** PUT /v1/showcase: validated replace; the public copy follows through the profile push (profileKey includes it). */
+  showcaseSave(id: string, input: ShowcaseInput, lang: Locale = 'ja') {
+    return this.tx(id, null, (s, now, emit) => { setShowcase(this.d.master, s, input, now, emit); return showcaseMine(this.d.master, s, now, lang); });
+  }
+  /** The viewer's side of GET /v1/showcase/:playerId: friends and the one block list (§47.1). No writes. */
+  async showcaseViewer(id: string) { const s = await this.load(id); return { friendIds: [...s.friends.ids], blocked: [...blockIds(s)] }; }
+  /** REQ-SHOW-018: account deletion step (the copy leaves with the directory profile; the state is wiped at the end anyway). */
+  showcaseForget(id: string) { return this.tx(id, null, (s) => forgetShowcase(s)); }
+
+  // ---- アップデートのお知らせ (REQ-NEW-*, contracts/protocol.md §64) ----
+  /** REQ-NEW-006/007: the release notes to show at this home arrival (writes only the FTUE baseline; never marks seen, never grants). */
+  releaseNotesCheck(id: string, appVersion: string | null, lang: Locale = 'ja', maxWhips = 6) { return this.tx(id, null, (s, now) => checkReleaseNotes(this.d.master, s, appVersion, lang, now, maxWhips)); }
+  /** REQ-NEW-009: the sheet was shown (idempotent). */
+  releaseNotesSeen(id: string, appVersion: string) { return this.tx(id, null, (s) => markReleaseNotesSeen(this.d.master, s, appVersion)); }
+  /** REQ-NEW-010: past notes (reads only). */
+  async releaseNotes(id: string, appVersion: string | null, lang: Locale = 'ja', maxWhips = 6) { return releaseNotesHistory(this.d.master, await this.load(id), appVersion, lang, this.d.clock(), maxWhips); }
+
+  // ---- イベントカレンダー (REQ-CAL-*, contracts/protocol.md §65) ----
+  /** REQ-CAL-004: the player's calendar (reads only; `ext` = tournaments and cups the HTTP layer read from their objects). */
+  async calendar(id: string, q: { from?: string | null; to?: string | null }, ext: CalendarExternal) { return calendarView(this.d.master, await this.load(id), q, this.d.clock(), ext); }
+  /** REQ-CAL-010: mark / unmark a row (idempotent; only the flag is stored, nothing is ever pushed for it). */
+  calendarMark(id: string, entryId: string, on: boolean, ext: CalendarExternal) { return this.tx(id, null, (s, now, emit) => markCalendar(this.d.master, s, entryId, on, now, ext, emit)); }
 
   // ---- ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48) ----
   /** REQ-HELP-007: one vote per article (changeable), capped per game day. */

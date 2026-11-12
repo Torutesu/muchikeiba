@@ -28,6 +28,8 @@ import photoJson from '../../master/photo.json';
 import helpJson from '../../master/help.json';
 import practiceJson from '../../master/practice.json';
 import tipsJson from '../../master/tips.json';
+import showcaseJson from '../../master/showcase.json';
+import releaseNotesJson from '../../master/release-notes.json';
 import { trackSchema, type GoingAptitude, type Going, type Track } from './schemas.js';
 import { AppError } from './errors.js';
 import { loadSkills, type SkillsMaster } from './skills.js';
@@ -209,6 +211,8 @@ export interface Progression {
   nextActions?: import('./nextAction.js').NextActionConfig;
   /** REQ-TRF-018: 引き継ぎコード (transferCode.ts, validated by transferProblems). Absent = defaults. */
   transfer?: import('./transferCode.js').TransferConfig;
+  /** REQ-LINK-022: ディープリンク・再戦 (deepLinks.ts, validated by linksProblems). Absent = defaults. */
+  links?: Partial<import('./deepLinks.js').LinksConfig>;
   /** REQ-RECAP-*: シーズンの振り返り (seasonRecap.ts, validated by seasonRecapProblems). Absent / disabled = no recaps. */
   seasonRecap?: import('./seasonRecap.js').SeasonRecapConfig;
   /** REQ-DEX-*: 個人データの開示・ダウンロード (dataExport.ts, validated by dataExportProblems). Absent / disabled = no export. */
@@ -433,6 +437,10 @@ export interface Master {
   practice?: import('./practice.js').PracticeMaster;
   /** REQ-TUT-*: チュートリアルのやり直しとヒント集 (master/tips.json; tips.ts tipsOf falls back to it when absent; remote config `tips` replaces it). */
   tips?: import('./tips.js').TipsMaster;
+  /** REQ-SHOW-* (§62): プロフィールのショーケース — phrases and backgrounds (master/showcase.json; showcase.ts showcaseOf falls back to it; remote config `showcase` replaces it). */
+  showcase?: import('./showcase.js').ShowcaseMaster;
+  /** REQ-NEW-*: アップデートのお知らせ per app version (master/release-notes.json; releaseNotes.ts releaseNotesOf falls back to it when absent; remote config `releaseNotes` replaces it). */
+  releaseNotes?: import('./releaseNotes.js').ReleaseNotesMaster;
 }
 
 export const PPM_TOTAL = 1_000_000;
@@ -589,6 +597,8 @@ export function loadMaster(): Master {
     help: helpJson as unknown as import('./help.js').HelpMaster,
     practice: practiceJson as unknown as import('./practice.js').PracticeMaster,
     tips: tipsJson as unknown as import('./tips.js').TipsMaster,
+    showcase: showcaseJson as unknown as import('./showcase.js').ShowcaseMaster,
+    releaseNotes: releaseNotesJson as unknown as import('./releaseNotes.js').ReleaseNotesMaster,
   };
   cached = m;
   return m;

@@ -1,5 +1,5 @@
 // Round 20 integration (contracts/protocol.md §58.10/§58.11, §59, §60.6, §61): one system-ish prompt per session across
-// ConsentModel / LocalNotificationModel / ReviewPromptModel (SessionPromptGate), the error reporter's consent = the §58
+// ConsentModel / LocalNotificationModel / ReviewPromptModel (SessionPrompts since R21 integration), the error reporter's consent = the §58
 // analytics choice (ClientErrorModel.FollowConsent), and what a change of account resets on this device (AccountChangeReset:
 // SESSION_REPLACED and a redeemed transfer code → reminders forgotten, the error queue anonymous, a new review session).
 using System.Linq;
@@ -43,7 +43,7 @@ static class Round20IntegrationChecks
         await b.InitializeAsync();
         long now = Now;
 
-        SessionPromptGate gate = new SessionPromptGate();
+        var gate = new SessionPrompts(); // R21 integration: the one gate (§58.11)
         var consent = new ConsentModel(b, new ConsentChecks.Platform()) { Prompts = gate };
         await consent.LoadAsync();
         var os = new LocalNotificationChecks.FakeOs();
@@ -52,28 +52,29 @@ static class Round20IntegrationChecks
         var review = new ReviewPromptModel(b, store, null, () => now, "sess_r20_0001") { Prompts = gate };
 
         // the order when several are due at one moment: consent → reminders → review
-        check(gate.Pick(true, true, true) == SessionPromptKind.Consent && gate.Pick(false, true, true) == SessionPromptKind.Notifications && gate.Pick(false, false, true) == SessionPromptKind.Review,
+        check(gate.Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.RemindersPrePermission, SessionPrompts.ConsentPrePrompt }) == SessionPrompts.ConsentPrePrompt
+            && gate.Pick(new[] { SessionPrompts.ReviewPrompt, SessionPrompts.RemindersPrePermission }) == SessionPrompts.RemindersPrePermission && gate.Pick(new[] { SessionPrompts.ReviewPrompt }) == SessionPrompts.ReviewPrompt,
             "prompts: consent first, then the reminders sheet, then the review");
 
         // the consent sheet shows before the first ad → the reminders sheet and the review wait for another session
         check(consent.ShouldShowPrePrompt(ConsentMoment.BeforeAdOffer), "prompts: the consent sheet is due before the first ad offer");
         consent.BuildPrePrompt();
-        check(gate.Shown == SessionPromptKind.Consent && consent.ShouldShowPrePrompt(ConsentMoment.BeforeAdOffer), "prompts: the consent sheet claims the session (still showing)");
+        check(gate.Claimed == SessionPrompts.ConsentPrePrompt && consent.ShouldShowPrePrompt(ConsentMoment.BeforeAdOffer), "prompts: the consent sheet claims the session (still showing)");
         check(!reminders.OnTrainingStarted() && !reminders.PrePromptDue, "prompts: no reminders sheet right after the consent sheet (same session)");
         int checksBefore = s.Sent.Count(r => r.Path == "/v1/review-prompt/check");
         check(await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.Skipped && review.LastReason == "session_prompt" && store.Calls == 0
             && s.Sent.Count(r => r.Path == "/v1/review-prompt/check") == checksBefore, "prompts: no review in the session of the consent sheet (no check call)");
 
         // a new session (next launch): the reminders sheet may show, then nothing else this session
-        gate.Reset();
-        check(reminders.OnTrainingStarted() && gate.Shown == SessionPromptKind.Notifications, "prompts: next session → the reminders sheet after a training");
+        gate.NewSession();
+        check(reminders.OnTrainingStarted() && gate.Claimed == SessionPrompts.RemindersPrePermission, "prompts: next session → the reminders sheet after a training");
         check(!consent.ShouldShowPrePrompt(ConsentMoment.BeforeAdOffer), "prompts: no consent sheet right after the reminders sheet");
         check(await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.Skipped && review.LastReason == "session_prompt", "prompts: no review after the reminders sheet");
 
         // a third session: the review asks; afterwards neither sheet shows in that session
-        gate.Reset();
+        gate.NewSession();
         reminders.DeclinePrePrompt(); // answered last session (今はしない): not due again for retryDays anyway
-        check(await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.NativeRequested && store.Calls == 1 && gate.Shown == SessionPromptKind.Review, "prompts: a quiet session → the review asks");
+        check(await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.NativeRequested && store.Calls == 1 && gate.Claimed == SessionPrompts.ReviewPrompt, "prompts: a quiet session → the review asks");
         check(!consent.ShouldShowPrePrompt(ConsentMoment.BeforeAdOffer), "prompts: no consent sheet after the review in the same session");
 
         // §58.10: the error reporter's consent follows the analytics choice
@@ -104,7 +105,7 @@ static class Round20IntegrationChecks
         maint.OnSessionReplaced();
         maint.OnSessionReplaced(); // a second 401 does not reset twice
         check(reset.Resets == 1 && os.CancelAlls == cancels + 1 && os.Pending.Count == 0, "account: SESSION_REPLACED → the local reminders are cancelled and forgotten");
-        check(review.SessionId != oldSession && !review.SessionPrompted && gate.Shown == null, "account: SESSION_REPLACED → a new review session and the one-prompt gate reset");
+        check(review.SessionId != oldSession && !review.SessionPrompted && gate.Claimed == null, "account: SESSION_REPLACED → a new review session and the one-prompt gate reset");
         await reporter.FlushAllAsync(now + 3);
         sent = s.Sent.Where(r => r.Path == "/v1/client-errors").Select(r => JsonNode.Parse(r.Body)).ToList();
         check(sent.Count == 3 && !sent[2].Get("attachPlayer").AsBool(), "account: the old account's queued error goes without a player id");
@@ -119,6 +120,6 @@ static class Round20IntegrationChecks
         await review.OnMomentAsync(ReviewMoments.FirstWin);
         check(review.SessionPrompted, "account: (a review asked in this session)");
         check(await transfer.RedeemAsync("K7M-Q3X-PHR", "Haneda2026!") && transfer.State == RedeemState.Done, "account: a transfer code redeemed");
-        check(reset.Resets == 2 && !review.SessionPrompted && gate.Shown == null && os.Pending.Count == 0, "account: a redeemed code resets the reminders, the review session and the gate");
+        check(reset.Resets == 2 && !review.SessionPrompted && gate.Claimed == null && os.Pending.Count == 0, "account: a redeemed code resets the reminders, the review session and the gate");
     }
 }

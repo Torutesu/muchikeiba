@@ -94,7 +94,7 @@ namespace Muchi.Game
 
         /// <summary>
         /// R20 integration (§58.10): the player id goes with a report only while the §58 analytics choice is effective.
-        /// Usually <c>FollowConsent(consentModel)</c> (the extension next to SessionPromptGate).
+        /// Usually <c>FollowConsent(consentModel)</c> (the extension in SessionPromptGate.cs, next to AccountChangeReset).
         /// </summary>
         public void FollowConsent(Func<ConsentState> state) => Reporter.FollowConsent(state);
 

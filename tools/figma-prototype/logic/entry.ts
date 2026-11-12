@@ -36,6 +36,10 @@ import { noteRivalTa, prevWeekId, rivalCard, rivalTrackName, weekEndMs, weekIdAt
 import { actorIdsOf, renderActivityItems } from '../../../server/src/domain/activity.js';
 import { helpArticle, helpIndex, helpOf, helpQueryWords, searchHelp } from '../../../server/src/domain/help.js';
 import { tipsOf } from '../../../server/src/domain/tips.js';
+import { ShowcaseService, showcaseCopy, type ShowcaseInput } from '../../../server/src/domain/showcase.js';
+import { publicProfile } from '../../../server/src/domain/stats.js';
+import visualsJson from '../../../server/master/visuals.json';
+import type { CalendarExternal } from '../../../server/src/domain/calendar.js';
 import { FriendSuggestService, MemorySuggestDirectory, fsugCard, fsugConfig } from '../../../server/src/domain/friendSuggest.js';
 import { FriendsService, MemoryDirectory } from '../../../server/src/domain/friends.js';
 import type { PlayerInvoker } from '../../../server/src/http/app.js';
@@ -44,6 +48,7 @@ import { hallPlayersFrom } from '../../../server/src/http/hallPorts.js';
 import { MemoryPlayerRepo } from '../../../server/src/domain/service.js';
 import { MemoryReplayStore, MyReplaysService } from '../../../server/src/domain/myReplaysService.js';
 import { DEFAULT_RULESET } from '../../../server/src/domain/ruleset.js';
+import { BASE_RELEASE_NOTES } from '../../../server/src/domain/releaseNotes.js';
 import { computeRaceAdvice, adviceTextProblems, adviceTexts, type AdviceInput } from '../../../server/src/domain/raceAdvice.js';
 import type { AdviceQuery } from '../../../server/src/domain/raceAdviceService.js';
 import { applyRosterQuery, aptitudeFor, DEFAULT_QUERY, type RosterQuery, type RosterRow } from '../../../server/src/domain/roster.js';
@@ -62,6 +67,12 @@ import {
 } from '../../../server/src/domain/cheer.js';
 import { MemoryTransferDirectory, TransferService, type TransferRecord } from '../../../server/src/domain/transferService.js';
 import { normalizeCodeId, normalizeInput, passwordProblems, transferConfig } from '../../../server/src/domain/transferCode.js';
+import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
+import { formatToken, linksConfig, parseLink, LINK_SCREENS, type LinkType } from '../../../server/src/domain/deepLinks.js';
+import { Rematches } from '../../../server/src/domain/rematch.js';
+import { FriendRooms } from '../../../server/src/domain/matchmaker.js';
+import { maintenanceOf } from '../../../server/src/domain/maintenance.js';
+import type { RoomConditions } from '../../../server/src/domain/presets.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
 import { DataExportService, MemoryExportStore, runDataExportJob, sweepDataExports } from '../../../server/src/domain/dataExportService.js';
 import { clientErrorBatchSchema, clientErrorsClientView, clientErrorsConfig } from '../../../server/src/domain/clientErrors.js';
@@ -158,6 +169,56 @@ async function fsugRepublish(ids: string[]) {
     if (card) await fsugCards.put(card); else await fsugCards.remove(id);
   }
 }
+// round 21 (REQ-SHOW-*): トレーナーカード on the real ShowcaseService. Other players' cards are read from the profile directory
+// (the same memory directory the おすすめフレンド profiles use; DirectoryDO in production), with both block lists checked.
+// Three demo players: a friend with a decorated card, an under-13 player (no player-typed names on the card) and a player
+// who blocked you (a neutral card).
+const showcaseSvc = new ShowcaseService({
+  profiles: (ids) => fsugProfiles.profiles(ids),
+  viewer: (u) => svc.showcaseViewer(u),
+  blocks: async (u) => (await svc.showcaseViewer(u)).blocked,
+  mine: (u, l) => svc.showcaseMine(u, l),
+}, () => master);
+const SC_DEMO: { id: string; name: string; horse: string; birthYear: number | null; phrase: string; bg: string }[] = [
+  { id: 'demo_sc_1', name: 'アオイ', horse: 'サクラフブキ', birthYear: null, phrase: 'time_attack', bg: 'turf_stretch' },
+  { id: 'demo_sc_kid', name: 'ハル', horse: 'ハルカゼ', birthYear: 2015, phrase: 'hello', bg: 'dawn' },
+  { id: 'demo_sc_blk', name: 'クロガネ', horse: 'クロノツバサ', birthYear: null, phrase: 'race_anytime', bg: 'dawn' },
+];
+/** The memory directory does not survive a reload: write the demo profile (with its card copy) again from the stored state. */
+async function scPublish(id: string) {
+  const s = await svc.state(id);
+  await fsugProfiles.putProfile(publicProfile(s, master.bannedSilks, now(), showcaseCopy(master, s, now())));
+}
+async function showcaseDemo() {
+  const track = master.tracks[0]!.id;
+  for (const d of SC_DEMO) {
+    if (!(await repo.get(d.id))) {
+      await svc.bootstrap(d.id);
+      await svc.setDisplayName(d.id, d.name);
+      await svc.grantPartner(d.id, d.horse, `c:sc:${d.id}`);
+      await svc.tx(d.id, null, (s, t) => {
+        const hid = s.horses[0]!.id;
+        s.stats.races = 42; s.stats.wins = 7; s.stats.top3 = 16; s.season.races = 9;
+        for (const ti of master.titles.slice(0, 2)) if (!s.titles.includes(ti.id)) s.titles.push(ti.id);
+        s.timeAttack = { sessions: [], daily: { date: '', count: 0 }, seasonBest: {}, allTimeBest: { [track]: { timeMs: 94_800, finishTick: 1896, finishFrac: 0, sessionId: 'proto_sc', horseId: hid, horseName: d.horse, at: t } }, milestones: [] };
+        s.cups = { active: [], invites: [], history: [{ cupId: 'cup_protoshowcasecup1', cupName: '春の小さな杯', format: 'single', rank: 1, points: 10, entrants: 6, at: t, status: 'finished', partial: false, cancelReason: null, trophy: 'gold' }], trophies: { gold: 1, silver: 0, bronze: 0 }, codeAttempts: { hour: 0, count: 0 } };
+        s.tournaments = { ...(s.tournaments ?? {}), proto_sc_autumn: { name: '青葉スプリント杯', rank: 1, at: t, reward: null } };
+        if (d.birthYear) s.age = { birthYear: d.birthYear, birthMonth: 4, guardianConsent: true, setAt: t };
+      });
+      const st = await svc.state(d.id);
+      await svc.showcaseSave(d.id, {
+        horseId: st.horses[0]!.id,
+        pins: [{ kind: 'tournament', id: 'proto_sc_autumn' }, { kind: 'cup_trophy', id: 'cup_protoshowcasecup1' }, { kind: 'title', id: st.titles[0]! }],
+        taTrackIds: [track], phraseId: d.phrase, backgroundId: d.bg,
+      });
+      if (d.id === 'demo_sc_1') { await fsugFriends.requestTo(d.id, ID).catch(() => undefined); await fsugFriends.accept(ID, d.id).catch(() => undefined); }
+      if (d.id === 'demo_sc_blk') await svc.blockSet(d.id, ID, true, 'blocks');
+    }
+    await scPublish(d.id);
+  }
+  return SC_DEMO.map((d) => ({ playerId: d.id, displayName: d.name }));
+}
+const SC_HEX = new Map((visualsJson as { palette: { id: string; hex: string }[] }).palette.map((p) => [p.id, p.hex]));
 // round 14 (REQ-HOF-*): 殿堂 on the real HallService. A demo friend (demo_hof_1, アオバ) has a hall of their own to visit.
 const hallDir = new MemoryHallDirectory();
 const hallSvc = new HallService(hallPlayersFrom(() => rivalInvoker), hallDir, () => hallConfig(master));
@@ -369,6 +430,64 @@ const trfSvc = new TransferService({
   redeemReplay: (u, k) => svc.transferRedeemReplay(u, k), redeemRemember: (u, k, pid, name) => svc.transferRedeemRemember(u, k, pid, name),
 }, trfDir, () => transferConfig(master), { sign: async (uid, t) => `proto-custom-token.${uid}.${Math.floor(t / 1000)}` }, { clock: now });
 
+// round 21 (REQ-LINK-*, contracts/protocol.md §63): ディープリンク on the real LinkService (directory in memory: a reload forgets the
+// links, like a fresh demo) and 再戦 on the real Rematches + FriendRooms (the matchmaker's logic). The demo friend ミドリカワ owns
+// the incoming links; three demo racers ran the friend-room race with the local player.
+const linkDir = new MemoryLinkDirectory();
+const linkSvc = new LinkService({
+  party: (u) => svc.linkParty(u), checkCreate: (u) => svc.linkCheckCreate(u), note: (u, nm, s1, s2, c) => svc.linkNote(u, nm, s1, s2, c),
+}, linkDir, () => linksConfig(master), { clock: now, limitSalt: 'proto', maintenance: () => maintenanceOf(master), dayRule: () => dayRule(master) });
+const LINK_FRIEND = 'demo_link_friend';
+const LINK_FRIEND_NAME = 'ミドリカワ';
+const linkRooms = new FriendRooms<string>();
+const RM_CONDITIONS: RoomConditions = { trackId: 'aoba_turf_1600', going: 'good', night: false, weather: 'sunny', temperatureC: 18, windKmh: 2 };
+const RM_RACERS: [string, string][] = [['demo_rm_1', 'ハヤテ'], ['demo_rm_2', 'クロサキ'], ['demo_rm_3', 'ナギサ']];
+const rmName = (id: string) => (id === ID ? 'あなた' : RM_RACERS.find((x) => x[0] === id)?.[1] ?? LINK_FRIEND_NAME);
+const rematches = new Rematches<string>();
+let rmRace: string | null = null;
+const rmRules = () => { const c = linksConfig(master); return { windowSec: c.rematchWindowSec, offerMinutes: c.rematchOfferMinutes }; };
+/** The view plus the seconds left on the prototype's clock (the demo may move the clock by days; RematchView.SecondsLeft in C#). */
+const rmView = (raceId: string) => { const v = rematches.view(raceId, ID, now(), rmRules()); return { ...v, secondsLeft: v.deadlineAt === null || v.state !== 'waiting' ? 0 : Math.max(0, Math.ceil((v.deadlineAt - now()) / 1000)) }; };
+/** The matchmaker's settle step (MatchmakerDO.settleRematch) on the prototype's rooms. */
+function rmSettle(raceId: string) {
+  const o = rematches.offers.get(raceId);
+  if (!o || !rematches.due(o, now())) return;
+  const plan = rematches.plan(raceId, { isFree: () => true, mayHost: (p) => linkRooms.hostedBy(p) === null });
+  if (!plan) { rematches.settle(raceId, now(), null); return; }
+  const room = linkRooms.createWith(plan.hostId, plan.members.map((m) => ({ playerId: m.playerId, payload: m.entry })), o.conditions, raceId, now(), cryptoRng);
+  rematches.settle(raceId, now(), { passphrase: room.passphrase, hostId: room.hostId, members: room.members.map((m) => m.playerId) });
+}
+/** What each link type needs (the prototype's version of http/app.ts linkTargetsFrom, on the local services). */
+const linkTargets: LinkTargets = {
+  async prepare(uid, type, t) {
+    const str = (k: string) => { const v = t[k]; if (typeof v !== 'string' || !v) throw new AppError('BAD_REQUEST', `target.${k} is required`); return v; };
+    switch (type) {
+      case 'room': { const pass = str('passphrase'); if (!linkRooms.isMember(pass, uid, now())) throw new AppError('NOT_FOUND'); return { targetKey: pass, data: { passphrase: pass } }; }
+      case 'help': { const id = str('articleId'); helpArticle(master, id, 'ja'); return { targetKey: id, data: { articleId: id } }; }
+      case 'friend': return { targetKey: 'me', data: { friendCode: await fsugProfiles.codeOf(uid) } };
+      case 'invite': return { targetKey: 'me', data: { code: (await inviteSvc.view(uid, null)).code } };
+      case 'cup': { const cupId = str('cupId'); const v = await cupsSvc.get(uid, cupId); if (!v.code) throw new AppError('NOT_FOUND'); return { targetKey: cupId, data: { cupId, code: v.code }, endsAt: v.closesAt }; }
+      case 'replay': { const raceId = str('raceId'); const v = await myReplaysSvc.view(uid) as unknown as { saved: { raceId: string; public: boolean }[] }; if (!v.saved.some((x) => x.raceId === raceId && x.public)) throw new AppError('NOT_FOUND'); return { targetKey: raceId, data: { raceId } }; }
+      case 'team': { const me = await teamsSvc.me(uid); if (!me.team) throw new AppError('NOT_FOUND'); return { targetKey: me.team.teamId, data: { teamId: me.team.teamId } }; }
+    }
+  },
+  async open(viewer, rec) {
+    const d = rec.data;
+    switch (rec.type) {
+      case 'room': return linkRooms.isOpen(d.passphrase!, now()) ? { state: 'ok', target: { passphrase: d.passphrase } } : null;
+      case 'help': helpArticle(master, d.articleId!, 'ja'); return { state: 'ok', target: { articleId: d.articleId } };
+      case 'friend': return { state: 'ok', target: { friendCode: d.friendCode, displayName: (await svc.linkParty(rec.ownerId)).displayName, self: viewer === rec.ownerId } };
+      case 'invite': return { state: 'ok', target: { code: d.code } };
+      case 'cup': return { state: 'ok', target: { code: d.code, preview: await cupsSvc.lookup(viewer, d.code!) } };
+      case 'replay': return viewer === rec.ownerId || (await svc.friendsState(viewer)).ids.includes(rec.ownerId) ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: d.raceId, replayTitle: null } } : { state: 'friends_only' };
+      case 'team': { const v = await teamsSvc.view(d.teamId!, viewer); return v.disbanded ? null : { state: 'ok', target: { teamId: v.teamId, teamName: v.name } }; }
+    }
+  },
+};
+async function linkFriend() {
+  if (!(await repo.get(LINK_FRIEND))) { await svc.bootstrap(LINK_FRIEND); await svc.setDisplayName(LINK_FRIEND, LINK_FRIEND_NAME); }
+}
+
 async function wrap<T>(f: () => Promise<T> | T): Promise<{ ok: true; value: T } | { ok: false; code: string; message: string; details?: Record<string, unknown> }> {
   try { return { ok: true, value: await f() }; }
   catch (e) {
@@ -419,6 +538,18 @@ async function ensureCupDemo() {
 }
 const cupHorse = async (id: string) => { const st = await svc.state(id); return (st.horses.find((h) => h.id === st.flags?.partnerHorseId && h.status === 'active') ?? st.horses.find((h) => h.status === 'active'))?.id ?? ''; };
 const cupCall = <T>(f: () => Promise<T>) => wrap(async () => { try { return await f(); } finally { saveCups(); } });
+
+/** REQ-CAL-006: what the calendar reads from other objects (demo tournaments here; the player's open cups for real). */
+async function calendarExt(): Promise<CalendarExternal> {
+  const t = now(), H = 3_600_000, D = 24 * H;
+  const at = (ms: number) => Math.floor(ms / H) * H;
+  const tournaments = [
+    { id: 'proto_winter_mini', name: '冬のミニ大会', status: 'registration' as const, registrationOpensAtMs: at(t - 2 * H), registrationClosesAtMs: at(t + 2 * D), startsAtMs: at(t + 3 * D) },
+    { id: 'proto_night_cup', name: 'ナイター記念大会', status: 'scheduled' as const, registrationOpensAtMs: at(t + 6 * D), registrationClosesAtMs: at(t + 9 * D), startsAtMs: at(t + 10 * D) },
+  ];
+  const cups = await cupsSvc.list(ID).then((r) => r.active.map((x) => ({ cupId: x.cupId, cupName: x.cupName, opensAt: x.opensAt, closesAt: x.closesAt, status: x.status }))).catch(() => null);
+  return { tournaments, cups };
+}
 
 const enCatalog = compileCatalogWith({ romanize: true }, CODE_EN, master.locale?.en, (uiEn as { strings: Record<string, string> }).strings, (protoEn as { strings: Record<string, string> }).strings);
 
@@ -780,6 +911,38 @@ export const MuchiLogic = {
   tipContext: (ctx: string) => tipsOf(master).contexts[ctx] ?? null,
   /** What the replay must never touch (REQ-TUT-004): the first-time rewards and the race counters, for the checks. */
   tutorialFacts: () => wrap(async () => { const s = await svc.state(ID); return { partner: s.flags.partnerHorseId ?? null, tutorialGacha: !!s.flags.tutorialGachaUsed, races: s.onboarding?.races ?? 0, horses: s.horses.length, free: s.wallet.free, paid: s.wallet.paid, claimed: [...(s.onboarding?.claimed ?? [])] }; }),
+
+  // ---------------------------------------------------------------- round 21: アップデートのお知らせ (REQ-NEW-*, contracts/protocol.md §64)
+  // What POST /v1/release-notes/check, POST /v1/release-notes/seen and GET /v1/release-notes return on the real rules
+  // (releaseNotes.ts + PlayerService), for an app version (x-client-version) and the language the screen shows.
+  releaseNotesCheck: (version: string | null, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.releaseNotesCheck(ID, version, lang, Number(DEFAULT_RULESET.maxWhips))),
+  releaseNotesSeen: (version: string) => wrap(() => svc.releaseNotesSeen(ID, version)),
+  releaseNotes: (version: string | null, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.releaseNotes(ID, version, lang, Number(DEFAULT_RULESET.maxWhips))),
+  releaseNotesKpi: (name: 'release_notes_view' | 'release_notes_target' | 'release_notes_history', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /**
+   * Demo only: the store builds come out tomorrow (the notes' release day moves after this account was created, so the
+   * account is an updater, not a new install) and nothing is seen yet. The account itself (its creation day, unlocks) is
+   * untouched; a reload brings the shipped notes back.
+   */
+  releaseNotesDemo: () => wrap(async () => {
+    const day = new Date(now() + 9 * 3_600_000 + DAY_MS).toISOString().slice(0, 10);
+    master.releaseNotes = { ...BASE_RELEASE_NOTES, notes: BASE_RELEASE_NOTES.notes.map((n) => ({ ...n, releasedOn: day })) };
+    const st = (await repo.get(ID))!; delete st.releaseNotes; await repo.put(st);
+    return day;
+  }),
+  releaseNotesFacts: () => wrap(async () => { const st = await svc.state(ID); return { seen: [...(st.releaseNotes?.seen ?? [])], baseline: st.releaseNotes?.baseline ?? null, free: st.wallet.free, paid: st.wallet.paid, items: { ...st.items } }; }),
+
+  // ---------------------------------------------------------------- round 21: イベントカレンダー (REQ-CAL-*, contracts/protocol.md §65)
+  // What GET /v1/calendar and PUT / DELETE /v1/calendar/marks/:id return on the real rules (calendar.ts + PlayerService):
+  // events, exchange, weeks, seasons, the pass month, announced banners, maintenance and the comeback window from the
+  // master and the player; the player's open cups from the real HostedCupsService. The prototype has no tournament index,
+  // so two demo tournaments (registration open now, the start in three days) stand in for TournamentsService.list().
+  // Japanese like the server; the EN toggle translates the stage (server-en / proto-en), names of cups are the player's.
+  calendar: (q: { from?: string | null; to?: string | null } = {}) => wrap(async () => svc.calendar(ID, q, await calendarExt())),
+  calendarMark: (entryId: string, on: boolean) => wrap(async () => svc.calendarMark(ID, entryId, on, await calendarExt())),
+  calendarKpi: (name: 'calendar_view' | 'calendar_entry_open', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+  /** The server's calendar_mark rows (REQ-CAL-015) and the stored marks (never a push: REQ-CAL-011). */
+  calendarFacts: () => wrap(async () => { const s = await svc.state(ID); return { marks: (s.calendar?.marks ?? []).map((x) => ({ ...x })), kpi: serverKpi.filter((k) => k.name === 'calendar_mark'), outbox: (s.push?.outbox ?? []).length }; }),
 
   // ---------------------------------------------------------------- round 17: ヘルプセンター (REQ-HELP-*, contracts/protocol.md §48)
   // What GET /v1/help, /v1/help/articles/:id, /v1/help/search and the inquiry routes return, on the real rules, in the
@@ -1175,6 +1338,25 @@ export const MuchiLogic = {
   muteMember: (playerId: string, muted: boolean) => wrap(() => teamsSvc.mute(ID, playerId, muted)),
   /** Unlocks for the demo: lifetime races (play) — the pass and cosmetic stamps unlock by demoPurchase / the 見た目 shop. */
   async demoRaces(count: number) { const s = await svc.state(ID); s.stats.races = Math.max(s.stats.races, count); new LocalRepo().put(s); },
+  // ---------------------------------------------------------------- round 21: トレーナーカード (REQ-SHOW-*, contracts/protocol.md §62)
+  showcase: {
+    /** GET /v1/showcase in the screen's language (phrases and background names are picked from their JA + EN pair). */
+    mine: (lang: 'ja' | 'en' = 'ja') => wrap(() => svc.showcaseMine(ID, lang)),
+    /** PUT /v1/showcase (ids only; ownership checked by the real rules). */
+    save: (input: ShowcaseInput, lang: 'ja' | 'en' = 'ja') => wrap(() => svc.showcaseSave(ID, input, lang)),
+    /** GET /v1/showcase/:playerId (the directory copy, re-checked; blocks / deleted / banned → the neutral card). */
+    card: (playerId: string, lang: 'ja' | 'en' = 'ja') => wrap(() => showcaseSvc.card(ID, playerId, lang)),
+    /** The three demo players (a friend, an under-13 player, one who blocked you). */
+    demo: () => wrap(() => showcaseDemo()),
+    /** Block / unblock a player on the one list (§47.1), to see the neutral card from your side. */
+    block: (playerId: string, on: boolean) => wrap(() => svc.blockSet(ID, playerId, on, 'blocks')),
+    /** Silks colour ids → hex (master/visuals.json palette) for the card's silks chips. */
+    hex: (id: string) => SC_HEX.get(id) ?? '#888888',
+    /** Client KPI rows (showcase_view / showcase_share) through the server's strict schema. */
+    kpi: (name: 'showcase_view' | 'showcase_share', props: Record<string, unknown>) => wrap(() => clientBatchSchema.parse({ platform: 'editor', appVersion: 'proto', events: [{ name, at: now(), props }] }).events.map(clientToKpi)[0]),
+    /** Server KPI rows seen so far (showcase_save). */
+    serverKpi: () => serverKpi.filter((k) => k.name === 'showcase_save'),
+  },
   // ---------------------------------------------------------------- round 14: 殿堂・引退式 (REQ-HOF-*, contracts/protocol.md §34)
   hall: {
     mine: (cursor: string | null = null, limit: number | null = null) => wrap(() => hallSvc.mine(ID, cursor, limit)),
@@ -1385,6 +1567,50 @@ export const MuchiLogic = {
     kpi: () => serverKpi.filter((k) => k.name.startsWith('transfer_')),
     audit: () => trfDir.rows.map((r) => ({ ...r })),
     storedRecords: () => JSON.stringify([...trfDir.codes.values()]),
+  },
+  // ---------------------------------------------------------------- round 21: ディープリンク・再戦 (REQ-LINK-*, contracts/protocol.md §63)
+  // What POST/GET/DELETE /v1/links and POST /v1/links/resolve answer, on the real LinkService.
+  links: {
+    create: (type: LinkType, target: Record<string, unknown> = {}) => wrap(() => linkSvc.create(ID, type, target, linkTargets)),
+    resolve: (raw: string) => wrap(() => linkSvc.resolve(ID, raw, { ip: '198.51.100.21', platform: null, version: null }, linkTargets)),
+    list: () => wrap(() => linkSvc.list(ID)),
+    revoke: (token: string) => wrap(() => linkSvc.revoke(ID, token)),
+    parse: (raw: string) => parseLink(raw),
+    format: (token: string) => formatToken(token),
+    screens: () => ({ ...LINK_SCREENS }),
+    /** Demo: a link the friend ミドリカワ sent — `room` (their open friend room), `help`, `friend`, or `expired` (a room link whose room closed). */
+    demoIncoming: (kind: 'room' | 'help' | 'friend' | 'expired') => wrap(async () => {
+      await linkFriend();
+      if (kind === 'help') return (await linkSvc.create(LINK_FRIEND, 'help', { articleId: 'share_links' }, linkTargets)).url;
+      if (kind === 'friend') return (await linkSvc.create(LINK_FRIEND, 'friend', {}, linkTargets)).url;
+      const room = linkRooms.create(LINK_FRIEND, 'entry', now(), cryptoRng);
+      const url = (await linkSvc.create(LINK_FRIEND, 'room', { passphrase: room.passphrase }, linkTargets)).url;
+      if (kind === 'expired') linkRooms.rooms.delete(room.passphrase); // the room closed (started or timed out): the link no longer opens
+      return url;
+    }),
+    /** The local player's own demo room (for the room link on the share sheet). */
+    demoMyRoom: () => { const r = linkRooms.hostedBy(ID) ?? linkRooms.create(ID, 'entry', now(), cryptoRng); if (!linkRooms.isMember(r.passphrase, RM_RACERS[0]![0], now())) linkRooms.join(r.passphrase, RM_RACERS[0]![0], 'entry', now()); return r.passphrase; },
+    /** Joins the friend's room after the confirmation (the link never joins by itself). */
+    joinRoom: (passphrase: string) => wrap(() => { const r = linkRooms.join(passphrase, ID, 'entry', now()); return { passphrase: r.passphrase, members: r.members.map((m) => rmName(m.playerId)) }; }),
+    kpi: () => serverKpi.filter((k) => k.name.startsWith('link_') || k.name === 'rematch'),
+    stored: () => JSON.stringify([...linkDir.links.values()]),
+  },
+  rematch: {
+    /** Demo: a friend-room race just finished (you + three racers). ハヤテ presses 再戦 at once; クロサキ leaves. */
+    demoFinish: () => {
+      rmRace = `r-proto-rm-${Date.now().toString(36)}`;
+      rematches.offer(rmRace, RM_RACERS[0]![0], [ID, ...RM_RACERS.map((x) => x[0])], RM_CONDITIONS, now());
+      rematches.press(rmRace, RM_RACERS[0]![0], 'entry', [], now(), rmRules());
+      rematches.decline(rmRace, RM_RACERS[1]![0], now());
+      return { raceId: rmRace, places: [[ID, 1], ['demo_rm_1', 2], ['demo_rm_3', 3], ['demo_rm_2', 4]].map(([id, place]) => ({ name: rmName(id as string), place, you: id === ID })) };
+    },
+    press: () => wrap(() => { if (rematches.press(rmRace!, ID, 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    status: () => wrap(() => { rmSettle(rmRace!); return rmView(rmRace!); }),
+    decline: () => wrap(() => { if (rematches.decline(rmRace!, ID, now())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    /** Demo: ナギサ presses too — everyone still in has pressed, so the window closes at once. */
+    demoOthers: () => wrap(() => { if (rematches.press(rmRace!, RM_RACERS[2]![0], 'entry', [], now(), rmRules())) rmSettle(rmRace!); return rmView(rmRace!); }),
+    /** The new room (members by name, the snapshot conditions). */
+    room: (passphrase: string) => { const r = linkRooms.rooms.get(passphrase); return r ? { passphrase, host: rmName(r.hostId), members: r.members.map((m) => rmName(m.playerId)), conditions: r.conditions ?? null } : null; },
   },
   // ---------------------------------------------------------------- round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
   cups: {

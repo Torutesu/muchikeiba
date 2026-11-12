@@ -1,0 +1,29 @@
+{
+  "_comment": "プロフィールのショーケース（トレーナーカード、REQ-SHOW-*、contracts/protocol.md §62）。一言は自由入力のない決まった文だけ（§52 の定型チャットと同じ考え方、日本語と英語の組）。カードの背景は実績の段で解放される見た目だけ（何も配らない・売らない）。賭け言葉・「倍」「お得」「今だけ」などは起動時の検証で拒否される。",
+  "version": 1,
+  "config": { "enabled": true, "pinsMax": 3, "taMax": 2, "minAgeFreeText": 13 },
+  "phrases": [
+    { "id": "hello", "ja": "よろしくお願いします！", "en": "Nice to meet you!" },
+    { "id": "race_anytime", "ja": "いつでもレースしよう！", "en": "Race me any time!" },
+    { "id": "thanks", "ja": "いつもありがとう！", "en": "Thanks for racing with me!" },
+    { "id": "whip_study", "ja": "ムチのタイミングを研究中", "en": "Studying my whip timing" },
+    { "id": "partner", "ja": "相棒といっしょに走っています", "en": "Racing with my partner" },
+    { "id": "breeding", "ja": "配合を楽しんでいます", "en": "Enjoying breeding" },
+    { "id": "time_attack", "ja": "タイムアタックに夢中", "en": "Hooked on time attack" },
+    { "id": "branch", "ja": "支部のみんなと走っています", "en": "Racing with my branch" },
+    { "id": "photo", "ja": "写真を撮るのが好きです", "en": "I love taking photos" },
+    { "id": "weekend", "ja": "週末によく走ります", "en": "I race mostly on weekends" },
+    { "id": "night", "ja": "夜によく走ります", "en": "I race mostly at night" },
+    { "id": "newcomer", "ja": "はじめたばかりです", "en": "Just getting started" },
+    { "id": "hall_goal", "ja": "殿堂入りを目指しています", "en": "Aiming for the Hall of Fame" }
+  ],
+  "backgrounds": [
+    { "id": "dawn", "ja": "夜明けの馬場", "en": "Dawn track", "unlock": { "kind": "default" } },
+    { "id": "turf_stretch", "ja": "芝の直線", "en": "Turf stretch", "unlock": { "kind": "achievement", "achievementId": "wins", "tier": 1 } },
+    { "id": "night_lights", "ja": "ナイターの灯", "en": "Night lights", "unlock": { "kind": "achievement", "achievementId": "races", "tier": 2 } },
+    { "id": "dirt_dust", "ja": "砂煙のダート", "en": "Dirt dust", "unlock": { "kind": "achievement", "achievementId": "podiums", "tier": 2 } },
+    { "id": "stopwatch", "ja": "金の計時", "en": "Golden stopwatch", "unlock": { "kind": "achievement", "achievementId": "ta_gold", "tier": 1 } },
+    { "id": "every_course", "ja": "全場の旅", "en": "Every course", "unlock": { "kind": "achievement", "achievementId": "courses_all", "tier": 2 } },
+    { "id": "golden_gate", "ja": "黄金のゲート", "en": "Golden gate", "unlock": { "kind": "achievement", "achievementId": "tournament_win", "tier": 1 } }
+  ]
+}

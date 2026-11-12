@@ -171,6 +171,18 @@ describe('gacha calendar and odds preview (REQ-OPS-027)', () => {
     expect((await call('viewer', 'GET', '/v1/admin/gacha/calendar?versionId=cfg_404')).status).toBe(404);
   });
 
+  it('REQ-CAL-012: the merged calendar of a version (viewer, read only, bounded range)', async () => {
+    const { call } = await setup();
+    const cal = await call('viewer', 'GET', '/v1/admin/calendar');
+    expect(cal.status).toBe(200);
+    expect(cal.body.versionId).toBe('base');
+    expect(cal.body.entries.some((e: { kind: string }) => e.kind === 'season')).toBe(true);
+    expect(Array.isArray(cal.body.overlaps)).toBe(true);
+    expect(cal.body.entries.some((e: { kind: string }) => e.kind === 'cup' || e.kind === 'comeback')).toBe(false);
+    expect((await call('viewer', 'GET', '/v1/admin/calendar?from=2026-01-01&to=2026-03-01')).status).toBe(400);
+    expect((await call('viewer', 'GET', '/v1/admin/calendar?versionId=cfg_404')).status).toBe(404);
+  });
+
   it('events list carries the status per event', async () => {
     const { call } = await setup();
     const ev = await call('viewer', 'GET', '/v1/admin/events');

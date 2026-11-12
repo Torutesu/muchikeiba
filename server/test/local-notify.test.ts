@@ -41,6 +41,7 @@ function digest(o: Partial<LocalRemindersDigest> = {}): LocalRemindersDigest {
     rival: { weekEndsAt: WEEK_END, rankedRaces: 0 },
     exchanges: [{ eventId: 'ev_autumn', points: 120, closesAt: Date.UTC(2026, 11, 10, 19) }],
     gifts: [Date.UTC(2026, 11, 11, 15), Date.UTC(2026, 11, 11, 20), Date.UTC(2026, 11, 20, 15)],
+    calendarMarks: [],
     ...o,
   };
 }
@@ -184,6 +185,43 @@ describe('§61.2 the plan (REQ-LNOTIF-003..007)', () => {
     const p = planLocalNotifications(snap({}, { exchanges: ex, config: { ...digest().config, dailyCap: 4 } }));
     expect(p.items.filter((i) => i.kind === 'exchange_closing').map((i) => i.refId)).toEqual(['ev_a', 'ev_b']);
     expect(p.items.filter((i) => i.kind === 'gift_expiring')).toHaveLength(1);
+  });
+});
+
+describe('R21 integration: §65 calendar marks through the §61 planner (calendar_mark)', () => {
+  const START = Date.UTC(2026, 11, 9, 6); // 2026-12-09 15:00 JST
+  const marks = [{ id: 'tournament_registration:t_winter', startAt: START }];
+  it('a marked row that has not started → one reminder leadHours before its start, in `reminders`, opening the calendar, no name', () => {
+    const p = planLocalNotifications(snap({}, { calendarMarks: marks, config: { ...digest().config, dailyCap: 4 } }));
+    const it = p.items.find((i) => i.kind === 'calendar_mark')!;
+    expect(it).toMatchObject({ id: 'lnotif.calendar_mark.tournament_registration:t_winter', category: 'reminders', screen: 'calendar', refId: 'tournament_registration:t_winter', fireAt: START - cfg.leadHours.calendar_mark * 3_600_000 });
+    expect(it.body).toBe('印を付けた予定が12月9日 15:00に始まります');
+    const en = planLocalNotifications(snap({ locale: 'en', showDetails: true }, { calendarMarks: marks, config: { ...digest().config, dailyCap: 4 } })).items.find((i) => i.kind === 'calendar_mark')!;
+    expect(en.body).toBe('An entry you marked starts on 12/9 at 15:00');
+  });
+  it('the reminders category (default off), quiet hours, the cap, past starts and the kill switch apply like every local kind', () => {
+    expect(reasonOf(snap({}, { calendarMarks: marks, categories: { ...digest().categories, reminders: false } }), 'calendar_mark')).toBe('category_off');
+    expect(m.push.defaults.categories.reminders).toBe(false);
+    expect(reasonOf(snap({}, { calendarMarks: marks, config: { ...digest().config, kinds: digest().config.kinds.filter((k) => k !== 'calendar_mark') } }), 'calendar_mark')).toBe('kind_off');
+    // a 9:00 start with quiet hours 22–8: the reminder moves to 8:00 (still before the start)
+    const early = [{ id: 'event:ev_x', startAt: Date.UTC(2026, 11, 10, 0) }];
+    expect(planLocalNotifications(snap({}, { calendarMarks: early, config: { ...digest().config, dailyCap: 4 } })).items.find((i) => i.kind === 'calendar_mark')?.fireAt).toBe(Date.UTC(2026, 11, 9, 23));
+    // started already: nothing (the device never plans a past start)
+    expect(kinds(snap({}, { calendarMarks: [{ id: 'event:ev_y', startAt: T0 - 1000 }] }))).not.toContain('calendar_mark');
+    // the daily cap: with dailyCap 1 on that game day, the higher kinds win
+    const capped = planLocalNotifications(snap({}, { calendarMarks: [{ id: 'cup:c1', startAt: Date.UTC(2026, 11, 11, 7) }], config: { ...digest().config, dailyCap: 1 } }));
+    expect(capped.dropped.find((x) => x.kind === 'calendar_mark')?.reason).toBe('daily_cap');
+  });
+  it('the digest lists the marks that have not started (marks made before Round 21 integration carry no start and are skipped)', async () => {
+    const svc = new PlayerService(new MemoryPlayerRepo(), { master: m, rng: seededRng(65), clock: () => T0, verifiers: {} });
+    await svc.bootstrap('cm');
+    await svc.tx('cm', null, (st) => { st.calendar = { marks: [
+      { id: 'season:2026-12', kind: 'season', until: T0 + 30 * 86_400_000, startAt: T0 - 86_400_000 },
+      { id: 'tournament:t1', kind: 'tournament', until: START, startAt: START },
+      { id: 'event:old', kind: 'event', until: T0 + 86_400_000 },
+    ] }; return true; });
+    const v = localRemindersView(m, await svc.state('cm'), T0);
+    expect(v.enabled && v.calendarMarks).toEqual([{ id: 'tournament:t1', startAt: START }]);
   });
 });
 
@@ -386,6 +424,10 @@ function vectors() {
     ['signed out', { signedIn: false }, {}],
     ['deleting', {}, { deleting: true }],
     ['onboarding', {}, { onboarding: true }],
+    // R21 integration (§65 × §61): calendar marks
+    ['calendar marks', { showDetails: true }, { calendarMarks: [{ id: 'tournament_registration:t_winter', startAt: Date.UTC(2026, 11, 9, 6) }, { id: 'event:ev_x', startAt: Date.UTC(2026, 11, 10, 0) }, { id: 'event:ev_past', startAt: T0 - 1000 }], config: { ...c, dailyCap: 4 } }],
+    ['calendar marks, en, reminders off', { locale: 'en' }, { calendarMarks: [{ id: 'cup:c1', startAt: Date.UTC(2026, 11, 11, 7) }], categories: { ...digest().categories, reminders: false } }],
+    ['calendar marks, cap 1', {}, { calendarMarks: [{ id: 'cup:c1', startAt: Date.UTC(2026, 11, 11, 7) }], config: { ...c, dailyCap: 1 } }],
   ];
   return {
     _note: 'REQ-LNOTIF-003 (contracts/protocol.md §61.2): server/src/domain/localNotify.ts planLocalNotifications and C# Muchi.Client LocalNotificationPlanner.Plan must agree (items with texts in both languages, dropped reasons, status). Regenerate with UPDATE_VECTORS=1 npx vitest run test/local-notify.test.ts.',

@@ -915,15 +915,15 @@
     "enabled": true
   },
   "localNotifications": {
-    "_note": "REQ-LNOTIF-*（contracts/protocol.md §61）。端末のローカル通知。端末が知っている時刻（調教のセッションの期限・次のゲーム日のログインボーナス・週替わりチャレンジ／ライバルの週／交換所の締め・プレゼントの期限）を端末の中で予約する。プッシュと同じ種類（カテゴリ）と静かな時間帯に従い、1日の上限 dailyCap はゲーム日ごと。期限はデータの本当の時刻だけ。購入・ショップへ誘う種類は無い。enabled=false で端末は全部取り消す（停止スイッチ）。コイン・アイテムは動かない。",
+    "_note": "REQ-LNOTIF-*（contracts/protocol.md §61）。端末のローカル通知。端末が知っている時刻（調教のセッションの期限・次のゲーム日のログインボーナス・週替わりチャレンジ／ライバルの週／交換所の締め・プレゼントの期限・R21 統合：予定表で印を付けた行の始まり（§65、calendar_mark、reminders）を端末の中で予約する。プッシュと同じ種類（カテゴリ）と静かな時間帯に従い、1日の上限 dailyCap はゲーム日ごと。期限はデータの本当の時刻だけ。購入・ショップへ誘う種類は無い。enabled=false で端末は全部取り消す（停止スイッチ）。コイン・アイテムは動かない。",
     "enabled": true,
-    "kinds": ["training_session", "gift_expiring", "exchange_closing", "weekly_challenge_closing", "rival_week_closing", "daily_bonus"],
+    "kinds": ["training_session", "gift_expiring", "exchange_closing", "weekly_challenge_closing", "rival_week_closing", "calendar_mark", "daily_bonus"],
     "dailyCap": 2,
     "dailyHourJst": 12,
     "horizonDays": 7,
     "maxPending": 8,
     "trainingLeadMin": 3,
-    "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24 },
+    "leadHours": { "weekly_challenge_closing": 24, "rival_week_closing": 24, "exchange_closing": 24, "gift_expiring": 24, "calendar_mark": 2 },
     "prePrompt": { "maxAsks": 2, "retryDays": 14 }
   },
   "hall": {

@@ -37,6 +37,7 @@ import type { StableService } from '../domain/stable.js';
 import type { HallService } from '../domain/hallOfFame.js';
 import { InviteService, type InviteDirectory, type InvitePlayers } from '../domain/invite.js';
 import { SsvError, verifyAdMobCallback, type SsvKeySource } from '../ads/ssv.js';
+import { ShowcaseService, SHOWCASE_HARD_LIMITS, SHOWCASE_ID_RE, SHOWCASE_PIN_KINDS, SHOWCASE_REF_RE, type ShowcaseInput } from '../domain/showcase.js';
 import { LOCALES, resolveLocale, type Locale } from '../i18n/locale.js';
 import { catalogFor, localize, type Catalog } from '../i18n/catalog.js';
 import { ASSIST_LEVELS, ASSIST_SOURCES } from '../domain/assist.js';
@@ -55,8 +56,12 @@ import { bulkBodySchema } from '../domain/roster.js';
 import type { TeamGoalBrief } from '../domain/nextAction.js';
 import type { HostedCupsService } from '../domain/hostedCupService.js';
 import { clientHeaders, gateRequest, maintenanceOf, maintenanceStatus } from '../domain/maintenance.js';
+import { CALENDAR_ENTRY_ID_RE, type CalendarExternal } from '../domain/calendar.js';
 import { helpArticle, helpIndex, helpOf, INQUIRY_CATEGORIES, PLATFORMS, searchHelp, type InquirySummary } from '../domain/help.js';
 import type { TransferService } from '../domain/transferService.js';
+import type { LinkService, LinkTargets } from '../domain/linkService.js';
+import { androidAssetLinks, appleAssociation, fallbackPage, LINK_TYPES, linksConfig } from '../domain/deepLinks.js';
+import type { RematchView } from '../domain/rematch.js';
 import { FriendSuggestService, fsugConfig, type FsugCache, type SuggestDirectory, type SuggestPlayers } from '../domain/friendSuggest.js';
 import type { DataExportService } from '../domain/dataExportService.js';
 import { REVIEW_PLATFORMS, REVIEW_STEPS } from '../domain/reviewPrompt.js';
@@ -111,6 +116,9 @@ export type PlayerMethod =
   | 'activity' | 'activityRead' | 'activityReplayShare' | 'teamGoalMilestone'
   | 'fsugSelf' | 'fsugDismiss' | 'fsugSetHidden'
   | 'tips' | 'tipsSeen'
+  | 'showcaseMine' | 'showcaseSave' | 'showcaseViewer' | 'showcaseForget'
+  | 'releaseNotesCheck' | 'releaseNotesSeen' | 'releaseNotes'
+  | 'calendar' | 'calendarMark'
   | 'helpFeedback' | 'helpInquirySubmit' | 'helpInquiries' | 'helpInquiry' | 'helpInquiryRead' | 'helpInquiryIndexed' | 'adminInquiry' | 'adminInquiryReply'
   | 'recaps' | 'recap' | 'recapProgress'
   | 'dataExportView' | 'dataExportRequest' | 'dataExportTake' | 'dataExportCollect' | 'dataExportReady' | 'dataExportFailed' | 'dataExportFile'
@@ -118,7 +126,8 @@ export type PlayerMethod =
   | 'cupsMine' | 'cupReserve' | 'cupRelease' | 'cupLeft' | 'cupCommitted' | 'cupCodeAttempt' | 'cupInvited' | 'cupStarted' | 'cupClosed' | 'cupHorseName'
   | 'reportOptions' | 'reportSnapshot' | 'reportCommit' | 'blockIds' | 'blockSet' | 'reportWarn' | 'replayOpsHide' | 'photoOpsHide'
   | 'transferView' | 'transferCheckIssue' | 'transferIssued' | 'transferRevoke' | 'transferProgress' | 'transferRedeemed' | 'transferFailed' | 'transferCutoff' | 'adminTransfer'
-  | 'transferRedeemReplay' | 'transferRedeemRemember';
+  | 'transferRedeemReplay' | 'transferRedeemRemember'
+  | 'linkParty' | 'linkCheckCreate' | 'linkNote';
 
 export interface PlayerInvoker {
   invoke<K extends PlayerMethod>(m: K, ...args: Parameters<PlayerService[K]>): Promise<Awaited<ReturnType<PlayerService[K]>>>;
@@ -136,7 +145,14 @@ export interface MatchApi {
   tutorial(playerId: string, entry: RaceEntry): Promise<unknown>;
   /** Is the player a member of this friend room (invitation check)? */
   friendMember(passphrase: string, playerId: string): Promise<boolean>;
+  /** REQ-LINK-007: is the friend room still open (room links). Absent → treated as open (the join call decides). */
+  friendRoomOpen?(passphrase: string): Promise<boolean>;
+  /** REQ-LINK-014..017: 再戦 (MatchmakerDO). Absent → the routes answer NOT_FOUND. `settled`: this call closed the window. */
+  rematchPress?(raceId: string, playerId: string, entry: RaceEntry, blocks: string[]): Promise<RematchResult>;
+  rematchDecline?(raceId: string, playerId: string): Promise<RematchResult>;
+  rematchStatus?(raceId: string, playerId: string): Promise<RematchResult>;
 }
+export interface RematchResult { view: RematchView; settled: { opened: boolean; members: number } | null }
 export interface LeaderboardApi {
   /** Public snapshot file (R2), never touches a Durable Object. */
   board(seasonId: string, board: string): Promise<unknown>;
@@ -221,6 +237,8 @@ export interface AppContext {
   assetCdnBase?: string;
   /** REQ-TRF-*: 引き継ぎコード (domain/transferService.ts). Absent → GET answers `enabled: false`, the others NOT_FOUND. */
   transfer?: TransferService;
+  /** REQ-LINK-*: ディープリンク (domain/linkService.ts). Absent → GET answers `enabled: false`, resolve `unavailable`, the others NOT_FOUND. */
+  links?: LinkService;
   /**
    * REQ-TRF-010: when present, player routes authenticate through this (the account and its Firebase `auth_time`) and
    * `sessionGuard` refuses a session signed in before the account moved to another device (401 SESSION_REPLACED).
@@ -356,6 +374,20 @@ async function indexInquiries(c: AppContext, u: string, items: InquirySummary[])
   } catch (e) { console.error('inquiry index write failed', (e as Error).message); }
 }
 
+/**
+ * REQ-CAL-006 (§65): what the calendar reads from other objects — the tournament index and the player's open cups (the
+ * same reads as GET /v1/tournaments and GET /v1/cups). A failing read is null (the calendar lists it under `partial`);
+ * a service this deployment does not run is an empty list.
+ */
+async function calendarExternal(c: AppContext, u: string): Promise<CalendarExternal> {
+  const [tournaments, cups] = await Promise.all([
+    c.tournaments ? c.tournaments.list().then((r) => r.tournaments).catch(() => null) : Promise.resolve([]),
+    c.hostedCups ? c.hostedCups.list(u).then((r) => r.active.map((x) => ({ cupId: x.cupId, cupName: x.cupName, opensAt: x.opensAt, closesAt: x.closesAt, status: x.status }))).catch(() => null) : Promise.resolve([]),
+  ]);
+  return { tournaments, cups };
+}
+const calendarEntryParam = (s: string) => { if (!CALENDAR_ENTRY_ID_RE.test(s)) throw new AppError('NOT_FOUND', 'no such calendar entry'); return s; };
+
 const id = z.string().min(1).max(64);
 
 const weekly = (c: AppContext) => {
@@ -444,6 +476,23 @@ const weekIdParam = (s: string) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new AppError('BAD_REQUEST', 'bad week id');
   return s;
 };
+const links = (c: AppContext) => {
+  if (!c.links) throw new AppError('NOT_FOUND', 'links are not available');
+  return c.links;
+};
+const rematchApi = (c: AppContext) => {
+  const m = c.match;
+  if (!m.rematchPress || !m.rematchDecline || !m.rematchStatus) throw new AppError('NOT_FOUND', 'rematch is not available');
+  return m as Required<Pick<MatchApi, 'rematchPress' | 'rematchDecline' | 'rematchStatus'>>;
+};
+const raceIdParam = (s: string) => { if (!/^[A-Za-z0-9_-]{1,64}$/.test(s)) throw new AppError('NOT_FOUND', 'no rematch for this race'); return s; };
+/** REQ-LINK-021: the `rematch` KPI rows of one call (press / decline, and the outcome when this call closed the window). */
+async function rematchOut(c: AppContext, u: string, r: RematchResult, action: 'press' | 'decline' | null) {
+  const note = (s1: string, count?: number) => c.player(u).invoke('linkNote', u, 'rematch', s1, undefined, count).catch(() => undefined);
+  if (action) await note(action);
+  if (r.settled) await note(r.settled.opened ? 'opened' : 'too_few', r.settled.members);
+  return r.view;
+}
 const transfer = (c: AppContext) => {
   if (!c.transfer) throw new AppError('NOT_FOUND', 'transfer codes are not available');
   return c.transfer;
@@ -454,6 +503,14 @@ const invite = (c: AppContext) => {
 };
 /** REQ-INV-005: the app's install id (random per install, kept in the keychain / keystore). Only a hash is stored. */
 const installIdSchema = z.string().min(8).max(128).regex(/^[\w\-.:]+$/);
+/** REQ-SHOW-003 (§62): PUT /v1/showcase (ids only; ownership is checked in the owner's object). */
+const showcaseBodySchema = z.object({
+  horseId: z.string().min(1).max(40).regex(SHOWCASE_REF_RE).nullable(),
+  pins: z.array(z.object({ kind: z.enum(SHOWCASE_PIN_KINDS), id: z.string().regex(SHOWCASE_REF_RE) }).strict()).max(SHOWCASE_HARD_LIMITS.pinsMax),
+  taTrackIds: z.array(z.string().regex(/^[a-z0-9_]{1,64}$/)).max(SHOWCASE_HARD_LIMITS.taMax),
+  phraseId: z.string().regex(SHOWCASE_ID_RE).nullable(),
+  backgroundId: z.string().regex(SHOWCASE_ID_RE),
+}).strict();
 const playerIdParam = (s: string) => {
   if (s.length < 1 || s.length > 128 || /[\s/]/.test(s)) throw new AppError('BAD_REQUEST', 'bad player id');
   return s;
@@ -1030,6 +1087,48 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ code: z.string().min(1).max(32), installId: installIdSchema }).strict());
     return invite(c).redeem(u, b.code, b.installId);
   } },
+  // ディープリンク・招待リンク (REQ-LINK-*, contracts/protocol.md §63)
+  { method: 'GET', path: '/v1/links', auth: 'player', handler: async (_r, _p, c, u) => (c.links ? c.links.list(u) : { enabled: false, links: [], createsToday: 0, createsPerDay: 0 }) },
+  { method: 'POST', path: '/v1/links', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ type: z.enum(LINK_TYPES), target: z.record(z.string(), z.unknown()).optional() }).strict());
+    return links(c).create(u, b.type, b.target ?? {}, linkTargetsFrom(c));
+  } },
+  { method: 'POST', path: '/v1/links/resolve', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ token: z.string().max(200).optional(), url: z.string().max(500).optional() }).strict()
+      .refine((x) => (x.token ?? x.url) !== undefined, 'token or url is required'));
+    if (!c.links) return { state: 'unavailable' };
+    const h = clientHeaders(r.headers);
+    return c.links.resolve(u, (b.token ?? b.url)!, { ip: r.headers.get('cf-connecting-ip'), platform: h.platform, version: h.version }, linkTargetsFrom(c));
+  } },
+  { method: 'DELETE', path: '/v1/links/:token', auth: 'player', handler: async (_r, p, c, u) => links(c).revoke(u, p.token!) },
+  // 再戦 (REQ-LINK-014..019, §63.6)
+  { method: 'POST', path: '/v1/friend-rooms/rematch/:raceId', auth: 'player', handler: async (r, p, c, u) => {
+    const raceId = raceIdParam(p.raceId!);
+    const api = rematchApi(c);
+    const b = await body(r, z.object({ horseId: id }).strict());
+    const entry = await c.player(u).invoke('raceEntry', u, b.horseId);
+    const blocks = await c.player(u).invoke('blockIds', u);
+    return rematchOut(c, u, await api.rematchPress(raceId, u, entry, blocks), 'press');
+  } },
+  { method: 'GET', path: '/v1/friend-rooms/rematch/:raceId', auth: 'player', handler: async (_r, p, c, u) => rematchOut(c, u, await rematchApi(c).rematchStatus(raceIdParam(p.raceId!), u), null) },
+  { method: 'DELETE', path: '/v1/friend-rooms/rematch/:raceId', auth: 'player', handler: async (_r, p, c, u) => rematchOut(c, u, await rematchApi(c).rematchDecline(raceIdParam(p.raceId!), u), 'decline') },
+  // the app is not installed (REQ-LINK-010..012): a static page that never looks the token up, and the app association files
+  { method: 'GET', path: '/l/:token', auth: 'none', handler: async (_r, p, c) => {
+    const v = maintenanceOf(c.master).clientVersions;
+    return new Response(fallbackPage(linksConfig(c.master), p.token!, { ios: v.ios.storeUrl ?? null, android: v.android.storeUrl ?? null }), {
+      status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex', 'referrer-policy': 'no-referrer', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' },
+    });
+  } },
+  { method: 'GET', path: '/.well-known/apple-app-site-association', auth: 'none', handler: async (_r, _p, c) => {
+    const a = appleAssociation(linksConfig(c.master));
+    if (!a) throw new AppError('NOT_FOUND');
+    return new Response(JSON.stringify(a), { headers: { 'content-type': 'application/json' } });
+  } },
+  { method: 'GET', path: '/.well-known/assetlinks.json', auth: 'none', handler: async (_r, _p, c) => {
+    const a = androidAssetLinks(linksConfig(c.master));
+    if (!a) throw new AppError('NOT_FOUND');
+    return new Response(JSON.stringify(a), { headers: { 'content-type': 'application/json' } });
+  } },
   // push notifications (REQ-PUSH-*)
   { method: 'PUT', path: '/v1/push/devices', auth: 'player', handler: async (r, _p, c, u) => {
     // REQ-L10N-007: the device's language (body `locale`, else the request's ?lang= / Accept-Language)
@@ -1195,6 +1294,33 @@ export const routes: Route[] = [
     const b = await body(r, z.object({ ids: z.array(z.string().regex(/^[a-z0-9_]{2,40}$/)).min(1).max(50) }).strict());
     return c.player(u).invoke('tipsSeen', u, b.ids);
   } },
+  // プロフィールのショーケース (REQ-SHOW-*, protocol §62; gate group `social`). The card of another player is read from the
+  // directory copy of their public profile (never their state), with both block lists checked → a neutral card.
+  { method: 'GET', path: '/v1/showcase', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('showcaseMine', u, resolveLocale(r)) },
+  { method: 'PUT', path: '/v1/showcase', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, showcaseBodySchema);
+    return c.player(u).invoke('showcaseSave', u, b as ShowcaseInput, resolveLocale(r));
+  } },
+  { method: 'GET', path: '/v1/showcase/:playerId', auth: 'player', handler: async (r, p, c, u) => new ShowcaseService({
+    profiles: (ids) => c.friends.profilesOf(ids),
+    viewer: (x) => c.player(x).invoke('showcaseViewer', x),
+    blocks: (x) => c.player(x).invoke('blockIds', x),
+    mine: (x, l) => c.player(x).invoke('showcaseMine', x, l),
+  }, () => c.master, c.clock).card(u, playerIdParam(p.playerId!), resolveLocale(r)) },
+  // REQ-NEW-006..010 (§64): what's new per app version (x-client-version; gate group `core` — not support, not exempt)
+  { method: 'POST', path: '/v1/release-notes/check', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('releaseNotesCheck', u, clientHeaders(r.headers).version, resolveLocale(r), await maxWhipsOf(c)) },
+  { method: 'POST', path: '/v1/release-notes/seen', auth: 'player', handler: async (r, _p, c, u) => {
+    const b = await body(r, z.object({ appVersion: z.string().regex(/^\d{1,4}\.\d{1,4}\.\d{1,4}$/) }).strict());
+    return c.player(u).invoke('releaseNotesSeen', u, b.appVersion);
+  } },
+  { method: 'GET', path: '/v1/release-notes', auth: 'player', handler: async (r, _p, c, u) => c.player(u).invoke('releaseNotes', u, clientHeaders(r.headers).version, resolveLocale(r), await maxWhipsOf(c)) },
+  // REQ-CAL-004/010 (§65): the calendar (gate group `core`: closed only by an `all` window; it reads only) and its marks
+  { method: 'GET', path: '/v1/calendar', auth: 'player', handler: async (r, _p, c, u) => {
+    const q = new URL(r.url).searchParams;
+    return c.player(u).invoke('calendar', u, { from: q.get('from'), to: q.get('to') }, await calendarExternal(c, u));
+  } },
+  { method: 'PUT', path: '/v1/calendar/marks/:entryId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('calendarMark', u, calendarEntryParam(p.entryId!), true, await calendarExternal(c, u)) },
+  { method: 'DELETE', path: '/v1/calendar/marks/:entryId', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('calendarMark', u, calendarEntryParam(p.entryId!), false, { tournaments: [], cups: [] }) },
   { method: 'GET', path: '/v1/help', auth: 'player', handler: async (r, _p, c) => helpIndex(c.master, resolveLocale(r)) },
   { method: 'GET', path: '/v1/help/articles/:articleId', auth: 'player', handler: async (r, p, c) => {
     if (!/^[a-z0-9_]{2,40}$/.test(p.articleId!)) throw new AppError('NOT_FOUND', 'NOT_FOUND');
@@ -1407,6 +1533,94 @@ export const handle: Handler = async (req, _p, ctx) => {
     return json({ error: { code: 'INTERNAL', message: 'internal error' } }, 500);
   }
 };
+
+/**
+ * REQ-LINK-003/007: what each link type needs from the rest of the server, built from the app context per request. `prepare`
+ * checks the sharer may share the target (NOT_FOUND otherwise); `open` checks the target is still there for the viewer.
+ */
+export function linkTargetsFrom(c: AppContext): LinkTargets {
+  const gone = () => new AppError('NOT_FOUND', 'nothing to share');
+  const str = (t: Record<string, unknown>, k: string, re: RegExp) => {
+    const v = t[k];
+    if (typeof v !== 'string' || !re.test(v)) throw new AppError('BAD_REQUEST', `target.${k} is required`);
+    return v;
+  };
+  type SavedRow = { raceId: string; public: boolean; replayTitle: string | null };
+  return {
+    async prepare(uid, type, t): Promise<{ targetKey: string; data: Record<string, string>; endsAt?: number | null }> {
+      switch (type) {
+        case 'room': {
+          const pass = str(t, 'passphrase', /^\d{6}$/);
+          if (!(await c.match.friendMember(pass, uid))) throw gone();
+          return { targetKey: pass, data: { passphrase: pass } };
+        }
+        case 'cup': {
+          const cupId = str(t, 'cupId', /^[\w-]{1,64}$/);
+          const v = await hostedCups(c).get(uid, cupId);
+          if (!v.code || (v.role !== 'host' && v.role !== 'entrant')) throw gone();
+          return { targetKey: cupId, data: { cupId, code: v.code }, endsAt: v.closesAt };
+        }
+        case 'replay': {
+          const raceId = str(t, 'raceId', /^[\w-]{1,64}$/);
+          const v = (await myReplays(c).view(uid)) as unknown as { saved?: SavedRow[] };
+          if (!v.saved?.some((x) => x.raceId === raceId && x.public)) throw gone();
+          return { targetKey: raceId, data: { raceId } };
+        }
+        case 'invite': {
+          const v = await invite(c).view(uid, null);
+          return { targetKey: 'me', data: { code: v.code } };
+        }
+        case 'friend': {
+          const { code } = await c.friends.myCode(uid);
+          return { targetKey: 'me', data: { friendCode: code } };
+        }
+        case 'team': {
+          const me = await teams(c).me(uid);
+          if (!me.team || me.team.disbanded) throw gone();
+          return { targetKey: me.team.teamId, data: { teamId: me.team.teamId } };
+        }
+        case 'help': {
+          const articleId = str(t, 'articleId', /^[a-z0-9_]{2,40}$/);
+          helpArticle(c.master, articleId, 'ja'); // NOT_FOUND when there is no such article
+          return { targetKey: articleId, data: { articleId } };
+        }
+      }
+    },
+    async open(viewer, rec) {
+      const d = rec.data;
+      switch (rec.type) {
+        case 'room':
+          return !c.match.friendRoomOpen || (await c.match.friendRoomOpen(d.passphrase!)) ? { state: 'ok', target: { passphrase: d.passphrase } } : null;
+        case 'cup':
+          // §42's own checks: a live code, blocks with anyone in the cup, the code attempt limit (429 passes through)
+          return { state: 'ok', target: { code: d.code, preview: await hostedCups(c).lookup(viewer, d.code!) } };
+        case 'replay': {
+          let rows: { raceId: string; replayTitle: string | null }[];
+          if (viewer === rec.ownerId) rows = (((await myReplays(c).view(viewer)) as unknown as { saved?: SavedRow[] }).saved ?? []).filter((x) => x.public);
+          else {
+            if (!(await c.player(viewer).invoke('friendsState', viewer)).ids.includes(rec.ownerId)) return { state: 'friends_only' };
+            rows = (await myReplays(c).friendList(viewer, rec.ownerId)).replays as { raceId: string; replayTitle: string | null }[];
+          }
+          const r = rows.find((x) => x.raceId === d.raceId);
+          return r ? { state: 'ok', target: { ownerId: rec.ownerId, raceId: r.raceId, replayTitle: r.replayTitle } } : null;
+        }
+        case 'invite':
+          return { state: 'ok', target: { code: d.code } };
+        case 'friend': {
+          const owner = await c.player(rec.ownerId).invoke('linkParty', rec.ownerId);
+          return { state: 'ok', target: { friendCode: d.friendCode, displayName: owner.displayName, self: viewer === rec.ownerId } };
+        }
+        case 'team': {
+          const v = await teams(c).view(d.teamId!, viewer);
+          return v.disbanded ? null : { state: 'ok', target: { teamId: v.teamId, teamName: v.name } };
+        }
+        case 'help':
+          helpArticle(c.master, d.articleId!, 'ja');
+          return { state: 'ok', target: { articleId: d.articleId } };
+      }
+    },
+  };
+}
 
 /** Adapts per-player invocations (Durable Object RPC or PlayerService) to the friends orchestration. */
 const fsug = (c: AppContext) => { if (!c.friendSuggest) throw new AppError('NOT_FOUND'); return c.friendSuggest; };

@@ -67,6 +67,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // → プール skipped (no mini-game line) → the apple on the horse → the horse's daily limit on every card
   async function trainingFlow() {
     const waitIn = (sel, timeout = 15000) => page.waitForSelector(`.screen.in ${sel}`, { timeout });
+    // R21 integration (§58.11): the day's home may have shown the account-link prompt / release notes (one prompt per
+    // session) — the reminders card below is checked on a fresh launch
+    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) !== null) await page.evaluate(() => globalThis.__muchi.prompts.reset());
     await click('調教'); await waitScreen('training'); await waitIn('.tr-menu[data-menu="hill"]');
     const text = await page.locator('.screen.in').innerText();
     assert.ok(text.includes('クラスの上限') && text.includes('疲れはどのレースにも影響しません'), 'training: the fairness rules are on the screen');
@@ -816,7 +819,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => { localStorage.removeItem('muchi.lnotif.os'); localStorage.removeItem('muchi.lnotif.scheduled'); globalThis.__muchiLnotifKpi = []; });
     await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
     await page.locator('.screen.in [data-action="notify"]').click(); await waitScreen('notify-settings'); await waitIn('.ln-device');
-    assert.equal(await page.locator('.screen.in .ln-kind').count(), 6, 'notify: six device reminder rows');
+    assert.equal(await page.locator('.screen.in .ln-kind').count(), 7, 'notify: seven device reminder rows (R21 integration: calendar marks)');
     assert.equal(await page.locator('.screen.in .ln-cat').count(), 7, 'notify: seven push categories (reminders included)');
     assert.equal(await page.locator('.screen.in .ln-device').getAttribute('data-ln-status'), 'no_permission', 'notify: nothing scheduled before the OS permission');
     assert.equal(await page.locator('.screen.in .ln-kind[data-ln-kind="daily_bonus"]').getAttribute('data-on'), 'false', 'notify: reminders are off by default');
@@ -909,8 +912,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.logic.privacy.publishPolicy('2027-01-01'));
     // R20 integration (§58.11): another prompt already showed this session (the reminders card after the first training) →
     // the home stays the home; the sheet waits for the next launch
-    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest?.('notifications'); });
-    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) === 'notifications') {
+    await page.evaluate(() => { globalThis.__muchi.prompts.reset(); globalThis.__muchi.prompts.claimForTest?.('reminders_pre_permission'); });
+    if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) === 'reminders_pre_permission') {
       await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen('home'); await page.waitForTimeout(500);
       assert.equal(await page.locator('.screen.in').getAttribute('data-screen'), 'home', 'no consent sheet in a session that showed the reminders card');
     }
@@ -920,11 +923,16 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await shot('consent-prompt-policy-update', 250);
     await page.locator('.screen.in [data-cns="later"]').click(); await waitScreen('home');
     // R20 integration (§58.11): the consent sheet claimed this session — no review and no second consent sheet until a new session
-    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'consent', 'the consent sheet claims the session');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.shown()), 'consent_pre_prompt', 'the consent sheet claims the session');
     await page.evaluate(() => globalThis.__muchi.logic.reviewPrompt.demo(false));
     assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.review('first_win')), 'skipped', 'no review right after the consent sheet');
     assert.equal((await page.evaluate(() => globalThis.__muchiReview)).at(-1).skipped, 'session_prompt');
     await page.evaluate(() => globalThis.__muchi.prompts.reset()); // the next launch
+    // R21 integration (§58.11 = §64.6): ONE table for every prompt; several due → the table decides; none in the FTUE
+    assert.deepEqual(await page.evaluate(() => globalThis.__muchi.prompts.priority()), ['recommended_update', 'consent_pre_prompt', 'comeback_welcome', 'release_notes', 'reminders_pre_permission', 'account_link', 'review_prompt'], 'the one prompt table');
+    assert.equal(await page.evaluate(() => globalThis.__muchi.prompts.pick(['review_prompt', 'reminders_pre_permission', 'release_notes', 'account_link'])), 'release_notes', 'release notes before the reminders card, the account link and the review');
+    assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.ftue(true); const r = [p.can('review_prompt'), p.can('consent_pre_prompt'), p.pick(['release_notes'])]; p.ftue(false); return r; }), [false, false, null], 'no prompt during the FTUE');
+    assert.deepEqual(await page.evaluate(() => { const p = globalThis.__muchi.prompts; p.claimForTest('release_notes'); const r = [p.can('account_link'), p.can('reminders_pre_permission'), p.can('release_notes')]; p.reset(); return r; }), [false, false, true], 'the release notes took the session: no account link, no reminders card');
     const after = await page.evaluate(() => globalThis.__muchi.logic.privacy.view());
     assert.equal(after.prompt, null, 'later: not again for this version');
     assert.equal(after.analytics.effective, false, 'the earlier choice keeps applying');
@@ -1152,7 +1160,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     if (await c.count()) { await c.first().click(); await page.waitForTimeout(250); }
   };
   const demo = async (k) => {
-    await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(500);
+    await page.evaluate((x) => globalThis.__muchi.demo(x), k); await waitScreen(['home', 'link-prompt', 'release-notes'], 20000); await page.waitForTimeout(500);
+    // R21 integration (§58.11 = §64.6): a demo state is a new launch — the release notes may take its first home
+    if (await screen() === 'release-notes') { await page.locator('.screen.in [data-action="rn-skip"]').click(); await waitScreen(['home', 'link-prompt'], 20000); await page.waitForTimeout(300); }
     await closeWhatsNew();
     if (await screen() === 'link-prompt') {
       assert.notEqual(k, 'day1', 'no account-link prompt on day 1');
@@ -1171,6 +1181,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const free0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.free);
   const paid0 = await page.evaluate(() => globalThis.__muchi.state().player.wallet.paid);
   // round 20 (REQ-CNS-007): the first 「動画を見る」 brings the pre-prompt (why, refusing costs nothing) → the simulated ATT dialog
+  // R21 integration (§58.11): the day-3 account-link prompt (or the release notes) may have taken this session — then the
+  // ad plays without the sheet; the next launch brings it
+  if (await page.evaluate(() => globalThis.__muchi.prompts.shown()) !== null) await page.evaluate(() => globalThis.__muchi.prompts.reset());
   await click('動画を見る'); await waitScreen('consent-prompt');
   assert.equal(await page.locator('.screen.in [data-prompt]').getAttribute('data-prompt'), 'ad_offer');
   const cnsText = await page.locator('.screen.in').innerText();
@@ -1323,6 +1336,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   // account-link prompt right after the first purchase (day 1 after the FTUE), then linking (account_link KPI)
   await demo('day1');
   await page.evaluate(() => globalThis.__muchi.show('Settings')); await waitScreen('settings');
+  await page.evaluate(() => globalThis.__muchi.prompts.reset()); // R21 integration (§58.11): a fresh launch (one prompt per session)
   await click('初回購入の直後'); await waitScreen('link-prompt');
   assert.equal(await page.locator('.screen.in [data-trigger]').getAttribute('data-trigger'), 'FirstPurchase');
   await shot('link-prompt-first-purchase', 300);
@@ -1710,7 +1724,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.demo('safety')); await waitScreen('blocks', 60000); await page.waitForTimeout(400);
   const blText = await page.locator('.screen.in').innerText();
   assert.match(blText, /ヨルノカラス/); assert.match(blText, /ナギサ/); assert.match(blText, /プレイヤー/, 'a deleted player shows the neutral name');
-  assert.equal(await page.locator('.screen.in .bl-effect').count(), 7, 'what a block does, one line per feature');
+  assert.equal(await page.locator('.screen.in .bl-effect').count(), 9, 'what a block does, one line per feature (R21: links, the trainer card)');
   assert.match(blText, /相手には、ブロックしたことも通報したことも知らされません/);
   await shot('blocks', 400);
   await page.locator('.screen.in .bl-row[data-player="demo_bl_2"] .bl-unblock').click(); await page.waitForTimeout(500);
@@ -1996,6 +2010,109 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(rs.active && rs.f && (rs.f.assist ?? 'off') === 'off', 'the reins lesson rides the practice race, unassisted');
   await shot('lesson-reins-hud', 0, true);
   await click('中断'); await waitScreen('tips');
+  // ------------------------------------------------------------------ 6. round 21: アップデートのお知らせ (REQ-NEW-*)
+  // this account started on the current build: home shows no sheet; the demo updater (the builds come out after the account
+  // was created) gets the paged sheet once (3 pages, 次へ / はじめる, the skipped version's past link), marked seen when it
+  // opens; お知らせ › アップデート情報 and ヒント › アップデート情報; a page's target; nothing granted
+  const rnFacts0 = await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value);
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt']); await page.waitForTimeout(500);
+  assert.notEqual(await screen(), 'release-notes', 'a player who started on this build gets no sheet (the account-link prompt may take the session)');
+  await page.evaluate(() => globalThis.__muchi.show('ReleaseNotes')); await waitScreen('release-notes'); await page.waitForTimeout(400);
+  const rnSheet = page.locator('.screen.in .rn-sheet');
+  assert.deepEqual([await rnSheet.getAttribute('data-version'), await rnSheet.getAttribute('data-page'), await rnSheet.getAttribute('data-pages')], ['1.2.0', '1', '3'], 'the newest note, page 1 of 3');
+  assert.match(await page.locator('.screen.in .rn-body').innerText(), /[0-9]+秒ごと/, 'the cheer interval is filled from data');
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ/.test(await page.locator('.screen.in').innerText()), 'no urgency, multiplier or betting wording');
+  assert.equal(await page.locator('.screen.in [data-rn-target]').getAttribute('data-rn-target'), 'help:spectator_cheer', 'page 1 links its help article');
+  assert.deepEqual((await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value)).seen, ['1.2.0'], 'marked seen when it opens');
+  await shot('release-notes', 300);
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="rn-next"]').click(); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .rn-sheet').getAttribute('data-page'), '3');
+  assert.equal(await page.locator('.screen.in [data-action="rn-start"]').count(), 1, 'the last page says はじめる');
+  assert.equal(await page.locator('.screen.in [data-rn-past]').getAttribute('data-rn-past'), '1', 'the skipped version: 「過去のアップデート情報（ほか1件）」');
+  await shot('release-notes-last', 300);
+  await page.locator('.screen.in [data-rn-past]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(400);
+  assert.deepEqual(await page.locator('.screen.in [data-rn-version]').evaluateAll((els) => els.map((e) => e.dataset.rnVersion)), ['1.2.0', '1.1.0'], 'the past list, newest first');
+  await shot('release-notes-history', 300);
+  await page.locator('.screen.in [data-rn-version="1.1.0"]').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in [data-rn-page]').count(), 2, 'Ver. 1.1.0 has two pages');
+  await page.locator('.screen.in [data-rn-target="screen:tips"]').click(); await waitScreen('tips'); await page.waitForTimeout(300);
+  // back home: never twice (seen on the server, and once per session)
+  await page.evaluate(() => globalThis.__muchi.show('Home')); await waitScreen(['home', 'link-prompt']); await page.waitForTimeout(500);
+  assert.notEqual(await screen(), 'release-notes', 'the sheet never comes back');
+  // the entry points: お知らせ (activity) and ヒント
+  await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn[data-action="release-notes"]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(300);
+  await page.evaluate(() => globalThis.__muchi.show('Tips')); await waitScreen('tips'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-action="release-notes"]').click(); await waitScreen('release-notes-history'); await page.waitForTimeout(300);
+  // the demo again: a page's target closes the sheet and opens it
+  await page.evaluate(() => globalThis.__muchi.show('ReleaseNotes')); await waitScreen('release-notes'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-rn-target]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'spectator_cheer', 'the target opens the help article');
+  const rk = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('release_notes_')));
+  assert.ok(rk.some((e) => e.name === 'release_notes_view' && e.stage === 'shown' && e.pages === 3), 'release_notes_view shown');
+  assert.ok(rk.some((e) => e.name === 'release_notes_view' && e.stage === 'finished' && e.page === 3), 'release_notes_view finished on the last page');
+  assert.ok(rk.some((e) => e.name === 'release_notes_target' && e.kind === 'help' && e.target === 'spectator_cheer'), 'release_notes_target');
+  assert.deepEqual([...new Set(rk.filter((e) => e.name === 'release_notes_history').map((e) => e.source))].sort(), ['notices', 'sheet', 'tips'], 'release_notes_history from all three entry points');
+  const rnFacts1 = await page.evaluate(async () => (await globalThis.__muchi.logic.releaseNotesFacts()).value);
+  assert.deepEqual([rnFacts1.free, rnFacts1.paid, rnFacts1.items], [rnFacts0.free, rnFacts0.paid, rnFacts0.items], 'nothing is granted');
+  // ------------------------------------------------------------------ 6. round 21: イベントカレンダー（予定表） (REQ-CAL-*)
+  // その他 › 見た目・お世話・仲間 › 予定表 (the eighth row), the month list (rows from each feature's own data, JST lines, paid
+  // rows dates only: the pass opens nothing, a banner opens its rates page), the week list, a mark (idempotent; the server's
+  // calendar_mark row; nothing pushed) and the KPI rows
+  await page.evaluate(() => globalThis.__muchi.demo('calendar')); await waitScreen('calendar', 60000); await page.waitForTimeout(400);
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-name="More"] .btn.row').count(), 8, 'the looks page holds eight rows (its limit)');
+  // R21 integration: no 予定表 row in その他 — it opens from お知らせ (the home bell) and from the event hub (日程)
+  assert.equal(await page.locator('.screen.in .btn[data-action="calendar"], .screen.in .btn[data-action="showcase"], .screen.in .btn[data-action="links"]').count(), 0, 'その他 has no Round 21 rows');
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'settings')); await waitScreen('settings'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-name="More"] .btn.row').count(), 8, 'the settings page holds eight rows (its limit)');
+  await page.evaluate(() => globalThis.__muchi.show('EventTop')); await waitScreen('event-top'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .btn[data-action="calendar"]').count(), 1, 'the event hub opens the calendar');
+  await page.evaluate(() => globalThis.__muchi.show('Activity')); await waitScreen('activity'); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn[data-action="calendar"]').click(); await waitScreen('calendar'); await page.waitForTimeout(500);
+  const calKinds = await page.locator('.screen.in .cal-row').evaluateAll((xs) => [...new Set(xs.map((x) => x.dataset.calKind))]);
+  for (const k of ['season', 'season_pass', 'tournament_registration', 'tournament']) assert.ok(calKinds.includes(k), `calendar: a ${k} row`);
+  const calText = await page.locator('.screen.in').innerText();
+  assert.match(calText, /（日本時間）/, 'calendar: times are labelled JST');
+  assert.ok(!/今だけ|残りわずか|倍|お得|通常価格|オッズ|購入する|買う/.test(calText), 'calendar: no urgency, price or buy wording');
+  assert.ok(!/[◎◈]\s*\d/.test(calText), 'calendar: no coin amounts');
+  const passRow = page.locator('.screen.in .cal-row[data-cal-kind="season_pass"]').first();
+  assert.equal(await passRow.getAttribute('data-link'), '', 'calendar: the pass row leads nowhere');
+  assert.match(await passRow.innerText(), /期間だけを載せています/, 'calendar: the pass row says dates only');
+  await shot('calendar-month', 300);
+  // a mark on the tournament registration: on, the count moves, then off; the server row once per change, no push
+  const outbox0 = await page.evaluate(async () => (await globalThis.__muchi.logic.calendarFacts()).value.outbox);
+  const regRow = page.locator('.screen.in .cal-row[data-cal-kind="tournament_registration"]').first();
+  const regId = await regRow.getAttribute('data-cal-entry');
+  await regRow.locator('[data-action="cal-mark"]').click(); await waitScreen('calendar'); await page.waitForTimeout(500);
+  assert.equal(await page.locator(`.screen.in .cal-row[data-cal-entry="${regId}"] [data-action="cal-mark"]`).getAttribute('aria-pressed'), 'true', 'calendar: the row is marked');
+  assert.equal(await page.locator('.screen.in [data-cal-marks]').getAttribute('data-cal-marks'), '1', 'calendar: one mark');
+  await shot('calendar-marked', 300);
+  await page.locator(`.screen.in .cal-row[data-cal-entry="${regId}"] [data-action="cal-mark"]`).click(); await waitScreen('calendar'); await page.waitForTimeout(500);
+  const calFacts = await page.evaluate(async () => (await globalThis.__muchi.logic.calendarFacts()).value);
+  assert.deepEqual(calFacts.kpi.slice(-2).map((k) => k.s2), ['on', 'off'], 'calendar: calendar_mark on / off');
+  assert.equal(calFacts.outbox, outbox0, 'calendar: a mark queues no push');
+  // the week list: seven days, every row touching each day
+  await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .cal-day').count(), 7, 'calendar: the week list shows seven days');
+  await shot('calendar-week', 300);
+  await page.locator('.screen.in [data-action="cal-next"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
+  assert.notEqual(await page.locator('.screen.in [data-cal-range]').getAttribute('data-cal-range'), null);
+  // a banner row (when one is announced in the range) opens its rates page; a tournament row the spectate list
+  await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(400);
+  const bannerRow = page.locator('.screen.in .cal-row[data-cal-kind="banner"]').first();
+  if (await bannerRow.count()) {
+    assert.equal(await bannerRow.getAttribute('data-link'), 'gacha_rates', 'calendar: a banner row links to its rates page');
+    await bannerRow.click(); await waitScreen('odds'); await page.waitForTimeout(300);
+    await page.evaluate(() => globalThis.__muchi.show('Calendar')); await waitScreen('calendar'); await page.waitForTimeout(300);
+  }
+  const ck = await page.evaluate(() => globalThis.__muchiKpi.filter((e) => e.name.startsWith('calendar_')));
+  assert.ok(ck.some((e) => e.name === 'calendar_view' && e.view === 'month' && e.entries > 0), 'calendar_view (month)');
+  assert.ok(ck.some((e) => e.name === 'calendar_view' && e.view === 'week'), 'calendar_view (week)');
+  // the help article from the side panel
+  await page.locator('.screen.in [data-action="cal-help"]').click(); await waitScreen('help-article'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in [data-article]').getAttribute('data-article'), 'calendar', 'calendar: its help article');
   // ------------------------------------------------------------------ 6. round 17: おすすめフレンド (REQ-FSUG-*)
   // people met through the real paths (an event, a friend room, a like, a cheer, mutual friends); the opted-out player and
   // the ranked-only opponent never appear; 申請する goes through the friend request flow; 表示しない is remembered; the switch
@@ -2019,6 +2136,62 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.equal(await page.locator('.screen.in [data-fsug-hidden]').getAttribute('data-fsug-hidden'), '1', 'おすすめに表示しない: on');
   await shot('friends-suggestions-after', 300);
   await page.locator('.screen.in [data-fsug-hidden]').click(); await page.waitForTimeout(400);
+  // ------------------------------------------------------------------ 6. round 21: トレーナーカード (REQ-SHOW-*)
+  // その他 › 見た目・お世話・仲間 › トレーナーカード: the editor (tabs over what I have; a locked background refused; no text
+  // field), save → my card; a friend's card from the friends screen (pins, records, the fixed phrase, report), the share image
+  // (the real C# ShowcaseShare, no player id), an under-13 player's card (no player-typed names) and the neutral card of a
+  // player who blocked me; cards from the cup lobby / activity / hall / rival / spectate entry points use the same screen
+  await page.evaluate(async () => { await globalThis.__muchi.logic.showcase.demo(); });
+  // R21 integration: the editor opens from the profile — フレンド › 自分のトレーナーカード › カードを編集 (no その他 row)
+  await page.evaluate(() => globalThis.__muchi.show('Friends')); await waitScreen('friends'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="sc-mine"]').click(); await waitScreen('showcase'); await page.waitForTimeout(400);
+  await page.locator('.screen.in [data-action="sc-edit"]').click(); await waitScreen('showcase-edit'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in input, .screen.in textarea').count(), 0, 'showcase editor: no text field anywhere');
+  assert.ok(await page.locator('.screen.in [data-sc-horse]').count() >= 2, 'showcase editor: my active horses (and 選ばない)');
+  await page.locator('.screen.in [data-sc-horse]').nth(1).click(); await page.waitForTimeout(300);
+  await shot('showcase-edit', 300);
+  await page.locator('.screen.in [data-sc-tab="phrase"]').click(); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-sc-phrase="race_anytime"]').click(); await page.waitForTimeout(300);
+  await shot('showcase-edit-phrase', 200);
+  await page.locator('.screen.in [data-sc-tab="background"]').click(); await page.waitForTimeout(300);
+  assert.ok(await page.locator('.screen.in [data-sc-bg][data-unlocked="false"]').count() >= 1, 'showcase editor: locked backgrounds show their lock');
+  await page.locator('.screen.in [data-sc-bg][data-unlocked="false"]').first().click(); await page.waitForTimeout(300);
+  await shot('showcase-edit-background', 200);
+  await page.locator('.screen.in .btn[data-action="sc-save"]').click(); await page.waitForTimeout(700);
+  const scMine = await page.evaluate(async () => (await globalThis.__muchi.logic.showcase.mine('ja')).value);
+  assert.ok(scMine.saved && scMine.selection.phraseId === 'race_anytime' && scMine.selection.horseId, 'showcase: saved (horse + phrase, the default background kept)');
+  await page.locator('.screen.in .btn[data-action="sc-view"]').click(); await waitScreen('showcase'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .sc-card').getAttribute('data-relation'), 'self', 'my own card');
+  assert.equal(await page.locator('.screen.in .rpt-open').count(), 0, 'no report button on my own card');
+  await shot('showcase-mine', 300);
+  await page.evaluate(() => globalThis.__muchi.show('Friends')); await waitScreen('friends', 30000); await page.waitForTimeout(400);
+  if (await page.locator('.screen.in [data-sc-open="demo_sc_1"]').count()) await page.locator('.screen.in [data-sc-open="demo_sc_1"]').click();
+  else await page.evaluate(() => globalThis.__muchi.show('ShowcaseCard', 'demo_sc_1', 'friends'));
+  await waitScreen('showcase'); await page.waitForTimeout(500);
+  const scText = await page.locator('.screen.in').innerText();
+  assert.match(scText, /アオイ[\s\S]*サクラフブキ|サクラフブキ[\s\S]*アオイ/, 'a friend card: name and horse as typed');
+  assert.equal(await page.locator('.screen.in .sc-pin').count(), 3, 'three pins');
+  assert.match(scText, /タイムアタックに夢中/, 'the fixed phrase');
+  assert.ok(!/今だけ|残りわずか|倍|お得|オッズ/.test(scText), 'no urgency, multiplier or betting wording');
+  assert.ok(await page.evaluate(() => globalThis.__muchiKpi.some((e) => e.name === 'showcase_view' && e.source === 'friends' && e.relation === 'friend')), 'showcase_view from the friends screen');
+  await shot('showcase-friend', 300);
+  await page.locator('.screen.in .rpt-open').click(); await page.waitForSelector('.sheet.rpt-sheet[data-source="profile"]', { timeout: 15000 }); await page.waitForTimeout(300);
+  await shot('showcase-report', 0);
+  await page.locator('.sheet.rpt-sheet .btn[data-label="閉じる"]').click(); await page.waitForTimeout(400);
+  await page.locator('.screen.in .btn[data-action="sc-share"]').click(); await waitScreen('showcase-share'); await page.waitForTimeout(400);
+  const scShare = await page.locator('.screen.in .sc-share').innerText();
+  assert.ok(!scShare.includes('demo_sc_1') && /#ムチ一閃/.test(scShare), 'the share image: no player id, the hashtag');
+  await page.locator('.screen.in .btn[data-action="sc-share-send"]').click(); await page.waitForTimeout(300);
+  assert.ok(await page.evaluate(() => globalThis.__muchiKpi.some((e) => e.name === 'showcase_share')), 'showcase_share');
+  await shot('showcase-share', 200);
+  await page.evaluate(() => globalThis.__muchi.show('ShowcaseCard', 'demo_sc_kid', 'cup_lobby')); await waitScreen('showcase'); await page.waitForTimeout(400);
+  assert.ok(!/ハルカゼ|春の小さな杯/.test(await page.locator('.screen.in').innerText()), 'under 13: no horse or cup name on the card');
+  await shot('showcase-young', 300);
+  await page.evaluate(() => globalThis.__muchi.show('ShowcaseCard', 'demo_sc_blk', 'activity')); await waitScreen('showcase'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .sc-card').getAttribute('data-state'), 'neutral', 'blocked by them: the neutral card');
+  assert.ok(!/クロガネ|クロノツバサ/.test(await page.locator('.screen.in').innerText()), 'the neutral card names nobody');
+  assert.equal(await page.locator('.screen.in .btn[data-action="sc-share"], .screen.in .rpt-open').count(), 0, 'no share or report on a neutral card');
+  await shot('showcase-neutral', 300);
   // ------------------------------------------------------------------ 6. round 12: かんたん操作 (REQ-ASSIST-*)
   // a week of play, then three last places settled by the real applyRace → the one-time suggestion (calm: 「今はいい」 as big
   // as the rest) → ぜんぶおまかせ → the settings row and the options screen → a ranked race the real InputAssistant rides with
@@ -2277,6 +2450,65 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in .trf-done-old').click(); await waitScreen('transfer-replaced'); await page.waitForTimeout(300);
   assert.match(await page.locator('.screen.in').innerText(), /別の端末に引き継がれました/);
   await shot('transfer-replaced', 300);
+
+  // ------------------------------------------------------------------ round 21: ディープリンク・再戦 (REQ-LINK-*)
+  // その他 › 見た目・お世話・仲間 › リンクで招待・共有: the share sheet (no id in the URL, one link per target), the links I
+  // shared, 「リンクを開く」 → the screen behind a confirmation (a room joins only after the button), one neutral notice for a
+  // closed room or a non-link, and 再戦 on the friend-room result (waiting with the real seconds, everyone in → a new room)
+  // the player here is brand new (reset above, before the partner): a link waits for the end of the FTUE (REQ-LINK-023)
+  await page.evaluate(() => globalThis.__muchi.show('OpenLink')); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'チュートリアルの後で開きます', 'during the FTUE the link waits');
+  await demo('day3');
+  // R21 integration: the links hub opens from 友達招待 (その他 › 見た目・お世話・仲間 › 友達招待 › リンクで招待・共有 ›)
+  await page.evaluate(() => globalThis.__muchi.show('Settings', 'looks')); await waitScreen('settings'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .btn[data-action="invite"]').click(); await waitScreen('invite'); await page.waitForTimeout(400);
+  assert.equal(await page.locator('.screen.in .btn[data-action="links"]').count(), 1, '友達招待 has リンクで招待・共有');
+  await page.locator('.screen.in .btn[data-action="links"]').click(); await waitScreen('links'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-share="friend"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
+  const lkUrl = await page.locator('.screen.in .lk-url').innerText();
+  assert.match(lkUrl, /^https:\/\/link\.muchi-issen\.example\/l\/[2-9a-hj-km-np-z]{22}$/, 'one opaque token in the URL');
+  assert.ok(!lkUrl.includes('local'), 'no player id in the URL');
+  await shot('link-share-sheet', 300);
+  await page.locator('.screen.in .lk-sheet-close').click(); await waitScreen('links'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-share="friend"]').click(); await page.waitForSelector('.screen.in .lk-sheet', { timeout: 10000 });
+  assert.equal(await page.locator('.screen.in .lk-url').innerText(), lkUrl, 'the same link for the same target');
+  await page.locator('.screen.in .lk-sheet-close').click(); await waitScreen('links'); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .lk-row').count(), 1, 'the shared links list');
+  await shot('links', 300);
+  await page.locator('.screen.in [data-action="open-link"]').click(); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in .lk-input').fill('hello'); await page.locator('.screen.in .lk-open-go').click(); await page.waitForTimeout(500);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'リンクの形が正しくありません');
+  await page.locator('.screen.in [data-lk-demo="expired"]').click(); await page.waitForTimeout(900);
+  assert.equal(await page.locator('.screen.in .lk-notice').innerText(), 'このリンクは開けません', 'a closed room: the one neutral notice');
+  await shot('open-link-unavailable', 300);
+  await page.locator('.screen.in [data-lk-demo="room"]').click(); await waitScreen('link-confirm', 10000); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .lk-confirm').getAttribute('data-screen'), 'friend_room_join');
+  assert.match(await page.locator('.screen.in .lk-head').innerText(), /^部屋 \d{6}$/);
+  await shot('link-confirm-room', 300);
+  await page.locator('.screen.in .lk-confirm-go').click(); await waitScreen('room-lobby', 10000); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in').innerText(), /ミドリカワ[\s\S]*あなた/, 'joined only after the confirmation');
+  await page.evaluate(() => globalThis.__muchi.show('OpenLink')); await waitScreen('open-link'); await page.waitForTimeout(300);
+  await page.locator('.screen.in [data-lk-demo="help"]').click(); await waitScreen('link-confirm', 10000); await page.waitForTimeout(300);
+  assert.equal(await page.locator('.screen.in .lk-confirm').getAttribute('data-lk-type'), 'help');
+  await page.locator('.screen.in .lk-confirm-go').click(); await waitScreen('help-article', 10000);
+  assert.match(await page.locator('.screen.in').innerText(), /リンクで招待・共有する/, 'the help link opens the article');
+  const lkKpi = await page.evaluate(() => globalThis.__muchi.logic.links.kpi());
+  assert.ok(lkKpi.some((k) => k.name === 'link_resolve' && k.s1 === 'room' && k.s2 === 'ok') && lkKpi.some((k) => k.name === 'link_resolve' && k.s2 === 'unavailable'), 'KPI: type and outcome');
+  assert.ok(!JSON.stringify(lkKpi).includes(lkUrl.split('/l/')[1]), 'no token in KPI');
+  await page.evaluate(() => globalThis.__muchi.show('FriendRoomResult')); await waitScreen('friend-room-result'); await page.waitForTimeout(300);
+  await shot('friend-room-result', 300);
+  await page.locator('.screen.in .rm-press').click(); await page.waitForTimeout(700);
+  assert.match(await page.locator('.screen.in .rm-status').innerText(), /^再戦を待っています（2\/3人・あと\d+秒）$/, 'waiting: who pressed and the real seconds left');
+  await shot('rematch-waiting', 200);
+  await page.locator('.screen.in .rm-demo-others').click(); await page.waitForTimeout(700);
+  assert.equal(await page.locator('.screen.in .rm-panel').getAttribute('data-state'), 'opened');
+  assert.equal(await page.locator('.screen.in .rm-status').innerText(), '新しい部屋ができました');
+  await shot('rematch-opened', 300);
+  await page.locator('.screen.in .rm-room').click(); await waitScreen('room-lobby'); await page.waitForTimeout(300);
+  assert.match(await page.locator('.screen.in .lk-same').innerText(), /前のレースと同じ条件/, 'the same conditions, a new race');
+  assert.ok(!(await page.locator('.screen.in').innerText()).match(/今だけ|残りわずか|倍|お得/), 'no urgency wording');
+  await shot('rematch-room', 300);
 
   // a reload on a named player goes straight home
   await demo('day3');

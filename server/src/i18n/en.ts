@@ -13,12 +13,36 @@ export const CODE_EN: Record<string, string> = {
   'アプリを最新版に更新してください': 'Please update the app to the latest version',
   'レースに参加するにはアプリの更新が必要です': 'Update the app to join races',
 
+  // ---- イベントカレンダー (calendar.ts CALENDAR_TITLES / CALENDAR_TIME_ZONE, protocol §65; REQ-CAL-003/009). Times stay JST in English.
+  'イベントレース': 'Event race',
+  '週替わりチャレンジ': 'Weekly challenge',
+  '支部の共同目標': 'Branch goal',
+  '支部対抗シーズン': 'Branch league season',
+  'ランク戦のシーズン': 'Ranked season',
+  'シーズンパスを買える期間': 'Season pass purchase period',
+  '大会の受付': 'Tournament registration',
+  '大会の開始': 'Tournament start',
+  '主催カップ': 'Player-hosted cup',
+  'メンテナンス': 'Maintenance',
+  '復帰キャンペーン': 'Welcome-back campaign',
+  '日本時間': 'JST',
+
   // ---- 引き継ぎコード (transferCode.ts passwordRuleTexts / sessionReplacedError, protocol §54; REQ-TRF-003/010)
   '{min}〜{max}文字': '{min}–{max} characters',
   '半角の英数字と記号': 'Letters, numbers and symbols',
   '英字と数字を両方使う': 'Use both letters and numbers',
   'よく使われるパスワードは使えません': 'No common passwords',
   'この端末のデータは別の端末に引き継がれました': 'This account has moved to another device',
+
+  // ---- ディープリンク (deepLinks.ts SHARE_TEXT, protocol §63; REQ-LINK-003): no rewards, no urgency, no names
+  'ムチ一閃のフレンド部屋に招待します': 'Join my friend room in Muchi Issen',
+  'ムチ一閃の主催カップに招待します': 'Join my cup in Muchi Issen',
+  'ムチ一閃のリプレイを見てください': 'Watch this replay in Muchi Issen',
+  'ムチ一閃を一緒に遊びませんか': 'Play Muchi Issen with me',
+  'ムチ一閃でフレンドになりませんか': 'Be my friend in Muchi Issen',
+  'ムチ一閃の支部に招待します': 'Join my branch in Muchi Issen',
+  'ムチ一閃のヘルプ': 'Muchi Issen help',
+  'お互いの共有リンクが開けず、再戦でも同じ部屋に入りません': 'Neither of you can open the other\'s shared links, and rematches never put you in the same room',
 
   // ---- shop (shop.ts productContents / firstPurchaseBonusOf; REQ-UXS-022)
   '無償コイン{n}枚': '{n} free coins',
@@ -424,6 +448,7 @@ export const CODE_EN: Record<string, string> = {
   'ライバルに組まれなくなります': 'You are never paired as rivals',
   'お互いのマイ厩舎を開けず、いいねもできなくなります': 'Neither of you can open or like the other\'s stable',
   'お互いの殿堂が見られなくなります': 'Neither of you can see the other\'s Hall of Fame',
+  'お互いのトレーナーカードが見られなくなります': 'Neither of you can see the other\'s trainer card',
   'お互いの公開リプレイが見られなくなります': 'Neither of you can see the other\'s shared replays',
   '主催カップでは同じカップに入れません（大会では同じレースになることがあります）': 'You won\'t be in the same hosted cup (you may still meet in tournaments)',
 
@@ -469,6 +494,26 @@ export const CODE_EN: Record<string, string> = {
   'ファイルの大きさの上限のため、古いコインの履歴を{n}行省略しました。全件はお問い合わせからご請求いただけます。': 'Because of the file size limit, {n} older coin history rows were left out. You can ask for all of them through Contact.',
   '含めていないもの：重複や処理用の内部記録、運営のメモ、他のプレイヤーの情報。': 'Not included: duplicate and processing records, operator notes, and other players\' information.',
   'ご不明な点はゲーム内のお問い合わせからご連絡ください。': 'If you have questions, please use Contact in the game.',
+
+  // ---- プロフィールのショーケース (showcase.ts pinView / seasonClassLabel / SHOWCASE_NOTICE, protocol §62; REQ-SHOW-013).
+  // Phrases and background names carry their own English (master/showcase.json); horse / cup names are never translated.
+  '称号': 'Title',
+  '実績 {tier}段目': 'Achievement, tier {tier}',
+  'プレイヤー主催カップ': 'Player-hosted cup',
+  '金トロフィー': 'Gold trophy',
+  '銀トロフィー': 'Silver trophy',
+  '銅トロフィー': 'Bronze trophy',
+  '殿堂入りの馬': 'Hall of Fame horse',
+  '殿堂入りの銘板': 'Hall of Fame plaque',
+  '目標を達成した馬': 'Horse that met every goal',
+  '目標達成のリボン': 'Goal ribbon',
+  '大会の記録': 'Tournament record',
+  '大会優勝': 'Tournament win',
+  '大会 {n}位': 'Tournament: {n:ord}',
+  '今シーズン {cls}クラス': 'This season: Class {cls}',
+  'カードに出せるのは自分で手に入れたものだけです。': 'Your card shows only things you earned yourself.',
+  '引退した馬や手元にないものは自動で外れます。': 'Retired horses and things you no longer have come off automatically.',
+  '一言は決まった文から選びます。': 'Your line is picked from a fixed list.',
 
   // ---- error details shown to players (REQ-API-004 messages; codes are the contract)
   'カタカナ2〜9文字': '2–9 katakana characters',

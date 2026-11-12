@@ -171,6 +171,8 @@ const RE = {
   quoted: g('"[^"\\n]*"|\'[^\'\\n]*\'|「[^」\\n]*」'),
   nonAscii: g('[^\\x00-\\x7F]+'),
   hex: g(`${B0}[0-9a-fA-F]{12,}${B1}`),
+  // R21 integration (§63 × §60): a share link token (22 characters of its alphabet, maybe without a digit) — a key to its target
+  linkToken: g(`${B0}[2-9a-hjkmnp-z]{22}${B1}`),
   longId: g(`${B0}(?=[A-Za-z0-9_\\-]*[0-9])[A-Za-z0-9_\\-]{20,}${B1}`),
   idPrefix: g(`${B0}[a-z]{1,4}_(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{3,}${B1}`),
   digits: g('[0-9]{5,}'),
@@ -180,7 +182,7 @@ const RE = {
 /** The rules in order with their replacement (the C# ErrorScrubber has the same list). */
 export const SCRUB_RULES: [RegExp, string][] = [
   [RE.il, ''], [RE.build, ''], [RE.email, '<email>'], [RE.bearer, '<token>'], [RE.jwt, '<token>'], [RE.url, '<url>'], [RE.path, '$1'],
-  [RE.quoted, '"…"'], [RE.nonAscii, '…'], [RE.hex, '<id>'], [RE.longId, '<id>'], [RE.idPrefix, '<id>'], [RE.digits, '<n>'], [RE.spaces, ' '], [RE.edges, ''],
+  [RE.quoted, '"…"'], [RE.nonAscii, '…'], [RE.hex, '<id>'], [RE.linkToken, '<token>'], [RE.longId, '<id>'], [RE.idPrefix, '<id>'], [RE.digits, '<n>'], [RE.spaces, ' '], [RE.edges, ''],
 ];
 
 /** One line of free text: the §60.3 rules in order. */
@@ -242,7 +244,7 @@ export function normalizeRoute(route: string): string {
   const path = route.split(/[?#]/)[0]!;
   return path.split('/').map((seg) => {
     if (seg === '' || seg.startsWith(':')) return seg;
-    if (/^[a-z]{1,4}_(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]+$/.test(seg) || (/[0-9]/.test(seg) && seg.length >= 6) || /^[0-9]+$/.test(seg)) return ':id';
+    if (/^[a-z]{1,4}_(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]+$/.test(seg) || (/[0-9]/.test(seg) && seg.length >= 6) || /^[0-9]+$/.test(seg) || /^[2-9a-hjkmnp-z]{22}$/.test(seg)) return ':id'; // R21: a link token
     return seg;
   }).join('/');
 }
@@ -322,13 +324,18 @@ export const CLIENT_ERROR_VECTOR_INPUTS = {
     'あBearer secret123 sent',
     'Kelvin K and　wide space, BEARER abc',
     'emoji 🐎 run p_1x2 done',
+    // R21 integration (§63 × §60): share link tokens, with and without a digit
+    'resolve failed: https://link.muchi-issen.example/l/kmqxphrabcdefghjkmnpqr',
+    'open /l/kmqxphrabcdefghjkmnpqr failed',
+    'token kmqxphrabcdefghjkmnpqr rejected; revoke(k7mq3xphr2abcdefghjkmn)',
+    'muchi://l/kmqxphrabcdefghjkmnpqr',
     '﻿bom first',
   ],
   stacks: [
     'Muchi.Game.HudModel.Update () (at Assets/Muchi/Game/HudModel.cs:120)\nMuchi.Game.RaceDrivers.Tick (System.Int32 t) (at Assets/Muchi/Game/RaceDrivers.cs:88)\nUnityEngine.Events.InvokableCall.Invoke () (at /Users/build/unity/Runtime/Export/UnityEvent.cs:178)',
     '  at Muchi.Client.ApiClient+<Call>d__12`1[T].MoveNext () [0x0012f] in <8c2f1a9b3d4e4f5a>:0\n  at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start () [0x00000] in /home/runner/work/x.cs:12',
   ],
-  routes: ['/v1/horses/h_9f2k/goals', '/v1/gacha/standard/draw', '/v1/race/race_20261111_0042/report', '/v1/teams/123456/feed?cursor=9', '/v1/player', '/v1/time-attack/sakura_2000/me'],
+  routes: ['/v1/horses/h_9f2k/goals', '/v1/gacha/standard/draw', '/v1/race/race_20261111_0042/report', '/v1/teams/123456/feed?cursor=9', '/v1/player', '/v1/time-attack/sakura_2000/me', '/v1/links/kmqxphrabcdefghjkmnpqr', '/v1/links/k7mq3xphr2abcdefghjkmn'],
   devices: ['iPhone15,2', 'iOS 18.1', 'SM-S918B', 'Android 14 (API 34)', 'Pixel 8 Pro — test', '<script>', '', '\uFEFFiPhone', ' \t iPad13,1 '],
   items: [
     { category: 'exception', at: 1, type: 'NullReferenceException', message: 'Object reference not set to an instance of an object', stack: 'Muchi.Game.HudModel.Update () (at Assets/Muchi/Game/HudModel.cs:120)\nMuchi.Game.RaceDrivers.Tick (System.Int32 t) (at Assets/Muchi/Game/RaceDrivers.cs:88)', handled: false },

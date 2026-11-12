@@ -88,14 +88,20 @@ static class Program
         await HelpCenterChecks.Run(Check);
         Console.WriteLine("== round 19: チュートリアルのやり直しとヒント集 (TipsModel: cards, NEW, 「？」, tours, seen batches; TutorialReplayModel: lessons on the device, never the FTUE's state; REQ-TUT-*)");
         await TipsChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 21: イベントカレンダー (CalendarModel: month / week lists, JST lines, paid rows dates only, marks with offline queue and rollback, KPI; REQ-CAL-*)");
+        await CalendarChecks.Run(Check, Root);
         Console.WriteLine("== round 17: おすすめフレンド (cards, request / dismiss with rollback, fsug_view once, offline, setting; REQ-FSUG-*)");
         await FriendSuggestionsChecks.Run(Check, Root);
         Console.WriteLine("== round 19: 画質・省電力・通信量 (auto by device class, battery saver, data saver downloads, storage / clear cache; REQ-PERF-*)");
         await PerformanceChecks.Run(Check);
         Console.WriteLine("== round 19: 観戦中の応援 (CheerModel: chips, three preset buttons, 2 s pace, burst, racer indicator + setting, reduced motion, KPI per race, replay markers; REQ-CHEER-*)");
         CheerChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== round 21: アップデートのお知らせ (ReleaseNotesModel: once per updated version, one system prompt per session, nothing over maintenance / offline, pages, skip, target, past list, KPI; REQ-NEW-*)");
+        await ReleaseNotesChecks.Run(Check);
         Console.WriteLine("== round 19: 引き継ぎコード (issue checklist, generated once, redeem with one key, confirm, custom-token sign-in, SESSION_REPLACED; REQ-TRF-*)");
         await TransferCodeChecks.Run(Check);
+        Console.WriteLine("== round 21: ディープリンク・再戦 (DeepLinkModel: parse, FTUE queue, offline, one neutral notice, never auto-spend, referrer once, KPI without the token; RematchModel; REQ-LINK-*)");
+        await DeepLinkChecks.Run(Check);
         Console.WriteLine("== round 11: 図鑑, 実績 and titles (CollectionModel / AchievementModel / TitleShowcaseModel; REQ-COL-*, REQ-ACH-*)");
         await CollectionChecks.Run(Check, Ruleset());
         Console.WriteLine("== 調教 (training: menus, timing mini-game, keyed start/finish, fairness wording)");
@@ -144,6 +150,8 @@ static class Program
         await LocalNotificationChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20 integration: one system-ish prompt per session (consent → reminders → review), the error reporter follows the analytics choice, an account change resets reminders / error queue / review session");
         await Round20IntegrationChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 21 integration: ONE prompt gate (update > consent > comeback > release notes > reminders > account link > review; none in the FTUE), an account change drops the waiting deep link and the release notes session");
+        await Round21IntegrationChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: 次にやること (NextActionModel: primary card + chips, dates not countdowns, dismiss for today, offline fallback, KPI; REQ-NEXT-*)");
         await NextActionChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
@@ -158,6 +166,8 @@ static class Program
         await QuickChatChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: 広告・分析の同意 (ConsentModel: pre-prompt moment, ATT once, later, rows and reasons, OS settings, UMP review, IAdConsent, analytics gate, English; REQ-CNS-*)");
         await ConsentChecks.Run(Check, Ruleset());
+        Console.WriteLine("== round 21: トレーナーカード (ShowcaseCardModel / ShowcaseEditorModel: card lines, neutral card, share without a player id, report targets, editor limits, locked backgrounds, KPI, English; REQ-SHOW-*)");
+        await ShowcaseChecks.Run(Check, Ruleset());
         if (args.Length >= 2 && args[0] == "online")
         {
             Console.WriteLine("== Muchi.Game online checks against " + args[1]);

@@ -29,7 +29,7 @@ import { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS, type LnotifKind } from './lnot
 
 export { LNOTIF_KINDS, LNOTIF_PERMISSION_RESULTS, type LnotifKind };
 export const LNOTIF_VERSION = 1 as const;
-export const LNOTIF_DEADLINE_KINDS = ['weekly_challenge_closing', 'rival_week_closing', 'exchange_closing', 'gift_expiring'] as const;
+export const LNOTIF_DEADLINE_KINDS = ['weekly_challenge_closing', 'rival_week_closing', 'exchange_closing', 'gift_expiring', 'calendar_mark'] as const;
 export type LnotifDeadlineKind = (typeof LNOTIF_DEADLINE_KINDS)[number];
 export const LNOTIF_PERMISSIONS = ['unknown', 'granted', 'provisional', 'denied'] as const;
 export type LnotifPermission = (typeof LNOTIF_PERMISSIONS)[number];
@@ -37,10 +37,13 @@ export type LnotifPermission = (typeof LNOTIF_PERMISSIONS)[number];
 /** REQ-LNOTIF-004: the push category that switches each kind (one settings screen for push and local). */
 export const LNOTIF_CATEGORY: Record<LnotifKind, PushCategory> = {
   training_session: 'reminders', daily_bonus: 'reminders', weekly_challenge_closing: 'events', rival_week_closing: 'friends', exchange_closing: 'events', gift_expiring: 'gifts',
+  // R21 integration (§65 × §61): a calendar row the player marked — the player asked for it, so `reminders` (default off)
+  calendar_mark: 'reminders',
 };
 /** The screen a tap opens, fixed in code (never the shop, a pass purchase or a paid scout). */
 export const LNOTIF_SCREEN: Record<LnotifKind, string> = {
   training_session: 'training', daily_bonus: 'home', weekly_challenge_closing: 'weekly_challenge', rival_week_closing: 'rival', exchange_closing: 'event_exchange', gift_expiring: 'gift_box',
+  calendar_mark: 'calendar',
 };
 
 /**
@@ -51,6 +54,7 @@ export const LNOTIF_OWNERSHIP = {
   local: {
     training_session: 'training_session_deadline', daily_bonus: 'login_bonus_ready', weekly_challenge_closing: 'weekly_challenge_week_end',
     rival_week_closing: 'rival_week_end', exchange_closing: 'event_exchange_close', gift_expiring: 'gift_expiry',
+    calendar_mark: 'calendar_marked_entry_start', // R21 integration: §65 marks (the server never pushes for a mark, REQ-CAL-011)
   } satisfies Record<LnotifKind, string>,
   server: {
     friend_request: 'friend_request', friend_accepted: 'friend_accepted', invite_joined: 'invite_joined', invite_milestone: 'invite_milestone',
@@ -117,6 +121,8 @@ export interface LocalRemindersDigest {
   rival: { weekEndsAt: number; rankedRaces: number } | null;
   exchanges: { eventId: string; points: number; closesAt: number }[];
   gifts: number[];
+  /** R21 integration (§65 × §61): the calendar rows the player marked that have not started yet (id, start), earliest first, at most 30. */
+  calendarMarks: { id: string; startAt: number }[];
 }
 export type LocalRemindersView = LocalRemindersDigest | { v: 1; enabled: false };
 
@@ -148,6 +154,8 @@ export function localRemindersView(m: Master, s: PlayerState, now: number): Loca
     rival: x.rival ? { weekEndsAt: x.rival.weekEndsAt, rankedRaces: x.rival.rankedRaces } : null,
     exchanges: x.exchanges.map((e) => ({ eventId: e.eventId, points: e.points, closesAt: e.closesAtMs })),
     gifts: [...x.giftExpiries].sort((a, b) => a - b).slice(0, 20),
+    calendarMarks: (s.calendar?.marks ?? []).filter((k) => typeof k.startAt === 'number' && k.startAt > now && k.until > now)
+      .map((k) => ({ id: k.id, startAt: k.startAt! })).sort((a, b) => a.startAt - b.startAt || (a.id < b.id ? -1 : 1)).slice(0, 30),
   };
 }
 
@@ -180,6 +188,10 @@ export const LNOTIF_TEXTS: Record<LnotifKind, Record<Lang, KindText>> = {
   exchange_closing: {
     ja: { title: 'イベント交換所', body: '交換所は{date}に閉まります。残ったポイントは素材になります', detail: '{n}ポイント残っています。交換所は{date}に閉まります（残りは素材になります）' },
     en: { title: 'Event exchange', body: 'The exchange closes on {date}. Leftover points become materials', detail: '{n} points left. The exchange closes on {date} (leftovers become materials)', detailOne: '1 point left. The exchange closes on {date} (leftovers become materials)' },
+  },
+  calendar_mark: {
+    ja: { title: '予定表', body: '印を付けた予定が{date}に始まります', detail: '印を付けた予定が{date}に始まります' },
+    en: { title: 'Calendar', body: 'An entry you marked starts on {date}', detail: 'An entry you marked starts on {date}' },
   },
   gift_expiring: {
     ja: { title: 'プレゼントボックス', body: '受け取り期限が{date}の品があります', detail: '受け取り期限が近い品が{n}件あります（最初は{date}）' },
@@ -254,6 +266,11 @@ export function planLocalNotifications(x: LocalNotifySnapshot): LocalNotifyPlan 
   if (gifts.length > 0) {
     const first = gifts[0]!;
     cands.push({ kind: 'gift_expiring', id: `lnotif.gift_expiring.${first}`, fireAt: first - lead('gift_expiring'), deadline: first, refId: null, n: gifts.filter((g) => g <= first + DAY).length, horseId: null, dateAt: first });
+  }
+  // R21 integration (§65 × §61): each marked calendar row that has not started, a lead before its start (never a name)
+  for (const k of [...(d.calendarMarks ?? [])].sort((a, b) => a.startAt - b.startAt || (a.id < b.id ? -1 : 1))) {
+    if (k.startAt <= now) continue;
+    cands.push({ kind: 'calendar_mark', id: `lnotif.calendar_mark.${k.id}`, fireAt: k.startAt - lead('calendar_mark'), deadline: k.startAt, refId: k.id, n: null, horseId: null, dateAt: k.startAt });
   }
 
   const dropped: LocalNotifyPlan['dropped'] = [];

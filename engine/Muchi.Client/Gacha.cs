@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Muchi.Net;
 
 namespace Muchi.Client
@@ -169,5 +171,65 @@ namespace Muchi.Client
         public int DrawnStep;
         public StepUpProgress Next;
         internal static DrawStepUp Parse(JsonNode o) => o == null ? null : new DrawStepUp { DrawnStep = J.Int(o, "drawnStep"), Next = StepUpProgress.Parse(J.Opt(o, "next")) };
+    }
+
+    /// <summary>
+    /// Quality pass 2 (server/src/domain/scoutOptions.ts, protocol 「スカウトの確認」): one way to pull on a banner now —
+    /// coins (with the exact paid / free split, paid first) or a ticket the player holds. Read only; the pull itself is
+    /// DrawAsync / UseTicketAsync, which decide again on the transaction.
+    /// </summary>
+    public sealed class ScoutWay
+    {
+        /// <summary>coins_1 | coins_10 | ticket:&lt;itemId&gt;</summary>
+        public string Id, Via, ItemId, Label, Line;
+        /// <summary>null when the player is short (or a ticket way).</summary>
+        public int? Price, PaysPaid, PaysFree, AfterPaid, AfterFree, Owned, Shortfall;
+        public int Count, PityGain;
+        public bool Available;
+        /// <summary>short | closed | upcoming | debt | null</summary>
+        public string Block;
+        internal static ScoutWay Parse(JsonNode o)
+        {
+            var pays = J.Opt(o, "pays"); var after = J.Opt(o, "after");
+            return new ScoutWay
+            {
+                Id = J.Str(o, "id"), Via = J.Str(o, "via"), ItemId = J.Str(o, "itemId"), Label = J.Str(o, "label"), Line = J.Str(o, "line"),
+                Count = J.Int(o, "count"), Price = J.IntN(o, "price"), Owned = J.IntN(o, "owned"), Shortfall = J.IntN(o, "shortfall"),
+                PaysPaid = pays == null ? (int?)null : J.Int(pays, "paid"), PaysFree = pays == null ? (int?)null : J.Int(pays, "free"),
+                AfterPaid = after == null ? (int?)null : J.Int(after, "paid"), AfterFree = after == null ? (int?)null : J.Int(after, "free"),
+                Available = J.Bool(o, "available"), Block = J.Str(o, "block"), PityGain = J.Int(o, "pityGain"),
+            };
+        }
+    }
+
+    public sealed class ScoutOptions
+    {
+        public string BannerId, Name, Status, Notice;
+        public bool PaidOnly, StepUp;
+        public int WalletPaid, WalletFree;
+        public List<ScoutWay> Ways = new List<ScoutWay>();
+        /// <summary>The SR+ ticket while held (its own table, usable on no banner); null otherwise.</summary>
+        public string SrPlusItemId, SrPlusName, SrPlusLine, SrPlusOddsPath;
+        public int SrPlusOwned;
+        public ScoutWay Way(string id) => Ways.Find(w => w.Id == id);
+        public static ScoutOptions FromJson(string json) => Parse(JsonNode.Parse(json));
+        internal static ScoutOptions Parse(JsonNode o)
+        {
+            var w = J.Opt(o, "wallet"); var sr = J.Opt(o, "srPlus");
+            return new ScoutOptions
+            {
+                BannerId = J.Str(o, "bannerId"), Name = J.Str(o, "name"), Status = J.Str(o, "status"), Notice = J.Str(o, "notice"),
+                PaidOnly = J.Bool(o, "paidOnly"), StepUp = J.Bool(o, "stepUp"), WalletPaid = J.Int(w, "paid"), WalletFree = J.Int(w, "free"),
+                Ways = J.List(o, "ways", ScoutWay.Parse),
+                SrPlusItemId = J.Str(sr, "itemId"), SrPlusName = J.Str(sr, "name"), SrPlusLine = J.Str(sr, "line"), SrPlusOddsPath = J.Str(sr, "oddsPath"), SrPlusOwned = J.Int(sr, "owned"),
+            };
+        }
+    }
+
+    public sealed partial class ApiClient
+    {
+        /// <summary>Quality pass 2: every way to pull on this banner now, with the exact paid / free split or the ticket (read only, player auth).</summary>
+        public Task<ScoutOptions> GetScoutOptionsAsync(string bannerId, CancellationToken ct = default)
+            => Call("GET", "/v1/gacha/" + Seg(bannerId) + "/options", null, true, null, true, ScoutOptions.Parse, ct);
     }
 }

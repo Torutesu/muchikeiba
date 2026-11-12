@@ -1854,22 +1854,95 @@ async function Scout(selectId) {
     if (row.carryOverNotice) Txt(row.carryOverNotice, 0, 104, 876, 13, WARN, meter, { lh: 1.45 }).dataset.carryOver = '1';
     if (group.exchangeable > 0 && b.status === 'active') Ghost('交換する', 716, 0, 160, 48, () => PityExchange(b, group), meter, 'small');
   }
-  Txt(`期間：${row.periodLine}`, 32, 300, 600, 15, MUTED, info, { weight: 500 });
+  // quality pass 2 (docs/quality/shop.md §3.1): the ways to pull from the server (GET /v1/gacha/:id/options) — the tickets the
+  // player holds for this banner sit on the screen where they are used, and every coin pull opens a confirmation that names
+  // the paid and free coins it takes. The period stays on the banner's row (left); the rates link stays in view.
+  const opt = await L.scoutOptions(b.id);
+  const ways = opt.ok ? opt.value.ways : [];
+  const tickets = ways.filter((w) => w.via === 'ticket');
+  const sr = opt.ok ? opt.value.srPlus : null;
   TextLink('提供割合', 760, 294, 148, () => Odds(b.id), info, '提供割合を見る');
+  if (tickets.length || sr) {
+    const tr = el('scout-tickets', 32, 292, 710, 52, info); tr.dataset.name = 'Scout tickets';
+    let x = 0;
+    for (const w of tickets.slice(0, 2)) {
+      const g = Ghost(`${w.label}（${w.owned}枚）`, x, 0, 340, 52, () => ScoutConfirm(b, w), tr, 'small'); g.dataset.way = w.id; x += 352;
+      if (!w.available) disable(g);
+    }
+    if (sr && x <= 352) {
+      const g = Ghost(`${sr.name}を使う（${sr.owned}枚）`, x, 0, 358, 52, () => ScoutConfirm(b, { id: 'sr_plus', via: 'sr_ticket', count: 1, itemId: sr.itemId, label: `${sr.name}を使う`, owned: sr.owned, available: true, line: sr.line, pityGain: 0 }), tr, 'small gold');
+      g.dataset.way = 'sr_plus';
+    }
+  } else Txt(`期間：${row.periodLine}`, 32, 300, 600, 15, MUTED, info, { weight: 500 });
   if (b.status === 'upcoming') {
     Txt('開始前です。提供割合は開始前から確認できます。', 32, 352, 440, 16, GOLD, info);
     disable(Cta('10回引く（開始前）', 470, 362, 438, () => {}, info));
   } else {
     const ten = b.stepUp ? (bs?.stepUp?.priceTen ?? b.stepUp.prices[0]) : b.priceTen;
-    if (!b.stepUp && b.singleAllowed !== false) Ghost(`1回（${fmt(b.priceSingle)}）`, 32, 368, 220, 60, () => PaidScout(b, 1), info);
-    Cta(`10回引く（${fmt(ten)}）`, 470, 362, 438, () => PaidScout(b, 10), info);
+    const pull = (count) => { const w = ways.find((x) => x.id === `coins_${count}`); return w?.available ? ScoutConfirm(b, w) : PaidScout(b, count); };
+    if (!b.stepUp && b.singleAllowed !== false) Ghost(`1回（${fmt(b.priceSingle)}）`, 32, 368, 220, 60, () => pull(1), info);
+    Cta(`10回引く（${fmt(ten)}）`, 470, 362, 438, () => pull(10), info);
   }
   NavBar(2);
 }
-async function PaidScout(b, count) {
+/**
+ * Quality pass 2: the scout confirmation — what this pull takes, said once and plainly (paid and free apart, paid first,
+ * or the ticket), the wallet after, the exchange points it adds, the rates one tap away. 「引く」 is the primary; 閉じる
+ * is always there. KPI scout_confirm (view / pull / cancel). The pull itself is the server's (draw / ticket use).
+ */
+function ScoutConfirm(b, w) {
+  currentScreen = () => Scout(b.id);
+  const via = w.via;
+  const k = (stage) => L.kpi([{ name: 'scout_confirm', at: L.now(), props: { stage, via, count: w.count } }]);
+  k('view');
+  Clear('scout-confirm'); SetArt('Art/scout-reveal', false); Shade('dim');
+  const d = Dialog('Scout confirm', 1000, 640); d.dataset.way = w.id;
+  Kicker(w.via === 'sr_ticket' ? 'スカウト券' : b.name, 52, 44, d, { w: 896 });
+  Txt(w.via === 'coins' ? `${w.count}回引く` : w.label, 52, 108, 896, 34, WHITE, d, { weight: 700 });
+  const line = Txt(w.line, 52, 170, 896, 22, GOLD, d, { weight: 700, lh: 1.5 }); line.dataset.spend = '1';
+  if (w.via === 'coins' && w.pays) {
+    // the split as a bar: paid (◈) then free (◎), in the order the wallet spends them
+    const bar = el('spend-bar', 52, 236, 896, 12, d); const tot = w.pays.paid + w.pays.free || 1;
+    for (const [kind, n] of [['paid', w.pays.paid], ['free', w.pays.free]]) { if (!n) continue; const i = document.createElement('i'); i.className = kind; i.style.width = (100 * n / tot) + '%'; bar.appendChild(i); }
+    Txt(`◈ 有償 ${fmt(w.pays.paid)}　·　◎ 無償 ${fmt(w.pays.free)}`, 52, 262, 896, 18, WHITE, d, { weight: 500, cls: 'num' });
+    Txt(`引いた後　◈ 有償 ${fmt(w.after.paid)}　·　◎ 無償 ${fmt(w.after.free)}`, 52, 306, 896, 18, MUTED, d, { weight: 500, cls: 'num' }).dataset.after = `${w.after.paid}/${w.after.free}`;
+    Txt(b.currency === 'paidOnly' ? '有償限定：有償コインだけで引けます（無償コイン・スカウト券は使えません）。' : '有償コインから先に使われます。', 52, 348, 896, 15, SOFT, d);
+  } else if (w.owned != null) Txt(`いま ${w.owned}枚　→　引いた後 ${w.owned - 1}枚`, 52, 240, 896, 19, WHITE, d, { weight: 500, cls: 'num' });
+  if (w.pityGain) Txt(`天井の交換pt ＋${w.pityGain}`, 52, 392, 896, 17, CYAN, d, { weight: 500 });
+  TextLink('提供割合', 52, 436, 300, () => (w.via === 'sr_ticket' ? TicketOdds(w.itemId, () => ScoutConfirm(b, w)) : Odds(b.id)), d, w.via === 'sr_ticket' ? 'この券の提供割合を見る' : '提供割合を見る');
+  const go = Cta(w.via === 'coins' ? `引く（${fmt(w.price)}コイン）` : '券を使って引く', 498, 522, 450, async () => {
+    disable(go); k('pull');
+    if (w.via === 'coins') return PaidScout(b, w.count, true);
+    const r = await L.useTicket(w.itemId, w.via === 'sr_ticket' ? null : b.id);
+    if (!r.ok) return Info('スカウトできませんでした', r.message, () => Scout(b.id));
+    await refresh();
+    const results = r.value.results ?? [r.value.result];
+    lastPulls = results;
+    const pity = w.via === 'sr_ticket' ? null : (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id) ?? null;
+    Reveal({ bannerId: b.id, results, spent: { paid: 0, free: 0 }, pityPoints: r.value.pityPoints ?? 0 }, false, b.id, pity);
+  }, d);
+  go.dataset.action = 'scout-pull';
+  Ghost('閉じる', 52, 528, 260, 60, () => { k('cancel'); Scout(b.id); }, d, 'quiet').dataset.action = 'scout-cancel';
+}
+/** REQ-ITEM-002: the SR+ ticket's own table (GET /v1/items/tickets/:itemId/odds), from the very definition used to draw. */
+async function TicketOdds(itemId, back) {
+  currentScreen = () => TicketOdds(itemId, back);
+  const r = await L.ticketOdds(itemId); const o = r.value;
+  Clear('ticket-odds'); SetArt('Art/scout-reveal', false); Shade('dim');
+  TopBar(T('SCOUT RATES') + '　/　' + o.name, o.notice, { wallet: false });
+  const p = Glass('Ticket odds', 36, 134, 1528, 676, undefined, .93);
+  Kicker(T('RARITY TOTALS'), 36, 30, p, { rule: false, size: 14 });
+  Object.entries(o.rarityTotals ?? {}).forEach(([k, v], i) => { Txt(`${RARITY_SHAPE[k]} ${k}`, 36, 60 + i * 30, 110, 17, k === 'SSR' ? GOLD : CYAN, p, { weight: 700 }); Txt(v.rate, 156, 60 + i * 30, 160, 17, WHITE, p, { cls: 'num', weight: 500 }); });
+  (o.items ?? []).slice(0, 24).forEach((it, i) => { const x = 420 + Math.floor(i / 12) * 540, y = 30 + (i % 12) * 44; Txt(`${RARITY_SHAPE[it.rarity]} ${it.name}`, x, y, 380, 17, it.rarity === 'SSR' ? GOLD : WHITE, p, { weight: 500, nowrap: true }); Txt(it.rate, x + 390, y, 120, 17, WHITE, p, { cls: 'num', align: 'right' }); });
+  Back(back ?? (() => Scout()), 'BACK', 40, 834);
+}
+async function PaidScout(b, count, confirmed = false) {
   // T6 (REQ-SHORT-005): ask first — when the coins are short the sheet replaces the pull (nothing is tried)
   const pre = await L.coinShortfall({ for: 'gacha', bannerId: b.id, count });
   if (pre.ok && pre.value.short) return Shortfall(pre.value, 'scout', () => PaidScout(b, count), () => Scout(b.id));
+  // quality pass 2: a pull the player can afford is confirmed first (paid / free named); coming back from the shortfall
+  // sheet's demo purchase opens the confirmation too
+  if (!confirmed) { const o = await L.scoutOptions(b.id); const w = o.ok ? o.value.ways.find((x) => x.id === `coins_${count}`) : null; if (w?.available) return ScoutConfirm(b, w); }
   const r = await L.draw(b.id, count);
   if (!r.ok) {
     // REQ-SHORT-004: a refused pull carries the same shortfall (paid-only banners count paid coins only)
@@ -1997,7 +2070,9 @@ async function Store(tab = 'recommended') {
   Txt('決済前に商品・年齢区分を確認します　·　このプロトタイプでは決済しません', 920, 634, 576, 14, SOFT, p, { align: 'right', nowrap: true });
   NavBar(3);
 }
-const contentsText = (p) => p.contents.map((x) => x.label).join('　·　');
+const contentsText = (p) => p.contents.flatMap((x) => (x.totalLabel ? [x.label, x.totalLabel] : [x.label])).join('　·　');
+/** Quality pass 2: what each item does in play, from the server (products.json display.itemPurposes) — one line each. */
+const purposesText = (p) => p.contents.filter((x) => x.purpose).map((x) => `${x.label.replace(/×\d+$/, '')}：${x.purpose}`).join('\n');
 function productTags(p, extra) {
   const tags = [];
   if (p.oneTime) tags.push(p.oneTimeScope === 'class' ? '各クラス1回限り' : '1回限り');
@@ -2025,38 +2100,41 @@ function productCard(parent, p, x, y, w, h, opts = {}) {
   return c;
 }
 function DrawRecommended(parent, shop, offers, top, blocked) {
+  // quality pass 2 (docs/quality/shop.md §3.3): the tab shows only what this player can buy now. A once-only pack already
+  // bought and the promotion packs of classes not reached leave the tab (the purchase history keeps the record; the
+  // promotion pack comes with the promotion, T4). The pass stays (it is also the way to the pass screen).
   const byId = new Map(shop.products.map((p) => [p.id, p]));
   const list = offers?.offers ?? [];
+  const cards = [];
   const starter = byId.get('starter_pack');
   const starterOffer = list.find((o) => o.productId === 'starter_pack');
-  const H = blocked ? 236 : 290;
-  // T2 starter: in the recommended tab after its trigger, until bought (no fake timer: it has no end date)
-  if (starter) productCard(parent, starter, 32, top, 724, H, { art: 'Art/Cosmetics/jockey-crimson', note: starter.owned ? '購入済みです（1回限り）' : starterOffer ? 'おすすめ：期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked });
-  // T3 pass (real season end, live countdown)
+  if (starter && !starter.owned) cards.push({ p: starter, o: { art: 'Art/Cosmetics/jockey-crimson', note: starterOffer ? '期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked } });
+  // T3 pass: the real season end as a date (no ticking clock on a shop card)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
-  const pc = productCard(parent, pass, 772, top, 724, H, { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: OK } : {}) });
-  if (passOffer?.endsAt) { const cd = Txt('', 194, H - 46, 300, 13, GOLD, pc, { weight: 700, lh: 1.45 }); every(1000, () => { cd.textContent = `今シーズンの終わり（${seasonEnd(passOffer.endsAt)}）まで\nあと ${countdown(passOffer.endsAt - L.now())}`; }); cd.classList.add('countdown'); }
-  else if (!unlock('season_pass').unlocked) Txt('シーズンパスは' + unlockText('season_pass'), 194, H - 46, 300, 13, GOLD, pc, { weight: 500 });
-  // daily pack (厩舎手当) and the promotion packs (T4: only once the class is reached)
-  const y2 = top + H + 16, H2 = 590 - y2;
+  if (pass) cards.push({ p: pass, pass: true, o: { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: OK } : {}) } });
   const allowance = byId.get('stable_allowance_30d');
   const av = offers?.allowance;
-  if (allowance) productCard(parent, allowance, 32, y2, 724, H2, { note: av?.active ? `受け取り中：残り${av.daysLeft}日` : shop.notices['shop.allowance_no_stack'], disabled: blocked || !!av?.active || !!av?.queued });
-  const promos = shop.products.filter((p) => p.kind === 'promotion');
-  const promoOffer = list.filter((o) => o.touchpoint === 'T4');
-  const pr = Card('Promotion packs', 772, y2, 724, H2, parent, 'var(--text-3)');
-  Txt('昇級記念パック', 24, 26, 400, 23, WHITE, pr, { weight: 700 });
-  Txt('クラスに昇級すると、そのクラスのパックを1回だけ購入できます。', 24, 62, 660, 14, MUTED, pr);
-  promos.slice(0, 3).forEach((p, i) => {
-    const ok = promoOffer.some((o) => o.productId === p.id);
-    const x = 24 + i * 228, yy = H2 - 74;
-    const t = el('promo', x, yy, 216, 56, pr); t.dataset.product = p.id;
-    // r12 (R8 gap): a bought pack is drawn as bought, never as 「昇級すると購入できます」 or a buy button
-    if (p.owned) { t.dataset.owned = 'true'; Txt(`${p.classId}級　購入済み`, 0, 0, 216, 17, OK, t, { weight: 700 }); Txt('各クラス1回限り', 0, 28, 216, 12, SOFT, t); }
-    else if (ok) Cta(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, () => PurchaseConfirm(p.id, currentScreen), t, 'small');
-    else { Txt(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, 17, DIM, t, { weight: 700 }); Txt(`${p.classId}級に昇級すると購入できます`, 0, 28, 216, 12, DIM, t); }
+  if (allowance) cards.push({ p: allowance, allowance: true, o: av?.active ? { note: `受け取り中：${av.day}日目／${av.days}日（残り${av.daysLeft}日）`, noteColor: OK, ...(av.claimedToday ? { cta: '今日の分は受け取り済み', disabled: true } : { cta: '今日の分を受け取る', action: () => ClaimAllowance(() => Store('recommended')) }) } : { note: shop.notices['shop.allowance_no_stack'], disabled: blocked || !!av?.queued } });
+  for (const p of shop.products.filter((x) => x.kind === 'promotion' && !x.owned && list.some((o) => o.touchpoint === 'T4' && o.productId === x.id))) cards.push({ p, o: { art: 'Art/Cosmetics/jockey-crimson', note: '昇級のお祝い：各クラス1回限り', disabled: blocked } });
+  const shown = cards.slice(0, 4);
+  const H = 590 - top, rows = shown.length > 2 ? 2 : 1, ch = Math.floor((H - (rows - 1) * 16) / rows);
+  shown.forEach((c, i) => {
+    const full = shown.length === 3 && i === 2; // three cards: the last one spans the row
+    const x = full ? 32 : 32 + (i % 2) * 740, y = top + Math.floor(i / 2) * (ch + 16), w = full ? 1464 : 724;
+    const card = productCard(parent, c.p, x, y, w, ch, { ...c.o, art: ch >= 200 ? c.o.art : undefined });
+    if (c.pass && passOffer?.endsAt && !c.p.owned) { const cd = Txt(`${seasonEnd(passOffer.endsAt)}まで（あと${passOffer.remainingDays}日）`, (c.o.art && ch >= 200 ? 194 : 24), ch - 46, 400, 13, GOLD, card, { weight: 700, lh: 1.45 }); cd.classList.add('countdown'); }
+    else if (c.pass && !unlock('season_pass').unlocked) Txt('シーズンパスは' + unlockText('season_pass'), 194, ch - 46, 300, 13, GOLD, card, { weight: 500 });
   });
+  parent.dataset.cards = String(shown.length);
+}
+/** REQ-UXS-018: today's 厩舎手当 coins (once per game day while the pack runs). */
+async function ClaimAllowance(next) {
+  const r = await L.claimAllowance();
+  if (!r.ok) { toast(r.code === 'ALREADY_CLAIMED' ? '今日の分は受け取り済みです' : r.message); return next(); }
+  await refresh();
+  toast(`無償コイン${fmt(r.value.freeCoins)}枚を受け取りました（残り${r.value.daysLeft - 1}日）`);
+  next();
 }
 function DrawCoins(parent, shop, offers, top, blocked) {
   const firstLeft = new Set(offers?.firstPurchase.productIds ?? []);
@@ -2121,18 +2199,21 @@ async function PurchaseConfirm(productId, back, after) {
   const p = shop.products.find((x) => x.id === productId);
   const r = await L.purchaseIntent(productId);
   Clear('purchase'); SetArt('Art/home-paddock', false); Shade('dim');
-  const box = Dialog('Purchase', 1100, 760, { y: 70, a: .95 });
+  const box = Dialog('Purchase', 1100, 820, { y: 40, a: .95 });
   el('rule', 48, 30, 84, 3, box);
   Txt('購入の確認', 48, 44, 600, 24, WHITE, box, { weight: 700, ls: '.05em' });
   Txt('決済の前に、商品と条件を確認します。', 48, 76, 600, 14, MUTED, box);
   Txt('選択アイテム', 48, 124, 300, 16, MUTED, box, { weight: 500 });
   Txt(p.name, 48, 150, 700, 34, WHITE, box);
   Txt(yen(p.priceYen) + '（税込）', 760, 156, 292, 30, GOLD, box, { align: 'right', cls: 'num' });
-  Txt(contentsText(p), 48, 208, 1004, 17, WHITE, box, { weight: 500, lh: 1.55 });
+  Txt(contentsText(p), 48, 204, 1004, 17, WHITE, box, { weight: 500, lh: 1.55 });
+  // quality pass 2: what each item does in play (server-built), so the value is legible before paying
+  const purposes = purposesText(p);
+  if (purposes) Txt(purposes, 48, 262, 1004, 14, MUTED, box, { lh: 1.55 }).dataset.purposes = '1';
   const notices = p.noticeKeys.filter((k) => !k.startsWith('legal.')).map((k) => shop.notices[k]).filter(Boolean);
-  Txt(notices.join('\n'), 48, 248, 1004, 13, SOFT, box, { lh: 1.6 });
-  Hair(48, 330, 1004, box);
-  const state = el('pstate', 48, 352, 1004, 270, box);
+  Txt(notices.join('\n'), 48, purposes ? 318 : 262, 1004, 13, SOFT, box, { lh: 1.6 });
+  Hair(48, 392, 1004, box);
+  const state = el('pstate', 48, 410, 1004, 270, box);
   const S = (t, y, size, c, o = {}) => Txt(t, 0, y, 1004, size, c, state, o);
   const close = () => { ageForm = null; purchaseAfter = null; (purchaseReturn ?? Home)(); };
   if (r.ok) {
@@ -2147,17 +2228,19 @@ async function PurchaseConfirm(productId, back, after) {
     TextLink('上限を設定', 760, 160, 244, () => SelfLimits(() => PurchaseConfirm(productId)), state).dataset.action = 'self-limits';
     if (v.pass) S(`有効期間：${seasonEnd(v.pass.endsAt)}まで（今シーズン限り・自動更新なし）${v.pass.remainingDays != null ? '　残り' + v.pass.remainingDays + '日' : ''}`, 110, 16, GOLD);
     if (v.allowance) S(`${v.allowance.days}日間、毎日 無償コイン${v.allowance.dailyFreeCoins}枚（自動更新なし）`, 110, 16, GOLD);
-    const buy = disable(Cta('購入する（プロトタイプでは決済しません）', 492, 652, 560, () => {}, box, 'gold'));
-    TextLink('年齢を訂正する', 0, 160, 200, () => { buy.remove(); ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
-    // round 12: from the shortfall sheet, a demo purchase (a locally issued receipt, no billing) then back to the original action
-    if (purchaseAfter) Ghost('デモ：決済なしで購入する', 640, 150, 364, 56, async () => {
+    // quality pass 2: the main button runs a demo purchase (a locally issued receipt, no billing) and ends on the receipt —
+    // or, from the shortfall sheet (round 12), goes back to the pull it came from
+    const buy = Cta('購入する（デモ・決済なし）', 492, 712, 560, async () => {
+      disable(buy);
       const after = purchaseAfter;
       const g = await L.demoPurchase(productId);
-      if (!g.ok) { toast(g.message); return; }
-      purchaseAfter = null; await refresh();
-      toast('購入しました（デモ・決済なし）。元の操作に戻ります');
-      after();
-    }, state, 'quiet small').dataset.demoBuy = '1';
+      if (!g.ok) { toast(g.message); return PurchaseConfirm(productId); }
+      purchaseAfter = null; ageForm = null; await refresh();
+      if (after) { toast('購入しました（デモ・決済なし）。元の操作に戻ります'); return after(); }
+      Receipt(g.value.receipt);
+    }, box, 'gold');
+    buy.dataset.demoBuy = '1';
+    TextLink('年齢を訂正する', 0, 160, 200, () => { buy.remove(); ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
   } else if (r.code === 'AGE_REQUIRED' || r.code === 'GUARDIAN_CONSENT_REQUIRED') {
     state.dataset.state = r.code === 'AGE_REQUIRED' ? 'unregistered' : 'guardian';
     if (r.code === 'GUARDIAN_CONSENT_REQUIRED') ageForm = { ...(ageForm ?? { year: '', month: '' }), guardian: false, needGuardian: true };
@@ -2186,7 +2269,52 @@ async function PurchaseConfirm(productId, back, after) {
     state.dataset.state = 'error';
     S(r.code === 'ALREADY_PURCHASED' ? '購入済みです（1回限りの商品・今シーズンのパス）' : r.code === 'NOT_ELIGIBLE' ? 'まだ購入できません（昇級すると購入できます）' : r.message, 0, 24, GOLD, { weight: 700 });
   }
-  Ghost('閉じる', 48, 658, 220, 60, close, box, 'quiet');
+  Ghost('閉じる', 48, 718, 220, 60, close, box, 'quiet');
+}
+/**
+ * Quality pass 2 (docs/quality/shop.md §3.2): the receipt — what the purchase put in the player's hands, each thing with
+ * what it does, the wallet now, and ONE next step that uses it (never another product). All text is the server's
+ * (POST /v1/shop/purchase → receipt). KPI purchase_receipt (view / next).
+ */
+function Receipt(rc) {
+  currentScreen = () => Receipt(rc);
+  const k = (stage) => L.kpi([{ name: 'purchase_receipt', at: L.now(), props: { stage, productId: rc.productId, action: rc.next?.action ?? 'none' } }]);
+  k('view');
+  Clear('receipt'); SetArt('Art/home-paddock', false); Shade('dim');
+  const d = Dialog('Receipt', 1100, 780, { y: 60, a: .95 }); d.dataset.product = rc.productId;
+  Kicker('購入が完了しました', 48, 36, d, { color: OK });
+  Txt(rc.name, 48, 108, 700, 34, WHITE, d, { weight: 700 });
+  Txt(yen(rc.priceYen) + '（税込）', 760, 114, 292, 26, GOLD, d, { align: 'right', cls: 'num' });
+  // the lines arrive one after another (skippable: they are all there at once with reduce motion)
+  rc.lines.forEach((l, i) => {
+    const row = el('receipt-row rise', 48, 178 + i * 74, 1004, 66, d); row.dataset.kind = l.kind; row.style.animationDelay = (reduced() ? 0 : 120 + i * 110) + 'ms';
+    Txt('✓', 0, 4, 30, 22, OK, row, { weight: 700 });
+    Txt(l.label, 40, 0, 960, 21, l.kind === 'paid_coins' || l.kind === 'bonus_free_coins' || l.kind === 'free_coins' ? GOLD : WHITE, row, { weight: 700, nowrap: true });
+    if (l.purpose) Txt(l.purpose, 40, 34, 960, 15, MUTED, row, { nowrap: true });
+    else if (l.endsAt) Txt(`${seasonEnd(l.endsAt)}まで`, 40, 34, 960, 15, MUTED, row);
+  });
+  const y = 178 + rc.lines.length * 74 + 8;
+  Hair(48, y, 1004, d);
+  Txt(`いまの残高　◈ 有償 ${fmt(rc.wallet.paid)}　·　◎ 無償 ${fmt(rc.wallet.free)}`, 48, y + 18, 1004, 19, WHITE, d, { weight: 500, cls: 'num' }).dataset.wallet = `${rc.wallet.paid}/${rc.wallet.free}`;
+  Txt(rc.notes.join('\n'), 48, y + 58, 1004, 13, SOFT, d, { lh: 1.6 });
+  const back = purchaseReturn ?? (() => Store('recommended'));
+  if (rc.next) {
+    const go = Cta(rc.next.label, 492, 678, 560, () => { k('next'); ReceiptNext(rc.next, back); }, d, 'gold');
+    go.dataset.action = 'receipt-next'; go.dataset.next = rc.next.action;
+  }
+  Ghost('閉じる', 48, 684, 220, 60, () => back(), d, 'quiet');
+}
+/** The receipt's one next step — each uses what was just bought. */
+async function ReceiptNext(n, back) {
+  if (n.action === 'open_pass') return SeasonPass();
+  if (n.action === 'claim_allowance') return ClaimAllowance(() => Store('recommended'));
+  if (n.action === 'wear_silks') { silksDraft = null; return SilksEditor(n.itemId); }
+  const b = L.bannerList().banners.find((x) => x.status === 'active') ?? L.bannerList().banners[0];
+  if (n.action === 'use_sr_ticket') {
+    const o = await L.scoutOptions(b.id); const sr = o.ok ? o.value.srPlus : null;
+    if (sr) return ScoutConfirm(b, { id: 'sr_plus', via: 'sr_ticket', count: 1, itemId: sr.itemId, label: `${sr.name}を使う`, owned: sr.owned, available: true, line: sr.line, pityGain: 0 });
+  }
+  return Scout(b?.id);
 }
 /** Birth year and month, asked only while unregistered (or to correct it); guardian consent only under 18. */
 function AgeForm(productId, box, state) {
@@ -2255,10 +2383,14 @@ async function SeasonPass() {
   const p = Glass('Pass', 36, 134, 1528, 676, undefined, .9);
   // left: the purchase-time item of the paid line, art-forward
   const lb = Glass('Pass reward', 28, 22, 388, 632, p, .94); lb.classList.add('flat');
-  ArtImage('Art/Cosmetics/jockey-violet', 24, 12, 340, 430, lb);
-  Txt('紫の星の勝負服', 26, 458, 340, 23, GOLD, lb, { weight: 700 });
-  Txt('有料ライン（パス・パス＋）の購入時にすぐ受け取れます。', 26, 498, 340, 15, WHITE, lb, { weight: 500, lh: 1.6 });
-  Txt(`パス＋は購入時に Lv＋${plusLv}`, 26, 560, 340, 15, VIOLET, lb, { weight: 700 });
+  ArtImage('Art/Cosmetics/jockey-violet', 24, 12, 340, 400, lb);
+  // quality pass 2: the item's own name from the server (it used to say a different name from the product), and a try-on on
+  // the player's own silks before buying (the silks editor with the pattern on; looks only)
+  const look = products[0]?.contents.find((c) => c.type === 'item');
+  Txt(look ? look.label.replace(/×\d+$/, '') : '', 26, 424, 340, 21, GOLD, lb, { weight: 700, lh: 1.4 });
+  Txt('有料ライン（パス・パス＋）の購入時にすぐ受け取れます。見た目だけで、ランク戦の能力は変わりません。', 26, 486, 340, 14, WHITE, lb, { weight: 500, lh: 1.55 });
+  if (look) TextLink('勝負服に着せてみる', 26, 552, 330, () => { silksDraft = null; SilksEditor(look.itemId); }, lb).dataset.action = 'pass-try-on';
+  Txt(`パス＋は購入時に Lv＋${plusLv}`, 26, 596, 340, 15, VIOLET, lb, { weight: 700 });
   // level and XP (next = N races)
   Kicker('レベル', 448, 22, p, { rule: false, size: 15 });
   Txt(String(pass.level), 448, 46, 120, 56, GOLD, p, { cls: 'num' });
@@ -2299,8 +2431,12 @@ async function SeasonPass() {
   }
   requestAnimationFrame(() => { const n = rail.querySelector('.tier.next') ?? rail.querySelector('.tier.reached:last-of-type'); if (n) strip.scrollLeft = Math.max(0, n.offsetLeft - 300); });
   // price line + the two products (Pass / Pass+), all contents visible before buying
-  const pb = Glass('Pass price', 448, 494, 1048, 64, p, .94); pb.classList.add('flat');
-  Txt(products.map((x) => `${x.name} ${yen(x.priceYen)}`).join('　·　') + '　/　今シーズン限り・自動更新なし', 24, 18, 1000, 19, GOLD, pb, { weight: 700, nowrap: true });
+  const pb = Glass('Pass price', 448, 488, 1048, 76, p, .94); pb.classList.add('flat');
+  Txt(products.map((x) => `${x.name} ${yen(x.priceYen)}`).join('　·　') + '　/　今シーズン限り・自動更新なし', 24, 10, 1000, 19, GOLD, pb, { weight: 700, nowrap: true });
+  // quality pass 2: the paid track added up (server-built, a sum — never a ratio), and what is already waiting on it
+  const total = products[0]?.contents.find((c) => c.type === 'pass_premium');
+  const waiting = premium ? 0 : Math.floor(pass.level / rw.premium.every);
+  if (total?.totalLabel) Txt('有料ライン ' + total.totalLabel + (waiting ? `　·　届いている${waiting}段は購入後すぐ受け取れます` : ''), 24, 44, 1000, 15, CYAN, pb, { weight: 500, nowrap: true }).dataset.passTotal = '1';
   products.forEach((x, i) => {
     const owned = x.purchasedThisSeason ?? pass.owned.includes(x.id);
     const closed = x.owned === true; // r10: one pass per season — Pass+ is closed once Pass was bought (and the other way round)
@@ -5726,7 +5862,7 @@ async function SilksEditor(tryItem) {
   if (!silksDraft) silksDraft = structuredClone(v.current.design);
   if (tryItem) { // from the shop's 見た目 tab: try that part on at once
     for (const t of ['color', 'sleeve', 'cap', 'pattern']) {
-      const p = silksPartsList(v, t).find((x) => x.shop?.itemId === tryItem);
+      const p = silksPartsList(v, t).find((x) => x.shop?.itemId === tryItem || (x.source?.kind === 'item' && x.source.itemId === tryItem));
       if (!p) continue;
       silksTab = t; if (t === 'color') silksSlot = 1;
       silksPick(v, p.id);
@@ -11183,7 +11319,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ WinDemo: (n, o) => WinDemo(n ?? 40, o ?? 'win'), PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ WinDemo: (n, o) => WinDemo(n ?? 40, o ?? 'win'), PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, Receipt, TicketOdds, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

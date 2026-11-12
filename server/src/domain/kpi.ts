@@ -181,6 +181,10 @@ export const clientEventSchema = z.discriminatedUnion('name', [
   // REQ-ASSIST-011: `assist` = the かんたん操作 level that rides this race (absent = off)
   z.object({ name: z.literal('race_start'), at: z.number().int(), props: z.object({ mode: z.enum(['ranked', 'friend', 'tutorial', 'offline', 'time_attack']), assist: z.enum(['off', 'whip', 'full']).optional() }) }),
   z.object({ name: z.literal('purchase_flow'), at: z.number().int(), props: z.object({ stage: z.enum(['open', 'cancel', 'fail', 'store_success']), productId: str(64) }) }),
+  // quality pass 2 (docs/quality/shop.md): the scout confirmation sheet (shown / pulled / closed; which way: coins, a ticket, the
+  // SR+ ticket) and the purchase receipt (shown / its one next step taken). Counts only — the pulls and purchases are server events.
+  z.object({ name: z.literal('scout_confirm'), at: z.number().int(), props: z.object({ stage: z.enum(['view', 'pull', 'cancel']), via: z.enum(['coins', 'ticket', 'sr_ticket']), count: z.union([z.literal(1), z.literal(10)]) }).strict() }),
+  z.object({ name: z.literal('purchase_receipt'), at: z.number().int(), props: z.object({ stage: z.enum(['view', 'next']), productId: str(64), action: z.enum(['use_sr_ticket', 'wear_silks', 'open_pass', 'claim_allowance', 'scout', 'none']) }).strict() }),
   z.object({ name: z.literal('push_open'), at: z.number().int(), props: z.object({ templateId: str(32) }) }),
   z.object({ name: z.literal('push_permission'), at: z.number().int(), props: z.object({ granted: z.boolean() }) }),
   // REQ-UXS-030
@@ -297,6 +301,8 @@ export function clientToKpi(e: ClientEvent): KpiEvent {
     case 'commentary_pack_sample': return { name: e.name, s1: e.props.packId, s2: e.props.owned ? 'owned' : 'not_owned' };
     case 'race_start': return { name: 'client_race_start', s1: e.props.mode, ...(e.props.assist && e.props.assist !== 'off' ? { s2: e.props.assist } : {}) };
     case 'purchase_flow': return { name: e.name, s1: e.props.stage, s2: e.props.productId };
+    case 'scout_confirm': return { name: e.name, s1: e.props.stage, s2: e.props.via, count: e.props.count };
+    case 'purchase_receipt': return { name: e.name, s1: e.props.stage, s2: e.props.productId, s3: e.props.action };
     case 'push_open': return { name: e.name, s1: e.props.templateId };
     case 'push_permission': return { name: e.name, value: e.props.granted ? 1 : 0 };
     case 'feature_unlock': return { name: e.name, s1: e.props.feature };

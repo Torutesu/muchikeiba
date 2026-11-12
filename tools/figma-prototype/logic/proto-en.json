@@ -1863,6 +1863,20 @@
   "違うレースを流さないため、再計算の結果が一致しないレースは再生しません": "To never show a different race, a replay that does not re-simulate to the same result is not played",
   "見どころを見る ›": "Highlights ›",
   "{n}つの場面": "{n} moments",
-  "あわせて{n}秒": "{n} s in all"
+  "あわせて{n}秒": "{n} s in all",
+  "_q2shop": "---- quality pass 2 (docs/quality/shop.md): scout confirmation, receipt, shop おすすめ, pass total",
+  "{way}（{n}枚）": "{way} ({n})",
+  "{name}を使う（{n}枚）": "Use the {name} ({n})",
+  "購入する（デモ・決済なし）": "Buy (demo, no payment)",
+  "期限はありません（購入するまでここに置いておきます）": "No end date (it stays here until you buy it)",
+  "{date}まで（あと{n}日）": "Until {date} ({n} days left)",
+  "受け取り中：{a}日目／{b}日（残り{n}日）": "Running: day {a} of {b} ({n} days left)",
+  "今日の分は受け取り済みです": "You have claimed today's coins",
+  "無償コイン{n}枚を受け取りました（残り{d}日）": "Received {n} free coins ({d} days left)",
+  "昇級のお祝い：各クラス1回限り": "For your promotion: once per class",
+  "{item}：{purpose}": "{item}: {purpose}",
+  "見た目だけで、ランク戦の能力は変わりません。": "Looks only; no effect on ranked ability.",
+  "有料ライン {total}": "Premium track {total}",
+  "届いている{n}段は購入後すぐ受け取れます": "the {n} tiers you have reached can be claimed right after buying"
  }
 }

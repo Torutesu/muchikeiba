@@ -21,11 +21,24 @@ namespace Muchi.Client
         public Reward Reward;
         /// <summary>item: the item id.</summary>
         public string ItemId;
-        internal static ProductContent Parse(JsonNode o) => new ProductContent
+        /// <summary>Quality pass 2 — item: what it does in play (server-built, null when not stated).</summary>
+        public string Purpose;
+        /// <summary>Quality pass 2 — pass_premium: every tier added up and its label (a sum, never a ratio).</summary>
+        public Reward TrackTotal;
+        public string TotalLabel;
+        internal static ProductContent Parse(JsonNode o)
         {
-            Type = J.Str(o, "type"), Label = J.Str(o, "label"), Qty = J.Int(o, "qty"), Days = J.Int(o, "days"), Total = J.Int(o, "total"),
-            Levels = J.Int(o, "levels"), Reward = J.Opt(o, "reward") == null ? null : Reward.Parse(J.Opt(o, "reward")), ItemId = J.Str(o, "itemId"),
-        };
+            var total = J.Opt(o, "total");
+            return new ProductContent
+            {
+                Type = J.Str(o, "type"), Label = J.Str(o, "label"), Qty = J.Int(o, "qty"), Days = J.Int(o, "days"),
+                Total = total != null && total.Kind == JsonKind.Number ? total.AsInt() : 0,
+                Levels = J.Int(o, "levels"), Reward = J.Opt(o, "reward") == null ? null : Reward.Parse(J.Opt(o, "reward")), ItemId = J.Str(o, "itemId"),
+                Purpose = J.Str(o, "purpose"),
+                TrackTotal = total != null && total.Kind == JsonKind.Object ? Reward.Parse(total) : null,
+                TotalLabel = J.Str(o, "totalLabel"),
+            };
+        }
     }
 
     /// <summary>First-purchase bonus of a coin pack: stated as coins ("無償コイン◯枚"), never as a multiplier.</summary>

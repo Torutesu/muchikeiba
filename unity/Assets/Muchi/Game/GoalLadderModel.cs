@@ -41,6 +41,28 @@ namespace Muchi.Game
         public bool Ready;
     }
 
+    /// <summary>
+    /// REQ-GOAL-014 (quality pass 2, the first week): the partner's growth on home — the stage of five (the 馬カード's
+    /// GrowthStages), a gauge from the stage's start to the next one, what training added today / the game day before, and
+    /// how many sessions are left today. Display only: nothing is granted by a stage.
+    /// </summary>
+    public sealed class PartnerGrowthLine
+    {
+        public string HorseId, Name, StageName;
+        public int Stage, Stages;
+        /// <summary>0..1 from this stage's start to the next stage (1 at 完成).</summary>
+        public float Fill;
+        /// <summary>「成長期　調教 +29」.</summary>
+        public string Line;
+        /// <summary>「今日 +10」 / 「昨日 +10」 / null — the latest growth the player can feel.</summary>
+        public string DeltaLine;
+        /// <summary>「次の段階まで あと55」 / 「完成」.</summary>
+        public string NextLine;
+        /// <summary>「今日あと2回 調教できます」 / 「今日の調教は終わりました」 / null (training not open yet).</summary>
+        public string TrainLine;
+        public bool CanTrain;
+    }
+
     /// <summary>One class of the ladder sheet.</summary>
     public sealed class ClassRow
     {
@@ -87,6 +109,22 @@ namespace Muchi.Game
         public string ClaimText => View != null && View.Claimable > 0 ? "まとめて受け取る（" + View.Claimable + "件）" : null;
         /// <summary>After a claim: the lines of the moment (「無償コイン 45枚」「配合素材 ×1」…) and the total.</summary>
         public List<string> LastClaimLines { get; private set; } = new List<string>();
+
+        // ---- the first week (quality pass 2, docs/quality/first-week.md)
+        /// <summary>REQ-GOAL-013: one line for home once today's set is done — 「明日：繁殖牝馬1頭・配合が開く」 (facts from the server:
+        /// tomorrow's login bonus, up to two features opening by day count, else the training slots). Null when there is nothing.</summary>
+        public string TomorrowLine { get; private set; }
+        /// <summary>REQ-GOAL-013: the goals sheet's 「明日」 block, one fact per line, and its time (「4:00から」).</summary>
+        public List<string> TomorrowLines { get; private set; } = new List<string>();
+        public string TomorrowAt { get; private set; }
+        /// <summary>REQ-GOAL-014: the partner's growth (null without a partner or from an older server).</summary>
+        public PartnerGrowthLine Partner { get; private set; }
+        /// <summary>REQ-GOAL-015: where the current first step is done (scout | silks | care | race | breeding | friends | teams |
+        /// time_attack | collection — fixed in code on the server, never the shop) and, while that screen is not open yet, why.</summary>
+        public string PathScreen { get; private set; }
+        public string PathLockText { get; private set; }
+        /// <summary>At most this many features in the one home line (the sheet lists them all).</summary>
+        public const int TomorrowHomeFeatures = 2;
 
         public static readonly IReadOnlyDictionary<string, string> KindTitles = new Dictionary<string, string>
         {
@@ -215,12 +253,13 @@ namespace Muchi.Game
             PathStep = v.Path?.Current == null ? null : Row(v.Path.Current);
             SeasonMissions = v.Season.Missions.Select(Row).ToList();
 
-            // 今日
+            BuildFirstWeek(v);
+            // 今日 (quality pass 2: once the set is done, the rung says what tomorrow brings)
             if (v.Today.Open)
                 Rungs.Add(new GoalRung
                 {
                     Key = "today", Label = "今日",
-                    Main = v.Today.Complete ? "今日の目標は完了" : v.Today.Claimable > 0 ? "受け取れる報酬があります" : NextToday(v),
+                    Main = v.Today.Complete ? TomorrowLine ?? "今日の目標は完了" : v.Today.Claimable > 0 ? "受け取れる報酬があります" : NextToday(v),
                     Figure = v.Today.Done + "/" + v.Today.Total, Fill = v.Today.Total == 0 ? 0 : (float)v.Today.Done / v.Today.Total,
                     Sub = v.Today.Complete ? GameDay.NextResetLabel(_now()) + " に更新" : null, Ready = v.Today.Claimable > 0,
                 });
@@ -284,6 +323,76 @@ namespace Muchi.Game
                 LineText = c.PromotePoints.HasValue ? "昇級 " + Num(c.PromotePoints.Value) + "pt" : "最上位",
                 RewardText = TopBand(c),
             }).ToList();
+        }
+
+        /// <summary>REQ-GOAL-013..015: tomorrow, the partner's growth and the next step's screen.</summary>
+        private void BuildFirstWeek(GoalLadderView v)
+        {
+            var t = v.Today.Tomorrow;
+            TomorrowLines = new List<string>();
+            TomorrowLine = null; TomorrowAt = null;
+            if (t != null)
+            {
+                var home = new List<string>();
+                if (t.LoginReward != null)
+                {
+                    var r = UxText.Reward(t.LoginReward, _itemName);
+                    home.Add(r);
+                    TomorrowLines.Add((t.LoginTrack == "beginner" ? "ログインボーナス " + t.LoginDay + "日目：" : "ログインボーナス：") + r);
+                }
+                var names = t.Opens.Select(k => UnlockGate.Titles.TryGetValue(k, out var n) ? n : null).Where(n => n != null).ToList();
+                if (names.Count > 0)
+                {
+                    home.Add(string.Join("・", names.Take(TomorrowHomeFeatures)) + "が開く");
+                    TomorrowLines.Add(string.Join("・", names) + "が開きます");
+                }
+                if (t.TrainingSlots.HasValue)
+                {
+                    if (home.Count == 0) home.Add("調教 " + t.TrainingSlots.Value + "回");
+                    TomorrowLines.Add("調教がまた" + t.TrainingSlots.Value + "回できます");
+                }
+                if (home.Count > 0) TomorrowLine = "明日：" + string.Join("・", home);
+                if (TomorrowLines.Count > 0) TomorrowAt = AtLabel(t.At);
+            }
+
+            var p = v.Partner;
+            if (p == null) Partner = null;
+            else
+            {
+                int idx = Math.Max(0, Math.Min(GrowthStages.Ja.Length - 1, p.Stage));
+                int span = p.NextStageAt.HasValue ? Math.Max(1, p.NextStageAt.Value - p.StageFrom) : 1;
+                Partner = new PartnerGrowthLine
+                {
+                    HorseId = p.HorseId, Name = p.Name, Stage = idx, Stages = p.Stages > 0 ? p.Stages : GrowthStages.Ja.Length, StageName = GrowthStages.Ja[idx],
+                    Fill = p.NextStageAt.HasValue ? Math.Max(0f, Math.Min(1f, (float)(p.TrainedTotal - p.StageFrom) / span)) : 1f,
+                    Line = GrowthStages.Ja[idx] + "　調教 +" + Num(p.TrainedTotal),
+                    DeltaLine = p.GainedToday > 0 ? "今日 +" + Num(p.GainedToday) : p.GainedYesterday > 0 ? "昨日 +" + Num(p.GainedYesterday) : null,
+                    NextLine = p.Full ? "完成" : p.NextStageAt.HasValue ? GrowthStages.Ja[Math.Min(idx + 1, GrowthStages.Ja.Length - 1)] + "まで あと" + Num(Math.Max(0, p.NextStageAt.Value - p.TrainedTotal)) : null,
+                    TrainLine = !p.TrainingOpen || p.Full ? null : p.SessionsLeft > 0 ? "今日あと" + p.SessionsLeft + "回 調教できます" : "今日の調教は終わりました",
+                    CanTrain = p.TrainingOpen && !p.Full && p.SessionsLeft > 0,
+                };
+            }
+
+            var cur = v.Path?.Current;
+            PathScreen = cur?.Screen;
+            PathLockText = cur != null && !cur.Open ? LockText(cur.Kind, t) : null;
+        }
+
+        /// <summary>「明日 4:00」 for the server's next game day start (a time of day, never a countdown).</summary>
+        private string AtLabel(long at)
+        {
+            const long Jst = 9 * 3_600_000L;
+            var a = DateTimeOffset.FromUnixTimeMilliseconds(at + Jst).UtcDateTime;
+            var today = DateTimeOffset.FromUnixTimeMilliseconds(_now() + Jst).UtcDateTime.Date;
+            return (a.Date == today ? "今日 " : "明日 ") + a.Hour.ToString(CultureInfo.InvariantCulture) + ":" + a.Minute.ToString("00", CultureInfo.InvariantCulture);
+        }
+
+        /// <summary>Why the current first step's screen is not open: 「明日開きます」 when tomorrow's day count opens it.</summary>
+        private static string LockText(string kind, GoalTomorrow t)
+        {
+            var feature = kind == "breed" ? "breeding" : kind == "friends" ? "friends" : kind == "team" ? "teams" : kind == "ta_finish" ? "time_attack" : kind == "care" ? "bond" : null;
+            if (feature != null && t != null && t.Opens.Contains(feature)) return "明日開きます";
+            return "レースを重ねると開きます";
         }
 
         private string TopBand(GoalClassRow c)

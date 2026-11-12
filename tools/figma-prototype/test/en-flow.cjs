@@ -509,6 +509,14 @@ await shot('diagnostics', 600);
   await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', 400);
   await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
 
+  // round 23: 血統図と系統 in English (REQ-PED-018): the tree, the pair (hints from their JA + EN pair), the bloodline list
+  await page.evaluate(async () => { await globalThis.__muchi.logic.pedigree.demo(); });
+  await show('Pedigree'); await waitScreen('pedigree'); await shot('pedigree', 500);
+  await show('BreedingPair'); await waitScreen('pedigree-pair'); await shot('pedigree-pair', 500);
+  assert.match(await page.locator('.screen.in .ped-hints').innerText(), /takes its sire's line/, 'pedigree pair: hints in English');
+  await show('Bloodlines'); await waitScreen('bloodlines'); await shot('bloodlines', 500);
+  assert.match(await page.locator('.screen.in').innerText(), /Akatsuki line/, 'bloodlines: line names in English');
+
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet
 
   // round 21: トレーナーカード in English (REQ-SHOW-014): the phrase and background from their JA + EN pair, labels from the

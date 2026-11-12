@@ -261,6 +261,12 @@ module.exports = async function a11yFlow(browser, base, out, errors) {
     await page.locator('.screen.in [data-cal-mode="week"]').click(); await waitScreen('calendar'); await shot('calendar-week', english, 400);
     await page.locator('.screen.in [data-cal-mode="month"]').click(); await waitScreen('calendar'); await page.waitForTimeout(300);
     await show('Settings', 'looks'); await waitScreen('settings'); await shot('settings-looks', english, 400);
+    // Round 23: 血統図と系統 at the largest size (REQ-PED-018): the tree flows into a list by generation; the pair; the lines
+    await page.evaluate(async () => { await globalThis.__muchi.logic.pedigree.demo(); });
+    await show('Pedigree'); await waitScreen('pedigree'); await shot('pedigree', english, 500);
+    assert.equal(await page.locator('.screen.in .ped-panel').getAttribute('data-flow'), 'rows', 'pedigree: the tree reflows at the largest text size');
+    await show('BreedingPair'); await waitScreen('pedigree-pair'); await shot('pedigree-pair', english, 500);
+    await show('Bloodlines'); await waitScreen('bloodlines'); await shot('bloodlines', english, 500);
     // Round 17: おすすめフレンド (the friends screen's suggestions section)
     await show('Friends'); await waitScreen('friends'); await shot('friends-suggestions', english, 600);
     // Round 18: 練習レース (the setup screen at the largest size)

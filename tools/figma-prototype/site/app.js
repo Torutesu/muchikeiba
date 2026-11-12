@@ -202,7 +202,7 @@ async function setA11y(key, value) {
  * text (< 28 px) is set ×1.15 / ×1.3; headings and big numbers stay. fitText then brings back, towards the standard
  * size and never below it, only what does not fit its box.
  */
-const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
+const SCALE_SEL = '.label, .kicker, .caption, .btn > span, .pill, .tag, .qc-scale, .cal-scale, .ped-scale, .toast, .stamina .t, .stamina .s, .whipdots b, .marker .nm, .marker .gap, .marker .wind';
 function scaleText(root) {
   const k = textScale();
   if (k === 1 || !root) return;
@@ -3934,6 +3934,7 @@ function Stable() {
   Back(Home);
   Ghost('殿堂', 196, 36, 150, 46, () => Hall(), undefined, 'quiet small').classList.add('hof-entry'); // round 14 (REQ-HOF-*)
   Ghost('振り返り', 362, 36, 170, 46, () => Recaps(), undefined, 'quiet small').classList.add('rc-entry'); // round 16 (REQ-RECAP-*)
+  Ghost('血統', 548, 36, 150, 46, () => Pedigree(p?.id ?? null, () => Stable(), 'horse'), undefined, 'quiet small').classList.add('ped-entry'); // round 23 (REQ-PED-*)
   EnToggle();
   GoalsPanel(p); // round 18 (REQ-HGOAL-*): the horse's goals, bottom left over the art
 }
@@ -5536,6 +5537,225 @@ function calRow(e) {
     row.addEventListener('click', () => { const f = calGo(e.link); if (!f) return; calKpi('calendar_entry_open', { kind: e.kind }); f(); });
   }
   return row;
+}
+
+// ================================================================= round 23: 血統図と系統 (REQ-PED-*, contracts/protocol.md §71)
+// Read-only screens on the real pedigree.ts (MuchiLogic.pedigree): a horse's 3-generation tree (the horse → sire / dam →
+// grandparents → great-grandparents, left to right, cyan lines; at the largest text size the tree flows into a list by
+// generation, like PedigreeTree.FlowFor), the breeding pair's 「血統を見る」 with the shared ancestors highlighted and the
+// server's hints, and the bloodline (sire line) list. Every number is the server's (the existing breeding rules); nothing
+// is granted and no line count is a goal. Horse and owner names are what players typed (never translated, .keep-ja).
+// Mirrors unity/Assets/Muchi/Game/PedigreeModel.cs. ムチ一閃 tone: paddock art, translucent navy panels, letter-spaced cyan
+// kickers, one skewed cyan CTA ».
+const PED_STYLE = { nige: '逃げ', senko: '先行', sashi: '差し', oikomi: '追込' };
+const PED_GOING = { fast: '良馬場が得意', heavy: '重馬場が得意' };
+const PED_GEN = ['本人', '父母', '祖父母', '曾祖父母'];
+const pedState = { back: null, pairBack: null, horseId: null };
+const pedLang = () => (isJa() ? 'ja' : 'en');
+const pedFlowRows = () => textScale() >= 1.3; // PedigreeTree.FlowFor: rows at the largest text size
+const PED_COAT = { chestnut: 'Chestnut_Azure', bay: 'Bay_Crimson', dark_bay: 'Bay_Crimson', brown: 'Bay_Crimson', black: 'Black_Emerald', gray: 'DappleGrey_Violet', white: 'DappleGrey_Violet' };
+const pedThumb = (rec) => 'Art/3DPreviews/Partner_' + (PED_COAT[rec?.appearance?.coat] ?? 'Palomino_Gold');
+function pedLabel(slot) { if (slot <= 0) return '本人'; const p = []; for (let i = slot; i > 0; i = Math.floor((i - 1) / 2)) p.unshift(i % 2 === 1 ? '父' : '母'); return p.join('の'); }
+function pedSlots(root) { const s = new Array(15).fill(null); s[0] = root; for (let i = 0; 2 * i + 2 < 15; i++) { if (!s[i]) continue; s[2 * i + 1] = s[i].sire ?? null; s[2 * i + 2] = s[i].dam ?? null; } return s; }
+const pedGen = (i) => (i <= 0 ? 0 : i <= 2 ? 1 : i <= 6 ? 2 : 3);
+function pedTraits(n) {
+  const r = n?.rec;
+  if (!r) return n?.recordText ?? '記録なし';
+  return [PED_STYLE[r.style] ?? r.style, PED_GOING[r.goingAptitude] ?? null, r.skill?.name ?? null].filter(Boolean).join('・');
+}
+function pedKpi(name, props) { L.pedigree.kpi(name, props); (globalThis.__muchiPedKpi ??= []).push({ name, ...props }); }
+/** Horse names go through the catalog like every horse name of the prototype (katakana → romanized); an owner's display name is what they typed (.keep-ja). */
+const pedName = (node, n, cls = '') => { if (cls) node.classList.add(cls); return node; };
+const pedOwner = (node) => { node.classList.add('keep-ja', 'typed'); return node; };
+
+/** The 血統図 of one of my horses (the partner when none is given). */
+async function Pedigree(horseId = null, back = null, source = 'horse') {
+  if (back) pedState.back = back;
+  const id = horseId ?? pedState.horseId ?? partner()?.id;
+  pedState.horseId = id;
+  currentScreen = () => Pedigree(id, null, source);
+  const r = await L.pedigree.view(id, pedLang());
+  if (!r.ok) { toast(r.code === 'NOT_FOUND' ? 'この馬の血統は見られません' : '血統はオンラインで見られます'); return (pedState.back ?? Stable)(); }
+  const v = r.value;
+  Clear('pedigree'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('血統　/　PEDIGREE', `${v.lineName}　·　3代の血統　·　共通の祖先はシアンの枠`, { wallet: false });
+  const slots = pedSlots(v);
+  const rows = pedFlowRows();
+  const panel = Glass('Pedigree tree', 36, 134, 1528, 664, undefined, .88);
+  panel.classList.add('ped-panel'); panel.dataset.flow = rows ? 'rows' : 'columns'; panel.dataset.shared = String(v.sharedKeys.length);
+  if (rows) pedRows(panel, slots); else pedColumns(panel, slots);
+  const shared = slots.filter((n, i) => n && i > 0 && n.shared).length;
+  // the bottom row: the inbreeding rule as the server states it, bloodlines, help
+  const info = v.inbreeding.count > 0 ? `近親：共通の祖先${v.inbreeding.count}頭（能力の基準 −${v.inbreeding.statPenalty}）` : '3代以内に共通の祖先はいません';
+  Txt(info, 200, 826, 640, 16, v.inbreeding.count > 0 ? GOLD : SOFT, undefined, { weight: 700, nowrap: true }).classList.add('ped-inbreeding');
+  Ghost('系統 ›', 880, 814, 200, 50, () => Bloodlines('pedigree', () => Pedigree(id)), undefined, 'small').dataset.action = 'ped-lines';
+  Ghost('配合の血統を見る', 1100, 814, 260, 50, () => BreedingPair(() => Pedigree(id)), undefined, 'small quiet').dataset.action = 'ped-pair';
+  Ghost('？', 1380, 814, 52, 50, () => HelpArticle('pedigree', 'context', () => Pedigree(id)), undefined, 'small quiet').dataset.action = 'ped-help';
+  pedKpi('pedigree_view', { source, relation: v.relation, shared: Math.min(14, shared) });
+  Back(() => (pedState.back ?? Stable)(), '戻る', 40, 816);
+}
+
+/** Columns: generation 0..3 left → right, each slot centred on its share of the height, cyan elbow lines between them. */
+function pedColumns(panel, slots) {
+  const COLS = [[24, 300], [360, 330], [726, 350], [1112, 392]];
+  const TOP = 22, H = 620;
+  const box = {};
+  for (let i = 0; i < 15; i++) {
+    const g = pedGen(i), n = slots[i];
+    const count = 1 << g, idx = i - (count - 1);
+    const cell = H / count, cy = TOP + cell * idx + cell / 2;
+    const [x, w] = COLS[g];
+    const h = [190, 160, 128, 66][g];
+    box[i] = { x, w, cy, h };
+    if (!n) { const e = el('ped-empty', x, cy - h / 2, w, h, panel); e.dataset.slot = String(i); continue; }
+    const b = el('ped-box' + (n.shared ? ' shared' : '') + (n.rec ? '' : ' norec'), x, cy - h / 2, w, h, panel);
+    Object.assign(b.dataset, { slot: String(i), key: n.key, shared: n.shared ? '1' : '0' });
+    const pad = g < 3 ? 86 : 14;
+    if (g < 3) { if (n.rec) ArtImage(pedThumb(n.rec), 10, 10, 66, 66, b, 'ped-thumb'); else el('ped-thumb none', 10, 10, 66, 66, b); }
+    Txt(pedLabel(i), pad, 8, w - pad - 12, g < 3 ? 12 : 11, CYAN, b, { weight: 700, ls: '.14em', nowrap: true }).classList.add('ped-rel');
+    pedName(Txt(n.name, pad, g < 3 ? 28 : 24, w - pad - (n.shared ? 70 : 12), g === 0 ? 22 : g < 3 ? 18 : 15, WHITE, b, { weight: 700, nowrap: true }), n, 'ped-name');
+    if (n.shared) Txt('共通', w - 62, 10, 52, 12, CYAN, b, { weight: 700, align: 'right', nowrap: true }).classList.add('ped-badge');
+    if (g < 3) {
+      Txt(pedTraits(n), pad, 58, w - pad - 12, 13, n.rec ? SOFT : MUTED, b, { nowrap: true }).classList.add('ped-traits');
+      const under = n.lent ? n.lent.ownerName ?? n.lent.label : n.founder ? '系統の祖' : n.rec?.bestText ?? null;
+      if (under) { const u = Txt(under, 10, g === 0 ? 92 : 86, w - 22, 13, n.lent ? MUTED : GOLD, b, { weight: 700, nowrap: true }); u.classList.add('ped-under'); if (n.lent?.ownerName) pedOwner(u); }
+      if (g === 0 && n.rec) Txt(`${n.rec.rarity}　/　${n.rec.lineName}`, 10, 124, w - 22, 14, WHITE, b, { weight: 500, nowrap: true }).classList.add('ped-line');
+      if (g === 0 && n.rec?.stats) Txt(`能力の合計 ${n.rec.statTotal}`, 10, 152, w - 22, 13, MUTED, b, { nowrap: true });
+    } else {
+      Txt(n.founder ? '系統の祖' : n.rec ? pedTraits(n) : n.recordText ?? '記録なし', pad, 44, w - pad - 12, 11, n.founder ? GOLD : MUTED, b, { nowrap: true }).classList.add('ped-traits');
+    }
+  }
+  // elbow lines: parent right edge → mid → each child's left edge
+  for (let i = 0; 2 * i + 2 < 15; i++) {
+    if (!slots[i]) continue;
+    const p = box[i], a = box[2 * i + 1], c = box[2 * i + 2];
+    const mid = Math.round((p.x + p.w + a.x) / 2);
+    const line = (x, y, w, h, on) => { const l = el('ped-line-seg' + (on ? ' on' : ''), x, y, w, h, panel); return l; };
+    line(p.x + p.w, p.cy, mid - p.x - p.w, 2, false);
+    line(mid, Math.min(a.cy, c.cy), 2, Math.abs(c.cy - a.cy), false);
+    for (const [k, ch] of [[2 * i + 1, a], [2 * i + 2, c]]) if (slots[k]) line(mid, ch.cy, ch.x - mid, 2, slots[k].shared);
+  }
+}
+
+/** Rows (largest text): the same 15 slots as a list by generation, each box one row that wraps. */
+function pedRows(panel, slots) {
+  const list = el('ped-list', 24, 20, 1480, 624, panel);
+  for (let g = 0; g < 4; g++) {
+    const h = document.createElement('div'); h.className = 'ped-scale ped-gen'; h.textContent = PED_GEN[g]; list.appendChild(h);
+    const wrap = document.createElement('div'); wrap.className = 'ped-row-wrap'; list.appendChild(wrap);
+    for (let i = (1 << g) - 1; i < (1 << (g + 1)) - 1; i++) {
+      const n = slots[i];
+      const b = document.createElement('div'); b.className = 'ped-row' + (n?.shared ? ' shared' : '') + (n ? '' : ' empty');
+      Object.assign(b.dataset, { slot: String(i), key: n?.key ?? '', shared: n?.shared ? '1' : '0' });
+      const rel = document.createElement('div'); rel.className = 'ped-scale ped-rel'; rel.textContent = pedLabel(i); b.appendChild(rel);
+      if (n) {
+        const nm = document.createElement('div'); nm.className = 'ped-scale ped-name'; nm.textContent = n.name; pedName(nm, n); b.appendChild(nm);
+        const t = document.createElement('div'); t.className = 'ped-scale ped-traits'; t.textContent = pedTraits(n); b.appendChild(t);
+        const under = n.lent ? n.lent.ownerName ?? n.lent.label : n.founder ? '系統の祖' : n.rec?.bestText ?? null;
+        if (under) { const u = document.createElement('div'); u.className = 'ped-scale ped-under'; u.textContent = under; if (n.lent?.ownerName) pedOwner(u); b.appendChild(u); }
+        if (n.shared) { const s = document.createElement('div'); s.className = 'ped-scale ped-badge'; s.textContent = '共通'; b.appendChild(s); }
+      } else { const e = document.createElement('div'); e.className = 'ped-scale ped-traits'; e.textContent = '—'; b.appendChild(e); }
+      wrap.appendChild(b);
+    }
+  }
+}
+
+/** The breeding pair's 「血統を見る」: both parents' trees (to the foal's great-grandparents), shared ancestors and the hints. */
+async function BreedingPair(back = null, sireId = null, damId = null) {
+  if (back) pedState.pairBack = back;
+  currentScreen = () => BreedingPair(null, sireId, damId);
+  const hs = (await L.view()).horses ?? [];
+  const sires = hs.filter((h) => h.status === 'retired' && h.sex === 'male'), dams = hs.filter((h) => h.status === 'retired' && h.sex === 'female');
+  Clear('pedigree-pair'); SetArt('Art/3DPreviews/Partner_Chestnut_Azure', false); Shade('left');
+  TopBar('配合の血統　/　BREEDING PEDIGREE', '父馬と母馬の血統・共通の祖先・受け継ぎやすい能力', { wallet: false });
+  if (!sires.length || !dams.length) {
+    const d = Glass('Pair empty', 36, 134, 760, 300, undefined, .9); d.classList.add('ped-pair-empty');
+    Kicker('配合の組み合わせ', 36, 30, d, { size: 15 });
+    Txt('引退した牡馬と牝馬がそろうと、組み合わせの血統を見られます', 36, 100, 688, 18, WHITE, d, { lh: 1.6 });
+    Cta('デモ：家系を用意する', 36, 190, 420, async () => { const r = await L.pedigree.demo(); if (!r.ok) return toast(r.message); await refresh(); BreedingPair(null, r.value.sireId, r.value.damId); }, d).dataset.action = 'ped-demo';
+    Back(() => (pedState.pairBack ?? Stable)(), '戻る', 40, 834);
+    return;
+  }
+  const sire = sires.find((h) => h.id === sireId) ?? sires[0], dam = dams.find((h) => h.id === damId) ?? dams[0];
+  const r = await L.pedigree.pair(sire.id, dam.id, pedLang());
+  if (!r.ok) { toast(r.message); return (pedState.pairBack ?? Stable)(); }
+  const v = r.value;
+  // left: the pair and the hints
+  const side = Glass('Pair side', 36, 134, 560, 676, undefined, .9); side.classList.add('ped-pair-side');
+  Kicker('組み合わせ', 30, 26, side, { size: 15 });
+  const pick = (label, list, curr, y, set) => {
+    Txt(label, 30, y, 80, 14, CYAN, side, { weight: 700, ls: '.14em', nowrap: true });
+    pedName(Txt(curr.name, 110, y - 4, 330, 20, WHITE, side, { weight: 700, nowrap: true }), curr);
+    if (list.length > 1) Ghost('変える', 452, y - 12, 82, 40, () => { const i = list.indexOf(curr); set(list[(i + 1) % list.length].id); }, side, 'small quiet').dataset.action = 'ped-next-' + label;
+  };
+  pick('父', sires, sire, 92, (id) => BreedingPair(null, id, dam.id));
+  pick('母', dams, dam, 140, (id) => BreedingPair(null, sire.id, id));
+  Hair(30, 182, 500, side);
+  const sharedLine = v.inbreeding.count === 0 ? '3代以内に共通の祖先はいません' : `共通の祖先 ${v.shared.map((x) => x.name).join('・')}（能力の基準 −${v.inbreeding.statPenalty}）`;
+  const sl = Txt(sharedLine, 30, 198, 500, 15, v.inbreeding.count ? GOLD : SOFT, side, { weight: 700, lh: 1.5 }); sl.classList.add('ped-pair-shared'); sl.dataset.count = String(v.inbreeding.count);
+  Kicker('この組み合わせで受け継ぎやすい能力', 30, 262, side, { size: 14, rule: false, w: 500 });
+  const hl = el('ped-hints', 30, 296, 500, 300, side);
+  for (const h of v.hints) { const d = document.createElement('div'); d.className = 'ped-scale ped-hint ' + h.kind; d.dataset.kind = h.kind; d.textContent = h.hintText; hl.appendChild(d); }
+  Txt(v.notice, 30, 612, 500, 13, MUTED, side, { lh: 1.5 });
+  // right: the two trees side by side as columns (the parents' parents and grandparents)
+  const panel = Glass('Pair trees', 612, 134, 952, 676, undefined, .88); panel.classList.add('ped-pair-trees'); panel.dataset.shared = String(v.sharedKeys.length);
+  const rowsFlow = pedFlowRows();
+  [['父', v.sire, 0], ['母', v.dam, 1]].forEach(([who, root, k]) => {
+    const top = 20 + k * 330;
+    Kicker(`${who}　/　${root.name}`, 24, top, panel, { size: 14, rule: false, w: 900 });
+    const s = pedSlots(root).slice(0, 7);
+    const col = [[24, 260], [312, 290], [630, 300]];
+    for (let i = 0; i < 7; i++) {
+      const g = pedGen(i), n = s[i];
+      const count = 1 << g, idx = i - (count - 1), cell = 280 / count, cy = top + 34 + cell * idx + cell / 2;
+      const [x, w] = col[g], h = [96, 92, rowsFlow ? 64 : 58][g];
+      if (!n) { el('ped-empty', x, cy - h / 2, w, h, panel); continue; }
+      const b = el('ped-box' + (n.shared ? ' shared' : '') + (n.rec ? '' : ' norec'), x, cy - h / 2, w, h, panel);
+      Object.assign(b.dataset, { slot: String(i), key: n.key, shared: n.shared ? '1' : '0' });
+      pedName(Txt(n.name, 12, 8, w - (n.shared ? 70 : 24), g < 2 ? 16 : 14, WHITE, b, { weight: 700, nowrap: true }), n, 'ped-name');
+      if (n.shared) Txt('共通', w - 60, 8, 50, 12, CYAN, b, { weight: 700, align: 'right', nowrap: true }).classList.add('ped-badge');
+      Txt(n.founder ? '系統の祖' : pedTraits(n), 12, g < 2 ? 36 : 32, w - 24, 12, n.founder ? GOLD : MUTED, b, { nowrap: true }).classList.add('ped-traits');
+      if (g < 2 && n.rec?.bestText) Txt(n.rec.bestText, 12, 60, w - 24, 12, GOLD, b, { weight: 700, nowrap: true });
+    }
+  });
+  Ghost('系統 ›', 1100, 834, 200, 50, () => Bloodlines('breeding', () => BreedingPair(null, sire.id, dam.id)), undefined, 'small').dataset.action = 'ped-lines';
+  Ghost('父の血統', 1320, 834, 240, 50, () => Pedigree(sire.id, () => BreedingPair(null, sire.id, dam.id), 'breeding'), undefined, 'small quiet').dataset.action = 'ped-open-sire';
+  pedKpi('pedigree_view', { source: 'breeding', relation: 'self', shared: Math.min(14, v.sharedKeys.length) });
+  Back(() => (pedState.pairBack ?? Stable)(), '戻る', 40, 834);
+}
+
+/** 系統: the bloodline (sire line) list of the stable, in master order, empty lines included. No completion, no reward. */
+async function Bloodlines(source = 'pedigree', back = null) {
+  if (back) pedState.linesBack = back;
+  currentScreen = () => Bloodlines(source);
+  const r = await L.pedigree.bloodlines(pedLang());
+  if (!r.ok) { toast(r.message); return (pedState.linesBack ?? Stable)(); }
+  const v = r.value;
+  Clear('bloodlines'); SetArt('Art/home-paddock', false); Shade('left');
+  TopBar('系統　/　BLOODLINES', `系統は父から子へ受け継がれます　·　${v.notice}`, { wallet: false });
+  const side = Glass('Bloodline rules', 36, 134, 440, 676, undefined, .88); side.classList.add('ped-lines-side');
+  Kicker('受け継ぎ方', 30, 26, side, { size: 15 });
+  Txt('仔の系統は父の系統になります', 30, 96, 380, 16, WHITE, side, { weight: 700, lh: 1.5 });
+  Txt(`ニックス（相性の良い系統の組み合わせ）は能力の基準 +${v.rules.nickBonus}`, 30, 150, 380, 14, SOFT, side, { lh: 1.6 }).classList.add('ped-nick-rule');
+  Txt(`3代以内に共通の祖先がいる配合は、1頭につき能力の基準 −${v.rules.inbreedingPenalty}`, 30, 220, 380, 14, SOFT, side, { lh: 1.6 }).classList.add('ped-inb-rule');
+  Txt(v.notice, 30, 300, 380, 14, MUTED, side, { lh: 1.6 }).dataset.pedNotice = '1';
+  TextLink('血統のヘルプ', 30, 600, 220, () => HelpArticle('pedigree', 'link', () => Bloodlines(source)), side, '血統のヘルプ ›').dataset.action = 'ped-help';
+  const list = Glass('Bloodline list', 496, 134, 1068, 676, undefined, .9); list.classList.add('ped-lines');
+  Kicker(`系統　/　${v.total}頭`, 30, 26, list, { size: 15, rule: false });
+  const box = el('ped-list', 30, 66, 1008, 590, list);
+  for (const l of v.lines) {
+    const row = document.createElement('div'); row.className = 'ped-line-row' + (l.count ? '' : ' none'); row.dataset.line = l.id; row.dataset.count = String(l.count);
+    const top = document.createElement('div'); top.className = 'ped-line-top';
+    const nm = document.createElement('span'); nm.className = 'ped-scale ped-line-name'; nm.textContent = l.lineName; top.appendChild(nm);
+    const ct = document.createElement('span'); ct.className = 'ped-scale ped-line-count'; ct.textContent = `${l.count}頭（現役${l.active}・引退${l.retired}）`; top.appendChild(ct);
+    row.appendChild(top);
+    const f = document.createElement('div'); f.className = 'ped-scale ped-line-founder'; f.textContent = `${l.founderName}　·　${l.note}`; row.appendChild(f);
+    if (l.nickWith.length) { const n = document.createElement('div'); n.className = 'ped-scale ped-line-nick'; n.textContent = l.nickWith.map((x) => `ニックス：${x.lineName}（${x.role === 'dam' ? '母' : '父'}）+${x.bonus}`).join('　'); row.appendChild(n); }
+    if (l.horses.length) { const h = document.createElement('div'); h.className = 'ped-scale ped-line-horses'; h.textContent = l.horses.slice(0, 6).map((x) => x.name).join('・'); row.appendChild(h); }
+    box.appendChild(row);
+  }
+  pedKpi('bloodline_view', { source, lines: Math.min(64, v.lines.length) });
+  Back(() => (pedState.linesBack ?? Stable)(), '戻る', 40, 834);
 }
 
 // ================================================================= round 16: プレイヤー主催カップ (REQ-CUP-*, contracts/protocol.md §42)
@@ -8377,6 +8597,8 @@ const helpGo = (screen, back) => ({
   notifications: () => NotifySettings(),
   // round 21 (§65): the calendar
   calendar: () => Calendar(),
+  // round 23 (§71): the bloodline list
+  bloodlines: () => Bloodlines('help', back),
 })[screen]?.() ?? back?.();
 /** Entry from settings (or a screen's ? link): `back` is where 戻る returns. */
 async function HelpCenter(back = null) {
@@ -8981,7 +9203,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ Calendar: () => Calendar(), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: () => BreedingPair(() => Stable()), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

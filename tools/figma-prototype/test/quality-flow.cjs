@@ -62,7 +62,7 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
     const q = globalThis.__qf = { fx: [], dups: [], straight: null, go: null };
     const key = (type) => document.dispatchEvent(new KeyboardEvent(type, { key: 'e', bubbles: true }));
     const tap = () => { key('keydown'); setTimeout(() => key('keyup'), 60); };
-    new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.dataset?.fx) q.fx.push(n.dataset.fx); }).observe(document.querySelector('.screen.in'), { childList: true, subtree: true });
+    new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.dataset?.fx) q.fx.push(n.dataset.fx); }).observe(document.body, { childList: true, subtree: true });
     const op = (sel) => { const n = document.querySelector('.screen.in ' + sel); return n && !n.hidden ? Number(getComputedStyle(n).opacity) : null; };
     q.iv = setInterval(() => {
       const f = globalThis.__muchi.state().lastFrame; if (!f) return; const t = f.feel?.tactics;

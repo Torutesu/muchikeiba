@@ -1649,7 +1649,7 @@
   "買える物で上限は変わりません。": "Nothing you can buy changes the cap.",
   "目標を読み込めませんでした": "Couldn't load your goals",
   "シーズン・クラスは{c}": "Season and class: {c}",
-  "_home": "---- quality/presentation: the home said once (the ladder's line, the small ad entry)",
+  "_home_q": "---- quality/presentation: the home said once (the ladder's line, the small ad entry)",
   "今日の目標 {a}/{b}": "Today's goals {a}/{b}",
   "▶ 動画で{r}": "▶ Watch a video for {r}",
   "動画の報酬：今日は受け取り済み": "Video reward: today's is received",

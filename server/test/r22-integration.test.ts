@@ -323,3 +323,16 @@ describe('§48 help / §57 tips × Round 22', () => {
     expect(sv.body.en).toContain('News screen');
   });
 });
+
+describe('deploy §7.1: one Round 22 row (no migration, v9 still reserved; the before-production items for the own limits)', () => {
+  it('the row exists once after Round 21 and covers the four features, order, rollback, kill switches and the legal items', () => {
+    const d = read('docs/ops/deploy.md');
+    const rows = d.split('\n').filter((l) => l.startsWith('| Round 22'));
+    expect(rows).toHaveLength(1);
+    expect(d.indexOf('| Round 21')).toBeLessThan(d.indexOf('| Round 22'));
+    for (const s of ['§66', '§67', '§68', '§69', 'マイグレーションは無い', '`v9`', '切り戻し', '冷却期間', '利用規約', 'survey_answers', 'progression.promotion.enabled', 'progression.surveys.enabled', 'config.enabled', '`selfLimits`', 'placement=inbox', '検証サーバーは出し直さなくてよい']) expect(rows[0], s).toContain(s);
+    const wr = read('server/wrangler.toml');
+    expect(wr).not.toMatch(/tag = "v9"/);
+    expect(wr.match(/tag = "v\d+"/g)!.at(-1)).toBe('tag = "v7"');
+  });
+});

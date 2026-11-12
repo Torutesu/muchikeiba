@@ -13,7 +13,7 @@ import { newPlayer, playerView, type HorseInstance, type PlayerState } from '../
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { exchangeClosesAt } from '../../../server/src/domain/exchange.js';
-import { dayRule } from '../../../server/src/domain/time.js';
+import { addJstDays, dayRule, gameDayKey } from '../../../server/src/domain/time.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
 import { shopProducts } from '../../../server/src/domain/shop.js';
@@ -124,9 +124,29 @@ const SHIPPED_CONSENT = master.progression.consent;
 const DAY_KEY = 'muchi.proto.dayOffset';
 const DAY_MS = 86_400_000;
 let dayOffset = (() => { try { return Math.max(0, parseInt(localStorage.getItem(DAY_KEY) ?? '0', 10) || 0); } catch { return 0; } })();
+// A day offset is counted in game days, not in 24 h steps of the wall clock: `dayOffset` game days after today's game day
+// (progression.dayRollover), at 12:00 JST of that day, then running in real time. Adding whole days to the wall-clock time
+// of day would make the demo depend on when it runs: between 00:00 and 04:00 JST two consecutive offsets can land on the
+// same game day (the 28 h game day of the 0:00 → 4:00 rollover switch, protocol §15), so a "next day" demo finds the slots
+// it used already. Noon is inside the game day of its date for any rollover hour before 12. Offset 0 is the real clock.
+const DEMO_HOUR_JST = 12;
+/** The demo instant (Unix ms) of `days` game days after the game day of `real`: 12:00 JST of that day. */
+const demoDayMs = (days: number, real: number) => {
+  const [y, mo, d] = addJstDays(gameDayKey(real, dayRule(master)), days).split('-').map(Number) as [number, number, number];
+  return Date.UTC(y, mo - 1, d, DEMO_HOUR_JST - 9);
+};
+let anchorReal = Date.now(); // the real instant the day offset was last applied
+let anchorDemo = dayOffset > 0 ? demoDayMs(dayOffset, anchorReal) : anchorReal; // the demo instant it maps to
+/** The demo clock without the extra shift: the real clock at offset 0, else the offset game day's noon + real time since. */
+const dayClock = () => (dayOffset > 0 ? anchorDemo + (Date.now() - anchorReal) : Date.now());
+const applyDayOffset = (days: number) => {
+  dayOffset = Math.max(0, Math.floor(days));
+  anchorReal = Date.now();
+  anchorDemo = dayOffset > 0 ? demoDayMs(dayOffset, anchorReal) : anchorReal;
+};
 // round 9: an extra shift (ms) so the demo can stand just before a banner's real end (not persisted)
 let clockShift = 0;
-const now = () => Date.now() + dayOffset * DAY_MS + clockShift;
+const now = () => dayClock() + clockShift;
 // a blank player state to build demo ghost riders' horses on (never stored)
 let blank: PlayerState | null = null;
 const svcStateTemplate = () => blank!;
@@ -673,7 +693,7 @@ export const MuchiLogic = {
   bannerStatus: (bannerId: string) => bannerStatus(findBanner(master, bannerId), now()),
   gachaStatus: () => svc.gachaStatus(ID),
   /** Demo clock in ms (the banner calendar demo moves the clock to a banner's last minutes). */
-  setClockMs(ms: number | null) { clockShift = ms === null ? 0 : ms - Date.now() - dayOffset * DAY_MS; },
+  setClockMs(ms: number | null) { clockShift = ms === null ? 0 : ms - dayClock(); },
   clockShift: () => clockShift,
   legalLinks: master.shopDisplay?.legalLinks ?? [],
   async bootstrap() {
@@ -779,7 +799,7 @@ export const MuchiLogic = {
     reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
     fsugCards.store.clear(); // round 17: the おすすめフレンド cards too
     trfDir.codes.clear(); trfDir.limits.clear(); trfDir.rows.length = 0; try { localStorage.removeItem(TRF_KEY); } catch { /* ignore */ } // round 19
-    dayOffset = 0;
+    applyDayOffset(0);
     delete master.maintenance; // round 17: no maintenance demo
     master.progression.consent = SHIPPED_CONSENT; // round 20: the shipped privacy policy version
     surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo); // round 22: no live survey
@@ -788,7 +808,8 @@ export const MuchiLogic = {
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
   now,
   dayOffset: () => dayOffset,
-  setDayOffset(days: number) { dayOffset = Math.max(0, Math.floor(days)); try { localStorage.setItem(DAY_KEY, String(dayOffset)); } catch { /* ignore */ } },
+  /** Moves the demo to `days` game days after today's (12:00 JST of that day); 0 = the real clock. Re-setting the same offset keeps the clock. */
+  setDayOffset(days: number) { const d = Math.max(0, Math.floor(days)); if (d !== dayOffset) applyDayOffset(d); try { localStorage.setItem(DAY_KEY, String(dayOffset)); } catch { /* ignore */ } },
   consentVersions: master.progression.consent,
   // REQ-UXS-001: the terms/privacy versions agreed to and when
   recordConsent: () => wrap(() => svc.recordConsent(ID, master.progression.consent!.termsVersion, master.progression.consent!.privacyVersion)),
@@ -1525,7 +1546,7 @@ export const MuchiLogic = {
     const st = await svc.teamState(ID);
     if (!st.teamId) return wrap(() => teamsSvc.goal(ID));
     const v = await teamsSvc.goal(ID);
-    if (v.current) clockShift = v.current.endsAt + 60_000 - Date.now() - dayOffset * DAY_MS;
+    if (v.current) clockShift = v.current.endsAt + 60_000 - dayClock();
     const teamId = st.teamId;
     await teams.goalAlarm(teamId, async (pid, c) => { await svc.teamGoalReward(pid, c.week, teamId, c.tier, c.eligible.find((x) => x.playerId === pid)?.n ?? 0); });
     return wrap(() => teamsSvc.goal(ID));

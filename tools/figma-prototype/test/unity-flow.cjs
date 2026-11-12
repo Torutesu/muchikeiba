@@ -2124,7 +2124,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(await page.locator('.screen.in .ped-panel').innerText(), /記録なし/, 'pedigree: template parents have no record');
   await shot('pedigree-partner', 300);
   const pd = await page.evaluate(async () => (await globalThis.__muchi.logic.pedigree.demo()).value);
-  await page.evaluate(() => globalThis.__muchi.show('BreedingPair')); await waitScreen('pedigree-pair'); await page.waitForTimeout(500);
+  await page.evaluate((x) => globalThis.__muchi.show('BreedingPair', x.sireId, x.damId), pd); await waitScreen('pedigree-pair'); await page.waitForTimeout(500);
   const pairShared = Number(await page.locator('.screen.in .ped-pair-shared').getAttribute('data-count'));
   assert.ok(pairShared > 0, 'pair: brother × sister share ancestors');
   assert.ok(await page.locator('.screen.in .ped-pair-trees .ped-box.shared').count() >= 2, 'pair: the shared ancestors are framed in both trees');

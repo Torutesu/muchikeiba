@@ -650,11 +650,33 @@ namespace Muchi.Client
     {
         public string Key, Name, HorseId;
         public PedigreeNode Sire, Dam;
-        internal static PedigreeNode Parse(JsonNode o) => o == null ? null : new PedigreeNode
+        // REQ-PED-003..007 (§71): fields added by pedigree v2 (absent on older answers → defaults)
+        public int Gen;
+        /// <summary>The ancestor's record; null = 「記録なし」 (<see cref="RecordText"/>).</summary>
+        public PedigreeRecord Rec;
+        public string RecordText;
+        /// <summary>On both the sire's and the dam's side within 3 generations (the existing inbreeding rule).</summary>
+        public bool Shared;
+        /// <summary>The founder of a bloodline (系統の祖).</summary>
+        public bool Founder;
+        /// <summary>Another player's stallion: OwnerName only for the viewer or a friend (player-typed, never translated); else LentLabel 「他のトレーナーの馬」.</summary>
+        public bool IsLent;
+        public string LentOwnerName, LentLabel;
+        /// <summary>An under-13 owner's typed name, hidden from others (Name is the fixed 「名前は非公開」).</summary>
+        public bool NameHidden;
+        internal static PedigreeNode Parse(JsonNode o)
         {
-            Key = J.Str(o, "key"), Name = J.Str(o, "name"), HorseId = J.Str(o, "horseId"),
-            Sire = Parse(J.Opt(o, "sire")), Dam = Parse(J.Opt(o, "dam")),
-        };
+            if (o == null) return null;
+            var lent = J.Opt(o, "lent");
+            return new PedigreeNode
+            {
+                Key = J.Str(o, "key"), Name = J.Str(o, "name"), HorseId = J.Str(o, "horseId"),
+                Sire = Parse(J.Opt(o, "sire")), Dam = Parse(J.Opt(o, "dam")),
+                Gen = J.Int(o, "gen"), Rec = PedigreeRecord.Parse(J.Opt(o, "rec")), RecordText = J.Str(o, "recordText"), Shared = J.Bool(o, "shared"),
+                Founder = J.Bool(o, "founder"), IsLent = lent != null, LentOwnerName = J.Str(lent, "ownerName"), LentLabel = J.Str(lent, "label"),
+                NameHidden = J.Bool(o, "nameHidden"),
+            };
+        }
 
         /// <summary>Number of known generations above this node (0 when no parents are known).</summary>
         public int GenerationsAbove => Sire == null && Dam == null ? 0 : 1 + Math.Max(Sire?.GenerationsAbove ?? 0, Dam?.GenerationsAbove ?? 0);

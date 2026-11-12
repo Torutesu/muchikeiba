@@ -851,6 +851,13 @@ namespace Muchi.Client
                     if (gate is UpgradeRequiredException) { NoteOutage(OutageKind.UpgradeRequired, gate); throw gate; }
                 }
 
+                // REQ-PED-008: a conditional GET (If-None-Match) that did not change — the caller keeps its copy (parse sees null)
+                if (res.Status == 304 && extraHeaders != null && extraHeaders.ContainsKey("if-none-match"))
+                {
+                    NoteOutage(OutageKind.None, null);
+                    return parse(JsonNode.Null());
+                }
+
                 if (res.Status >= 200 && res.Status < 300)
                 {
                     NoteOutage(OutageKind.None, null);

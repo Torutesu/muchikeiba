@@ -1621,3 +1621,22 @@ WHERE blob1 = 'demotion_shield_used' AND timestamp > NOW() - INTERVAL '120' DAY
 GROUP BY season, class
 ORDER BY season DESC, class
 ```
+
+## ゲーム内アンケート：出した・スキップ・答えた（REQ-SURVEY-019、Round 22、contracts/protocol.md §69.9。R22 統合で追加）
+列（すべてサーバー、§58 の分類は optional：分析がオフの人の行は書かない）：`survey_shown` `blob8` = アンケート id、`blob9` = `home`／`result`、`double5`（count）= その人に出した回数。`survey_skip` `blob8` = id、`blob9` = 場所。`survey_answer` `blob8` = id、`blob9` = 場所、`double5` = 答えた問いの数。**答えの中身は KPI に無い**（結果は運営の画面 §69.7 と CSV で、プレイヤー ID なしで見る）。
+
+**答えた率・スキップ率**（アンケート・場所ごと。スキップが多い場所・題は、出す場所か前置きを見直す。答えた人の数は運営の画面の件数と同じくらいのはず。差は分析をオフにした人）：
+
+```sql
+SELECT blob8 AS survey, blob9 AS placement,
+  sumIf(_sample_interval, blob1 = 'survey_shown') AS shown,
+  sumIf(_sample_interval, blob1 = 'survey_skip') AS skipped,
+  sumIf(_sample_interval, blob1 = 'survey_answer') AS answered,
+  avgIf(double5, blob1 = 'survey_answer') AS avg_questions
+FROM muchi_kpi
+WHERE blob1 IN ('survey_shown', 'survey_skip', 'survey_answer') AND timestamp > NOW() - INTERVAL '60' DAY
+GROUP BY survey, placement
+ORDER BY survey, placement
+```
+
+- 2回目に出した行（`double5 = 2`）が多いのに答えも スキップもしない人が多いなら、`maxShowsPerSurvey` を下げる。報酬が無いので、答えた人の偏りは「答えたい人」だけ（景品で増やさない、§69）。

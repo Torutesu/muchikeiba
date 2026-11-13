@@ -43,7 +43,8 @@ namespace Muchi.Game
     /// <summary>
     /// REQ-UXS-073 account-link prompt (06 §7.3, §2.3 後回しにするもの, REQ-UXU-015): one screen, shown at most once per
     /// install, on game day 3 or right after the first purchase, whichever comes first, and only while the account is
-    /// still anonymous. Rules:
+    /// still anonymous. On game day 3 itself it comes after a closed result, not on opening home (quality pass 2: the day
+    /// opens on its login bonus and goals); from day 4 home may show it. Rules:
     ///  - never during the FTUE (before the first ranked race is done) or in a race / matching / on a result screen;
     ///    only on the home screen, after closing a result, or right after a purchase;
     ///  - not offline (linking needs the network; the trigger waits), not while an account deletion is scheduled;
@@ -94,7 +95,12 @@ namespace Muchi.Game
             if (Shown || !anonymous || !online || deletionScheduled || !ftueDone) return false;
             if (Prompts != null && !Prompts.CanShow(SessionPrompts.AccountLink)) return false; // §58.11 (R21 integration): one prompt per session
             if (context != LinkPromptContext.Home && context != LinkPromptContext.ResultClosed && context != LinkPromptContext.PurchaseComplete) return false;
-            return TriggerFor(gameDay, purchased) != LinkPromptTrigger.None;
+            var trigger = TriggerFor(gameDay, purchased);
+            // quality pass 2 (docs/quality/first-week.md): on the trigger day itself the session opens on the login bonus and
+            // the goal ladder, not on this prompt — it waits until a result is closed (the player raced: a calm, happy
+            // moment). From the next day on, home may show it too (a player who did not race on day 3 still sees it once).
+            if (trigger == LinkPromptTrigger.Day3 && context == LinkPromptContext.Home && gameDay <= TriggerDay) return false;
+            return trigger != LinkPromptTrigger.None;
         }
 
         /// <summary>Convenience overload from the backend's player view.</summary>

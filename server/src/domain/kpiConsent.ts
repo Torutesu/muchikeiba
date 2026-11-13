@@ -99,6 +99,9 @@ export const KPI_OPTIONAL: readonly string[] = Object.freeze([
   'highlight_view', 'highlight_share',
   // R23 §73: opening a support reply (engagement only; the reply itself is the support record)
   'ticket_reply_view',
+  // quality pass 2 (docs/quality/shop.md): the scout confirmation and the purchase receipt — engagement with screens only
+  // (the pull and the purchase themselves are the server's gacha_draw / purchase rows, which stay essential where they are)
+  'scout_confirm', 'purchase_receipt',
 ]);
 
 export const KPI_EVENT_CLASS: Readonly<Record<string, KpiClass>> = Object.freeze({

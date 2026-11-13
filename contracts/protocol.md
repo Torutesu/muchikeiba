@@ -2800,7 +2800,7 @@ Worker の `handle` が、ルートを探す前に1回だけ調べる（`gateReq
 ```json
 { "v": 1, "rulesetVersion": "1.3.0",
   "fieldSize": { "min": 2, "max": 12, "default": 8 },
-  "strengths": [ { "id": "easy", "name": "やさしい", "note": "初心者マッチと同じ相手", "cpuLevel": 1, "cpuStatPermille": 780 },
+  "strengths": [ { "id": "easy", "name": "やさしい", "note": "初心者マッチと同じ相手", "cpuLevel": 1, "cpuStatPermille": 860 },
                  { "id": "normal", "name": "ふつう", "note": "ランク戦（レート1400〜1600）の相手", "cpuLevel": 3, "cpuStatPermille": 1000 } ],
   "defaultStrength": "normal",
   "courses": [ { "trackId": "minato_turf_2400", "name": "みなと競馬場 芝2400m", "surface": "turf", "distanceM": 2400, "segments": [ … ],
@@ -3510,6 +3510,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | `highlight_view`・`highlight_share`（§72.5、Round 23） | クライアント | `optional` | 見どころの再生と共有の使われ方の分析だけ。レース・プレイヤー・tick を持たない。分析がオフなら書かない（見どころはそのまま動く） |
   | `ticket_player_reply`・`ticket_reopen`・`ticket_resolved`（§73.8、Round 23） | サーバー | `essential` | サポートの記録（`inquiry_submit`・`inquiry_answered` と同じ扱い）。いつ連絡し、いつ再開・解決したかは返金・苦情の対応の証跡。本文・番号は入れない |
   | `ticket_reply_view`（§73.8、Round 23） | サーバー（既読の時） | `optional` | 運営の返信が読まれたかの分析だけ |
+  | **品質パス2（quality-2 統合で確かめた）**：`scout_confirm`（スカウトの確認のシート：view／pull／cancel、コイン・券・SR以上券）・`purchase_receipt`（購入の受け取り：view／next） | クライアント | `optional` | 画面の使われ方の分析だけ。引いた・買ったの記録はサーバーの `gacha_draw`・`purchase`（`essential`）のまま。はじめの1週間（明日の行・相棒の成長・はじめの10歩の直行）と、ランク戦の能力の差の行は**新しいイベントを足さない**（表示だけ） |
   - クライアントのエラー報告（§60）は KPI ではない（別の口 `POST /v1/client-errors`）。急増の知らせ `client_error_spike` は Worker のログのアラートで、KPI のイベントではない。§60 との関係は 58.10。
 - **サーバーで強制**：分析が効いていない（`analytics.effective = false`）プレイヤーの `optional` のイベントは、サーバーのトランザクションのイベントもクライアントの `POST /v1/analytics/events` も **Analytics Engine に書かない**。クライアントのバッチの応答は `{ accepted, dropped, withheld }`（`withheld` = 同意が無いので書かなかった数。レート制限の数には入れる）。
 - `consent_change`（サーバー、essential）：`s1` = `personalized_ads`／`analytics`／`att`／`cmp`、`s2` = 新しい値（`on`／`off`、ATT・CMP は状態の名前）、`s3` = `prompt`／`settings`／`platform`。変わった項目ごとに1行。
@@ -3540,7 +3541,7 @@ ID・パスワード・IP は入れない。クエリは `docs/ops/kpi-queries.m
   | 4 | `release_notes` | アップデートのお知らせ（§64） | 新しい版の最初のホーム |
   | 5 | `promotion_outcome` | 昇級戦の結果のシート（突破／届かず、§68.6。R22 統合） | 自分で勝ち取った結果の知らせ（お願いではない）。取れなければ結果画面の中の一言だけで、シートは次のホームで |
   | 6 | `reminders_pre_permission` | 端末の通知の前置き（§61.4、続く OS の通知の許可を含む） | 調教の直後に役に立つ |
-  | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後 |
+  | 7 | `account_link` | 引き継ぎの案内（REQ-UXS-073） | 3日目・初めての購入の後。**いつ**（品質パス2）：3日目の当日はホームを開いた時には出さずレース結果を閉じた後（`ResultClosed`、4日目以降はホームでも）。初めての購入は受け取りの画面を閉じた後（`PurchaseComplete`。受け取りの「使う一歩」を選んだ時は次のホーム） |
   | 8 | `review_prompt` | レビュー依頼（§59、前置きの質問・OS のシート） | お願いだけ。いちばん低い |
   | — | `playtime_reminder` | 遊ぶ時間のお知らせ（§67.4）。**表の外**（R22 統合で決めた） | 本人が頼んだお知らせでお願いの画面ではない。枠を使わず・取られない。同じ区切りではこれを先に出し、表のものは次の区切り |
 
@@ -4207,6 +4208,20 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - 次にやること（§45）の `missions_claim` の件数は、初心者の段とシーズンミッションの受け取れる数も含む（開く画面は同じ）。
 - 品質の統合（claude/quality-1）：`season.promotion` はサーバーが同じプレイヤーの状態の §68 から埋める（`status`・`next`・`races`・`needTop`・`tops`・`misses`、昇級戦が無ければ null）。ホームの「次にやること」は、ホームの他の要素が言っていない項目だけを1行で出す（`missions_claim`・`missions_close`・`pass_claim`・`login_bonus`・`race`・`first_race`・`first_win`・`rival_week`・`weekly_challenge`・`team_goal_near`・`horse_goal_near`・`training_slots` は出さない。無ければ行ごと出さない。リンクは「今日は閉じる」の1つまで）。シーズンの段の受け取りの印は、シーズンミッションに加えてパスの無料の報酬（`pass.freeClaimable`）でも付く。端末：`Muchi.Game.NextActionModel.HomeLine`／`HomeLinks`、`GoalLadderModel.PassLine`・`CapCardHorseId`（クラスの上限の行から馬カードへ）。
 - メンテナンスの区分は `core`。データのダウンロード・削除：新しい状態は無い（読むだけ）。
+- **はじめの1週間（品質パス2、REQ-GOAL-013〜015、docs/quality/first-week.md）**：応答に項目を足す（古いクライアントは無視してよい、読むだけ・何も配らない）。
+  ```json
+  "today": { "…": "…", "playerDay": 1,
+             "tomorrow": { "playerDay": 2, "at": 1796756400000, "loginBonus": { "track": "beginner", "day": 2, "days": 7, "reward": { "broodmare": "t_broodmare" } },
+                           "opens": ["breeding", "friends", "friend_rooms"], "trainingSlots": 3 } },
+  "path": { "current": { "…": "…", "screen": "scout", "open": true } },
+  "partner": { "horseId": "h1", "name": "アカツキ", "stage": 0, "stageKey": "debut", "stages": 5, "stageFrom": 0, "nextStageAt": 24, "trainedTotal": 10, "potential": 240,
+               "gainedToday": 10, "gainedYesterday": 0, "trainingOpen": true, "sessionsLeft": 0, "full": false }
+  ```
+  - `today.playerDay`：インストールのゲーム日を 1 とする日数（`unlocks` と同じ）。`today.tomorrow`：`at` は次のゲーム日の始まり（実時刻。カウントダウンにしない）。`loginBonus` は今日の分を受け取った後だけ（`loginBonus.next` と同じ順番）、まだなら `null`。`opens` は明日 `unlocks[].days` に届く、まだ開いていない機能（表の順。レース数で先に開いた物は出さない）。`trainingSlots` は調教が開いている（か明日開く）時の1日の回数、それ以外は `null`。
+  - `path.current.screen`：その段をやる画面（種類ごとにコードで固定：`scout`・`silks`・`care`・`race`・`breeding`・`friends`・`teams`・`time_attack`・`collection`。ショップ・購入・有償スカウトは無い）。`open`：その画面の機能が開いているか。
+  - `partner`：相棒（いなければ・引退していれば・調教が無効なら `null`）の成長。段階は Q1 の `growthStage`（馬カードと同じ）、`stageFrom` はいまの段階が始まった伸びの合計。`gainedToday`／`gainedYesterday` は調教日誌（§25 `log`）の今日／前のゲーム日の伸びの合計。`sessionsLeft` はこの馬が今日あと何回調教できるか（アカウントの残りと馬ごとの上限の小さい方、素質いっぱいなら 0）。**表示だけで報酬は付かない**。
+  - 端末：C# `GoalTomorrow`・`GoalPartner`・`GoalItem.Screen/Open`、Unity `GoalLadderModel.TomorrowLine`（今日のセットが終わったら今日の段の文、数字は出さない）・`TomorrowLines`・`TomorrowAt`・`Partner`（`PartnerGrowthLine`）・`PathScreen`・`PathLockText`。
+  - アカウント引き継ぎの案内（REQ-UXS-073）：3日目の当日はホームを開いた時には出さず、レース結果を閉じた後に出す（4日目以降はホームでも）。1回だけ・FTUE 中なし・§58.11 の1セッション1つは同じ。「いつ」は §58.11 の表の7行目が唯一の正（初めての購入は受け取りの画面を閉じた後）。
 
 ## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
 番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。
@@ -4236,6 +4251,49 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - C# `HorseProfile.Parse`、`ApiClient.GetHorseProfileAsync(horseId)`、`TrainingMenuOutlook`（`TrainingHorse.MenuOutlook`）、`BreedingPreview.Rarity`。`FoalReveal.Build(preview, foal)`：生まれた仔を順にめくる手順（性別と脚質 → 5能力が見込みの幅のどこに着地したか → レア度 → 固有スキル・隔世遺伝）。着地の位置は見込みの幅（`stats[].min/max`）に対する割合だけで、新しい判定は無い。
 - `Muchi.Game.HorseProfileModel`（馬カード）、`TrainingModel.Outlook(menuId)`・`TrainingModel.StageUp`（結果で段階が上がったか）、`BreedingModel.Reveal`／`RevealStep`／`ParentGifts`（親ごとに渡せるもの）。
 
+
+## Q2. スカウトの確認・購入の受け取り・パスの合計（品質パス2：課金の体験、`server/src/domain/scoutOptions.ts`・`receipt.ts`・`shop.ts`、C# `Gacha.cs`（`ScoutOptions`・`ScoutWay`）・`Models.cs`（`PurchaseReceipt`）・`Shop.cs`（`ProductContent.Purpose`／`TrackTotal`／`TotalLabel`）・`Muchi.Game.ScoutConfirmModel`／`PurchaseReceiptModel`、`docs/quality/shop.md`）
+**読み取りと表示だけ**：付与・抽選・価格・確率は何も変えない（経済 E1〜E20 は同じ）。追加はすべて任意のフィールド（古いクライアントはそのまま動く）。
+
+### Q2.1 `GET /v1/gacha/:bannerId/options`（要認証、スカウトの確認）
+```json
+{ "bannerId": "pickup_ginga", "name": "ピックアップ：ギンガノカナタ", "status": "active", "paidOnly": false, "stepUp": false,
+  "wallet": { "paid": 300, "free": 2144 },
+  "ways": [
+    { "id": "coins_10", "via": "coins", "count": 10, "itemId": null, "label": "10回引く", "price": 1000,
+      "pays": { "paid": 300, "free": 700 }, "after": { "paid": 0, "free": 1444 }, "owned": null,
+      "available": true, "block": null, "shortfall": null, "line": "有償コイン300枚と無償コイン700枚を使います", "pityGain": 10 },
+    { "id": "ticket:gacha_ticket", "via": "ticket", "count": 1, "itemId": "gacha_ticket", "label": "スカウト券で1回引く", "price": null, "pays": null, "after": null,
+      "owned": 2, "available": true, "block": null, "shortfall": null, "line": "スカウト券を1枚使います（コインは使いません）", "pityGain": 1 } ],
+  "srPlus": { "itemId": "ticket_sr_plus", "name": "SR以上確定スカウト券", "owned": 1, "line": "…", "oddsPath": "/v1/items/tickets/ticket_sr_plus/odds" },
+  "notice": "有償コインから先に使われます。" }
+```
+- `ways`：コイン（`coins_1`・`coins_10`、ステップアップは `coins_10` だけで今のステップの価格）と、**持っている**このバナー用の券（`ticket:<itemId>`、有償限定・ステップアップのバナーには出ない、REQ-ITEM-001・REQ-GACHA-014）。`pays` は `spend`（wallet.ts）と同じ順（有償から先、有償限定は有償だけ）で計算した内訳、`after` は引いた後の残高。足りなければ `available: false`・`block: "short"`・`shortfall`（§29 の数え方と同じ）。`block` は `short`／`closed`／`upcoming`／`debt`／`null`。
+- `srPlus`：SR以上確定券を持っている間だけ（どのバナーにも属さない専用の表、REQ-ITEM-002。天井ポイントは加算しない）。
+- `line`・`label`・`notice` はサーバーの文（英語は `server-en.json`）。「倍」・急かす言葉は使わない（テストで確認）。
+- 引く操作は従来どおり `POST /v1/gacha/:id/draw`・`POST /v1/items/tickets/:itemId/use`。サーバーは取引の時刻で改めて判断する（この表示は何も予約しない）。メンテナンスの区分は `/v1/gacha` と同じ。エラー：`NOT_FOUND`（予告前・存在しないバナー）。
+
+### Q2.2 `POST /v1/shop/purchase` の `receipt`（追加）
+```json
+{ "record": {…}, "duplicate": false, "wallet": {…},
+  "receipt": { "txId": "…", "productId": "starter_pack", "name": "スターターパック", "priceYen": 480, "at": 1796871607000,
+    "lines": [ { "kind": "paid_coins", "label": "有償コイン300枚", "purpose": null, "qty": 300 },
+               { "kind": "item", "label": "SR以上確定スカウト券×1", "purpose": "スカウトの画面で使うと、SR以上の馬が1頭来ます（…）", "itemId": "ticket_sr_plus", "qty": 1 } ],
+    "wallet": { "paid": 300, "free": 2144 },
+    "next": { "action": "use_sr_ticket", "label": "SR以上確定スカウト券を使う", "itemId": "ticket_sr_plus", "pattern": null },
+    "notes": [ "購入の記録は「その他」→「購入履歴」でいつでも確かめられます" ] } }
+```
+- `lines[].kind`：`paid_coins`・`free_coins`（テスト購入）・`bonus_free_coins`（はじめての購入、「倍」とは書かない）・`item`・`pass`（`endsAt` = シーズンの実際の終わり、日付はクライアントが書く）・`pass_levels`・`allowance`。`purpose` は `products.json` の `display.itemPurposes`（見た目の品は「ランク戦の能力は変わりません」を必ず含む）。
+- `next`：買った物を使う一歩だけ（**別の商品には決して案内しない**）。優先順：SR以上確定券 → `use_sr_ticket`、パス → `open_pass`、厩舎手当 → `claim_allowance`、勝負服の柄（visuals.json の `unlockItem`）→ `wear_silks`（`pattern`）、コイン → `scout`。重複の配達（`duplicate: true`）も同じ受け取りを返す。
+
+### Q2.3 商品の表示（`GET /v1/shop/products` の `contents[]` に追加）
+- `pass_premium`：`total`（全段の合計、`{ freeCoins, items }`）と `totalLabel`（「30段の合計：無償コイン1,500枚＋配合素材×30」）。合計は足し算で書き、比率・「倍」・価格の比較は書かない。従来の `label` はそのまま。
+- `item`：`purpose`（上と同じ、無ければ `null`）。
+
+### Q2.4 KPI（§58：どちらも `optional`、数だけ）
+- `scout_confirm`（クライアント）`{ stage: view|pull|cancel, via: coins|ticket|sr_ticket, count: 1|10 }` → s1 = stage、s2 = via、count。
+- `purchase_receipt`（クライアント）`{ stage: view|next, productId, action: use_sr_ticket|wear_silks|open_pass|claim_allowance|scout|none }` → s1・s2・s3。
+- C# `AnalyticsEvent.ScoutConfirm`・`AnalyticsEvent.PurchaseReceipt`。クエリは `docs/ops/kpi-queries.md`「スカウトの確認・購入の受け取り」。
 
 ## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
 マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。

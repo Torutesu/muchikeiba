@@ -144,6 +144,10 @@
 - REQ-MM-006 フレンド部屋は人間2人以上でないと開始できない（`ROOM_TOO_SMALL`）。部屋は永続化する。レースの開始に失敗した待ち行列の人は待ち時間を保ったまま戻す。
 - REQ-MM-007 マッチングの状態（待ち行列・割り当て・フレンド部屋・イベントの待ち行列）は**1行ずつ**SQLiteに保存し、変わった行だけを書く（1つの値にまとめると2 MiBの上限で全員のマッチングが止まるため）。フレンド部屋は**ホスト1人につき1つ**（作り直すと同じ部屋が返る）、全体の上限つき、期限切れはあらゆる操作のたびに掃除する。
 - REQ-MM-008 マッチしたプレイヤーは、レース部屋を作る（非同期の）前に「開始中」の印を同期的に付ける。この間の待ち行列への参加・イベントの取り消し・フレンド戦の開始は`ALREADY_IN_RACE`で拒否し、作成に失敗したら印を外して待ち行列（またはフレンド部屋）に戻す。フレンド戦・チュートリアルの開始時は、全メンバーがランク戦・イベントの待ち行列にいないことも確認する。
+- REQ-MM-009 ランク戦のコースは、人間の馬のうち最も多くの距離・馬場の適性に入るコースから等確率で選ぶ（誰にも合わなければ全コース）。`progression.rankedField.courseFitsHorses`（品質パス2、docs/quality/ranked.md）。
+- REQ-MM-010 ランク戦の CPU のレベルは、レートのレベルを試合のクラス（その試合の上限のクラス）の帯 `cpuLevelByClass` に収めたもの。隔離中の試合と初心者マッチは今までどおり。
+- REQ-MM-011 初心者マッチの後、試合の全員がランク戦 `beginnerRaces`〜`beginnerRaces`+N−1 戦目の時は、CPU の能力を `rampCpuStatPermille`[戦数−`beginnerRaces`]‰ にする（N はその長さ、上がるだけ・≤1000）。戦数を持たない古い待ち行列のエントリは元の強さ。
+- REQ-MM-012 ランク戦の CPU の馬は、能力の比をそのままに合計を `cpuStatTotalByClass`[クラス] にする（上げも下げもする、1能力 ≤ 1000、クラスの正規化の後・`cpuStatPermille` の前）。プレイヤーの馬は変えない。どれも買える物では変わらない（REQ-RATE-003）。結果画面は負けた時に馬と場の能力合計を比べて「能力の差（調教）」か「互角以上（乗り方）」を1行で言う（`RankedFieldCheck`）。
 
 ## 5. レート・クラス（TS）
 - REQ-RATE-001 Glicko-2。多人数レースは「人間同士の全ペアの勝ち負け」に分解して更新する。CPUとの結果はレートに入れない。
@@ -442,7 +446,7 @@
 ### 9.24 UX・オンボーディング（TS、`src/domain/onboarding.ts`・`nudges.ts`・`accountDeletion.ts`、`contracts/protocol.md` §8.7、docs/planning/06 §2〜§4・§8・§10.1）
 - REQ-UXS-001 規約同意の記録：`POST /v1/player/consent` で、同意した利用規約・プライバシーポリシーの版と時刻を記録する（履歴は直近20件）。今の版（`progression.consent`）と違う版は `CONSENT_VERSION_MISMATCH` で拒否する。`/v1/player`・bootstrap の `consent.required` は、未同意か版が上がったときに true（再同意を求める）。
 - REQ-UXS-002 最初の相棒：チュートリアルで乗った馬（`t_partner`、SR相当、`giftOnly`）を `POST /v1/player/partner`（冪等キー必須、`c:<path>:<key>`）で1回だけ付与し、同時に命名する（REQ-HORSE-003 の検証。名前が不正なら何も付与しない）。2回目は `PARTNER_ALREADY_GRANTED`。無料10連（REQ-GACHA-010）とは別の操作。`giftOnly` の馬はガチャの抽選表・券の表・CPUの出走馬に入らない（読み込み時の検証で、明示した抽選表に入れても `CONFIG_INVALID`）。
-- REQ-UXS-003 最初のランク戦：ランク戦が0戦の人は CPU 補完までの待ちを `beginnerMatch.firstRaceCpuFillAfterMs`（既定5秒、通常は15秒）にする。初心者マッチ（REQ-MM-003）の CPU はレベル `beginnerMatch.cpuLevel`（既定1）、能力をクラスの正規化の後に `cpuStatPermille`（既定780‰）倍にする（プレイヤーの馬は変えない）。最初のランク戦のコースは `firstRaceTrackId`（既定 null＝通常どおり、A/Bの `firstRankedTrackId` で上書き。全員が同じ値の時だけ使う）。目標は balance-targets の R10。
+- REQ-UXS-003 最初のランク戦：ランク戦が0戦の人は CPU 補完までの待ちを `beginnerMatch.firstRaceCpuFillAfterMs`（既定5秒、通常は15秒）にする。初心者マッチ（REQ-MM-003）の CPU はレベル `beginnerMatch.cpuLevel`（既定1）、能力をクラスの正規化の後に `cpuStatPermille`（既定860‰。品質パス2でコースが馬に合うようになり780から戻した、REQ-MM-009）倍にする（プレイヤーの馬は変えない）。最初のランク戦のコースは `firstRaceTrackId`（既定 null＝通常どおり、A/Bの `firstRankedTrackId` で上書き。全員が同じ値の時だけ使う）。目標は balance-targets の R10。
 - REQ-UXS-011 日付の切り替え：ゲーム日（ログボ・デイリーミッション・世話・配合・TAの回数・フレンド戦報酬の上限・種牡馬の貸し借り・通知の1日上限・その日の馬場・初勝利ボーナス・厩舎手当の受け取り日・マイ厩舎のいいねの1日上限、シーズンパスとオファーの残り日数（`gameDaysUntil`））は全て `gameDayKey`／`gameDayIndex`（`src/domain/time.ts`）で決める（テストで `jstDateKey` を使ってよいファイルを限定）。切り替え時刻は定数ではなく検証済みのマスター値 `progression.dayRollover`（既定 4:00 JST、REQ-DAY-001〜006）。定期実行の時刻（scheduled.ts）は時計の時刻なので動かない。
 - REQ-UXS-012 通知テンプレートの追加（既存の種類の中）：season「昇級まであと1勝」（昇級ラインまで `nudges.promotionNearPoints`（30pt）以内で、最後のランク戦から `promotionIdleMs`（24時間）たった時、1シーズン1回、プレイヤーのアラーム）、events「大会の受付締切まで」（締切 `tournamentClosingLeadMs`（1時間）前、今シーズンにランク戦を走った参加条件を満たす未登録の人へ1回、最大 `tournamentClosingMaxTargets` 人、5分ごとの定期実行）、friends「フレンドがTA記録を抜いた」（抜かれた側に1日1回まで）。1日の上限の既定は2（push.json）。静かな時間帯は従来どおり。
 - REQ-UXS-013 初心者ログインボーナス：最初の7日（1回だけ）は `beginnerLoginBonus`（2日目は繁殖牝馬1頭＝`broodmare` 報酬：`giftOnly` の牝馬を引退済みで付与）、その後は通常の7日周期（`loginBonus`）。応答に `track`（beginner / normal）。この表ができる前に受け取ったことのある人は通常の周期のまま。
@@ -523,7 +527,7 @@
 - REQ-UXS-070 リプレイ共有の再計算（P2）：結果画面の「リプレイを共有」は、端末でレースを設定＋入力から再計算して作る（REQ-RACE-073。サーバーから動画や状態は受け取らない）。`engine/Muchi.Client/ReplayClip.cs` の `ReplayClip.Build(config, inputs, slot, options, visual, expectedHash)` は2回走らせる（1回目で窓を決めて結果ハッシュを確かめ、2回目で窓の全馬の状態を保持）。窓は相棒の残り `FinalDistanceM`（既定200m）から、ゴール後 `PostFinishMs`（1.5秒、レースがそれより先に終われば終わりまで）まで、長さは最大 `MaxDurationMs`（10秒、超える時は開始を遅らせてゴールを必ず入れる）。再計算のハッシュがライブのレース（オンラインは部屋の確定ハッシュ）と違えば共有しない。入力はオフラインが `OfflineRace.AllInputs()`（チュートリアルの相手役を含む）、オンラインが `LockstepClient.ConfirmedInputs`（確定した入力の記録、再接続しても重複しない）。フレーム（既定30fps、2つのtickの状態と補間）、カメラのキーフレーム（`RaceCameraRig`：追走→直線→ゴール横、250msごとと切り替わり）、窓の中の出来事（ムチ・スキル・ゴール・先頭交代）を出す。観戦・無効・未完了のレースは共有できない。
 - REQ-UXS-071 共有カード：`ShareCard.Build(clip, courseName)` は着順（「3着 / 12頭」、TAは「完走」、未完走は「完走ならず」）・タイム（m:ss.f）・選んだ馬の名前・コース名（無ければ「芝2000m」）・モード・相棒の固有スキルの発動（「固有スキル「末脚」 残り320m」）・透かし（タイトル「ムチ一閃」）と、OSの共有に渡す1行（`#ムチ一閃`）。プレイヤーID・騎手名・他の馬や他のプレイヤーの名前・クラス・レートは入れない。
 - REQ-UXS-072 録画と共有（Unity・Codex 側）：`unity/Assets/Muchi/Game/ReplayShare.cs` の `ReplayShareModel` が、各フレームの姿勢を `CourseFrame` で世界座標にして（ライブと同じ変換）`IClipRecorder` に渡し、できた動画（動画を作れない端末では勝負所の静止画1枚）を `IShareSheet` に渡す。録画の失敗・中止は `Cancel()` で破棄。共有した時だけクライアントイベント `share {kind: replay_video|replay_image}` を送る（キャンセルは送らない。`server/src/domain/kpi.ts`）。
-- REQ-UXS-073 引き継ぎ（アカウント連携）の案内（P0）：`AccountLinkPrompt`。匿名アカウントのとき、ゲーム日3日目か初回購入の直後の早い方で、1インストールに1回だけ1画面を出す。出す場面はホーム・結果画面を閉じた後・購入の直後だけ。FTUE（相棒の命名・入厩祝いのスカウト・最初のランク戦が終わるまで）・レース・マッチング・結果画面・オフライン・アカウント削除の予約中は出さない（条件を満たすまで待つ）。画面に出した時点で表示済み（強制終了しても再表示しない）、「あとで」で以後は自動で出さない（スヌーズなし。設定の「引き継ぎ」は常にある）。どこから連携しても（案内・設定）以後は出さず、`LinkResult.Linked` の時だけ `account_link {provider: apple|google}` を1回送る（別アカウントが使用中・既に連携済みは送らない）。サーバーの変更は不要（REQ-API-005）。
+- REQ-UXS-073 引き継ぎ（アカウント連携）の案内（P0）：`AccountLinkPrompt`。匿名アカウントのとき、ゲーム日3日目か初回購入の直後の早い方で、1インストールに1回だけ1画面を出す。出す場面はホーム・結果画面を閉じた後・購入の直後だけ（品質パス2：3日目の当日はホームを開いた時には出さず結果を閉じた後に。4日目以降はホームでも。REQ-GOAL-016）。FTUE（相棒の命名・入厩祝いのスカウト・最初のランク戦が終わるまで）・レース・マッチング・結果画面・オフライン・アカウント削除の予約中は出さない（条件を満たすまで待つ）。画面に出した時点で表示済み（強制終了しても再表示しない）、「あとで」で以後は自動で出さない（スヌーズなし。設定の「引き継ぎ」は常にある）。どこから連携しても（案内・設定）以後は出さず、`LinkResult.Linked` の時だけ `account_link {provider: apple|google}` を1回送る（別アカウントが使用中・既に連携済みは送らない）。サーバーの変更は不要（REQ-API-005）。
 - REQ-UXS-074 TAのフレンドのゴースト（P1）：TA画面のゴースト一覧は `GhostPicker` で「フレンド」「上位」「自分」のタブを持ち、既定はフレンド（`GET /v1/time-attack/:trackId/ghosts?kind=friends`、既存。自分は含まれない）。フレンドのゴーストが無い時は上位に切り替えて「フレンドのゴーストがまだありません。上位の記録と走ります」、どれも無ければ「ひとりで走ります」。既定の相手は自分のシーズンベストより速い中で一番近い人（記録が無い・全員より速い時は一番速い人）。並走の仕組みは REQ-TA-008 のまま（別のシミュレーション、影響なし）。
 
 ## 18. 支部の応援スタンプ（TS＋C#、`server/src/domain/teamFeed.ts`・`server/master/stamps.json`、`contracts/protocol.md` §18）
@@ -1449,6 +1453,10 @@
 - REQ-GOAL-010 次にやること：`missions_claim` に初心者の段とシーズンミッションを数える。
 - REQ-GOAL-011 明日のログボ：次に受け取るログインボーナスを事実として出す（カウントダウン・煽りなし）。
 - REQ-GOAL-012 クライアント：C# `GetGoalsAsync`・`ClaimGoalsAsync`、Unity `GoalLadderModel`（段・行・報酬の使い道・クラスの階段・受け取りの瞬間・同じゲーム日だけのオフライン）。プロトタイプはホーム左上の階段・目標の画面・クラスの階段。
+- REQ-GOAL-013 明日（品質パス2、docs/quality/first-week.md）：`today.tomorrow` に明日のログボ（今日の分の受け取り後）・明日日数で開く機能・調教の回数を事実として出す。今日のセットが終わったら、ホームの今日の段は「明日：…」になる。受け取りの瞬間の最後にも出す。カウントダウン・煽りなし。
+- REQ-GOAL-014 相棒の成長：`partner` に成長段階（馬カードと同じ関数）・伸びの合計・今日／前日の伸び・今日の残り回数。ホームの相棒の札に出す。表示だけ（報酬なし）。
+- REQ-GOAL-015 次の一歩：`path.current.screen`（コードで固定、ショップ・購入なし）と `open`。ホームのはじめの10歩の段・目標の画面から1タップでその画面へ。開いていなければ理由（明日開く／レースを重ねると開く）。
+- REQ-GOAL-016 はじめの1週間のノイズ：3日目のアカウント引き継ぎの案内は、その日のホームを開いた時ではなくレース結果を閉じた後（4日目以降はホームでも）。ログボのトーストに内部 ID を出さない（表示名の表）。
 
 ## 66. 騎手の道（single-player career、TS＋C#、`src/domain/career.ts`・`src/race/career.ts`・`server/master/career.json`・`Muchi.Client/Career.cs`・`Muchi.Game.CareerModel`、`contracts/protocol.md` §66、balance-targets 4.20・E20）
 

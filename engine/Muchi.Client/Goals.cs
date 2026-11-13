@@ -19,11 +19,16 @@ namespace Muchi.Client
         public int Progress, Target;
         public Reward Reward;
         public bool Claimed, Claimable;
+        /// <summary>REQ-GOAL-015 (the current first step only): the screen where it is done (fixed in code on the server:
+        /// scout | silks | care | race | breeding | friends | teams | time_attack | collection), and whether it is open yet.</summary>
+        public string Screen;
+        public bool Open = true;
         public bool Done => Progress >= Target;
         internal static GoalItem Parse(JsonNode o) => o == null ? null : new GoalItem
         {
             Id = J.Str(o, "id"), Table = J.Str(o, "table"), Kind = J.Str(o, "kind"), Progress = J.Int(o, "progress"), Target = J.Int(o, "target"),
             Reward = Reward.Parse(J.Opt(o, "reward")), Claimed = J.Bool(o, "claimed"), Claimable = J.Bool(o, "claimable"),
+            Screen = J.Str(o, "screen"), Open = J.Opt(o, "open") == null || J.Bool(o, "open"),
         };
     }
 
@@ -38,16 +43,64 @@ namespace Muchi.Client
         public int Done, Total, Claimable;
         /// <summary>Start of the next game day (the daily set renews). A real time, shown as a time of day, never a countdown.</summary>
         public long ResetAt;
+        /// <summary>1 on the install day, 2 the next game day, … (0 from an older server).</summary>
+        public int PlayerDay;
+        /// <summary>REQ-GOAL-013: what tomorrow brings, facts only (null from an older server).</summary>
+        public GoalTomorrow Tomorrow;
         internal static GoalToday Parse(JsonNode o)
         {
             var lb = J.Opt(o, "loginBonus"); var nx = J.Opt(lb, "next");
             return new GoalToday
             {
+                PlayerDay = J.Int(o, "playerDay"), Tomorrow = GoalTomorrow.Parse(J.Opt(o, "tomorrow")),
                 Open = J.Bool(o, "open"), Complete = J.Bool(o, "complete"), Items = J.List(o, "items", GoalItem.Parse), Done = J.Int(o, "done"), Total = J.Int(o, "total"),
                 Claimable = J.Int(o, "claimable"), ResetAt = J.Long(o, "resetAt"), LoginBonusOpen = J.Bool(lb, "open"), LoginBonusClaimedToday = J.Bool(lb, "claimedToday"),
                 LoginNextTrack = J.Str(nx, "track"), LoginNextDay = J.Int(nx, "day"), LoginNextDays = J.Int(nx, "days"), LoginNextReward = nx == null ? null : Reward.Parse(J.Opt(nx, "reward")),
             };
         }
+    }
+
+    /// <summary>REQ-GOAL-013: tomorrow on the ladder — the login bonus (once today's is received), the features whose day
+    /// count is reached tomorrow, the training slots that refill. No countdown: <see cref="At"/> is the game day start.</summary>
+    public sealed class GoalTomorrow
+    {
+        public int PlayerDay;
+        public long At;
+        /// <summary>beginner | normal, null when today's bonus is not received yet.</summary>
+        public string LoginTrack;
+        public int LoginDay, LoginDays;
+        public Reward LoginReward;
+        /// <summary>Feature keys (progression.unlocks) that open tomorrow by day count, in the unlock table's order.</summary>
+        public List<string> Opens = new List<string>();
+        /// <summary>Training slots tomorrow (null when training is not open by then).</summary>
+        public int? TrainingSlots;
+        internal static GoalTomorrow Parse(JsonNode o)
+        {
+            if (o == null) return null;
+            var lb = J.Opt(o, "loginBonus");
+            return new GoalTomorrow
+            {
+                PlayerDay = J.Int(o, "playerDay"), At = J.Long(o, "at"), LoginTrack = J.Str(lb, "track"), LoginDay = J.Int(lb, "day"), LoginDays = J.Int(lb, "days"),
+                LoginReward = lb == null ? null : Reward.Parse(J.Opt(lb, "reward")), Opens = new List<string>(J.Strs(o, "opens") ?? new string[0]), TrainingSlots = J.IntN(o, "trainingSlots"),
+            };
+        }
+    }
+
+    /// <summary>REQ-GOAL-014: the partner's growth on home (the 馬カード stage function: 0 新馬 … 4 完成).</summary>
+    public sealed class GoalPartner
+    {
+        public string HorseId, Name, StageKey;
+        public int Stage, Stages, StageFrom, TrainedTotal, Potential, GainedToday, GainedYesterday, SessionsLeft;
+        /// <summary>The trained total where the next stage starts (null at the last stage).</summary>
+        public int? NextStageAt;
+        public bool TrainingOpen, Full;
+        internal static GoalPartner Parse(JsonNode o) => o == null ? null : new GoalPartner
+        {
+            HorseId = J.Str(o, "horseId"), Name = J.Str(o, "name"), StageKey = J.Str(o, "stageKey"), Stage = J.Int(o, "stage"), Stages = J.Int(o, "stages"),
+            StageFrom = J.Int(o, "stageFrom"), NextStageAt = J.IntN(o, "nextStageAt"), TrainedTotal = J.Int(o, "trainedTotal"), Potential = J.Int(o, "potential"),
+            GainedToday = J.Int(o, "gainedToday"), GainedYesterday = J.Int(o, "gainedYesterday"), SessionsLeft = J.Int(o, "sessionsLeft"),
+            TrainingOpen = J.Bool(o, "trainingOpen"), Full = J.Bool(o, "full"),
+        };
     }
 
     public sealed class GoalPath
@@ -169,12 +222,14 @@ namespace Muchi.Client
         public GoalPath Path;
         public GoalWeek Week;
         public GoalSeason Season;
+        /// <summary>REQ-GOAL-014: the partner's growth (null without a partner, training off, or an older server).</summary>
+        public GoalPartner Partner;
         /// <summary>Missions ready to claim across the ladder (one claim takes them all).</summary>
         public int Claimable;
         internal static GoalLadderView Parse(JsonNode o) => o == null ? null : new GoalLadderView
         {
             Day = J.Str(o, "day"), Now = J.Long(o, "now"), Today = GoalToday.Parse(J.Opt(o, "today")), Path = GoalPath.Parse(J.Opt(o, "path")), Week = GoalWeek.Parse(J.Opt(o, "week")),
-            Season = GoalSeason.Parse(J.Opt(o, "season")), Claimable = J.Int(o, "claimable"),
+            Season = GoalSeason.Parse(J.Opt(o, "season")), Partner = GoalPartner.Parse(J.Opt(o, "partner")), Claimable = J.Int(o, "claimable"),
         };
         public static GoalLadderView FromJson(string json)
         {

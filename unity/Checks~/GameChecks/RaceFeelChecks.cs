@@ -62,6 +62,13 @@ static class RaceFeelChecks
             "two whips in the last 300 m win; result line: " + won.DebriefLine + " / tip: " + won.DebriefTip);
         check(won.Rows.Count == 8 && won.Rows[0].IsPlayer && won.Rows.Count(r => r.IsPlayer) == 1 && won.Rows[1].Margin.Length > 0,
             "result table: 8 rows, the player's row marked, margins in racing terms (2nd: " + won.Rows[1].Margin + ")");
+        // quality pass 2 (docs/quality/ranked.md §4): the horse-or-riding line is for ranked losses only
+        var savedMode = win.Config.Mode;
+        win.Config.Mode = RaceMode.Ranked;
+        var fc = RankedFieldCheck.For(win.Config, win.PlayerSlot, 2);
+        win.Config.Mode = savedMode;
+        check(won.FieldLine == null && fc != null && fc.Line.Contains("相棒 " + fc.HorseTotal) && RankedFieldCheck.For(win.Config, win.PlayerSlot, 2) == null,
+            "result: no horse-or-riding line outside ranked; on a ranked loss: " + fc?.Line);
         check(win is OfflineRaceDriver ow && RaceReplayHash(ow) == win.Sim.Result.Hash, "tutorial (player + rival director) replays from AllInputs to the same hash");
 
         // ---- HUD: the whip cue is only in the window, never from the gate

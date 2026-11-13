@@ -533,7 +533,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     await page.evaluate(() => globalThis.__muchi.show('PromotionResult', 'failed')); await waitScreen('result'); await waitIn('.pp-sheet.fail');
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /昇級ならず/, 'promo: the fail sheet');
     assert.match(await page.locator('.screen.in .pp-sheet').innerText(), /ptに戻りました/, 'promo: the setback');
-    const text = await page.locator('.screen.in').innerText();
+    const text = await page.locator('.screen.in:not(.out)').innerText(); // the result screen, not home still leaving
     for (const w of ['今だけ', '残りわずか', 'お得', '倍']) assert.ok(!text.includes(w), 'promo: no urgency / shop word: ' + w);
     await shot('promotion-fail', 600);
     await page.locator('.screen.in .pp-close').click(); await page.waitForTimeout(400);
@@ -1246,7 +1246,11 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.equal(await page.locator('.screen.in [data-pickup-rate]').getAttribute('data-pickup-rate'), '1.5000%');
     await shot('scout-rates-pickup', 400); await click('BACK'); await sel('pickup_ginga');
     // a 10-pull: the card back glows first, one card per tap, then all-skip → the summary lists all ten
-    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal');
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-confirm');
+    // quality pass 2: the confirmation names what the pull takes, paid and free apart, and the wallet after
+    assert.match(await text('[data-spend]'), /^(有償コイン[\d,]+枚と無償コイン[\d,]+枚|有償コイン[\d,]+枚|無償コイン[\d,]+枚)を使います$/);
+    await shot('scout-confirm', 300);
+    await page.locator('.screen.in [data-action="scout-pull"]').click(); await waitScreen('scout-reveal');
     await shot('scout-reveal-back', 120);
     await shot('scout-reveal-face', 600);
     await click('タップでめくる'); await shot('scout-reveal-2', 600);
@@ -1263,7 +1267,9 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     assert.match(await text('[data-countdown="pickup_ginga"]'), /^残り 00:0[01]:\d\d$/);
     await shot('scout-last-minute', 300);
     await page.evaluate((t) => globalThis.__muchi.logic.setClockMs(t), END + 1);
-    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('info');
+    await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen(['scout-confirm', 'info']);
+    if ((await screen()) === 'scout-confirm') await page.locator('.screen.in [data-action="scout-pull"]').click(); // the server decides at the pull
+    await waitScreen('info');
     await shot('scout-banner-closed', 400);
     await click('OK'); await waitIn('.banner-row.sel');
     assert.ok(!(await rowIds()).includes('pickup_ginga'), 'the ended banner is gone from the list');
@@ -1437,7 +1443,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in [data-product="coin_10000"] [data-label="購入を確認"]').click(); await waitScreen('purchase');
   assert.equal(await page.locator('.screen.in .pstate').getAttribute('data-state'), 'unregistered');
   await shot('purchase-unregistered', 400);
-  const year = new Date().getFullYear();
+  const year = await page.evaluate(() => new Date(globalThis.__muchi.logic.now() + 9 * 3_600_000).getUTCFullYear()); // the JST year of the rules' clock
   await page.selectOption('.screen.in select[aria-label="年"]', String(year - 31)); await page.selectOption('.screen.in select[aria-label="月"]', '1');
   await click('登録して確認する');
   await page.waitForFunction(() => document.querySelector('.screen.in .pstate')?.dataset.state === 'registered');
@@ -1500,7 +1506,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await selfLimitsFlow(); // round 22: 使いすぎ・遊びすぎの防止
   await page.evaluate(() => globalThis.__muchi.show('Scout')); await waitScreen('scout'); await shot('scout', 500);
   await click('提供割合'); await shot('scout-rates', 400); await click('BACK');
-  await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
+  await waitScreen('scout'); await page.locator('.screen.in .btn[data-label^="10回引く"]').click(); await page.locator('.screen.in [data-action="scout-pull"]').click(); await waitScreen('scout-reveal'); await shot('scout-paid-reveal', 700);
   await click('すべてめくる'); await waitScreen('scout-list'); await shot('scout-paid-list', 500); await click('ホームへ');
   await waitScreen('home');
   await scoutLiveOps();
@@ -1837,13 +1843,17 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   const kpis = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().map((e) => e.name + ':' + e.props.offerId + ':' + e.props.trigger));
   assert.deepEqual(kpis.slice(kpi0), ['offer_view:shortfall:T6', 'offer_click:shortfall:T6'], 'KPI once each');
   if (await page.locator('.screen.in .pstate').getAttribute('data-state') === 'unregistered') {
-    const y = new Date().getFullYear();
+    const y = await page.evaluate(() => new Date(globalThis.__muchi.logic.now() + 9 * 3_600_000).getUTCFullYear());
     await page.selectOption('.screen.in select[aria-label="年"]', String(y - 31)); await page.selectOption('.screen.in select[aria-label="月"]', '1');
     await click('登録して確認する');
   }
   await page.waitForFunction(() => document.querySelector('.screen.in .pstate')?.dataset.state === 'registered');
   await shot('shortfall-purchase-confirm', 400);
   await page.locator('.screen.in [data-demo-buy]').click();
+  // back to the original pull: now affordable, it is confirmed like any pull (quality pass 2)
+  await waitScreen('scout-confirm', 20000);
+  assert.match(await page.locator('.screen.in [data-spend]').innerText(), /^有償コイン500枚を使います$/, 'the paid step-up takes paid coins only');
+  await page.locator('.screen.in [data-action="scout-pull"]').click();
   await waitScreen('scout-reveal', 20000);
   assert.ok((await page.evaluate(() => globalThis.__muchi.reveal?.order?.length)) === 10, 'back to the original pull: the 10-pull ran');
   await shot('shortfall-back-to-pull', 600);
@@ -1857,8 +1867,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.evaluate(() => globalThis.__muchi.logic.demoPurchase('starter_pack'));
   await page.evaluate(() => globalThis.__muchi.show('Store', 'recommended')); await waitScreen('shop-recommended'); await page.waitForTimeout(400);
   assert.match(await page.locator('.screen.in [data-product="season_pass"]').innerText(), /購入済み/);
-  assert.match(await page.locator('.screen.in [data-product="starter_pack"]').innerText(), /購入済み/);
-  assert.equal(await page.locator('.screen.in [data-product="starter_pack"] .btn[data-label="購入を確認"]').count(), 0, 'a bought starter pack has no buy button');
+  // quality pass 2: a bought once-only pack leaves the おすすめ tab (the purchase history keeps it) — never a buy button
+  assert.equal(await page.locator('.screen.in [data-product="starter_pack"]').count(), 0, 'a bought starter pack is not on おすすめ');
   await shot('shop-bought-packs', 400);
   // ------------------------------------------------------------------ 6. round 12: プレゼントボックス (REQ-BOX-*)
   // a compensation, a tournament prize, a grant with no expiry and one expiring in 3 days arrive through the real routes;

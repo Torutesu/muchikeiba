@@ -21,6 +21,13 @@ globalThis.localStorage = store;
 createRequire(import.meta.url)(join(here, '..', 'site', 'js', 'logic.js'));
 const L = globalThis.MuchiLogic;
 
+// The seeded days must stay in one season (a calendar month): seedDemo(3) plays today and the next two game days, and a season
+// end in between resets the pass (correctly), so its claim would leave the list. Near a month end, run on the 2nd of the next.
+{
+  const DAY = 86_400_000, jst = new Date(L.now() + 9 * 3_600_000);
+  const dim = new Date(Date.UTC(jst.getUTCFullYear(), jst.getUTCMonth() + 1, 0)).getUTCDate();
+  if (jst.getUTCDate() > dim - 3) L.setClockMs(L.now() + (dim - jst.getUTCDate() + 2) * DAY);
+}
 // a) day 3: the server lists missions_claim, pass_claim, feature_unlocked — the first two are on the ladder
 assert.strictEqual(typeof L.homeNextLine, 'function', 'MuchiLogic.homeNextLine (the one home rule for 次にやること)');
 for (const k of ['missions_claim', 'pass_claim', 'login_bonus', 'race', 'first_win', 'training_slots']) assert.ok(L.homeCoveredKinds.includes(k), `${k} is said by another home element`);
@@ -41,6 +48,14 @@ assert.strictEqual(L.homeNextLine({ enabled: true, primary: { kind: 'missions_cl
 assert.strictEqual(L.homeNextLine({ enabled: false, primary: { kind: 'gift_expiring' }, chips: [] }), null, 'disabled: hidden');
 const nd = L.homeNextLine({ enabled: true, primary: { kind: 'gift_expiring', dismissible: false }, chips: [] });
 assert.deepStrictEqual(nd.links, [], 'not dismissible: no link (the line itself opens it)');
+// quality-2 integration: a feature the ladder / menu already shows is not announced again as 「新しく開きました」 — the daily
+// missions are the 今日 rung, the season the シーズン rung, the rival and the weekly challenge the 今週 rung, training the menu's 調教 row
+assert.ok(Array.isArray(L.homeCoveredFeatures), 'MuchiLogic.homeCoveredFeatures');
+for (const f of ['missions', 'training', 'season', 'rival', 'weekly_challenge']) {
+  assert.ok(L.homeCoveredFeatures.includes(f), `${f} has its own home element`);
+  assert.strictEqual(L.homeNextLine({ enabled: true, primary: { kind: 'missions_claim' }, chips: [{ kind: 'feature_unlocked', featureKey: f, dismissible: true }] }), null, `feature_unlocked ${f}: the ladder already says it`);
+}
+for (const f of ['breeding', 'time_attack', 'friends']) assert.strictEqual(L.homeNextLine({ enabled: true, primary: null, chips: [{ kind: 'feature_unlocked', featureKey: f, dismissible: true }] })?.item.featureKey, f, `feature_unlocked ${f}: nothing else on home says it`);
 console.log(`a) home next line: server [${kinds}] → "${line.item.kind}", links [${line.links}]`);
 
 // e) the ladder's cap = the horse card's ranked cap for the ladder's horse

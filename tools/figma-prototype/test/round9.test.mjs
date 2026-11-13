@@ -68,8 +68,11 @@ const args = (day, ranked, context = 'Home') => ({ context, anonymous: true, day
 assert.strictEqual(op('eval', args(2, 3)).show, false, 'day 2: no');
 assert.strictEqual(op('eval', args(3, 0)).show, false, 'day 3 inside the FTUE: no');
 assert.strictEqual(op('eval', args(3, 3, 'Race')).show, false, 'never in a race');
-const e3 = op('eval', args(3, 3));
-assert.ok(e3.show && e3.trigger === 'Day3' && e3.ftueDone, 'day 3 after the FTUE: shown');
+// quality pass 2 (docs/quality/first-week.md): day 3 opens on its login bonus and goals — the prompt waits for a closed result
+assert.strictEqual(op('eval', args(3, 3)).show, false, 'day 3: not on opening home');
+const e3 = op('eval', args(3, 3, 'ResultClosed'));
+assert.ok(e3.show && e3.trigger === 'Day3' && e3.ftueDone, 'day 3 after the FTUE: shown after a closed result');
+assert.ok(op('eval', args(4, 3)).show, 'day 4: home may show it (a player who did not race on day 3)');
 const sv = op('show', { trigger: 'Day3', ios: true }).view;
 assert.strictEqual(sv.title, '機種変更でも相棒を引き継げます');
 assert.strictEqual(op('eval', args(4, 3)).show, false, 'once only');

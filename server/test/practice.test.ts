@@ -95,7 +95,7 @@ describe('REQ-PRAC-002 GET /v1/practice/catalog', () => {
       ['top', cpuLevelFor(1900, false), 1000],
     ]);
     // the numbers the C# offline fallback (PracticeCatalog.Fallback) pins — keep both in step
-    expect(cat.strengths.map((s: { cpuLevel: number; cpuStatPermille: number }) => `${s.cpuLevel}/${s.cpuStatPermille}`)).toEqual(['1/780', '3/1000', '4/1000', '5/1000']);
+    expect(cat.strengths.map((s: { cpuLevel: number; cpuStatPermille: number }) => `${s.cpuLevel}/${s.cpuStatPermille}`)).toEqual([`1/${m.progression.beginnerMatch!.cpuStatPermille}`, '3/1000', '4/1000', '5/1000']);
     expect(cat.defaultStrength).toBe('normal');
   });
 

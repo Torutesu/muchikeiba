@@ -503,7 +503,50 @@ namespace Muchi.Client
         /// <summary>true when this transaction had already been granted (safe re-send after a crash).</summary>
         public bool Duplicate;
         public Wallet Wallet;
-        internal static PurchaseResult Parse(JsonNode o) => new PurchaseResult { Record = PurchaseRecord.Parse(J.Opt(o, "record")), Duplicate = J.Bool(o, "duplicate"), Wallet = Wallet.Parse(J.Opt(o, "wallet")) };
+        /// <summary>Quality pass 2: what the purchase put in the player's hands and the one next step (null from an older server).</summary>
+        public PurchaseReceipt Receipt;
+        internal static PurchaseResult Parse(JsonNode o) => new PurchaseResult { Record = PurchaseRecord.Parse(J.Opt(o, "record")), Duplicate = J.Bool(o, "duplicate"), Wallet = Wallet.Parse(J.Opt(o, "wallet")), Receipt = PurchaseReceipt.Parse(J.Opt(o, "receipt")) };
+    }
+
+    /// <summary>
+    /// Quality pass 2 (server/src/domain/receipt.ts, protocol 「購入の受け取り」): the receipt. Every label is the server's;
+    /// show it as is. Next is the one step that uses what was bought (never another product).
+    /// </summary>
+    public sealed class PurchaseReceipt
+    {
+        public sealed class Line
+        {
+            /// <summary>paid_coins | free_coins | bonus_free_coins | item | pass | pass_levels | allowance</summary>
+            public string Kind, Label, Purpose, ItemId;
+            public int Qty;
+            /// <summary>pass: the real season end (exclusive, epoch ms); write the date in the player's language.</summary>
+            public long? EndsAt;
+            internal static Line Parse(JsonNode o) => new Line { Kind = J.Str(o, "kind"), Label = J.Str(o, "label"), Purpose = J.Str(o, "purpose"), ItemId = J.Str(o, "itemId"), Qty = J.Int(o, "qty"), EndsAt = J.LongN(o, "endsAt") };
+        }
+        public sealed class NextStep
+        {
+            /// <summary>use_sr_ticket | wear_silks | open_pass | claim_allowance | scout</summary>
+            public string Action, Label, ItemId, Pattern;
+            internal static NextStep Parse(JsonNode o) => o == null ? null : new NextStep { Action = J.Str(o, "action"), Label = J.Str(o, "label"), ItemId = J.Str(o, "itemId"), Pattern = J.Str(o, "pattern") };
+        }
+        public string TxId, ProductId, Name;
+        public int PriceYen;
+        public long At;
+        public List<Line> Lines = new List<Line>();
+        public int WalletPaid, WalletFree;
+        public NextStep Next;
+        public List<string> Notes = new List<string>();
+        internal static PurchaseReceipt Parse(JsonNode o)
+        {
+            if (o == null) return null;
+            var w = J.Opt(o, "wallet");
+            return new PurchaseReceipt
+            {
+                TxId = J.Str(o, "txId"), ProductId = J.Str(o, "productId"), Name = J.Str(o, "name"), PriceYen = J.Int(o, "priceYen"), At = J.Long(o, "at"),
+                Lines = J.List(o, "lines", Line.Parse), WalletPaid = J.Int(w, "paid"), WalletFree = J.Int(w, "free"), Next = NextStep.Parse(J.Opt(o, "next")),
+                Notes = J.List(o, "notes", n => n.AsString()),
+            };
+        }
     }
 
     public sealed class Banner

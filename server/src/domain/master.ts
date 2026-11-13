@@ -105,6 +105,8 @@ export interface ShopOffersConfig { starterPlaceAtOrWorse: number; starterAfterR
 /** Shop display texts and labels (master/products.json `display`, REQ-UXS-022). */
 export interface ShopDisplay {
   itemLabels: Record<string, string>;
+  /** Quality pass 2: what each item does in play, one plain line (shown on product cards and the purchase receipt). */
+  itemPurposes?: Record<string, string>;
   notices: Record<string, string>;
   legalLinks: { key: string; title: string }[];
 }
@@ -180,6 +182,8 @@ export interface Progression {
   consent?: import('./onboarding.js').ConsentConfig;
   partner?: import('./onboarding.js').PartnerConfig;
   beginnerMatch?: import('./onboarding.js').BeginnerMatchConfig;
+  /** REQ-MM-009..012 (quality pass 2): how a ranked race's card is made (rankedField.ts). Absent = as before. */
+  rankedField?: import('./rankedField.js').RankedFieldConfig;
   beginnerLoginBonus?: ({ day: number } & Reward)[];
   unlocks?: import('./onboarding.js').UnlockDef[];
   beginnerMissions?: import('./onboarding.js').BeginnerMissionDef[];

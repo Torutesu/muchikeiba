@@ -702,7 +702,9 @@ async function StartRace(trackId = null, horseId = null) {
  * skilled rider (START on the gate, hold at the gold line ~1.5 s, release, whips on the gold ring), repeated on fresh
  * configs until one is won — then the ordinary result path settles it (the same applyRace, lesson and celebration).
  */
-async function WinDemo(tries = 40) {
+async function WinDemo(tries = 40, outcome = 'win') {
+  // quality pass 2: outcome 'loss' = the same real ranked race ridden with no input at all, settled at its first loss (the
+  // result's 振り返り row then says horse or riding); globalThis.__winDemoTries = how many races the skilled ride needed
   await viewReady;
   const p = partner();
   engine.SetAssist('off');
@@ -713,6 +715,7 @@ async function WinDemo(tries = 40) {
     for (let k = 0; k < 60000; k++) {
       f = JSON.parse(engine.Frame(t)); t += 50;
       const tac = f.feel?.tactics;
+      if (outcome === 'loss') { if (f.done) break; continue; }
       if (f.gateOpen && !started) { started = true; engine.Spur(); }
       if (tac) {
         if (tac.goNow && held < 0 && !tac.committed) { engine.Spur(); held = f.tick; }
@@ -721,7 +724,8 @@ async function WinDemo(tries = 40) {
       }
       if (f.done) break;
     }
-    if (f?.done && f.result?.place === 1) {
+    if (f?.done && (outcome === 'loss' ? f.result?.place > 1 : f.result?.place === 1)) {
+      globalThis.__winDemoTries = i + 1;
       raceCtx = { tutorial: false, config, trackName, beginner, ftue: false, trackId: config.track.id, horseId: p.id, advice: null };
       return RaceResult(f);
     }
@@ -1236,9 +1240,29 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
   let ly = Math.max(580, 542 + (tipEl.textContent ? tipEl.offsetHeight : 0) + 10);
   const stagger = (n, i) => { n.classList.add('fx-stat', 'fx-anim', 'res-after'); n.style.animationDelay = (.45 + (3 + i) * .12) + 's'; return n; };
   // ruleset 1.4: the 仕掛け lesson from re-simulated races (GoCounterfactual: the same ride with the go moved) and the 会心 count
-  const lesson = r.lesson && (r.lesson.line || r.lesson.perfect) ? [r.lesson.line, r.lesson.perfect].filter(Boolean).join('　·　') : '';
+  // quality pass 2 (docs/quality/ranked.md §4): after a ranked loss the row first says which side to work on — the horse
+  // (「能力の差：相棒 3320 ／ この場のCPU 3600。調教で伸ばすと勝ちやすい」) or the riding (「能力は互角以上…：差は乗り方」), then the 1.4 lesson
+  const fieldLine = !raceCtx.beginner && r.field?.line ? r.field.line : '';
+  const parts = [fieldLine, r.lesson?.line, r.lesson?.perfect].filter(Boolean);
   // (the lesson wraps inside the panel — a long line with the 会心 count used to run past the panel into the art)
-  if (lesson) { const ls = stagger(Txt('振り返り：' + lesson, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); ls.dataset.shift = String(r.lesson.shiftTicks); ly += ls.offsetHeight + 8; }
+  // quality-2 integration: the 能力の差 line + the 1.4 lesson + the 会心 count under a two-line tip ran under 「もう一度」 — the row
+  // must end above the CTA: drop the least specific part first (会心, then the 仕掛け lesson), and as a last resort the tip
+  // (the lesson says the more specific thing). The full row stays in the element's title.
+  if (parts.length) {
+    const CTA_TOP = 640 - 8, full = '振り返り：' + parts.join('　·　');
+    const ls = stagger(Txt(full, 44, ly, 520, 16, GOLD, p, { weight: 700, lh: 1.4 }), 0); ls.classList.add('go-lesson'); ls.title = full;
+    if (r.lesson) ls.dataset.shift = String(r.lesson.shiftTicks);
+    if (fieldLine) ls.dataset.field = r.field.weaker ? 'horse' : 'riding';
+    const fits = () => ls.offsetTop + ls.offsetHeight <= CTA_TOP;
+    // what goes first: 会心, then — when the field says the horse is weaker — the lesson (the horse line is the news); when it
+    // says 「差は乗り方」 the general line goes before the specific 仕掛け lesson (the lesson says how to ride)
+    const drop = () => { if (parts.length > 2 || !r.field || r.field.weaker || !fieldLine || parts[0] !== fieldLine) parts.pop(); else parts.shift(); };
+    while (!fits() && parts.length > 1) { drop(); ls.textContent = '振り返り：' + parts.join('　·　'); }
+    if (!fits() && tipEl.textContent) { tipEl.remove(); ly = 580; ls.style.top = ly + 'px'; }
+    if (fieldLine && !parts.includes(fieldLine)) delete ls.dataset.field;
+    ls.dataset.parts = String(parts.length);
+    ly = ls.offsetTop + ls.offsetHeight + 8;
+  }
   // round 15 (REQ-ADV-014): whether the whip followed the pre-race tip (the C# RaceAdvice.CheckWhipTip on the device's debrief)
   // — only when it still fits above the CTA (the lesson, when there is one, says the more specific thing)
   if (raceCtx.advice && ly <= 612) { const wl = engine.AdviceWhipLine(JSON.stringify(raceCtx.advice)); if (wl) stagger(Txt('アドバイス：' + wl, 44, ly, 520, 16, CYAN, p, { weight: 500, nowrap: true }), 1).classList.add('adv-debrief'); }
@@ -1250,7 +1274,8 @@ function ResultScreen(f, rewards, passXp, pass, missions) {
     // round 12: the one-time かんたん操作 suggestion (REQ-ASSIST-010) on the way out, only when no offer was shown
     Cta('もう一度', 44, 640, 478, () => OfferThen(() => StartRace(), () => AssistThen(() => StartRace())), p);
     // round 22 (§69): on the way home a due survey shows as a sheet (after the offer / assist suggestion, through the gate)
-    TextLink('ホーム', 44, 734, 90, () => OfferThen(Home, () => AssistThen(Home)), p);
+    // quality pass 2: the account-link prompt of day 3 waits for a closed result (AccountLinkPrompt, ResultClosed)
+    TextLink('ホーム', 44, 734, 90, () => { linkFromResult = true; OfferThen(Home, () => AssistThen(Home)); }, p);
   }
   // ③ the rest (pass XP, missions, the full order) in a drawer
   TextLink('着順と報酬の詳細', 200, 734, 200, () => ResultDetails(r, rewards, passXp, pass, missions), p);
@@ -1317,6 +1342,10 @@ function PromoResultCard(ctx) {
     if (promoPending(v)) { if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {}); else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); } }
     return null;
   }
+  // quality-2 integration: when the outcome sheet shows (it claimed the session's prompt), it says the outcome — the card under it
+  // would only be a second 「昇級ならず」 whose words sit behind the sheet (an empty-looking navy panel). The card stays only
+  // when the sheet waits (another prompt took the session) or nothing is decided yet.
+  if (promoPending(v) && sessionPrompt.claim('promotion_outcome')) { PromoOutcome(v, () => {}); return null; }
   const c = Glass('Promotion series', 900, 180, 520, started ? 340 : 300, undefined, .86); c.classList.add('pp-card', 'rise');
   c.dataset.status = started ? 'start' : x.status;
   Kicker('昇級戦　/　' + v.classId + '級 → ' + v.toClassId + '級', 28, 22, c, { w: 460, size: 15 });
@@ -1327,10 +1356,7 @@ function PromoResultCard(ctx) {
   Txt(promoRuleLine(x), 28, started ? 234 : 200, 464, 16, MUTED, c, { nowrap: true }).classList.add('pp-rule');
   const foot = x.status === 'failed' && x.setbackTo != null ? `ポイントは${fmt(x.setbackTo)}ptに戻りました` : x.status === 'passed' ? 'クラスが上がるのはシーズンの締め' : `ライン ${fmt(v.line ?? 0)}pt　·　いま ${fmt(v.points)}pt`;
   Txt(foot, 28, started ? 270 : 236, 464, 15, SOFT, c, { nowrap: true }).classList.add('pp-foot');
-  if (promoPending(v)) {
-    if (sessionPrompt.claim('promotion_outcome')) PromoOutcome(v, () => {});
-    else { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); }
-  }
+  if (promoPending(v)) { promoDeferred = x.id; promoLog({ sheet: 'deferred', id: x.id }); } // the sheet waits for the next home
   return c;
 }
 /** The outcome sheet (passed / failed). Close = seen (POST /v1/promotion/ack); the sheet never shows again for this series. */
@@ -1359,7 +1385,7 @@ function PromoOutcome(v, after) {
   return d;
 }
 /** Demo entry (show('PromotionResult', state)): a ranked result after the real results of the demo state. */
-async function PromoResultDemo(state = 'start', fresh = true) {
+async function PromoResultDemo(state = 'start', fresh = true, res = null) {
   if (fresh) sessionPrompt.reset(); // the demo state is a player opening the app (a new session), like the review demo
   await L.promotion.demo(state);
   const v = await L.promotion.view();
@@ -1367,7 +1393,7 @@ async function PromoResultDemo(state = 'start', fresh = true) {
   const place = state === 'failed' ? 9 : state === 'start' ? 2 : state === 'one' ? 1 : 3;
   raceCtx = { tutorial: false, trackName: '青葉競馬場 芝1600m', trackId: 'aoba_turf_1600', beginner: false, ftue: false, config: { raceId: 'demo_promo' },
     promo: v.ok ? { view: v.value, beforeId: state === 'start' ? null : v.value.series?.id ?? null } : null };
-  const f = { result: { place, runners: 12, won: place === 1, time: '1:35.8', line: place <= 3 ? '直線の一閃が届いた' : '仕掛けが一歩遅れた', code: 'demo', tip: '', margin: '', rows: [] } };
+  const f = { result: { place, runners: 12, won: place === 1, time: '1:35.8', line: place <= 3 ? '直線の一閃が届いた' : '仕掛けが一歩遅れた', code: 'demo', tip: '', margin: '', rows: [], ...(res ?? {}) } }; // res: extra result fields (the result-panel fit checks)
   return ResultScreen(f, { coins: 0, seasonPoints: 0, firstWinBonus: 0 }, 0, { level: 1, xpToNextLevel: 0 }, []);
 }
 function ResultDetails(r, rewards, passXp, pass, missions) {
@@ -1697,12 +1723,25 @@ async function Home() {
   // Quality pass (home): a lighter plate with the gold rule, no second caption row; the details live in 厩舎.
   const pc = Glass('Partner', 33, 598, 470, 192, undefined, .62);
   pc.classList.add('partner-plate');
-  Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
-  Txt(p ? p.name : '—', 29, 82, 420, 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
-  if (p) {
+  const pg = goals.ok && p ? glPartner(goals.value) : null;
+  // quality pass 2: with the growth rows the plate keeps its size — the gold rule stays, the 「あなたの相棒」 caption gives
+  // way (the stage pips and 調教 +N say whose plate it is), and the name sits right under the rule
+  if (pg) { const r = el('rule gold', 29, 18, 56, 3, pc); r.dataset.name = 'partner-rule'; } else Kicker('あなたの相棒', 29, 18, pc, { size: 16, gold: true, ruleW: 56 });
+  Txt(p ? p.name : '—', 29, pg ? 52 : 82, 420, pg ? 48 : 52, WHITE, pc, { ls: '.08em', nowrap: true, lh: 1.15 });
+  if (p && pg) {
+    // quality pass 2 (REQ-GOAL-014): the partner grows where the player looks every day — its stage of five, the training
+    // it has had, what today (or yesterday) added, and how far the next stage is. Tapping opens its 馬カード.
+    pc.dataset.stage = String(pg.stage);
+    const pips = el('gl-pips pp-stage', 29, 141, 92, 6, pc);
+    for (let i = 0; i < 5; i++) { const d = document.createElement('i'); if (i < pg.stage) d.className = 'on'; else if (i === pg.stage) d.className = 'now'; pips.appendChild(d); }
+    Txt(`${p.rarity}　·　${pg.line}`, 134, 132, 210, 16, WHITE, pc, { weight: 700, nowrap: true }).classList.add('pp-growth');
+    if (pg.delta) Txt(pg.delta, 344, 132, 96, 16, GOLD, pc, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).classList.add('pp-delta');
+    const g = Gauge(29, 160, 411, pg.fill, pc, { gold: !!pg.delta }); g.style.height = '3px'; g.classList.add('pp-gauge');
+    Txt(pg.trainingOpen ? (pg.next ?? '') : `${pg.stageName}　·　調教は${unlockText('training')}`, 29, 168, 411, 14, MUTED, pc, { weight: 500, nowrap: true }).classList.add('pp-next');
+  } else if (p) {
     Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 150, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
   } else Txt('無料スカウトで相棒を迎えよう', 29, 150, 420, 16, WHITE, pc);
-  pc.style.cursor = 'pointer'; pc.addEventListener('click', () => Stable());
+  pc.style.cursor = 'pointer'; pc.addEventListener('click', () => (p && pg ? HorseCard(p.id, () => Home()) : Stable()));
   // ② race: the largest, bottom right
   // round 22 (§68, REQ-PROMO-017): over the race button 「昇級戦 2/3」 with the pips, or the grace window, in place of the caption
   if (promoHomeLabel(promo)) Caption(`${promoHomeLabel(promo)}　${promoMarks(promo.series)}`, 1134, 602, undefined, 17, GOLD).classList.add('tshadow', 'pp-home');
@@ -1717,7 +1756,8 @@ async function Home() {
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion_outcome')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
-  MaybeLinkPrompt('Home', Home);
+  const ctx = linkFromResult ? 'ResultClosed' : 'Home'; linkFromResult = false;
+  MaybeLinkPrompt(ctx, Home);
 }
 /** ③ today's to-do (login bonus, daily missions, first-win bonus) in a drawer. */
 function Missions(ms, fw, bonus) {
@@ -1847,22 +1887,95 @@ async function Scout(selectId) {
     if (row.carryOverNotice) Txt(row.carryOverNotice, 0, 104, 876, 13, WARN, meter, { lh: 1.45 }).dataset.carryOver = '1';
     if (group.exchangeable > 0 && b.status === 'active') Ghost('交換する', 716, 0, 160, 48, () => PityExchange(b, group), meter, 'small');
   }
-  Txt(`期間：${row.periodLine}`, 32, 300, 600, 15, MUTED, info, { weight: 500 });
+  // quality pass 2 (docs/quality/shop.md §3.1): the ways to pull from the server (GET /v1/gacha/:id/options) — the tickets the
+  // player holds for this banner sit on the screen where they are used, and every coin pull opens a confirmation that names
+  // the paid and free coins it takes. The period stays on the banner's row (left); the rates link stays in view.
+  const opt = await L.scoutOptions(b.id);
+  const ways = opt.ok ? opt.value.ways : [];
+  const tickets = ways.filter((w) => w.via === 'ticket');
+  const sr = opt.ok ? opt.value.srPlus : null;
   TextLink('提供割合', 760, 294, 148, () => Odds(b.id), info, '提供割合を見る');
+  if (tickets.length || sr) {
+    const tr = el('scout-tickets', 32, 292, 710, 52, info); tr.dataset.name = 'Scout tickets';
+    let x = 0;
+    for (const w of tickets.slice(0, 2)) {
+      const g = Ghost(`${w.label}（${w.owned}枚）`, x, 0, 340, 52, () => ScoutConfirm(b, w), tr, 'small'); g.dataset.way = w.id; x += 352;
+      if (!w.available) disable(g);
+    }
+    if (sr && x <= 352) {
+      const g = Ghost(`${sr.name}を使う（${sr.owned}枚）`, x, 0, 358, 52, () => ScoutConfirm(b, { id: 'sr_plus', via: 'sr_ticket', count: 1, itemId: sr.itemId, label: `${sr.name}を使う`, owned: sr.owned, available: true, line: sr.line, pityGain: 0 }), tr, 'small gold');
+      g.dataset.way = 'sr_plus';
+    }
+  } else Txt(`期間：${row.periodLine}`, 32, 300, 600, 15, MUTED, info, { weight: 500 });
   if (b.status === 'upcoming') {
     Txt('開始前です。提供割合は開始前から確認できます。', 32, 352, 440, 16, GOLD, info);
     disable(Cta('10回引く（開始前）', 470, 362, 438, () => {}, info));
   } else {
     const ten = b.stepUp ? (bs?.stepUp?.priceTen ?? b.stepUp.prices[0]) : b.priceTen;
-    if (!b.stepUp && b.singleAllowed !== false) Ghost(`1回（${fmt(b.priceSingle)}）`, 32, 368, 220, 60, () => PaidScout(b, 1), info);
-    Cta(`10回引く（${fmt(ten)}）`, 470, 362, 438, () => PaidScout(b, 10), info);
+    const pull = (count) => { const w = ways.find((x) => x.id === `coins_${count}`); return w?.available ? ScoutConfirm(b, w) : PaidScout(b, count); };
+    if (!b.stepUp && b.singleAllowed !== false) Ghost(`1回（${fmt(b.priceSingle)}）`, 32, 368, 220, 60, () => pull(1), info);
+    Cta(`10回引く（${fmt(ten)}）`, 470, 362, 438, () => pull(10), info);
   }
   NavBar(2);
 }
-async function PaidScout(b, count) {
+/**
+ * Quality pass 2: the scout confirmation — what this pull takes, said once and plainly (paid and free apart, paid first,
+ * or the ticket), the wallet after, the exchange points it adds, the rates one tap away. 「引く」 is the primary; 閉じる
+ * is always there. KPI scout_confirm (view / pull / cancel). The pull itself is the server's (draw / ticket use).
+ */
+function ScoutConfirm(b, w) {
+  currentScreen = () => Scout(b.id);
+  const via = w.via;
+  const k = (stage) => L.kpi([{ name: 'scout_confirm', at: L.now(), props: { stage, via, count: w.count } }]);
+  k('view');
+  Clear('scout-confirm'); SetArt('Art/scout-reveal', false); Shade('dim');
+  const d = Dialog('Scout confirm', 1000, 640); d.dataset.way = w.id;
+  Kicker(w.via === 'sr_ticket' ? 'スカウト券' : b.name, 52, 44, d, { w: 896 });
+  Txt(w.via === 'coins' ? `${w.count}回引く` : w.label, 52, 108, 896, 34, WHITE, d, { weight: 700 });
+  const line = Txt(w.line, 52, 170, 896, 22, GOLD, d, { weight: 700, lh: 1.5 }); line.dataset.spend = '1';
+  if (w.via === 'coins' && w.pays) {
+    // the split as a bar: paid (◈) then free (◎), in the order the wallet spends them
+    const bar = el('spend-bar', 52, 236, 896, 12, d); const tot = w.pays.paid + w.pays.free || 1;
+    for (const [kind, n] of [['paid', w.pays.paid], ['free', w.pays.free]]) { if (!n) continue; const i = document.createElement('i'); i.className = kind; i.style.width = (100 * n / tot) + '%'; bar.appendChild(i); }
+    Txt(`◈ 有償 ${fmt(w.pays.paid)}　·　◎ 無償 ${fmt(w.pays.free)}`, 52, 262, 896, 18, WHITE, d, { weight: 500, cls: 'num' });
+    Txt(`引いた後　◈ 有償 ${fmt(w.after.paid)}　·　◎ 無償 ${fmt(w.after.free)}`, 52, 306, 896, 18, MUTED, d, { weight: 500, cls: 'num' }).dataset.after = `${w.after.paid}/${w.after.free}`;
+    Txt(b.currency === 'paidOnly' ? '有償限定：有償コインだけで引けます（無償コイン・スカウト券は使えません）。' : '有償コインから先に使われます。', 52, 348, 896, 15, SOFT, d);
+  } else if (w.owned != null) Txt(`いま ${w.owned}枚　→　引いた後 ${w.owned - 1}枚`, 52, 240, 896, 19, WHITE, d, { weight: 500, cls: 'num' });
+  if (w.pityGain) Txt(`天井の交換pt ＋${w.pityGain}`, 52, 392, 896, 17, CYAN, d, { weight: 500 });
+  TextLink('提供割合', 52, 436, 300, () => (w.via === 'sr_ticket' ? TicketOdds(w.itemId, () => ScoutConfirm(b, w)) : Odds(b.id)), d, w.via === 'sr_ticket' ? 'この券の提供割合を見る' : '提供割合を見る');
+  const go = Cta(w.via === 'coins' ? `引く（${fmt(w.price)}コイン）` : '券を使って引く', 498, 522, 450, async () => {
+    disable(go); k('pull');
+    if (w.via === 'coins') return PaidScout(b, w.count, true);
+    const r = await L.useTicket(w.itemId, w.via === 'sr_ticket' ? null : b.id);
+    if (!r.ok) return Info('スカウトできませんでした', r.message, () => Scout(b.id));
+    await refresh();
+    const results = r.value.results ?? [r.value.result];
+    lastPulls = results;
+    const pity = w.via === 'sr_ticket' ? null : (await L.gachaStatus()).banners.find((x) => x.bannerId === b.id) ?? null;
+    Reveal({ bannerId: b.id, results, spent: { paid: 0, free: 0 }, pityPoints: r.value.pityPoints ?? 0 }, false, b.id, pity);
+  }, d);
+  go.dataset.action = 'scout-pull';
+  Ghost('閉じる', 52, 528, 260, 60, () => { k('cancel'); Scout(b.id); }, d, 'quiet').dataset.action = 'scout-cancel';
+}
+/** REQ-ITEM-002: the SR+ ticket's own table (GET /v1/items/tickets/:itemId/odds), from the very definition used to draw. */
+async function TicketOdds(itemId, back) {
+  currentScreen = () => TicketOdds(itemId, back);
+  const r = await L.ticketOdds(itemId); const o = r.value;
+  Clear('ticket-odds'); SetArt('Art/scout-reveal', false); Shade('dim');
+  TopBar(T('SCOUT RATES') + '　/　' + o.name, o.notice, { wallet: false });
+  const p = Glass('Ticket odds', 36, 134, 1528, 676, undefined, .93);
+  Kicker(T('RARITY TOTALS'), 36, 30, p, { rule: false, size: 14 });
+  Object.entries(o.rarityTotals ?? {}).forEach(([k, v], i) => { Txt(`${RARITY_SHAPE[k]} ${k}`, 36, 60 + i * 30, 110, 17, k === 'SSR' ? GOLD : CYAN, p, { weight: 700 }); Txt(v.rate, 156, 60 + i * 30, 160, 17, WHITE, p, { cls: 'num', weight: 500 }); });
+  (o.items ?? []).slice(0, 24).forEach((it, i) => { const x = 420 + Math.floor(i / 12) * 540, y = 30 + (i % 12) * 44; Txt(`${RARITY_SHAPE[it.rarity]} ${it.name}`, x, y, 380, 17, it.rarity === 'SSR' ? GOLD : WHITE, p, { weight: 500, nowrap: true }); Txt(it.rate, x + 390, y, 120, 17, WHITE, p, { cls: 'num', align: 'right' }); });
+  Back(back ?? (() => Scout()), 'BACK', 40, 834);
+}
+async function PaidScout(b, count, confirmed = false) {
   // T6 (REQ-SHORT-005): ask first — when the coins are short the sheet replaces the pull (nothing is tried)
   const pre = await L.coinShortfall({ for: 'gacha', bannerId: b.id, count });
   if (pre.ok && pre.value.short) return Shortfall(pre.value, 'scout', () => PaidScout(b, count), () => Scout(b.id));
+  // quality pass 2: a pull the player can afford is confirmed first (paid / free named); coming back from the shortfall
+  // sheet's demo purchase opens the confirmation too
+  if (!confirmed) { const o = await L.scoutOptions(b.id); const w = o.ok ? o.value.ways.find((x) => x.id === `coins_${count}`) : null; if (w?.available) return ScoutConfirm(b, w); }
   const r = await L.draw(b.id, count);
   if (!r.ok) {
     // REQ-SHORT-004: a refused pull carries the same shortfall (paid-only banners count paid coins only)
@@ -1990,7 +2103,9 @@ async function Store(tab = 'recommended') {
   Txt('決済前に商品・年齢区分を確認します　·　このプロトタイプでは決済しません', 920, 634, 576, 14, SOFT, p, { align: 'right', nowrap: true });
   NavBar(3);
 }
-const contentsText = (p) => p.contents.map((x) => x.label).join('　·　');
+const contentsText = (p) => p.contents.flatMap((x) => (x.totalLabel ? [x.label, x.totalLabel] : [x.label])).join('　·　');
+/** Quality pass 2: what each item does in play, from the server (products.json display.itemPurposes) — one line each. */
+const purposesText = (p) => p.contents.filter((x) => x.purpose).map((x) => `${x.label.replace(/×\d+$/, '')}：${x.purpose}`).join('\n');
 function productTags(p, extra) {
   const tags = [];
   if (p.oneTime) tags.push(p.oneTimeScope === 'class' ? '各クラス1回限り' : '1回限り');
@@ -2018,38 +2133,41 @@ function productCard(parent, p, x, y, w, h, opts = {}) {
   return c;
 }
 function DrawRecommended(parent, shop, offers, top, blocked) {
+  // quality pass 2 (docs/quality/shop.md §3.3): the tab shows only what this player can buy now. A once-only pack already
+  // bought and the promotion packs of classes not reached leave the tab (the purchase history keeps the record; the
+  // promotion pack comes with the promotion, T4). The pass stays (it is also the way to the pass screen).
   const byId = new Map(shop.products.map((p) => [p.id, p]));
   const list = offers?.offers ?? [];
+  const cards = [];
   const starter = byId.get('starter_pack');
   const starterOffer = list.find((o) => o.productId === 'starter_pack');
-  const H = blocked ? 236 : 290;
-  // T2 starter: in the recommended tab after its trigger, until bought (no fake timer: it has no end date)
-  if (starter) productCard(parent, starter, 32, top, 724, H, { art: 'Art/Cosmetics/jockey-crimson', note: starter.owned ? '購入済みです（1回限り）' : starterOffer ? 'おすすめ：期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked });
-  // T3 pass (real season end, live countdown)
+  if (starter && !starter.owned) cards.push({ p: starter, o: { art: 'Art/Cosmetics/jockey-crimson', note: starterOffer ? '期限はありません（購入するまでここに置いておきます）' : 'ランク戦で初めて4着以下になるか、5戦目の後に案内します', disabled: blocked } });
+  // T3 pass: the real season end as a date (no ticking clock on a shop card)
   const passOffer = list.find((o) => o.productId === 'season_pass');
   const pass = byId.get('season_pass');
-  const pc = productCard(parent, pass, 772, top, 724, H, { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: OK } : {}) });
-  if (passOffer?.endsAt) { const cd = Txt('', 194, H - 46, 300, 13, GOLD, pc, { weight: 700, lh: 1.45 }); every(1000, () => { cd.textContent = `今シーズンの終わり（${seasonEnd(passOffer.endsAt)}）まで\nあと ${countdown(passOffer.endsAt - L.now())}`; }); cd.classList.add('countdown'); }
-  else if (!unlock('season_pass').unlocked) Txt('シーズンパスは' + unlockText('season_pass'), 194, H - 46, 300, 13, GOLD, pc, { weight: 500 });
-  // daily pack (厩舎手当) and the promotion packs (T4: only once the class is reached)
-  const y2 = top + H + 16, H2 = 590 - y2;
+  if (pass) cards.push({ p: pass, pass: true, o: { art: 'Art/Cosmetics/jockey-violet', accent: GOLD, cta: 'パスを見る', action: () => SeasonPass(), ctaGold: true, disabled: blocked, ...(pass.owned ? { note: '今シーズンのパスは購入済みです（進み具合はパスの画面で）', noteColor: OK } : {}) } });
   const allowance = byId.get('stable_allowance_30d');
   const av = offers?.allowance;
-  if (allowance) productCard(parent, allowance, 32, y2, 724, H2, { note: av?.active ? `受け取り中：残り${av.daysLeft}日` : shop.notices['shop.allowance_no_stack'], disabled: blocked || !!av?.active || !!av?.queued });
-  const promos = shop.products.filter((p) => p.kind === 'promotion');
-  const promoOffer = list.filter((o) => o.touchpoint === 'T4');
-  const pr = Card('Promotion packs', 772, y2, 724, H2, parent, 'var(--text-3)');
-  Txt('昇級記念パック', 24, 26, 400, 23, WHITE, pr, { weight: 700 });
-  Txt('クラスに昇級すると、そのクラスのパックを1回だけ購入できます。', 24, 62, 660, 14, MUTED, pr);
-  promos.slice(0, 3).forEach((p, i) => {
-    const ok = promoOffer.some((o) => o.productId === p.id);
-    const x = 24 + i * 228, yy = H2 - 74;
-    const t = el('promo', x, yy, 216, 56, pr); t.dataset.product = p.id;
-    // r12 (R8 gap): a bought pack is drawn as bought, never as 「昇級すると購入できます」 or a buy button
-    if (p.owned) { t.dataset.owned = 'true'; Txt(`${p.classId}級　購入済み`, 0, 0, 216, 17, OK, t, { weight: 700 }); Txt('各クラス1回限り', 0, 28, 216, 12, SOFT, t); }
-    else if (ok) Cta(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, () => PurchaseConfirm(p.id, currentScreen), t, 'small');
-    else { Txt(`${p.classId}級　${yen(p.priceYen)}`, 0, 0, 216, 17, DIM, t, { weight: 700 }); Txt(`${p.classId}級に昇級すると購入できます`, 0, 28, 216, 12, DIM, t); }
+  if (allowance) cards.push({ p: allowance, allowance: true, o: av?.active ? { note: `受け取り中：${av.day}日目／${av.days}日（残り${av.daysLeft}日）`, noteColor: OK, ...(av.claimedToday ? { cta: '今日の分は受け取り済み', disabled: true } : { cta: '今日の分を受け取る', action: () => ClaimAllowance(() => Store('recommended')) }) } : { note: shop.notices['shop.allowance_no_stack'], disabled: blocked || !!av?.queued } });
+  for (const p of shop.products.filter((x) => x.kind === 'promotion' && !x.owned && list.some((o) => o.touchpoint === 'T4' && o.productId === x.id))) cards.push({ p, o: { art: 'Art/Cosmetics/jockey-crimson', note: '昇級のお祝い：各クラス1回限り', disabled: blocked } });
+  const shown = cards.slice(0, 4);
+  const H = 590 - top, rows = shown.length > 2 ? 2 : 1, ch = Math.floor((H - (rows - 1) * 16) / rows);
+  shown.forEach((c, i) => {
+    const full = shown.length === 3 && i === 2; // three cards: the last one spans the row
+    const x = full ? 32 : 32 + (i % 2) * 740, y = top + Math.floor(i / 2) * (ch + 16), w = full ? 1464 : 724;
+    const card = productCard(parent, c.p, x, y, w, ch, { ...c.o, art: ch >= 200 ? c.o.art : undefined });
+    if (c.pass && passOffer?.endsAt && !c.p.owned) { const cd = Txt(`${seasonEnd(passOffer.endsAt)}まで（あと${passOffer.remainingDays}日）`, (c.o.art && ch >= 200 ? 194 : 24), ch - 46, 400, 13, GOLD, card, { weight: 700, lh: 1.45 }); cd.classList.add('countdown'); }
+    else if (c.pass && !unlock('season_pass').unlocked) Txt('シーズンパスは' + unlockText('season_pass'), 194, ch - 46, 300, 13, GOLD, card, { weight: 500 });
   });
+  parent.dataset.cards = String(shown.length);
+}
+/** REQ-UXS-018: today's 厩舎手当 coins (once per game day while the pack runs). */
+async function ClaimAllowance(next) {
+  const r = await L.claimAllowance();
+  if (!r.ok) { toast(r.code === 'ALREADY_CLAIMED' ? '今日の分は受け取り済みです' : r.message); return next(); }
+  await refresh();
+  toast(`無償コイン${fmt(r.value.freeCoins)}枚を受け取りました（残り${r.value.daysLeft - 1}日）`);
+  next();
 }
 function DrawCoins(parent, shop, offers, top, blocked) {
   const firstLeft = new Set(offers?.firstPurchase.productIds ?? []);
@@ -2114,18 +2232,21 @@ async function PurchaseConfirm(productId, back, after) {
   const p = shop.products.find((x) => x.id === productId);
   const r = await L.purchaseIntent(productId);
   Clear('purchase'); SetArt('Art/home-paddock', false); Shade('dim');
-  const box = Dialog('Purchase', 1100, 760, { y: 70, a: .95 });
+  const box = Dialog('Purchase', 1100, 820, { y: 40, a: .95 });
   el('rule', 48, 30, 84, 3, box);
   Txt('購入の確認', 48, 44, 600, 24, WHITE, box, { weight: 700, ls: '.05em' });
   Txt('決済の前に、商品と条件を確認します。', 48, 76, 600, 14, MUTED, box);
   Txt('選択アイテム', 48, 124, 300, 16, MUTED, box, { weight: 500 });
   Txt(p.name, 48, 150, 700, 34, WHITE, box);
   Txt(yen(p.priceYen) + '（税込）', 760, 156, 292, 30, GOLD, box, { align: 'right', cls: 'num' });
-  Txt(contentsText(p), 48, 208, 1004, 17, WHITE, box, { weight: 500, lh: 1.55 });
+  Txt(contentsText(p), 48, 204, 1004, 17, WHITE, box, { weight: 500, lh: 1.55 });
+  // quality pass 2: what each item does in play (server-built), so the value is legible before paying
+  const purposes = purposesText(p);
+  if (purposes) Txt(purposes, 48, 262, 1004, 14, MUTED, box, { lh: 1.55 }).dataset.purposes = '1';
   const notices = p.noticeKeys.filter((k) => !k.startsWith('legal.')).map((k) => shop.notices[k]).filter(Boolean);
-  Txt(notices.join('\n'), 48, 248, 1004, 13, SOFT, box, { lh: 1.6 });
-  Hair(48, 330, 1004, box);
-  const state = el('pstate', 48, 352, 1004, 270, box);
+  Txt(notices.join('\n'), 48, purposes ? 318 : 262, 1004, 13, SOFT, box, { lh: 1.6 });
+  Hair(48, 392, 1004, box);
+  const state = el('pstate', 48, 410, 1004, 270, box);
   const S = (t, y, size, c, o = {}) => Txt(t, 0, y, 1004, size, c, state, o);
   const close = () => { ageForm = null; purchaseAfter = null; (purchaseReturn ?? Home)(); };
   if (r.ok) {
@@ -2140,17 +2261,20 @@ async function PurchaseConfirm(productId, back, after) {
     TextLink('上限を設定', 760, 160, 244, () => SelfLimits(() => PurchaseConfirm(productId)), state).dataset.action = 'self-limits';
     if (v.pass) S(`有効期間：${seasonEnd(v.pass.endsAt)}まで（今シーズン限り・自動更新なし）${v.pass.remainingDays != null ? '　残り' + v.pass.remainingDays + '日' : ''}`, 110, 16, GOLD);
     if (v.allowance) S(`${v.allowance.days}日間、毎日 無償コイン${v.allowance.dailyFreeCoins}枚（自動更新なし）`, 110, 16, GOLD);
-    const buy = disable(Cta('購入する（プロトタイプでは決済しません）', 492, 652, 560, () => {}, box, 'gold'));
-    TextLink('年齢を訂正する', 0, 160, 200, () => { buy.remove(); ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
-    // round 12: from the shortfall sheet, a demo purchase (a locally issued receipt, no billing) then back to the original action
-    if (purchaseAfter) Ghost('デモ：決済なしで購入する', 640, 150, 364, 56, async () => {
+    // quality pass 2: the main button runs a demo purchase (a locally issued receipt, no billing) and ends on the receipt —
+    // or, from the shortfall sheet (round 12), goes back to the pull it came from
+    const buy = Cta('購入する（デモ・決済なし）', 492, 712, 560, async () => {
+      disable(buy);
       const after = purchaseAfter;
       const g = await L.demoPurchase(productId);
-      if (!g.ok) { toast(g.message); return; }
-      purchaseAfter = null; await refresh();
-      toast('購入しました（デモ・決済なし）。元の操作に戻ります');
-      after();
-    }, state, 'quiet small').dataset.demoBuy = '1';
+      if (!g.ok) { toast(g.message); return PurchaseConfirm(productId); }
+      purchaseAfter = null; ageForm = null; await refresh();
+      linkOp('purchase'); // AccountLinkPrompt.NotePurchase: a granted purchase (the account-link prompt's FirstPurchase trigger)
+      if (after) { toast('購入しました（デモ・決済なし）。元の操作に戻ります'); return after(); }
+      Receipt(g.value.receipt);
+    }, box, 'gold');
+    buy.dataset.demoBuy = '1';
+    TextLink('年齢を訂正する', 0, 160, 200, () => { buy.remove(); ageForm = { year: '', month: '', guardian: false, correcting: true }; AgeForm(productId, box, state); }, state);
   } else if (r.code === 'AGE_REQUIRED' || r.code === 'GUARDIAN_CONSENT_REQUIRED') {
     state.dataset.state = r.code === 'AGE_REQUIRED' ? 'unregistered' : 'guardian';
     if (r.code === 'GUARDIAN_CONSENT_REQUIRED') ageForm = { ...(ageForm ?? { year: '', month: '' }), guardian: false, needGuardian: true };
@@ -2179,7 +2303,54 @@ async function PurchaseConfirm(productId, back, after) {
     state.dataset.state = 'error';
     S(r.code === 'ALREADY_PURCHASED' ? '購入済みです（1回限りの商品・今シーズンのパス）' : r.code === 'NOT_ELIGIBLE' ? 'まだ購入できません（昇級すると購入できます）' : r.message, 0, 24, GOLD, { weight: 700 });
   }
-  Ghost('閉じる', 48, 658, 220, 60, close, box, 'quiet');
+  Ghost('閉じる', 48, 718, 220, 60, close, box, 'quiet');
+}
+/**
+ * Quality pass 2 (docs/quality/shop.md §3.2): the receipt — what the purchase put in the player's hands, each thing with
+ * what it does, the wallet now, and ONE next step that uses it (never another product). All text is the server's
+ * (POST /v1/shop/purchase → receipt). KPI purchase_receipt (view / next).
+ */
+function Receipt(rc) {
+  currentScreen = () => Receipt(rc);
+  const k = (stage) => L.kpi([{ name: 'purchase_receipt', at: L.now(), props: { stage, productId: rc.productId, action: rc.next?.action ?? 'none' } }]);
+  k('view');
+  Clear('receipt'); SetArt('Art/home-paddock', false); Shade('dim');
+  const d = Dialog('Receipt', 1100, 780, { y: 60, a: .95 }); d.dataset.product = rc.productId;
+  Kicker('購入が完了しました', 48, 36, d, { color: OK });
+  Txt(rc.name, 48, 108, 700, 34, WHITE, d, { weight: 700 });
+  Txt(yen(rc.priceYen) + '（税込）', 760, 114, 292, 26, GOLD, d, { align: 'right', cls: 'num' });
+  // the lines arrive one after another (skippable: they are all there at once with reduce motion)
+  rc.lines.forEach((l, i) => {
+    const row = el('receipt-row rise', 48, 178 + i * 74, 1004, 66, d); row.dataset.kind = l.kind; row.style.animationDelay = (reduced() ? 0 : 120 + i * 110) + 'ms';
+    Txt('✓', 0, 4, 30, 22, OK, row, { weight: 700 });
+    Txt(l.label, 40, 0, 960, 21, l.kind === 'paid_coins' || l.kind === 'bonus_free_coins' || l.kind === 'free_coins' ? GOLD : WHITE, row, { weight: 700, nowrap: true });
+    if (l.purpose) Txt(l.purpose, 40, 34, 960, 15, MUTED, row, { nowrap: true });
+    else if (l.endsAt) Txt(`${seasonEnd(l.endsAt)}まで`, 40, 34, 960, 15, MUTED, row);
+  });
+  const y = 178 + rc.lines.length * 74 + 8;
+  Hair(48, y, 1004, d);
+  Txt(`いまの残高　◈ 有償 ${fmt(rc.wallet.paid)}　·　◎ 無償 ${fmt(rc.wallet.free)}`, 48, y + 18, 1004, 19, WHITE, d, { weight: 500, cls: 'num' }).dataset.wallet = `${rc.wallet.paid}/${rc.wallet.free}`;
+  Txt(rc.notes.join('\n'), 48, y + 58, 1004, 13, SOFT, d, { lh: 1.6 });
+  const back = purchaseReturn ?? (() => Store('recommended'));
+  if (rc.next) {
+    const go = Cta(rc.next.label, 492, 678, 560, () => { k('next'); ReceiptNext(rc.next, back); }, d, 'gold');
+    go.dataset.action = 'receipt-next'; go.dataset.next = rc.next.action;
+  }
+  // integration (quality-2): the first purchase's account-link prompt (§58.11 row 7, PurchaseComplete) comes when the receipt is
+  // closed — never over the receipt, and not when the player takes the step that uses what was bought (then the next home)
+  Ghost('閉じる', 48, 684, 220, 60, () => { if (!MaybeLinkPrompt('PurchaseComplete', back)) back(); }, d, 'quiet');
+}
+/** The receipt's one next step — each uses what was just bought. */
+async function ReceiptNext(n, back) {
+  if (n.action === 'open_pass') return SeasonPass();
+  if (n.action === 'claim_allowance') return ClaimAllowance(() => Store('recommended'));
+  if (n.action === 'wear_silks') { silksDraft = null; return SilksEditor(n.itemId); }
+  const b = L.bannerList().banners.find((x) => x.status === 'active') ?? L.bannerList().banners[0];
+  if (n.action === 'use_sr_ticket') {
+    const o = await L.scoutOptions(b.id); const sr = o.ok ? o.value.srPlus : null;
+    if (sr) return ScoutConfirm(b, { id: 'sr_plus', via: 'sr_ticket', count: 1, itemId: sr.itemId, label: `${sr.name}を使う`, owned: sr.owned, available: true, line: sr.line, pityGain: 0 });
+  }
+  return Scout(b?.id);
 }
 /** Birth year and month, asked only while unregistered (or to correct it); guardian consent only under 18. */
 function AgeForm(productId, box, state) {
@@ -2248,10 +2419,14 @@ async function SeasonPass() {
   const p = Glass('Pass', 36, 134, 1528, 676, undefined, .9);
   // left: the purchase-time item of the paid line, art-forward
   const lb = Glass('Pass reward', 28, 22, 388, 632, p, .94); lb.classList.add('flat');
-  ArtImage('Art/Cosmetics/jockey-violet', 24, 12, 340, 430, lb);
-  Txt('紫の星の勝負服', 26, 458, 340, 23, GOLD, lb, { weight: 700 });
-  Txt('有料ライン（パス・パス＋）の購入時にすぐ受け取れます。', 26, 498, 340, 15, WHITE, lb, { weight: 500, lh: 1.6 });
-  Txt(`パス＋は購入時に Lv＋${plusLv}`, 26, 560, 340, 15, VIOLET, lb, { weight: 700 });
+  ArtImage('Art/Cosmetics/jockey-violet', 24, 12, 340, 400, lb);
+  // quality pass 2: the item's own name from the server (it used to say a different name from the product), and a try-on on
+  // the player's own silks before buying (the silks editor with the pattern on; looks only)
+  const look = products[0]?.contents.find((c) => c.type === 'item');
+  Txt(look ? look.label.replace(/×\d+$/, '') : '', 26, 424, 340, 21, GOLD, lb, { weight: 700, lh: 1.4 });
+  Txt('有料ライン（パス・パス＋）の購入時にすぐ受け取れます。見た目だけで、ランク戦の能力は変わりません。', 26, 486, 340, 14, WHITE, lb, { weight: 500, lh: 1.55 });
+  if (look) TextLink('勝負服に着せてみる', 26, 552, 330, () => { silksDraft = null; SilksEditor(look.itemId); }, lb).dataset.action = 'pass-try-on';
+  Txt(`パス＋は購入時に Lv＋${plusLv}`, 26, 596, 340, 15, VIOLET, lb, { weight: 700 });
   // level and XP (next = N races)
   Kicker('レベル', 448, 22, p, { rule: false, size: 15 });
   Txt(String(pass.level), 448, 46, 120, 56, GOLD, p, { cls: 'num' });
@@ -2292,8 +2467,12 @@ async function SeasonPass() {
   }
   requestAnimationFrame(() => { const n = rail.querySelector('.tier.next') ?? rail.querySelector('.tier.reached:last-of-type'); if (n) strip.scrollLeft = Math.max(0, n.offsetLeft - 300); });
   // price line + the two products (Pass / Pass+), all contents visible before buying
-  const pb = Glass('Pass price', 448, 494, 1048, 64, p, .94); pb.classList.add('flat');
-  Txt(products.map((x) => `${x.name} ${yen(x.priceYen)}`).join('　·　') + '　/　今シーズン限り・自動更新なし', 24, 18, 1000, 19, GOLD, pb, { weight: 700, nowrap: true });
+  const pb = Glass('Pass price', 448, 488, 1048, 76, p, .94); pb.classList.add('flat');
+  Txt(products.map((x) => `${x.name} ${yen(x.priceYen)}`).join('　·　') + '　/　今シーズン限り・自動更新なし', 24, 10, 1000, 19, GOLD, pb, { weight: 700, nowrap: true });
+  // quality pass 2: the paid track added up (server-built, a sum — never a ratio), and what is already waiting on it
+  const total = products[0]?.contents.find((c) => c.type === 'pass_premium');
+  const waiting = premium ? 0 : Math.floor(pass.level / rw.premium.every);
+  if (total?.totalLabel) Txt('有料ライン ' + total.totalLabel + (waiting ? `　·　届いている${waiting}段は購入後すぐ受け取れます` : ''), 24, 44, 1000, 15, CYAN, pb, { weight: 500, nowrap: true }).dataset.passTotal = '1';
   products.forEach((x, i) => {
     const owned = x.purchasedThisSeason ?? pass.owned.includes(x.id);
     const closed = x.owned === true; // r10: one pass per season — Pass+ is closed once Pass was bought (and the other way round)
@@ -2365,6 +2544,7 @@ function linkArgs(context) {
   };
 }
 /** Home / after a result / after a purchase: shows the prompt when the rules say so; returns true when it did. */
+let linkFromResult = false; // set by the result screen's 「ホーム」 (the next home is ResultClosed for the account-link prompt)
 function MaybeLinkPrompt(context, next) {
   if (!sessionPrompt.can('account_link')) return false; // §58.11 = §64.6 (R21 integration): another prompt took this session
   const r = linkOp('eval', linkArgs(context));
@@ -4112,14 +4292,58 @@ function glPurpose(r) {
   if (r?.freeCoins) return 'スカウト・覚醒に使える無償コイン';
   return '';
 }
+// ---- quality pass 2: the first week (docs/quality/first-week.md, REQ-GOAL-013..015; = GoalLadderModel.BuildFirstWeek)
+const GL_FEATURE = { breeding: '配合', friends: 'フレンド', friend_rooms: 'フレンド部屋', teams: '支部', spectate: '観戦', time_attack: 'タイムアタック', weekly_challenge: '週替わりチャレンジ', events: 'イベント', tournaments: '大会', my_stable: 'マイ厩舎', training: '調教', missions: 'ミッション', login_bonus: 'ログインボーナス', bond: '絆・飼い葉', season: 'シーズン・ランキング', rival: 'ライバル', stud: '種牡馬の貸し借り' };
+const GL_STAGE = ['新馬', '成長期', '充実期', '本格化', '完成'];
+/** Tomorrow as facts: { home: 「明日：繁殖牝馬1頭・配合・フレンドが開く」, lines: [...], at: 「明日 4:00」 } or null. */
+function glTomorrow(v) {
+  const t = v.today?.tomorrow;
+  if (!t) return null;
+  const home = [], lines = [];
+  if (t.loginBonus) {
+    const r = glReward(t.loginBonus.reward);
+    home.push(r); lines.push((t.loginBonus.track === 'beginner' ? `ログインボーナス ${t.loginBonus.day}日目：` : 'ログインボーナス：') + r);
+  }
+  const names = (t.opens ?? []).map((k) => GL_FEATURE[k]).filter(Boolean);
+  if (names.length) { home.push(names[0] + 'が開く'); lines.push(names.join('・') + 'が開きます'); }
+  if (t.trainingSlots != null) { if (!home.length) home.push(`調教 ${t.trainingSlots}回`); lines.push(`調教がまた${t.trainingSlots}回できます`); }
+  if (!lines.length) return null;
+  const a = new Date(t.at + 9 * 3600e3), n = new Date(L.now() + 9 * 3600e3);
+  const at = `${a.getUTCDate() === n.getUTCDate() ? '今日' : '明日'} ${a.getUTCHours()}:${String(a.getUTCMinutes()).padStart(2, '0')}`;
+  return { home: home.length ? '明日：' + home.join('　·　') : null, lines, at };
+}
+/** The partner's growth: stage, gauge, 「新馬　調教 +10」, 「今日 +10」, 「成長期まで あと14」 (null without one). */
+function glPartner(v) {
+  const p = v.partner;
+  if (!p) return null;
+  const i = Math.max(0, Math.min(4, p.stage));
+  const span = p.nextStageAt != null ? Math.max(1, p.nextStageAt - p.stageFrom) : 1;
+  return {
+    horseId: p.horseId, stage: i, stageName: GL_STAGE[i],
+    fill: p.nextStageAt != null ? clamp((p.trainedTotal - p.stageFrom) / span, 0, 1) : 1,
+    line: `${GL_STAGE[i]}　調教 +${fmt(p.trainedTotal)}`,
+    delta: p.gainedToday > 0 ? `今日 +${fmt(p.gainedToday)}` : p.gainedYesterday > 0 ? `昨日 +${fmt(p.gainedYesterday)}` : null,
+    next: p.full ? '完成' : p.nextStageAt != null ? `${GL_STAGE[Math.min(i + 1, 4)]}まで あと${fmt(Math.max(0, p.nextStageAt - p.trainedTotal))}` : null,
+    trainingOpen: p.trainingOpen, sessionsLeft: p.sessionsLeft,
+  };
+}
+/** Where the current first step is done (the server's fixed screen) — never the shop. */
+const GL_STEP_GO = { scout: () => Scout(), silks: () => SilksEditor(), care: () => Care(), race: () => RaceLobby(), breeding: () => Breeding(), friends: () => Friends(), teams: () => TeamFeed(), time_attack: () => TimeAttack(), collection: () => Collection() };
+function glStepLock(v) {
+  const c = v.path?.current;
+  if (!c || c.open !== false) return null;
+  const f = { breed: 'breeding', friends: 'friends', team: 'teams', ta_finish: 'time_attack', care: 'bond' }[c.kind];
+  return f && (v.today?.tomorrow?.opens ?? []).includes(f) ? '明日開きます' : 'レースを重ねると開きます';
+}
 /** The rungs of home, the same rules as GoalLadderModel.Rebuild. */
 function glRungs(v) {
   const out = [];
   const t = v.today;
   if (t.open) {
     const next = t.items.find((i) => i.progress < i.target);
-    out.push({ key: 'today', label: '今日', main: t.complete ? '今日の目標は完了' : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
-      figure: `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
+    // quality pass 2: once the set is done, the rung says what tomorrow brings (facts: the login bonus, what opens, training)
+    out.push({ key: 'today', label: '今日', main: t.complete ? (glTomorrow(v)?.home ?? '今日の目標は完了') : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
+      figure: t.complete && glTomorrow(v)?.home ? null : `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
   }
   if (v.path) out.push({ key: 'path', label: `はじめの${v.path.steps}歩`, main: v.path.current.claimable ? '受け取れる報酬があります' : glTitle(v.path.current.kind), figure: `${v.path.done}/${v.path.steps}`, fill: v.path.done / Math.max(1, v.path.steps), ready: v.path.current.claimable });
   if (v.week) {
@@ -4157,6 +4381,13 @@ function GoalLadderPanel(v) {
     if (x.figure) Txt(x.figure, 344, 6, 100, 17, GOLD, row, { weight: 700, align: 'right', nowrap: true, cls: 'num' });
     const g = Gauge(118, 36, 326, x.fill, row, { gold: x.ready }); g.style.height = '3px';
     if (x.ready) { el('gl-dot', 10, 16, 6, 6, row); row.dataset.ready = '1'; }
+    // quality pass 2 (REQ-GOAL-015): the next first step is one tap away — the path rung opens where it is done
+    const c = v.path?.current;
+    if (x.key === 'path' && !x.ready && c?.screen && c.open !== false && GL_STEP_GO[c.screen]) {
+      row.dataset.go = c.screen; row.setAttribute('role', 'button');
+      row.querySelector('.gl-main').textContent = x.main + ' ›';
+      row.addEventListener('click', (e) => { e.stopPropagation(); GL_STEP_GO[c.screen](); });
+    }
   });
   if (anyReady) {
     const c = el('gl-rung gl-home-claim', 0, 8 + rungs.length * 50, GL_BOX.w, 50, p); c.dataset.rung = 'claim';
@@ -4175,6 +4406,7 @@ async function Goals() {
   await refresh();
   if (!r.ok) { toast('目標を読み込めませんでした'); return Home(); }
   const v = r.value;
+  globalThis.__glLast = v; // quality pass 2: the step's lock text reads tomorrow's openings
   Clear('goals'); SetArt('Art/home-paddock', false); Shade('left');
   TopBar('目標　/　今日 → 今週 → シーズン', `今日の分は ${jstDate(v.today.resetAt).slice(-5)} に更新　·　報酬は1回でまとめて受け取れます`);
   const COL = [{ x: 36 }, { x: 555 }, { x: 1074 }], W = 490, Y = 134, H = 600;
@@ -4182,14 +4414,21 @@ async function Goals() {
   const c1 = Glass('Goals today', COL[0].x, Y, W, H, undefined, .88); c1.dataset.col = 'today'; c1.classList.add('gl-col');
   Kicker('今日', 32, 24, c1, { size: 16 });
   const lb = v.today.loginBonus;
-  if (lb?.open && lb.next) {
+  const tmr = glTomorrow(v);
+  if (tmr?.home && v.today.open) {
+    // quality pass 2 (REQ-GOAL-013): what tomorrow brings, one line (the full list is in the claim moment)
+    const l = Txt(tmr.home, 32, 92, 300, 13, GOLD, c1, { weight: 700, nowrap: true }); l.classList.add('gl-login', 'gl-tomorrow'); l.title = tmr.lines.join(' / ');
+  } else if (lb?.open && lb.next) {
     const line = `${lb.claimedToday ? '明日' : '今日'}のログインボーナス：${glReward(lb.next.reward) || (lb.next.reward.broodmare ? '繁殖牝馬1頭' : '')}`;
     Txt(line, 32, 92, 300, 13, MUTED, c1, { weight: 500, nowrap: true }).classList.add('gl-login');
   }
   if (v.today.open) {
     Txt(`${v.today.done}/${v.today.total}`, 330, 56, 128, 34, GOLD, c1, { align: 'right', cls: 'num' });
     v.today.items.forEach((it, i) => GlRow(c1, it, 32, 118 + i * 94, W - 64));
-  } else Txt('デイリーミッションは' + unlockText('missions') + '。まずは「はじめの10歩」から。', 32, 120, W - 64, 16, MUTED, c1, { lh: 1.7 });
+  } else {
+    Txt('デイリーミッションは' + unlockText('missions') + '。まずは「はじめの10歩」から。', 32, 120, W - 64, 16, MUTED, c1, { lh: 1.7 });
+    if (tmr) GlTomorrowBlock(c1, tmr, 32, 236, W - 64);
+  }
   // ② 今週 / はじめの10歩
   const c2 = Glass('Goals week', COL[1].x, Y, W, H, undefined, .88); c2.dataset.col = v.path && v.week ? 'path,week' : v.path ? 'path' : 'week'; c2.classList.add('gl-col');
   let wy = 118;
@@ -4281,14 +4520,35 @@ function GlPath(parent, path, y, compact) {
     Txt(`${path.step}. ${glTitle(it.kind)}`, 0, 0, 300, 16, WHITE, row, { weight: 700, nowrap: true });
     Txt(`${Math.min(it.progress, it.target)}/${it.target}`, 300, 0, 126, 16, it.claimable ? GOLD : MUTED, row, { weight: 700, align: 'right', cls: 'num' });
     Txt(`${glReward(it.reward)}　·　最後に ${glReward(path.finalReward)}`, 0, 28, W, 13, GOLD, row, { weight: 700, nowrap: true });
-    Hair(0, 70, W, row);
+    GlStepLink(row, path, 0, 40, W);
+    Hair(0, 76, W, row);
     return;
   }
   GlRow(parent, path.current, 32, y + 36, W, `${path.step}. `);
+  GlStepLink(parent, path, 32, y + 110, W);
   Hair(32, y + 142, W, parent);
   Txt('最後の歩の報酬', 32, y + 164, 300, 13, CYAN, parent, { weight: 700, ls: '.16em' });
   Txt(glReward(path.finalReward), 32, y + 188, W, 20, GOLD, parent, { weight: 700 });
   Txt(glPurpose(path.finalReward), 32, y + 220, W, 14, SOFT, parent);
+}
+/** quality pass 2 (REQ-GOAL-015): 「勝負服を変える ›」 to where the step is done, or why it is not open yet (right-aligned). */
+function GlStepLink(parent, path, x, y, w) {
+  const c = path.current;
+  if (c.claimable) return null;
+  const lock = c.open === false ? (globalThis.__glLast ? glStepLock(globalThis.__glLast) : 'レースを重ねると開きます') : null;
+  if (lock) { const t = Txt(lock, x + w - 260, y + 8, 260, 13, MUTED, parent, { align: 'right', nowrap: true }); t.classList.add('gl-step-lock'); return t; }
+  if (!c.screen || !GL_STEP_GO[c.screen]) return null;
+  const b = TextLink('やってみる', x + w - 180, y, 180, () => GL_STEP_GO[c.screen](), parent, 'やってみる ›');
+  b.dataset.action = 'gl-step'; b.dataset.go = c.screen; b.style.textAlign = 'right';
+  return b;
+}
+/** quality pass 2 (REQ-GOAL-013): 「明日 4:00」 and one fact per line. */
+function GlTomorrowBlock(parent, tmr, x, y, w) {
+  const b = el('gl-tomorrow-block', x, y, w, 40 + tmr.lines.length * 28, parent); b.dataset.lines = String(tmr.lines.length);
+  Txt('明日', 0, 0, 120, 12, CYAN, b, { weight: 700, ls: '.16em' });
+  Txt(tmr.at, w - 160, 0, 160, 12, MUTED, b, { align: 'right', nowrap: true });
+  tmr.lines.forEach((l, i) => Txt(l, 0, 26 + i * 28, w, 15, WHITE, b, { weight: 500, nowrap: true }));
+  return b;
 }
 /** A goal row: title and progress, the gauge, the reward and what it does. */
 function GlRow(parent, it, x, y, w, prefix = '') {
@@ -4323,8 +4583,13 @@ async function GlClaim() {
   if (!r.ok) { toast(r.error?.message ?? '受け取れませんでした'); return Goals(); }
   const t = r.value.total;
   const lines = [...(t.freeCoins ? [['無償コイン', `◎ ${fmt(t.freeCoins)}`]] : []), ...(t.items ?? []).map((it) => [glItemName(it.itemId), `×${it.qty}`]), ...(t.passXp ? [['パスXP', `+${fmt(t.passXp)}`]] : [])];
-  const d = Dialog('Goals claimed', 640, 200 + lines.length * 56);
+  // quality pass 2 (REQ-GOAL-013): when today's set is done, the moment ends on what tomorrow brings
+  const after = r.value.ladder ?? (await L.goals()).value;
+  const tmr = after?.today?.complete ? glTomorrow(after) : null;
+  const extra = tmr ? 52 + tmr.lines.length * 28 : 0;
+  const d = Dialog('Goals claimed', 640, 200 + lines.length * 56 + extra);
   d.classList.add('gl-moment'); d.dataset.claimed = String(r.value.claimed.length);
+  if (tmr) { const tb = GlTomorrowBlock(d, tmr, 48, 106 + lines.length * 56 + 8, 544); tb.classList.add('gl-line'); tb.style.animationDelay = `${120 + lines.length * 110}ms`; }
   Kicker(`${r.value.claimed.length}件受け取りました`, 48, 40, d, { size: 16 });
   lines.forEach(([k, val], i) => {
     const row = el('gl-line', 48, 106 + i * 56, 544, 48, d); row.style.animationDelay = `${120 + i * 110}ms`;
@@ -4332,7 +4597,7 @@ async function GlClaim() {
     Txt(val, 300, 4, 244, 28, GOLD, row, { weight: 700, align: 'right', cls: 'num' });
   });
   await refresh();
-  Ghost('OK', 640 - 48 - 200, 200 + lines.length * 56 - 84, 200, 56, () => Goals(), d).dataset.action = 'gl-ok';
+  Ghost('OK', 640 - 48 - 200, 200 + lines.length * 56 + extra - 84, 200, 56, () => Goals(), d).dataset.action = 'gl-ok';
 }
 /** クラスの階段: every class with its cap (how much of a horse ranked uses), its line and its top reward. */
 function ClassLadder(v) {
@@ -5719,7 +5984,7 @@ async function SilksEditor(tryItem) {
   if (!silksDraft) silksDraft = structuredClone(v.current.design);
   if (tryItem) { // from the shop's 見た目 tab: try that part on at once
     for (const t of ['color', 'sleeve', 'cap', 'pattern']) {
-      const p = silksPartsList(v, t).find((x) => x.shop?.itemId === tryItem);
+      const p = silksPartsList(v, t).find((x) => x.shop?.itemId === tryItem || (x.source?.kind === 'item' && x.source.itemId === tryItem));
       if (!p) continue;
       silksTab = t; if (t === 'color') silksSlot = 1;
       silksPick(v, p.id);
@@ -11176,7 +11441,7 @@ async function boot() {
   document.getElementById('boot').classList.add('hidden');
   globalThis.__muchi = {
     ready: false, screen: '',
-    show: (name, ...a) => ({ WinDemo: (n) => WinDemo(n ?? 40), PromotionResult: (s, fresh) => PromoResultDemo(s ?? 'start', fresh !== false), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
+    show: (name, ...a) => ({ WinDemo: (n, o) => WinDemo(n ?? 40, o ?? 'win'), PromotionResult: (s, fresh, res) => PromoResultDemo(s ?? 'start', fresh !== false, res), SelfLimits, PlaytimeSheet: () => PlaytimeDemo(), SelfLimitRefused: () => SelfLimitRefusedDemo(), Highlights: (src) => HighlightReel(src ?? { kind: 'result' }, () => Home()), HighlightEnd, HlShareSheet, HighlightsDemo, Calendar: () => Calendar(), Pedigree: (id, src) => Pedigree(id ?? null, () => Stable(), src ?? 'horse'), BreedingPair: (sireId, damId) => BreedingPair(() => Stable(), sireId ?? null, damId ?? null), Bloodlines: (src) => Bloodlines(src ?? 'pedigree', () => Stable()), ReleaseNotes: () => ReleaseNotesDemo(), ReleaseNotesHistory: (src) => rnOpenHistory(src ?? 'notices', () => Activity()), Links, OpenLink, FriendRoomResult: () => FriendRoomResult(), LinkConfirm: (v) => LinkConfirm(v ?? { state: 'ok', type: 'room', screen: 'friend_room_join', target: { passphrase: '123456' } }), RoomLobby: (p) => RoomLobby(p ?? '123456', ['ミドリカワ', 'あなた']), ShowcaseCard: (id, src) => ShowcaseCard(id ?? 'demo_sc_1', src ?? 'friends'), ShowcaseEdit: (tab) => ShowcaseEdit(null, tab ?? null), ShowcaseShare: async (id) => { const r = await L.showcase.card(id ?? 'demo_sc_1', scLang()); return ShowcaseShareView(r.value, () => ShowcaseCard(id ?? 'demo_sc_1', 'friends')); }, NotifySettings, LnotifPrePrompt, ReviewPrompt: (style) => ReviewDemo(style ?? 'native'), Survey: (where) => SurveyDemo(where ?? 'inbox'), SurveySheet, TransferIssue, TransferRedeem: (s) => TransferRedeem(s ?? { back: 'settings' }), TransferReplaced, DeviceList, SecurityLog, SessionRevoked, Spectate, Tips, TipCard: (id, src) => TipCard(id ?? 'whip_window', src ?? 'list'), TipTour: (id) => TipTour(id ?? 'tour_scout'), LessonBrief: (id) => LessonBrief(id ?? 'race_whip'), StartLesson: (id) => StartLesson(id ?? 'race_whip'), PerfSettings, Storage, Privacy, PrivacyChoices, Diagnostics, ConsentPrompt: () => ConsentPrompt(() => Home()), QuickChat, Practice, Career, CareerPreRace: (id) => CareerPreRace(id ?? 'c1_debut'), HorseGoals, Friends, HelpCenter, HelpSearch, InquiryForm, MyInquiries, HelpArticle: (id, src) => HelpArticle(id ?? 'pity', src ?? 'list'), HostedCups, CupCreate, CupJoin, CupLobby, CupStandings, Recaps, Recap, Roster, OrgConfirm, BlockList, Report: (t) => ReportSheet(t), Maintenance: () => Maintenance(L.maintenanceDemo('all').gate.details), UpdateRequired: () => { globalThis.__mntPrompted = false; return UpdateRequired(L.maintenanceDemo('update').gate.details); }, MaintenanceNotice: () => { L.maintenanceDemo('announced'); return MaintenanceNotice(); }, MaintenanceScoped, Activity, RaceAdvice: () => RaceLobby(), A11ySettings, Hall, SilksEditor, CommentaryPacks, CommentaryPackBuy, MyReplays, FriendReplays, ReplayPlayer, GiftBox, AssistSettings, History, WeeklyChallenge, Collection, Achievements, Training, HorseCard: (id) => HorseCard(id ?? partner()?.id), Breeding, EventTop, Exchange, Rival, TeamFeed, TeamGoal, Invite, ComebackWelcome, ComebackTrack, Title, Home, Goals, ClassLadder: async () => { const r = await L.goals(); return ClassLadder(r.value); }, NamePartner, Stable, Scout, Wardrobe, CourseThemes, Conditions, Care, Store, SeasonPass, Receipt, TicketOdds, RaceLobby, Settings, FreeScout, SecondRaceIntro, PurchaseConfirm, NotifyPrimer, TimeAttack, LinkPrompt, Shortfall: (kind) => DemoShortfall(kind), Photo: (kind) => PhotoOpen(kind ?? 'result', Home), Odds: (id) => Odds(id ?? 'standard') })[name]?.(...a),
     demo: (k) => Demo(k),
     // R20 integration (§58.11): the one-prompt gate and a happy moment (review) for the flows
     prompts: { shown: () => sessionPrompt.shown, reset: () => sessionPrompt.reset(), claimForTest: (k) => sessionPrompt.claim(k), review: (m) => reviewMoment(m ?? 'first_win'),

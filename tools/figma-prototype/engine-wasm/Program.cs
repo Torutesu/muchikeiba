@@ -631,6 +631,10 @@ public static partial class MuchiRace
           .Append("\",\"marginMm\":").Append(d?.MarginMm ?? 0).Append(",\"margin\":\"").Append(d == null ? "" : Esc(RaceFeel.MarginText(d.MarginMm)))
           .Append("\",\"primary\":\"").Append(Esc(m.PrimaryAction)).Append("\",\"secondary\":\"").Append(Esc(m.SecondaryAction))
           .Append("\",\"tutorialRetry\":").Append(B(m.TutorialRetry)).Append(",\"nextAttempt\":").Append(m.NextTutorialAttempt);
+        // quality pass 2: after a ranked loss, horse or riding (RankedFieldCheck from the config's field)
+        if (m.FieldCheck != null)
+            sb.Append(",\"field\":{\"line\":\"").Append(Esc(m.FieldLine)).Append("\",\"horse\":").Append(m.FieldCheck.HorseTotal)
+              .Append(",\"field\":").Append(m.FieldCheck.FieldTotal).Append(",\"weaker\":").Append(B(m.FieldCheck.HorseWeaker)).Append('}');
         if (m.Counterfactual != null)
         {
             // ruleset 1.4: the 仕掛け lesson from re-simulated races (GoCounterfactual) and the 会心 count

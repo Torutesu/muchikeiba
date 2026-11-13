@@ -77,7 +77,7 @@ static class Round21IntegrationChecks
             "prompts: one table (§58.11 = §64.6) — update > consent > comeback > release notes > promotion outcome (R22) > reminders > account link > review (R22: surveys are not prompts)");
 
         // during the FTUE nothing shows: not the consent sheet, not the release notes, not the reminders card, not the account link
-        check(!consent.ShouldShowPrePrompt(ConsentMoment.Home) && !await notes.OnHomeArrivedAsync() && !reminders.OnTrainingStarted() && !link.ShouldShow(LinkPromptContext.Home, true, 3, true, true)
+        check(!consent.ShouldShowPrePrompt(ConsentMoment.Home) && !await notes.OnHomeArrivedAsync() && !reminders.OnTrainingStarted() && !link.ShouldShow(LinkPromptContext.ResultClosed, true, 3, true, true)
             && prompts.Claimed == null && notesApi.Seen.Count == 0, "FTUE: no prompt of any kind, nothing claimed or marked seen");
         ftue = false;
 
@@ -86,7 +86,7 @@ static class Round21IntegrationChecks
         check(prompts.Pick(due) == SessionPrompts.ReleaseNotes, "prompts: release notes before the reminders card and the account link");
         check(await notes.OnHomeArrivedAsync(due) && prompts.Claimed == SessionPrompts.ReleaseNotes && notesApi.Seen.SequenceEqual(new[] { "1.2.0" }), "prompts: the release notes sheet opens and takes the session");
         check(!reminders.OnTrainingStarted() && !reminders.PrePromptDue, "prompts: no reminders card in the session of the release notes");
-        check(!link.ShouldShow(LinkPromptContext.Home, true, 3, true, true), "prompts: no account-link prompt in the session of the release notes");
+        check(!link.ShouldShow(LinkPromptContext.ResultClosed, true, 3, true, true), "prompts: no account-link prompt in the session of the release notes");
         check(!consent.ShouldShowPrePrompt(ConsentMoment.Home), "prompts: no consent sheet after the release notes (it waits for the next session)");
         check(await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.Skipped && review.LastReason == "session_prompt", "prompts: no review after the release notes");
 
@@ -95,12 +95,12 @@ static class Round21IntegrationChecks
         check(prompts.Claimed == null, "prompts: a new session frees the gate");
         reminders.Refresh();
         check(reminders.OnTrainingStarted() && prompts.Claimed == SessionPrompts.RemindersPrePermission, "prompts: next session → the reminders card after a training");
-        check(!link.ShouldShow(LinkPromptContext.Home, true, 3, true, true) && await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.Skipped, "prompts: then no account link and no review");
+        check(!link.ShouldShow(LinkPromptContext.ResultClosed, true, 3, true, true) && await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.Skipped, "prompts: then no account link and no review");
 
         // a third session: the account-link prompt; afterwards no review
         prompts.NewSession();
         reminders.DeclinePrePrompt();
-        check(link.ShouldShow(LinkPromptContext.Home, true, 3, true, true), "prompts: a quiet session → the account-link prompt (day 3)");
+        check(link.ShouldShow(LinkPromptContext.ResultClosed, true, 3, true, true), "prompts: a quiet session → the account-link prompt (day 3, after a result)");
         link.Show(LinkPromptTrigger.Day3);
         check(prompts.Claimed == SessionPrompts.AccountLink && await review.OnMomentAsync(ReviewMoments.FirstWin) == ReviewOutcome.Skipped, "prompts: the account link took the session; the review waits");
 

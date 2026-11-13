@@ -75,7 +75,7 @@ import { buildCheckinInput, checkinBodySchema, type CheckinInput } from '../doma
 
 /** Player operations reachable over HTTP (implemented by PlayerDO in production, PlayerService in tests). */
 export type PlayerMethod =
-  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus'
+  | 'bootstrap' | 'view' | 'setAge' | 'purchaseIntent' | 'purchase' | 'refund' | 'draw' | 'tutorialDraw' | 'pityExchange' | 'gachaStatus' | 'scoutOptions'
   | 'nameHorse' | 'awaken' | 'retire' | 'breedingPreview' | 'breed' | 'pedigree' | 'claimLogin' | 'missions'
   | 'claimMission' | 'passView' | 'claimPass' | 'applyRace' | 'raceEntry'
   | 'shopProducts' | 'shopOffers' | 'markOfferViewed' | 'coinShortfall' | 'allowance' | 'claimAllowance' | 'firstWinBonus'
@@ -790,6 +790,8 @@ export const routes: Route[] = [
   { method: 'GET', path: '/v1/gacha/banners', auth: 'none', handler: async (_r, _p, c) => bannerList(c.master, (c.clock ?? Date.now)()) },
   // REQ-GACHA-012..014: the player's pity meter, carry-over rule and step-up progress
   { method: 'GET', path: '/v1/gacha/status', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('gachaStatus', u) },
+  // quality pass 2 (protocol 「スカウトの確認」): every way to pull on this banner now with the exact paid / free split or the ticket (read only)
+  { method: 'GET', path: '/v1/gacha/:bannerId/options', auth: 'player', handler: async (_r, p, c, u) => c.player(u).invoke('scoutOptions', u, p.bannerId!) },
   { method: 'GET', path: '/v1/gacha/:bannerId/odds', auth: 'none', handler: async (_r, p, c) => oddsDisclosure(c.master, findVisibleBanner(c.master, p.bannerId!, (c.clock ?? Date.now)())) },
   { method: 'POST', path: '/v1/gacha/:bannerId/draw', auth: 'player', handler: async (r, p, c, u) => {
     const b = await body(r, z.object({ count: z.union([z.literal(1), z.literal(10)]) }));

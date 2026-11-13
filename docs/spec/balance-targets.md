@@ -6,7 +6,8 @@
 | 対象 | 計測する仕組み | 自動テスト |
 |---|---|---|
 | かんたん操作の公平性（R11） | 同じ馬・同じレースを上手い人／おまかせ／何もしない人で比べる（§2.3、`AssistHarness`） | `InputAssistTests.R11_AssistIsCappedBelowSkilledPlayAndWellAboveNoInput`・`R11_HoldsOnEveryServerCourse` |
-| 初心者マッチ（R10） | 相棒＋初心者＋弱いCPUの場（§2.2、BalanceHarness の部品で計測） | 未（§2.2 の注を参照） |
+| 初心者マッチ（R10） | 相棒＋初心者＋弱いCPUの場（§2.2、BalanceHarness の部品で計測） | 品質パス2から W7 として `RankedBalanceTests.RankedFieldsMeetTheWinnabilityTargets`（§2.5） |
+| ランク戦の勝ちやすさ（W1〜W9、品質パス2） | サーバーが作るランク戦の場（`contracts/ranked-fields.sample.json`）を連打・平均的・上手いの3人で（§2.5、`RankedHarness`） | `RankedBalanceTests.RankedFieldsMeetTheWinnabilityTargets`、経済は `economy.test.ts` の W8 |
 | レース（R1〜R8） | `engine/Muchi.Verifier/BalanceHarness.cs`（固定シードで約10秒） | `BalanceTests.DefaultRulesetMeetsEveryHarnessTarget` |
 | 駆け引き（K1〜K8、ルールセット 1.4.0） | `engine/Muchi.Verifier/TacticsHarness.cs`（`harness-tactics`、§2.4） | `BalanceTests.TacticsRulesetMeetsK1ToK8AndTheRaceTargets` |
 | 経済（E1〜E20） | `server/src/sim/economy.ts`（本物の `PlayerService` とマスターデータで90日分） | `server/test/economy.test.ts` |
@@ -341,6 +342,26 @@ R1〜R8 は2000m（芝）と1800m（ダート）の基準コースで測る。�
 | R6 / R7 / R8 | 1.44 / 1.5pt / 27.1% | 1.1..2.0 / ≤4 / 20..45 |
 | T1/T2/T7（全コース×全馬場） | 144 中 143 OK。ベルムーア芝1200・硬いの最大 11.6%（≤ 11.42%）だけ外れ。1.4 のランク戦の前に直す | |
 | R9/S2（全スキル） | 1.4 では未測定（ランク戦の前に測る） | |
+
+### 2.5 ランク戦の勝ちやすさ（W1〜W9、品質パス2、docs/quality/ranked.md、REQ-MM-009〜012）
+
+サーバーが実際に作るランク戦の場（待ち行列の CPU 補完 → `rankedMatchRules` → `createRace`、クラスの上限・コースの抽選・その日の馬場・スキル込み、9組 × 160レース、`contracts/ranked-fields.sample.json`、`npm run gen:ranked-sample`）を、連打する人（`MasherRider`）・平均的な人（`CasualRider`）・上手い人（1.3 `SkilledRider`／1.4 `TacticalRider`）で走らせる（`engine/Muchi.Verifier/RankedHarness.cs`、`harness-ranked`）。1.3 と 1.4 の両方で全項目を満たす。値と前後の比較は docs/quality/ranked.md §3。
+
+| id | 目標 | 1.3 / 1.4（変更後） |
+|---|---|---|
+| W1 | 上手い人＋30日目の馬の勝率：全クラス 16.7%〜70% | C 55/52%・B 35/39%・A 36/34%・S 34/32% |
+| W2 | 上手い人＋相棒（そのまま）の勝率：C・B ≥ 16.7% | C 45/49%・B 24/28% |
+| W3 | 平均的な人の3着以内 ≥ 20%（30日目の馬で全クラス、相棒で C・B） | 最小 B 相棒 1.4 の 26.9% |
+| W4 | 上手い人の勝率 ≥ 平均的な人 ×1.5 かつ +5pt・平均的な人の3着以内と平均着順が連打より上（A・S の相棒そのままは勝率の比較を除く） | 全組 OK |
+| W5 | 連打する人の勝率 ≤ 10% | 最大 6.9% |
+| W6 | 6〜15戦（ramp）の平均的な人の3着以内 ≥ 35%、初心者マッチ以下・C級の通常以上 | 46.2 / 38.8% |
+| W7 | 初心者マッチの平均的な人：3着以内 ≥ 70%・勝率 ≤ 60%（R10/R10b） | 83.8 / 81.9%・50.0 / 50.6% |
+| W8 | C級の平均的な人のコイン/レース ≤ 一様 × 1.40／実際の着順の E1 が 40〜77（`economy.test.ts`） | 1.24・1.33／76.4 |
+| W9 | 適性外のコースで走るランク戦 0 | 0（変更前は 160戦中 71〜89） |
+
+- 30日目の馬：相棒に調教 240（速72・持48・瞬60・根36・気24）と覚醒1。クラスごとのレート C 1500・B 1550・A 1650・S 1800 を前提にした。
+- 場（`progression.rankedField`）：`courseFitsHorses` true、`cpuLevelByClass` C 2〜3／B 4／A 4／S 4〜5、`cpuStatTotalByClass` C 2800／B 3200／A 3500／S 3600、`rampCpuStatPermille` [880, 910, 940, 970]、`beginnerMatch.cpuStatPermille` 860。
+- `contracts/ranked-places.vectors.json`：全組の着順の数（`harness-ranked-vectors` で書く。テストが一致を確かめる）。経済のテストが平均的な人の着順として使う。
 
 ## 3. タイムアタックのメダル
 

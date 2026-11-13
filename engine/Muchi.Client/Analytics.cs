@@ -157,6 +157,29 @@ namespace Muchi.Client
             return new AnalyticsEvent("invite_share", atMs, JsonNode.Obj().Set("channel", channel));
         }
 
+        // ---- quality pass 2 (docs/quality/shop.md): the scout confirmation and the purchase receipt (counts only, §58 optional)
+        public static readonly string[] ScoutConfirmStages = { "view", "pull", "cancel" };
+        public static readonly string[] ScoutConfirmVias = { "coins", "ticket", "sr_ticket" };
+        public static readonly string[] ReceiptStages = { "view", "next" };
+        public static readonly string[] ReceiptActions = { "use_sr_ticket", "wear_silks", "open_pass", "claim_allowance", "scout", "none" };
+
+        /// <summary>The scout confirmation was shown / pulled / closed. via: coins | ticket | sr_ticket; count: 1 | 10.</summary>
+        public static AnalyticsEvent ScoutConfirm(long atMs, string stage, string via, int count)
+        {
+            if (IndexIn(ScoutConfirmStages, stage) < 0) throw new ArgumentException("unknown scout confirm stage " + stage);
+            if (IndexIn(ScoutConfirmVias, via) < 0) throw new ArgumentException("unknown scout confirm via " + via);
+            if (count != 1 && count != 10) throw new ArgumentException("count is 1 or 10");
+            return new AnalyticsEvent("scout_confirm", atMs, JsonNode.Obj().Set("stage", stage).Set("via", via).Set("count", count));
+        }
+
+        /// <summary>The purchase receipt was shown / its next step taken. action: the receipt's next action, or none.</summary>
+        public static AnalyticsEvent PurchaseReceipt(long atMs, string stage, string productId, string action)
+        {
+            if (IndexIn(ReceiptStages, stage) < 0) throw new ArgumentException("unknown receipt stage " + stage);
+            if (IndexIn(ReceiptActions, action ?? "none") < 0) throw new ArgumentException("unknown receipt action " + action);
+            return new AnalyticsEvent("purchase_receipt", atMs, JsonNode.Obj().Set("stage", stage).Set("productId", Id(productId, 64, "productId")).Set("action", action ?? "none"));
+        }
+
         // ---- REQ-HIST-011 history screen (the lists are read-only GETs, so the view is a client event)
         public static readonly string[] HistoryTabs = { "purchases", "coins_paid", "coins_free", "gacha" };
 

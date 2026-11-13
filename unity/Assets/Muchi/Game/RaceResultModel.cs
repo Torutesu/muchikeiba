@@ -118,6 +118,12 @@ namespace Muchi.Game
         /// <summary>Ruleset 1.4: the counterfactual itself (shift, places, simulations) for KPI / tests.</summary>
         public GoCounterfactual Counterfactual;
         public string DebriefCode;
+        /// <summary>
+        /// Quality pass 2 (docs/quality/ranked.md §4): after a ranked loss, horse or riding — 「能力の差：相棒 3320 ／ この場のCPU 3600。
+        /// 調教で伸ばすと勝ちやすい」 or 「能力は互角以上（…）：差は乗り方」 (RankedFieldCheck, from the config). Null otherwise.
+        /// </summary>
+        public string FieldLine;
+        public RankedFieldCheck FieldCheck;
         public DebriefReason? Reason;
         /// <summary>Status line for online races (「結果を照合中…」, void notice), null otherwise.</summary>
         public string Status;
@@ -182,6 +188,13 @@ namespace Muchi.Game
                 m.DebriefTip = debrief.Tip;
                 m.DebriefCode = debrief.Code;
                 m.Reason = debrief.Reason;
+            }
+
+            // quality pass 2: after a ranked loss, which side to work on (the horse or the riding), from the config's field
+            if (agrees && d.Config != null)
+            {
+                m.FieldCheck = RankedFieldCheck.For(d.Config, d.PlayerSlot, m.Place);
+                m.FieldLine = m.FieldCheck?.Line;
             }
 
             // ruleset 1.4: the data-driven 仕掛け lesson for an offline race (online: AddGoLesson with the confirmed inputs)

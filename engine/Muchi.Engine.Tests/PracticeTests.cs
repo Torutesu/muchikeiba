@@ -86,7 +86,7 @@ namespace Muchi.Engine.Tests
                 if (e.Kind != EntrantKind.Cpu) continue;
                 Assert.Equal(1, e.CpuLevel);
                 var src = c.CpuHorses.Find(h => h.Id == e.Horse.Id);
-                Assert.Equal(src.Speed * 780 / 1000, e.Horse.Speed); // easy = the beginner match's CPU stats
+                Assert.Equal(src.Speed * c.Strengths.Find(x => x.Id == "easy").CpuStatPermille / 1000, e.Horse.Speed); // easy = the beginner match's CPU stats
             }
         }
 

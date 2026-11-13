@@ -13,10 +13,11 @@ import { newPlayer, playerView, type HorseInstance, type PlayerState } from '../
 import { oddsDisclosure, findBanner, bannerList, bannerStatus } from '../../../server/src/domain/gacha.js';
 import { cryptoRng } from '../../../server/src/domain/rng.js';
 import { exchangeClosesAt } from '../../../server/src/domain/exchange.js';
-import { dayRule } from '../../../server/src/domain/time.js';
+import { addJstDays, dayRule, gameDayKey } from '../../../server/src/domain/time.js';
 import { AppError } from '../../../server/src/domain/errors.js';
 import type { Style } from '../../../server/src/domain/master.js';
 import { shopProducts } from '../../../server/src/domain/shop.js';
+import { ticketDisclosure } from '../../../server/src/domain/itemShop.js';
 import { buildRaceConfig, toRaceHorse } from '../../../server/src/domain/raceConfig.js';
 import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
@@ -59,7 +60,8 @@ import { applyRosterQuery, aptitudeFor, DEFAULT_QUERY, type RosterQuery, type Ro
 import { HostedCupsService, MemoryCupBackend } from '../../../server/src/domain/hostedCupService.js';
 import type { CupRaceSpec, CupState } from '../../../server/src/domain/hostedCups.js';
 import type { HeatOutcome } from '../../../server/src/domain/tournaments.js';
-import { createRace } from '../../../server/src/race/orchestrate.js';
+import { createRace, rankedMatchRules } from '../../../server/src/race/orchestrate.js';
+import { rankedCourse } from '../../../server/src/domain/rankedField.js';
 import type { RaceEntry } from '../../../server/src/http/app.js';
 import { ReportsService, type ReportBody } from '../../../server/src/domain/reportsService.js';
 import { MemoryPlayerReportRepo, PlayerReportsCore } from '../../../server/src/ops/playerReports.js';
@@ -76,7 +78,7 @@ import { sessionRevoked } from '../../../server/src/domain/sessionRevocation.js'
 import { LinkService, MemoryLinkDirectory, type LinkTargets } from '../../../server/src/domain/linkService.js';
 import { formatToken, linksConfig, parseLink, LINK_SCREENS, replayLinkExtra, replayLinkRow, replayStartTick, type LinkType } from '../../../server/src/domain/deepLinks.js';
 import { Rematches } from '../../../server/src/domain/rematch.js';
-import { FriendRooms } from '../../../server/src/domain/matchmaker.js';
+import { FriendRooms, cpuLevelFor } from '../../../server/src/domain/matchmaker.js';
 import { maintenanceOf } from '../../../server/src/domain/maintenance.js';
 import type { RoomConditions } from '../../../server/src/domain/presets.js';
 import { DEFAULT_MAINTENANCE, gateRequest, maintenanceStatus, type MaintenanceConfig } from '../../../server/src/domain/maintenance.js';
@@ -124,9 +126,29 @@ const SHIPPED_CONSENT = master.progression.consent;
 const DAY_KEY = 'muchi.proto.dayOffset';
 const DAY_MS = 86_400_000;
 let dayOffset = (() => { try { return Math.max(0, parseInt(localStorage.getItem(DAY_KEY) ?? '0', 10) || 0); } catch { return 0; } })();
+// A day offset is counted in game days, not in 24 h steps of the wall clock: `dayOffset` game days after today's game day
+// (progression.dayRollover), at 12:00 JST of that day, then running in real time. Adding whole days to the wall-clock time
+// of day would make the demo depend on when it runs: between 00:00 and 04:00 JST two consecutive offsets can land on the
+// same game day (the 28 h game day of the 0:00 → 4:00 rollover switch, protocol §15), so a "next day" demo finds the slots
+// it used already. Noon is inside the game day of its date for any rollover hour before 12. Offset 0 is the real clock.
+const DEMO_HOUR_JST = 12;
+/** The demo instant (Unix ms) of `days` game days after the game day of `real`: 12:00 JST of that day. */
+const demoDayMs = (days: number, real: number) => {
+  const [y, mo, d] = addJstDays(gameDayKey(real, dayRule(master)), days).split('-').map(Number) as [number, number, number];
+  return Date.UTC(y, mo - 1, d, DEMO_HOUR_JST - 9);
+};
+let anchorReal = Date.now(); // the real instant the day offset was last applied
+let anchorDemo = dayOffset > 0 ? demoDayMs(dayOffset, anchorReal) : anchorReal; // the demo instant it maps to
+/** The demo clock without the extra shift: the real clock at offset 0, else the offset game day's noon + real time since. */
+const dayClock = () => (dayOffset > 0 ? anchorDemo + (Date.now() - anchorReal) : Date.now());
+const applyDayOffset = (days: number) => {
+  dayOffset = Math.max(0, Math.floor(days));
+  anchorReal = Date.now();
+  anchorDemo = dayOffset > 0 ? demoDayMs(dayOffset, anchorReal) : anchorReal;
+};
 // round 9: an extra shift (ms) so the demo can stand just before a banner's real end (not persisted)
 let clockShift = 0;
-const now = () => Date.now() + dayOffset * DAY_MS + clockShift;
+const now = () => dayClock() + clockShift;
 // a blank player state to build demo ghost riders' horses on (never stored)
 let blank: PlayerState | null = null;
 const svcStateTemplate = () => blank!;
@@ -673,7 +695,7 @@ export const MuchiLogic = {
   bannerStatus: (bannerId: string) => bannerStatus(findBanner(master, bannerId), now()),
   gachaStatus: () => svc.gachaStatus(ID),
   /** Demo clock in ms (the banner calendar demo moves the clock to a banner's last minutes). */
-  setClockMs(ms: number | null) { clockShift = ms === null ? 0 : ms - Date.now() - dayOffset * DAY_MS; },
+  setClockMs(ms: number | null) { clockShift = ms === null ? 0 : ms - dayClock(); },
   clockShift: () => clockShift,
   legalLinks: master.shopDisplay?.legalLinks ?? [],
   async bootstrap() {
@@ -691,6 +713,11 @@ export const MuchiLogic = {
   tutorialDraw: () => wrap(() => svc.tutorialDraw(ID, key())),
   draw: (bannerId: string, count: 1 | 10) => wrap(() => svc.draw(ID, bannerId, count, key())),
   pityExchange: (bannerId: string, templateId: string) => wrap(() => svc.pityExchange(ID, bannerId, templateId, key())),
+  // quality pass 2 (docs/quality/shop.md): the scout confirmation (GET /v1/gacha/:id/options) and a ticket pull
+  // (POST /v1/items/tickets/:itemId/use, the 10-pull ticket's `results`) on the real rules
+  scoutOptions: (bannerId: string) => wrap(() => svc.scoutOptions(ID, bannerId)),
+  useTicket: (itemId: string, bannerId: string | null) => wrap(() => svc.useTicket(ID, itemId, bannerId, key())),
+  ticketOdds: (itemId: string) => wrap(async () => ticketDisclosure(master, itemId)),
   nameHorse: (horseId: string, name: string) => wrap(() => svc.nameHorse(ID, horseId, name)),
   setAge: (y: number, m: number, guardian: boolean) => wrap(() => svc.setAge(ID, y, m, guardian)),
   purchaseIntent: (productId: string) => wrap(() => svc.purchaseIntent(ID, productId)),
@@ -779,7 +806,7 @@ export const MuchiLogic = {
     reportRepo.rs.clear(); reportRepo.st.clear(); // round 17: the ops report queue too
     fsugCards.store.clear(); // round 17: the おすすめフレンド cards too
     trfDir.codes.clear(); trfDir.limits.clear(); trfDir.rows.length = 0; try { localStorage.removeItem(TRF_KEY); } catch { /* ignore */ } // round 19
-    dayOffset = 0;
+    applyDayOffset(0);
     delete master.maintenance; // round 17: no maintenance demo
     master.progression.consent = SHIPPED_CONSENT; // round 20: the shipped privacy policy version
     surveyRepo = new MemorySurveyRepo(); surveyCore = new SurveysCore(surveyRepo); // round 22: no live survey
@@ -788,7 +815,8 @@ export const MuchiLogic = {
   // ---------------------------------------------------------------- round 8 (docs/planning/06, REQ-UXS-*), used by unity.html
   now,
   dayOffset: () => dayOffset,
-  setDayOffset(days: number) { dayOffset = Math.max(0, Math.floor(days)); try { localStorage.setItem(DAY_KEY, String(dayOffset)); } catch { /* ignore */ } },
+  /** Moves the demo to `days` game days after today's (12:00 JST of that day); 0 = the real clock. Re-setting the same offset keeps the clock. */
+  setDayOffset(days: number) { const d = Math.max(0, Math.floor(days)); if (d !== dayOffset) applyDayOffset(d); try { localStorage.setItem(DAY_KEY, String(dayOffset)); } catch { /* ignore */ } },
   consentVersions: master.progression.consent,
   // REQ-UXS-001: the terms/privacy versions agreed to and when
   recordConsent: () => wrap(() => svc.recordConsent(ID, master.progression.consent!.termsVersion, master.progression.consent!.privacyVersion)),
@@ -931,13 +959,21 @@ export const MuchiLogic = {
     const h = s.horses.find((x) => x.id === horseId);
     if (!h) throw new Error('horse ' + horseId);
     const beginner = s.rating.rankedRaces < master.progression.beginnerRaces;
-    const bm = master.progression.beginnerMatch;
-    const tId = trackId ?? master.tracks[Math.floor(Math.random() * master.tracks.length)]!.id;
+    const horse = toRaceHorse(master, h);
+    const cls = classDef(master, s.season.classId);
+    // quality pass 2 (REQ-MM-009..012): the server's ranked card — a course that fits the horse, the class's CPU level band and
+    // strength, the ramp after the beginner matches (rankedMatchRules on a lone player's match, like the matchmaker's CPU fill)
+    const tId = trackId ?? (master.progression.rankedField?.courseFitsHorses ? rankedCourse(master, [horse], cryptoRng) : master.tracks[Math.floor(Math.random() * master.tracks.length)]!.id);
+    const rules = rankedMatchRules(master, {
+      players: [{ playerId: ID, rating: s.rating.r, beginner, enqueuedAt: 0, payload: { playerId: ID, horse, classId: cls.id, statCap: cls.statCap, rankedRaces: s.rating.rankedRaces, firstRace: null } as never }],
+      cpuCount: 11, cpuLevel: beginner ? 1 : cpuLevelFor(s.rating.r, false), beginner, quarantined: false,
+    });
     const config = buildRaceConfig(master, {
-      raceId: 'proto_' + Date.now().toString(36), mode: 'ranked', trackId: tId, statCap: classDef(master, s.season.classId).statCap,
-      humans: [{ playerId: ID, horse: toRaceHorse(master, h), cpuLevel: 3 }], cpuCount: 11, cpuLevel: beginner && bm ? bm.cpuLevel : 3,
+      raceId: 'proto_' + Date.now().toString(36), mode: 'ranked', trackId: tId, statCap: cls.statCap,
+      humans: [{ playerId: ID, horse, cpuLevel: 3 }], cpuCount: 11, cpuLevel: rules.cpuLevel,
       rng: cryptoRng, ground: groundFor(master, tId, 'ranked', now()),
-      ...(beginner && bm ? { cpuStatPermille: bm.cpuStatPermille } : {}),
+      ...(rules.cpuStatPermille ? { cpuStatPermille: rules.cpuStatPermille } : {}),
+      ...(rules.cpuStatTotal ? { cpuStatTotal: rules.cpuStatTotal } : {}),
     });
     return { config, beginner, trackName: trackNames.get(tId) ?? tId };
   },
@@ -1473,10 +1509,15 @@ export const MuchiLogic = {
   // challenge and rival; the team goal; the pinned horse goal), the menu (調教), 「レースへ」 (a race, the first race, the
   // first-win bonus) and the automatic login bonus. Mirrors Muchi.Game.NextActionModel.HomeCovered.
   homeCoveredKinds: ['race', 'first_race', 'first_win', 'login_bonus', 'missions_claim', 'missions_close', 'pass_claim', 'rival_week', 'weekly_challenge', 'team_goal_near', 'horse_goal_near', 'training_slots'] as string[],
+  // quality-2 integration: features with their own home element, so 「新しく開きました」 would say them twice — the daily missions
+  // (今日 rung), the season (シーズン rung), the rival and the weekly challenge (今週 rung), training (the menu's 調教 row with its
+  // dot). Mirrors Muchi.Game.NextActionModel.HomeCoveredFeatures.
+  homeCoveredFeatures: ['missions', 'training', 'season', 'rival', 'weekly_challenge'] as string[],
   /** Home's 次にやること: the first server item no other home element says, or null (no line). One link at most: 今日は閉じる. */
-  homeNextLine(v: { enabled?: boolean; primary?: { kind: string; dismissible?: boolean } | null; chips?: { kind: string; dismissible?: boolean }[] } | null) {
+  homeNextLine(v: { enabled?: boolean; primary?: { kind: string; dismissible?: boolean; featureKey?: string | null } | null; chips?: { kind: string; dismissible?: boolean; featureKey?: string | null }[] } | null) {
     if (!v || !v.enabled) return null;
-    const item = [v.primary, ...(v.chips ?? [])].find((i) => i && !this.homeCoveredKinds.includes(i.kind)) ?? null;
+    const covered = (i: { kind: string; featureKey?: string | null }) => this.homeCoveredKinds.includes(i.kind) || (i.kind === 'feature_unlocked' && !!i.featureKey && this.homeCoveredFeatures.includes(i.featureKey));
+    const item = [v.primary, ...(v.chips ?? [])].find((i) => i && !covered(i)) ?? null;
     return item ? { item, links: item.dismissible ? ['dismiss'] : [] } : null;
   },
   /** The ladder's season rung has something to receive: a season mission or a free pass reward (GoalLadderModel season Ready). */
@@ -1525,7 +1566,7 @@ export const MuchiLogic = {
     const st = await svc.teamState(ID);
     if (!st.teamId) return wrap(() => teamsSvc.goal(ID));
     const v = await teamsSvc.goal(ID);
-    if (v.current) clockShift = v.current.endsAt + 60_000 - Date.now() - dayOffset * DAY_MS;
+    if (v.current) clockShift = v.current.endsAt + 60_000 - dayClock();
     const teamId = st.teamId;
     await teams.goalAlarm(teamId, async (pid, c) => { await svc.teamGoalReward(pid, c.week, teamId, c.tier, c.eligible.find((x) => x.playerId === pid)?.n ?? 0); });
     return wrap(() => teamsSvc.goal(ID));

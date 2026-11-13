@@ -40,6 +40,13 @@ static class QualityIntegrationChecks
         var gl = NextActionModel.HomeLine(gift);
         check(gl != null && gl.Kind == "gift_expiring" && NextActionModel.HomeLinks(gl).Count == 0, "integration: not dismissible → no link (the line opens it)");
         check(NextActionModel.HomeLine(null) == null, "integration: no list → no line");
+        // quality-2 integration: a feature with its own home element (今日 / 今週 / シーズン rungs, the 調教 row) is not announced again
+        foreach (var f in new[] { "missions", "training", "season", "rival", "weekly_challenge" })
+        {
+            check(NextActionModel.HomeCoveredFeatures.Contains(f), "integration: feature " + f + " has its own home element");
+            var fv = NextActionsView.FromJson(Next("{\"kind\":\"missions_claim\",\"screen\":\"missions\",\"count\":1,\"dismissible\":true},\"chips\":[{\"kind\":\"feature_unlocked\",\"screen\":\"feature\",\"featureKey\":\"" + f + "\",\"dismissible\":true}]"));
+            check(NextActionModel.HomeLine(fv) == null, "integration: feature_unlocked " + f + " is said by the ladder → no line");
+        }
 
         // e) the ladder: the pass rewards on the season rung, the pass named on 目標, the cap linked to the horse card
         var api = new ApiClient(new NoServer(), new Tokens(), new ApiClientOptions { BaseUrl = "http://fake", Retry = new RetryPolicy { MaxRetries = 0 } });

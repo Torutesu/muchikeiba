@@ -17,6 +17,28 @@ namespace Muchi.Game
         public bool FreeClaimed, PremiumClaimed, FreeClaimable, PremiumClaimable;
         /// <summary>Level not reached yet (both cells dim).</summary>
         public bool Locked;
+        /// <summary>Quality pass 3: the standout of this cell (a looks-only part on top of the usual reward), null on ordinary tiers.</summary>
+        public PassStandout FreeStandout, PremiumStandout;
+        public bool IsStandout => FreeStandout != null || PremiumStandout != null;
+    }
+
+    /// <summary>
+    /// Quality pass 3: the claim moment of a standout tier — the same shared moment as a promotion or a stage-up (gold band in the
+    /// middle, leaves by itself, never blocks a tap), plus one step that uses what came: try it on in the silks editor.
+    /// </summary>
+    public sealed class PassStandoutMoment
+    {
+        public const string Kind = "pass_standout";
+        public int Level;
+        public string Kicker, Title, Sub, ItemId, ActionLabel;
+        public PassLook Look;
+        public static PassStandoutMoment For(PassStandout s) => s == null ? null : new PassStandoutMoment
+        {
+            Level = s.Level, ItemId = s.ItemId, Look = s.Look, Title = s.Label,
+            Kicker = "ティア" + s.Level + "　" + (s.Premium ? "有料報酬" : "無料報酬"),
+            Sub = "勝負服エディタで選べます（見た目だけ）",
+            ActionLabel = "勝負服に着てみる",
+        };
     }
 
     /// <summary>
@@ -67,7 +89,46 @@ namespace Muchi.Game
             }
         }
 
-        private static Reward At(PassLine line, int level) => line != null && line.Every > 0 && level % line.Every == 0 ? line.Reward : null;
+        // quality pass 3: a standout tier pays its own reward (PassLine.Tiers)
+        private static Reward At(PassLine line, int level) => line?.At(level);
+
+        // ---------------------------------------------------------------- standout tiers (quality pass 3, docs/quality/pass.md)
+
+        public List<PassStandout> Standouts => View?.Standouts ?? new List<PassStandout>();
+        private PassStandout StandoutAt(PassTrack track, int level) => Standouts.FirstOrDefault(x => x.Level == level && x.Premium == (track == PassTrack.Premium));
+
+        /// <summary>
+        /// "次の特別な段　ティア20 勝負服の袖「流星」　あと5段（24戦）" — the next peak, always in view (null when none is left).
+        /// The race count is the server's (same rule as the XP line).
+        /// </summary>
+        public string NextStandoutLine
+        {
+            get
+            {
+                var n = View?.NextStandout;
+                if (n == null) return null;
+                return "次の特別な段　ティア" + n.Level + " " + n.Label + "　あと" + n.LevelsAway + "段（" + n.RacesAway + "戦）" + (n.Premium ? "" : "・無料ライン");
+            }
+        }
+
+        /// <summary>The player's own silks with a standout put on (the pass screen's try-on; nothing is saved or bought).</summary>
+        public SilksDesign PreviewDesign(SilksDesign mine, PassStandout standout) => PassPreview.Apply(mine, standout?.Look);
+        /// <summary>The whole premium set on the player's own silks (what the paid line ends up giving).</summary>
+        public SilksDesign PreviewSet(SilksDesign mine) => PassPreview.ApplyAll(mine, Standouts, "premium");
+
+        /// <summary>
+        /// Set when a claim (one cell or まとめて受け取る) paid out a standout tier: the screen plays the shared moment (gold band,
+        /// leaves by itself) with these lines, then clears it with <see cref="TakeMoment"/>. The highest standout wins when several came at once.
+        /// </summary>
+        public PassStandoutMoment PendingMoment { get; private set; }
+        public PassStandoutMoment TakeMoment() { var m = PendingMoment; PendingMoment = null; return m; }
+        private void NoteClaimed(PassTrack track, int level)
+        {
+            var st = StandoutAt(track, level);
+            if (st == null) return;
+            var mo = PassStandoutMoment.For(st);
+            if (PendingMoment == null || st.Level >= PendingMoment.Level) PendingMoment = mo;
+        }
 
         public List<PassLevelRow> Rows
         {
@@ -85,6 +146,7 @@ namespace Muchi.Game
                     {
                         Level = lv, Free = f, Premium = p, FreeText = f == null ? null : UxText.Reward(f), PremiumText = p == null ? null : UxText.Reward(p),
                         FreeClaimed = View.ClaimedFree.Contains(lv), PremiumClaimed = View.ClaimedPremium.Contains(lv), Locked = !reached,
+                        FreeStandout = StandoutAt(PassTrack.Free, lv), PremiumStandout = StandoutAt(PassTrack.Premium, lv),
                     };
                     r.FreeClaimable = open && reached && f != null && !r.FreeClaimed;
                     r.PremiumClaimable = open && reached && p != null && Owned && !r.PremiumClaimed;
@@ -129,6 +191,7 @@ namespace Muchi.Game
             {
                 var reward = await B.Api.ClaimSeasonPassAsync(track, level, key, ct);
                 Kv.Set(slot, "");
+                NoteClaimed(track, level);
                 return ActionResult.Success(UxText.Reward(reward));
             }
             catch (ApiException e)

@@ -178,6 +178,8 @@ static class Program
         await QualityIntegrationChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 2: the scout confirmation (paid / free split, tickets, the SR+ ticket, shortfall route) and the purchase receipt (rows, next step, KPI)");
         MonetizationQualityChecks.Run(Check);
+        Console.WriteLine("== quality pass 3: the season pass standout tiers (next peak line, standout cells, try-on on the own silks, the claim moment)");
+        await Round8Checks.PassStandouts(Check, Ruleset());
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");

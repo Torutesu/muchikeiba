@@ -283,7 +283,7 @@ export function passScreen(m: Master, s: PlayerState, now: number) {
     owned: owned.map((x) => x.productId),
     purchasable: owned.length === 0 ? m.products.filter((p) => p.kind === 'season_pass' && p.storeType !== 'auto_renewing').map((p) => p.id) : [],
     claimed: sp.claimed,
-    rewards: m.progression.passRewards,
+    rewards: { free: m.progression.passRewards.free, premium: m.progression.passRewards.premium },
     autoGrantAtSeasonEnd: true,
     lastSeason: last && last.seasonId !== sp.seasonId ? last : null,
     ...passStandoutView(m, s, now),

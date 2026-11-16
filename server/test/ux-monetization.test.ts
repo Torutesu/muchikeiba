@@ -246,7 +246,7 @@ describe('REQ-UXS-010 daily first-3-wins bonus', () => {
     expect(((await w.ranked('p', 2)) as { firstWinBonus: number }).firstWinBonus).toBe(0);
     const v = await w.svc.applyRace('p', { raceId: 'void1', mode: 'ranked', place: 1, fieldSize: 12, newRating: null, void: true });
     expect((v as { firstWinBonus: number }).firstWinBonus).toBe(0);
-    expect(((await w.ranked('p', 1)) as { firstWinBonus: number }).firstWinBonus).toBe(30);
+    expect(((await w.ranked('p', 1)) as { firstWinBonus: number }).firstWinBonus).toBe(20);
   });
 });
 

@@ -10,6 +10,9 @@ import { CAREER_HARD_LIMITS, careerOf, careerTotals } from '../src/domain/career
 describe('economy targets (90 days, 3 seeds)', () => {
   let res: Record<string, EconomyResult>;
   const run = async () => (res ??= await simulateAll(m, 90, [1, 2, 3]));
+  // Quality pass 3: the primary E1 persona — the free daily player on the places the ranked field really gives an average rider
+  let primaryRuns: EconomyResult[];
+  const primary = async () => (primaryRuns ??= await Promise.all([1, 2, 3].map((seed) => simulate(m, rankedPlacesPersona(m, JSON.parse(readFileSync(join(import.meta.dirname, '../../contracts/ranked-places.vectors.json'), 'utf8')) as RankedPlaceVectors, 'average'), 90, seed))));
 
   // Quality pass 3: the uniform-place free player is the secondary diagnostic (E1 at real ranked places is the primary,
   // below). It keeps the E1–E3 ranges as a floor/ceiling check and is the denominator of the E5/E6/E10/E11/E13 ratios.
@@ -297,9 +300,12 @@ describe('economy targets (90 days, 3 seeds)', () => {
   }, 3_600_000);
 
   it('E9 friend races cannot replace ranked play as an income (daily cap ≤ 30% of a free player day)', async () => {
-    const r = (await run()).f2p!;
+    // quality pass 3: against the primary free player's day (real ranked places, 174/day); the uniform diagnostic day is 148
+    // (the 5 × 10 cap is 34% of it) since the ranked place coins were cut — E9 compares with what ranked really pays
+    const runs = await primary();
+    const freePerDay = runs.reduce((a, r) => a + r.freeCoinsPerActiveDay, 0) / runs.length;
     const maxFriendPerDay = m.progression.friendRewardDailyCap * Math.max(...m.progression.raceFreeCoinsByPlace.friend!);
-    expect(maxFriendPerDay).toBeLessThanOrEqual(0.3 * r.freeCoinsPerActiveDay);
+    expect(maxFriendPerDay).toBeLessThanOrEqual(0.3 * freePerDay);
   }, 3_600_000);
 
   it('E1-E3 (primary, quality pass 3 / W8): the free daily player on the places the ranked field really gives an average rider', async () => {
@@ -308,9 +314,7 @@ describe('economy targets (90 days, 3 seeds)', () => {
     // (docs/quality/economy.md, balance-targets §4.21) made this the primary E1 — the uniform-place E1 above is the
     // secondary diagnostic. Before the re-base this was 76.4 (E2 3.22, pity day 36); the ranked place coins (−34%) and the
     // first-win bonus (30/20/10 → 20/10/5) were cut to bring it to 62.0.
-    const v = JSON.parse(readFileSync(join(import.meta.dirname, '../../contracts/ranked-places.vectors.json'), 'utf8')) as RankedPlaceVectors;
-    const persona = rankedPlacesPersona(m, v, 'average');
-    const runs = await Promise.all([1, 2, 3].map((seed) => simulate(m, persona, 90, seed)));
+    const runs = await primary();
     const avg = (f: (r: EconomyResult) => number) => runs.reduce((a, r) => a + f(r), 0) / runs.length;
     expect(avg((r) => r.pullsPerMonth)).toBeGreaterThanOrEqual(40);
     expect(avg((r) => r.pullsPerMonth)).toBeLessThanOrEqual(65);

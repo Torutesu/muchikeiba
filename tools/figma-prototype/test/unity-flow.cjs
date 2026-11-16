@@ -285,6 +285,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     // the test runs), the comeback welcome rightly comes first — leave it for later
     await click('BACK'); await waitScreen(['home', 'comeback-welcome']);
     if ((await screen()) === 'comeback-welcome') { await click('あとで'); await waitScreen('home'); }
+    // …or the session's one prompt was already taken, so the welcome waits for the next session: a later flow that opens
+    // a fresh session (the promotion demo) then met it instead of home on those weekdays. The demo's jump is not a real
+    // lapse: record the welcome as shown (what the welcome screen itself records when it is drawn).
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const v = (await L.comeback()).value; if (v.active && v.window?.showWelcome) await L.comebackWelcomed(); });
     await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
   }
 

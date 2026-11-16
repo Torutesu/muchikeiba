@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { m } from './helpers.js';
-import { rankedPlacesPersona, rankedRulesetVersion, simulate, simulateAll, type EconomyResult, type RankedPlaceVectors } from '../src/sim/economy.js';
+import { PERSONAS, rankedPlacesPersona, rankedRulesetVersion, simulate, simulateAll, type EconomyResult, type RankedPlaceVectors } from '../src/sim/economy.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { oddsDisclosure } from '../src/domain/gacha.js';
@@ -144,8 +144,16 @@ describe('economy targets (90 days, 3 seeds)', () => {
       expect(all[id]!.trainingSessions / all[id]!.activeDays).toBeGreaterThanOrEqual(2.5);
       expect(all[id]!.trainedPoints).toBeGreaterThan(0);
     }
-    // paying never buys more growth: the payer's horses (rarer, less potential) grow at most as fast as the free player's
-    for (const id of ['light', 'medium', 'allowance', 'ads']) expect(perDay(id)).toBeLessThanOrEqual(perDay('f2p') * 1.05);
+    // paying never buys more growth: the payer's horses (rarer, less potential) grow at most as fast as the free player's.
+    // Growth per day depends on which horses the draws gave (their potential), so 3 seeds are noisy: one lucky draw moves a
+    // persona by ±0.6/day. Average 6 seeds for this comparison (the 3 shared runs + seeds 4–6); the 5% limit is unchanged.
+    const ids = ['f2p', 'light', 'medium', 'allowance', 'ads'];
+    const extra = Object.fromEntries(await Promise.all(ids.map(async (id) => {
+      const rs = await Promise.all([4, 5, 6].map((s) => simulate(m, PERSONAS.find((p) => p.id === id)!, 90, s)));
+      return [id, rs.reduce((a, r) => a + r.trainedPoints / r.activeDays, 0) / rs.length] as const;
+    })));
+    const perDay6 = (id: string) => (perDay(id) + extra[id]!) / 2;
+    for (const id of ['light', 'medium', 'allowance', 'ads']) expect(perDay6(id)).toBeLessThanOrEqual(perDay6('f2p') * 1.05);
     // in ranked (class-normalised stat totals) the gap between the medium payer's and the free player's best horse
     // after 90 days of training is never wider than without the training, in every class
     for (const c of m.progression.classes) {

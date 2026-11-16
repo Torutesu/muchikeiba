@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { m } from './helpers.js';
-import { harnessPlaceWeights, PERSONAS, simulate, simulateAll, type EconomyResult, type RankedPlaceVectors } from '../src/sim/economy.js';
+import { rankedPlacesPersona, rankedRulesetVersion, simulate, simulateAll, type EconomyResult, type RankedPlaceVectors } from '../src/sim/economy.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { oddsDisclosure } from '../src/domain/gacha.js';
@@ -11,7 +11,9 @@ describe('economy targets (90 days, 3 seeds)', () => {
   let res: Record<string, EconomyResult>;
   const run = async () => (res ??= await simulateAll(m, 90, [1, 2, 3]));
 
-  it('E1-E3 a free player who plays daily: ~1 ten-pull a week, about 2 SSR a month, pity in about 2 months', async () => {
+  // Quality pass 3: the uniform-place free player is the secondary diagnostic (E1 at real ranked places is the primary,
+  // below). It keeps the E1–E3 ranges as a floor/ceiling check and is the denominator of the E5/E6/E10/E11/E13 ratios.
+  it('E1-E3 (diagnostic, uniform places) a free player who plays daily: ~1 ten-pull a week, about 2 SSR a month, pity in about 2 months', async () => {
     const r = (await run()).f2p!;
     expect(r.pullsPerMonth).toBeGreaterThanOrEqual(40);
     expect(r.pullsPerMonth).toBeLessThanOrEqual(65);
@@ -65,8 +67,8 @@ describe('economy targets (90 days, 3 seeds)', () => {
   it('E1 note: the daily first-win bonus pays on ranked wins only and is part of the free income (REQ-UXS-010)', async () => {
     const r = (await run()).f2p!;
     expect(r.firstWinCoins).toBeGreaterThan(0);
-    // at most 30+20+10 a day
-    expect(r.firstWinCoins / r.activeDays).toBeLessThanOrEqual(60);
+    // at most the whole table a day (20+10+5 since quality pass 3)
+    expect(r.firstWinCoins / r.activeDays).toBeLessThanOrEqual(m.progression.firstWinBonus!.freeCoinsByWin.reduce((a, c) => a + c, 0));
   }, 3_600_000);
 
   it('E11 the invite program (REQ-INV-*): an invited free player stays inside E1/E2, an inviter at the cap gains less than the season pass', async () => {
@@ -300,18 +302,43 @@ describe('economy targets (90 days, 3 seeds)', () => {
     expect(maxFriendPerDay).toBeLessThanOrEqual(0.3 * r.freeCoinsPerActiveDay);
   }, 3_600_000);
 
-  it('W8 (quality pass 2, docs/quality/ranked.md §3.3): E1 at the places the ranked field really gives an average rider', async () => {
+  it('E1-E3 (primary, quality pass 3 / W8): the free daily player on the places the ranked field really gives an average rider', async () => {
     // contracts/ranked-places.vectors.json is written by the C# ranked harness (RankedBalanceTests keep it current): the
-    // average rider's place counts in the beginner matches, the ramp and each class. The E1 above assumes uniform places
-    // (64.2); the field has never given an average rider exactly that. Before quality pass 2 these places gave E1 73.1 (the
-    // off-aptitude courses lowered C, the weak CPU fields above C raised B and A); after it 76.4. This guards the number (it
-    // moves only with the ranked card or the coin tables) — whether E1 should be re-based on it is an owner decision.
+    // rider's place counts in the beginner matches, the ramp and each class, on the ruleset ranked runs on. Quality pass 3
+    // (docs/quality/economy.md, balance-targets §4.21) made this the primary E1 — the uniform-place E1 above is the
+    // secondary diagnostic. Before the re-base this was 76.4 (E2 3.22, pity day 36); the ranked place coins (−34%) and the
+    // first-win bonus (30/20/10 → 20/10/5) were cut to bring it to 62.0.
     const v = JSON.parse(readFileSync(join(import.meta.dirname, '../../contracts/ranked-places.vectors.json'), 'utf8')) as RankedPlaceVectors;
-    const f2p = PERSONAS.find((p) => p.id === 'f2p')!;
-    const persona = { ...f2p, id: 'f2p_ranked_average', placeWeights: harnessPlaceWeights(v, 'average', '1.3.0', m.progression.beginnerRaces, 10) };
+    const persona = rankedPlacesPersona(m, v, 'average');
     const runs = await Promise.all([1, 2, 3].map((seed) => simulate(m, persona, 90, seed)));
-    const e1 = runs.reduce((a, r) => a + r.pullsPerMonth, 0) / runs.length;
-    expect(e1).toBeGreaterThanOrEqual(40);
-    expect(e1).toBeLessThanOrEqual(77);
+    const avg = (f: (r: EconomyResult) => number) => runs.reduce((a, r) => a + f(r), 0) / runs.length;
+    expect(avg((r) => r.pullsPerMonth)).toBeGreaterThanOrEqual(40);
+    expect(avg((r) => r.pullsPerMonth)).toBeLessThanOrEqual(65);
+    expect(avg((r) => r.ssrPerMonth)).toBeGreaterThanOrEqual(1.2);
+    expect(avg((r) => r.ssrPerMonth)).toBeLessThanOrEqual(2.8);
+    for (const r of runs) {
+      expect(r.firstPityDay).not.toBeNull();
+      expect(r.firstPityDay!).toBeGreaterThanOrEqual(40);
+      expect(r.firstPityDay!).toBeLessThanOrEqual(75);
+    }
   }, 3_600_000);
+
+  it('W8 skill still pays: per ranked race, a skilled rider earns clearly more than an average one, an average one more than a masher', () => {
+    // the place coins weighed by the harness places in every class and stage (the coin table is the only input that moves)
+    const v = JSON.parse(readFileSync(join(import.meta.dirname, '../../contracts/ranked-places.vectors.json'), 'utf8')) as RankedPlaceVectors;
+    const coins = m.progression.raceFreeCoinsByPlace.ranked;
+    const ruleset = rankedRulesetVersion(m);
+    const perRace = (rider: string, set: string) => {
+      const c = v.cells.find((x) => x.set === set && x.rider === rider && x.ruleset === ruleset)!;
+      return c.places.reduce((a, n, i) => a + n * (coins[i] ?? 0), 0) / c.places.reduce((a, n) => a + n, 0);
+    };
+    const uniform = coins.reduce((a, c) => a + c, 0) / coins.length;
+    for (const set of [...new Set(v.cells.filter((x) => x.ruleset === ruleset).map((x) => x.set))]) {
+      expect(perRace('skilled', set), set).toBeGreaterThan(perRace('average', set));
+      expect(perRace('average', set), set).toBeGreaterThan(perRace('masher', set));
+    }
+    // class C regular, the class most players are in: skilled ≥ 1.4× average; average stays within 1.40× uniform (W8)
+    expect(perRace('skilled', 'C/starter/regular') / perRace('average', 'C/starter/regular')).toBeGreaterThanOrEqual(1.4);
+    expect(perRace('average', 'C/starter/regular') / uniform).toBeLessThanOrEqual(1.4);
+  });
 });

@@ -22,6 +22,7 @@ import { dayRule } from '../domain/time.js';
 import { raceTimeMs } from '../domain/timeAttack.js';
 import { ensureTeam } from '../domain/teams.js';
 import { ensureGoal, weekKeyOf } from '../domain/teamGoal.js';
+import { buildRuleset, rulesetForMode } from '../domain/ruleset.js';
 
 export interface Persona {
   id: string;
@@ -678,4 +679,22 @@ export function harnessPlaceWeights(v: RankedPlaceVectors, rider: string, rulese
     at.rankedRaces < beginnerRaces ? cell('C/starter/beginner')
       : at.rankedRaces < beginnerRaces + rampRaces && at.classId === 'C' ? cell('C/starter/ramp')
         : cell(`${at.classId}/${at.rankedRaces < day30AfterRaces ? 'starter' : 'day30'}/regular`);
+}
+
+/** The riders the ranked harness measures (engine/Muchi.Verifier/RankedHarness.cs): mashes the button / plays like most people / plays well. */
+export const RANKED_RIDERS = ['masher', 'average', 'skilled'] as const;
+export type RankedRider = (typeof RANKED_RIDERS)[number];
+
+/** The ruleset ranked races run on with this master (1.3.0, or 1.4.0 once `progression.raceTactics.modes.ranked` is on): its harness places feed E1. */
+export function rankedRulesetVersion(m: Master): string {
+  return rulesetForMode(buildRuleset(), 'ranked', m.progression.raceTactics).rulesetVersion;
+}
+
+/**
+ * Quality pass 3 (docs/quality/economy.md, balance-targets §4.21): E1 is measured on the ranked places the field really gives.
+ * `base` (the free daily player by default) with its ranked places drawn from the harness vectors for `rider` on `ruleset`
+ * (the beginner matches, the ramp of 10, then the player's class; the partner as given for 90 ranked races, then the day-30 horse).
+ */
+export function rankedPlacesPersona(m: Master, v: RankedPlaceVectors, rider: RankedRider, ruleset = rankedRulesetVersion(m), base: Persona = PERSONAS.find((p) => p.id === 'f2p')!): Persona {
+  return { ...base, id: `${base.id}_ranked_${rider}`, label: `${base.label}・実際の着順（${rider}）`, placeWeights: harnessPlaceWeights(v, rider, ruleset, m.progression.beginnerRaces, 10) };
 }

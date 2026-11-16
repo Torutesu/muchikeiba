@@ -359,7 +359,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `active` は有料ラインを受け取れるか（＝このシーズンのパスを持っている）。`lastSeason` は前のシーズンの締めで自動付与した分（無ければ null）。締めの処理（`closeSeason`）の結果にも同じ形の `pass` が入る。
 
 ### 13.7 `GET /v1/missions`（追加フィールド、REQ-UXS-010）
-`{ "missions": [ … ], "firstWinBonus": { "modes": ["ranked"], "byWin": [30, 20, 10], "winsToday": 1, "remaining": 2, "next": 20 } }`。レース結果（`applyRace` の戻り値）には `firstWinBonus`（そのレースで付いた無償コイン、0 なら無し）が入る。
+`{ "missions": [ … ], "firstWinBonus": { "modes": ["ranked"], "byWin": [20, 10, 5], "winsToday": 1, "remaining": 2, "next": 10 } }`。レース結果（`applyRace` の戻り値）には `firstWinBonus`（そのレースで付いた無償コイン、0 なら無し）が入る。
 
 ### 13.8 返金（REQ-PUR-006 の拡張）
 ストアの返金通知の結果に `linkedClawback: { "freeCoins": n, "items": { "<itemId>": n } }` が加わる：購入の後にその購入のおかげで付与した分（厩舎手当の受け取り済みの無償コイン、パスの有料ラインの報酬、パス＋の10段でだけ届いた無料ラインの報酬）。足りない分は従来どおり未精算（`debt` / `itemDebt`）になり、精算までガチャと購入が止まる。

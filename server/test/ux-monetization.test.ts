@@ -231,18 +231,18 @@ describe('REQ-UXS-021 unclaimed pass rewards are granted at the season close', (
 });
 
 describe('REQ-UXS-010 daily first-3-wins bonus', () => {
-  it('30 / 20 / 10 free coins for the first three ranked wins of the JST day; friend races and void races do not count', async () => {
+  it('20 / 10 / 5 free coins (quality pass 3; was 30 / 20 / 10) for the first three ranked wins of the JST day; friend races and void races do not count', async () => {
     const w = world(jst(2026, 11, 5, 10));
     await adult(w);
     const fw = m.progression.firstWinBonus!;
-    expect(fw).toEqual({ modes: ['ranked'], freeCoinsByWin: [30, 20, 10], _note: expect.any(String) } as unknown as typeof fw);
+    expect(fw).toEqual({ modes: ['ranked'], freeCoinsByWin: [20, 10, 5], _note: expect.any(String) } as unknown as typeof fw);
     const got: number[] = [];
     for (let i = 0; i < 4; i++) got.push(((await w.ranked('p', 1)) as { firstWinBonus: number }).firstWinBonus);
-    expect(got).toEqual([30, 20, 10, 0]);
+    expect(got).toEqual([20, 10, 5, 0]);
     expect(((await w.ranked('p', 1, 'friend')) as { firstWinBonus: number }).firstWinBonus).toBe(0);
     expect(await w.svc.firstWinBonus('p')).toMatchObject({ winsToday: 3, remaining: 0, next: null });
     w.at(jst(2026, 11, 6, 0) + 60_000); // JST midnight resets
-    expect(await w.svc.firstWinBonus('p')).toMatchObject({ winsToday: 0, remaining: 3, next: 30 });
+    expect(await w.svc.firstWinBonus('p')).toMatchObject({ winsToday: 0, remaining: 3, next: 20 });
     expect(((await w.ranked('p', 2)) as { firstWinBonus: number }).firstWinBonus).toBe(0);
     const v = await w.svc.applyRace('p', { raceId: 'void1', mode: 'ranked', place: 1, fieldSize: 12, newRating: null, void: true });
     expect((v as { firstWinBonus: number }).firstWinBonus).toBe(0);
@@ -409,7 +409,7 @@ describe('HTTP: shop endpoints (contracts/protocol.md §13)', () => {
     expect(claim.freeCoins).toBe(30);
     expect(await (await handle(req('GET', '/v1/shop/allowance', 'u'), {}, c)).json()).toMatchObject({ active: true, claimedToday: true });
     const missions = await (await handle(req('GET', '/v1/missions', 'u'), {}, c)).json() as { firstWinBonus: { remaining: number } };
-    expect(missions.firstWinBonus).toMatchObject({ remaining: 3, next: 30, byWin: [30, 20, 10] });
+    expect(missions.firstWinBonus).toMatchObject({ remaining: 3, next: 20, byWin: [20, 10, 5] });
     const pass = await (await handle(req('GET', '/v1/season-pass', 'u'), {}, c)).json() as Record<string, unknown>;
     expect(pass).toMatchObject({ seasonId: '2026-11', autoRenew: false, autoGrantAtSeasonEnd: true, purchasable: ['season_pass', 'season_pass_plus'] });
   });

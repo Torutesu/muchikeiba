@@ -14,10 +14,10 @@ import type { Master, Product, Reward, ShopOffersConfig } from './master.js';
 import type { PlayerState, PurchaseRecord } from './player.js';
 import { addJstDays, dayRule, gameDayKey, gameDaysUntil, jstMonthKey } from './time.js';
 import { clawbackFree, grantFree } from './wallet.js';
-import { levelOf, passPurchasesFor, seasonEndMs } from './pass.js';
+import { levelOf, passLineLevels, passLineTotal, passPurchasesFor, passStandouts, seasonEndMs } from './pass.js';
 import { experimentsView } from './onboarding.js';
 import { windowActive } from './comeback.js';
-import { itemPurpose, rewardTimes } from './receipt.js';
+import { itemPurpose } from './receipt.js';
 
 export interface OfferRecord { triggeredAt?: number; reason?: string; viewedAt?: number }
 /** REQ-UXS-018: one 厩舎手当 purchase. Day 1 = `startDate` (game day, gameDayKey); the last day is startDate + days − 1. */
@@ -60,7 +60,9 @@ export type ProductContent =
   | { type: 'daily_free_coins'; qty: number; days: number; total: number; label: string }
   | { type: 'pass_premium'; levels: number; reward: Reward; label: string;
       /** Quality pass 2: every tier added up, stated plainly (never as a ratio), so the track's value is legible. */
-      total: Reward; totalLabel: string }
+      total: Reward; totalLabel: string;
+      /** Quality pass 3: the standout tiers (a looks-only cosmetic on top of the tier's coins and material), and one line naming them. */
+      standouts: { level: number; itemId: string; label: string }[]; standoutLabel: string | null }
   | { type: 'pass_levels'; qty: number; label: string }
   | { type: 'item'; itemId: string; qty: number; label: string;
       /** Quality pass 2: what it does in play (products.json display.itemPurposes), null when not stated. */
@@ -76,10 +78,16 @@ export function productContents(m: Master, p: Product): ProductContent[] {
   }
   if (p.kind === 'season_pass') {
     const pr = m.progression.passRewards.premium;
-    const levels = Math.floor(m.progression.passMaxLevel / pr.every);
-    const total = rewardTimes(pr.reward, levels);
+    const levels = passLineLevels(m, 'premium').length;
+    // the coins and material added up (quality pass 2); the standout cosmetics are named on their own line (standoutLabel)
+    const all = passLineTotal(m, 'premium');
+    const looks = new Set(passStandouts(m).map((x) => x.itemId));
+    const rest = (all.items ?? []).filter((it) => !looks.has(it.itemId));
+    const total: Reward = { ...(all.freeCoins ? { freeCoins: all.freeCoins } : {}), ...(rest.length ? { items: rest } : {}) };
+    const standouts = passStandouts(m).filter((x) => x.track === 'premium').map((x) => ({ level: x.level, itemId: x.itemId, label: itemLabel(m, x.itemId) }));
     out.push({ type: 'pass_premium', levels, reward: pr.reward, label: `シーズンパス有料ライン 全${levels}段（各段：${rewardText(m, pr.reward)}）`,
-      total, totalLabel: `${levels}段の合計：${rewardText(m, total)}` });
+      total, totalLabel: `${levels}段の合計：${rewardText(m, total)}`,
+      standouts, standoutLabel: standouts.length ? standouts.map((x) => `ティア${x.level} ${x.label}`).join('・') : null });
     if (p.pass?.levels) out.push({ type: 'pass_levels', qty: p.pass.levels, label: `パスのレベル＋${p.pass.levels}（購入時）` });
   }
   for (const it of p.items ?? []) out.push({ type: 'item', itemId: it.itemId, qty: it.qty, label: `${itemLabel(m, it.itemId)}×${it.qty}`, purpose: itemPurpose(m, it.itemId) });
@@ -103,6 +111,47 @@ function noticeKeys(p: Product): string[] {
 }
 
 const tabOf = (p: Product) => p.tab ?? (p.kind === 'coins' ? 'coins' : p.kind === 'season_pass' ? 'pass' : 'recommended');
+
+// ---------------------------------------------------------------- shop layout proposals (quality pass 3, remote config)
+
+/** Kinds that may be retired by config: coin packs (8 → 6) and the promotion packs. Never the pass, the starter or the daily pack. */
+export const RETIRABLE_KINDS = new Set(['coins', 'promotion']);
+export function shopLayoutOf(m: Pick<Master, 'progression'>) {
+  const c = m.progression.shopLayout;
+  return { allowanceUnderPass: c?.allowanceUnderPass === true, retiredProducts: new Set(c?.retiredProducts ?? []) };
+}
+/** A product no longer offered (progression.shopLayout.retiredProducts): not listed, no offer, a new intent is refused. */
+export const isRetired = (m: Pick<Master, 'progression'>, productId: string) => shopLayoutOf(m).retiredProducts.has(productId);
+/** Where the shop lists a product: the daily pack moves under the season pass screen when allowanceUnderPass is on. */
+export function shopTabOf(m: Pick<Master, 'progression'>, p: Product): string {
+  if (p.kind === 'allowance' && shopLayoutOf(m).allowanceUnderPass) return 'pass';
+  return tabOf(p);
+}
+
+/**
+ * Quality pass 3: the shape of progression.shopLayout (every config version). Retired ids are known coin / promotion
+ * packs; at least 4 coin packs stay on sale, and the smallest and the largest pack always do (the cheapest way in and
+ * the largest single purchase under the age caps do not change).
+ */
+export function shopLayoutProblems(m: Pick<Master, 'progression' | 'products'>): string[] {
+  const out: string[] = [];
+  const c = m.progression.shopLayout;
+  if (!c) return out;
+  if (c.allowanceUnderPass !== undefined && typeof c.allowanceUnderPass !== 'boolean') out.push('shopLayout.allowanceUnderPass: a boolean');
+  const ids = c.retiredProducts ?? [];
+  if (!Array.isArray(ids)) return [...out, 'shopLayout.retiredProducts: an array of product ids'];
+  for (const id of ids) {
+    const p = m.products.find((x) => x.id === id);
+    if (!p) out.push(`shopLayout.retiredProducts: unknown product ${id}`);
+    else if (!RETIRABLE_KINDS.has(p.kind)) out.push(`shopLayout.retiredProducts: ${id} (${p.kind}) cannot be retired — coin and promotion packs only`);
+  }
+  if (new Set(ids).size !== ids.length) out.push('shopLayout.retiredProducts: duplicate id');
+  const coins = m.products.filter((p) => p.kind === 'coins').sort((a, b) => a.priceYen - b.priceYen);
+  const left = coins.filter((p) => !ids.includes(p.id));
+  if (coins.length && left.length < Math.min(4, coins.length)) out.push(`shopLayout.retiredProducts: at least 4 coin packs stay on sale (${left.length} left)`);
+  for (const edge of [coins[0], coins[coins.length - 1]]) if (edge && ids.includes(edge.id)) out.push(`shopLayout.retiredProducts: ${edge.id} is the smallest or largest coin pack and stays on sale`);
+  return out;
+}
 
 export type OwnedReason = 'once' | 'season_pass' | 'allowance';
 
@@ -137,10 +186,10 @@ export function shopProducts(m: Master, mine?: { s: PlayerState; now: number }) 
   return {
     personalized: mine !== undefined,
     ...(mine ? { seasonId } : {}),
-    products: m.products.filter((p) => p.storeType !== 'auto_renewing').map((p) => ({
+    products: m.products.filter((p) => p.storeType !== 'auto_renewing' && !isRetired(m, p.id)).map((p) => ({
       ...p,
       name: p.name ?? p.id,
-      tab: tabOf(p),
+      tab: shopTabOf(m, p),
       storeType: p.storeType ?? 'consumable',
       autoRenew: false,
       contents: productContents(m, p),
@@ -361,13 +410,13 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
     }
   }
   // T4 promotion pack: once per class reached by promotion
-  for (const p of m.products.filter((x) => x.kind === 'promotion' && x.classId && !everBought(s, x.id))) {
+  for (const p of m.products.filter((x) => x.kind === 'promotion' && x.classId && !everBought(s, x.id) && !isRetired(m, x.id))) {
     if (!classReached(m, s, p.classId!)) continue;
     add(p.id, p, 'T4', true, trigger(sh, p.id, `class_${p.classId}`, now));
   }
   // daily pack: shop placement only, while none is running or queued
   if (!pendingAllowance(m, s, now)) for (const p of m.products.filter((x) => x.kind === 'allowance')) add(p.id, p, 'shop', false, null);
-  const coins = m.products.filter((p) => p.kind === 'coins');
+  const coins = m.products.filter((p) => p.kind === 'coins' && !isRetired(m, p.id));
   const remaining = coins.filter((p) => !s.firstPurchased.includes(p.id)).map((p) => p.id);
   return {
     offers,

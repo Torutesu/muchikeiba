@@ -12,7 +12,7 @@ import type { Master, Product, Reward } from './master.js';
 import type { PlayerState, PurchaseRecord } from './player.js';
 import { findProduct } from './purchase.js';
 import { VISUALS, type VisualsMaster } from './visuals.js';
-import { seasonEndMs } from './pass.js';
+import { passLineLevels, seasonEndMs } from './pass.js';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 const itemLabel = (m: Master, id: string) =>
@@ -81,8 +81,7 @@ export function purchaseReceipt(m: Master, s: PlayerState, rec: PurchaseRecord):
     lines.push({ kind: 'bonus_free_coins', label: `はじめての購入の${asPaid ? '有償' : '無償'}コイン${fmt(rec.bonusCoinsGranted)}枚`, purpose: null, qty: rec.bonusCoinsGranted });
   }
   if (p.kind === 'season_pass') {
-    const pr = m.progression.passRewards.premium;
-    const levels = Math.floor(m.progression.passMaxLevel / pr.every);
+    const levels = passLineLevels(m, 'premium').length;
     const until = rec.passUntil ?? (rec.passSeasonId ? seasonEndMs(rec.passSeasonId) : null);
     lines.push({ kind: 'pass', label: `シーズンパス有料ライン 全${levels}段`, purpose: '届いている段の報酬は、パスの画面ですぐ受け取れます', ...(until !== null ? { endsAt: until } : {}) });
     if (p.pass?.levels) lines.push({ kind: 'pass_levels', label: `パスのレベル＋${p.pass.levels}`, purpose: null, qty: p.pass.levels });

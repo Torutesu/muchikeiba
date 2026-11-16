@@ -9,6 +9,7 @@
  * A design travels as a compact deterministic code (`1` + eight base-36 pairs, see encodeSilksCode) built from fixed
  * per-part numbers, so every client draws the same silks; legacy `{ pattern, colors, cap }` silks read as a design too.
  */
+import { standoutSource } from './pass.js';
 import editorJson from '../../master/silks-editor.json';
 import { BASE_BANNED_SILKS, bannedMatch, combinedBanned, type BannedSilksList } from './bannedSilks.js';
 import { collectionOf, tierReached } from './collection.js';
@@ -388,6 +389,11 @@ export function sourceLabel(m: Master, src: SilksPartSource): string {
     case 'free': return '最初から使える';
     case 'item': {
       const c = cosmeticFor(m, src.itemId);
+      if (c?.notForSale) {
+        // quality pass 3: a season pass standout tier says where it comes from
+        const st = standoutSource(m, c.id);
+        if (st) return `シーズンパス ${st.track === 'premium' ? '有料' : '無料'}ライン ティア${st.level}で入手`;
+      }
       if (!c || c.notForSale) return '商品・報酬で入手';
       return c.currency === 'paidOnly' ? `有償コイン${fmt(c.price)}で購入` : `コイン${fmt(c.price)}で購入`;
     }

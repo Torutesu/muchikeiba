@@ -142,11 +142,17 @@ export interface ClassDef { id: string; statCap: number; promotePoints: number |
 /** `training` (REQ-TRAIN-011): finished training sessions (training.ts). */
 export interface MissionDef { id: string; kind: 'races' | 'wins' | 'top3' | 'training'; target: number; reward: Reward }
 export interface CollectionMissionDef { id: string; kind: 'collect'; templateIds: string[]; reward: Reward }
+/**
+ * One line of the season pass. `reward` is paid on every `every`-th level; quality pass 3 (docs/quality/pass.md): `tiers`
+ * replaces the reward of a few named levels (the standout tiers 10 / 20 / 30 add a looks-only cosmetic on top of the same
+ * coins and material, so the track's coin/material total is unchanged). Read through pass.ts passRewardAt.
+ */
+export interface PassLineDef { every: number; reward: Reward; tiers?: Record<string, Reward> }
 export interface Progression {
   classes: ClassDef[]; seasonPointsByPlace: number[];
   raceFreeCoinsByPlace: Record<'ranked' | 'friend' | 'tutorial', number[]>;
   passXpPerRace: number; passXpPerLevel: number; passMaxLevel: number;
-  passRewards: Record<'free' | 'premium', { every: number; reward: Reward }>;
+  passRewards: Record<'free' | 'premium', PassLineDef>;
   loginBonus: ({ day: number } & Reward)[]; dailyMissions: MissionDef[]; collectionMissions: CollectionMissionDef[];
   awakeningCost: number[]; awakeningStatPermillePerLevel: number; breedingPerDay: number; beginnerRaces: number;
   /** REQ-SEASON-002: per closed class, rank bands in ascending maxRank; maxRank null = participation. */
@@ -247,6 +253,8 @@ export interface Progression {
   selfLimits?: import('./selfLimits.js').SelfLimitsConfig;
   /** REQ-SURVEY-004 (§69): ゲーム内アンケート (surveys.ts, validated by surveysProblems). Absent = SURVEYS_DEFAULTS. */
   surveys?: Partial<import('./surveys.js').SurveysConfig>;
+  /** Quality pass 3 (docs/quality/pass.md §4): the owner's shop proposals behind remote config (shop.ts shopLayoutOf; off by default). */
+  shopLayout?: { allowanceUnderPass?: boolean; retiredProducts?: string[] };
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

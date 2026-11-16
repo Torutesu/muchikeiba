@@ -37,7 +37,11 @@
       "tack_bridle_pass_plus": "限定馬具「シーズンパス＋の頭絡」",
       "costume_promo_b": "B級昇級記念の勝負服の柄",
       "costume_promo_a": "A級昇級記念の勝負服の柄",
-      "costume_promo_s": "S級昇級記念の勝負服の柄"
+      "costume_promo_s": "S級昇級記念の勝負服の柄",
+      "silkpart_color_shokou": "勝負服の色「曙光」",
+      "silkpart_sleeve_comet": "勝負服の袖「流星」",
+      "silkpart_cap_comet": "勝負服の帽子「流れ星」",
+      "costume_silks_comet": "勝負服の柄「流星群」"
     },
     "itemPurposes": {
       "_note": "品質パス2：その品が遊びの中で何をするかを1行で（商品カードと購入の受け取り画面に出す）。見た目の品はランク戦の能力に影響しないことを必ず書く。",
@@ -49,7 +53,11 @@
       "tack_bridle_pass_plus": "馬具として装備できます（見た目だけ。ランク戦の能力は変わりません）",
       "costume_promo_b": "勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）",
       "costume_promo_a": "勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）",
-      "costume_promo_s": "勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）"
+      "costume_promo_s": "勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）",
+      "silkpart_color_shokou": "勝負服の色が選べるようになります（見た目だけ。ランク戦の能力は変わりません）",
+      "silkpart_sleeve_comet": "勝負服の袖が選べるようになります（見た目だけ。ランク戦の能力は変わりません）",
+      "silkpart_cap_comet": "勝負服の帽子が選べるようになります（見た目だけ。ランク戦の能力は変わりません）",
+      "costume_silks_comet": "勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）"
     },
     "notices": {
       "shop.paid_first": "有償コインから先に使われます",

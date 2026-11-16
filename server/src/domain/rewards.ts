@@ -8,7 +8,7 @@ import { DAY_MS, dayRule, gameDayKey, sameGameDay } from './time.js';
 import { grantFree } from './wallet.js';
 import type { Rating } from './rating.js';
 import { applyStats, evaluateTitles, type RaceDetails } from './stats.js';
-import { levelOf, notePassClaim } from './pass.js';
+import { levelOf, notePassClaim, passRewardAt } from './pass.js';
 
 /**
  * REQ-UXS-010: the day's first wins (1st place) pay extra free coins, up to `freeCoinsByWin.length` per game day,
@@ -93,13 +93,14 @@ export function claimPass(m: Master, s: PlayerState, track: 'free' | 'premium', 
   if (!Number.isInteger(level) || level < 1 || level > passLevel(m, s)) throw new AppError('NOT_ELIGIBLE');
   if (s.seasonPass.forfeitedAt !== undefined) throw new AppError('NOT_ELIGIBLE', 'the season pass was given up (account deletion)');
   if (track === 'premium' && !passActive(s, now)) throw new AppError('NOT_ELIGIBLE', 'season pass not active');
-  const def = m.progression.passRewards[track];
-  if (level % def.every !== 0) throw new AppError('NOT_ELIGIBLE');
+  // quality pass 3: a standout tier pays its own reward (passRewardAt)
+  const reward = passRewardAt(m, track, level);
+  if (!reward) throw new AppError('NOT_ELIGIBLE');
   if (s.seasonPass.claimed[track].includes(level)) throw new AppError('ALREADY_CLAIMED');
   s.seasonPass.claimed[track].push(level);
-  grantReward(s, def.reward, now, `pass ${track} ${level}`, String(level));
-  notePassClaim(m, s, track, level, def.reward);
-  return def.reward;
+  grantReward(s, reward, now, `pass ${track} ${level}`, String(level));
+  notePassClaim(m, s, track, level, reward);
+  return reward;
 }
 
 export interface RaceResultForPlayer {

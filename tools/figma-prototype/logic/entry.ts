@@ -1452,6 +1452,15 @@ export const MuchiLogic = {
       return svc.purchase(ID, 'fake', productId, store.issue({ transactionId: `proto_${Date.now().toString(36)}_${n++}`, productId, purchasedAt: now(), priceYen: p.priceYen }));
     });
   },
+  /** Demo only (quality pass 3, docs/quality/pass.md): stand at a pass level mid-season (XP of this season's pass; nothing is granted). */
+  async demoPassXp(xp: number) {
+    await svc.passView(ID); // rolls the season first, like any request
+    const s = repo.get(ID);
+    if (!s) return { ok: false as const };
+    s.seasonPass.xp = Math.max(0, Math.floor(xp));
+    repo.put(s);
+    return { ok: true as const, level: Math.floor(s.seasonPass.xp / master.progression.passXpPerLevel) };
+  },
   // 支部の応援スタンプ (REQ-TEAMFEED-*): a demo team led by demo members; every rule is the server's (TeamsService/TeamCore)
   async teamDemo() {
     const live = (t: string | null) => !!t && teams.cores.has(t) && !teams.cores.get(t)!.state?.disbanded;

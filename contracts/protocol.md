@@ -4315,6 +4315,41 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `purchase_receipt`（クライアント）`{ stage: view|next, productId, action: use_sr_ticket|wear_silks|open_pass|claim_allowance|scout|none }` → s1・s2・s3。
 - C# `AnalyticsEvent.ScoutConfirm`・`AnalyticsEvent.PurchaseReceipt`。クエリは `docs/ops/kpi-queries.md`「スカウトの確認・購入の受け取り」。
 
+## Q3. シーズンパスの特別な段・ショップの並びの提案（品質パス3、`server/src/domain/pass.ts`（`passRewardAt`・`passLineTotal`・`passStandouts`・`passRewardsProblems`）・`shop.ts`（`shopLayoutOf`・`shopLayoutProblems`）、C# `Shop.cs`（`PassLine.Tiers`／`At`・`PassStandout`・`PassPreview`）・`Models.cs`（`SeasonPassView.Standouts`／`NextStandout`）・`Muchi.Game.SeasonPassModel`、`docs/quality/pass.md`）
+**合計は変えない**：有料ラインは 無償コイン1,500枚＋配合素材×30、無料ラインは 無償コイン300枚のまま（どの段までの累計も同じ）。特別な段は、その段のいつもの報酬に**見た目だけの品**（非売品・有償限定でない）を1つ足す。ランク戦の能力に効く物は無い。追加はすべて任意のフィールド（古いクライアントは `rewards.<line>.reward` を全段に使い、受け取りでは特別な段の品も届く）。
+
+### Q3.1 マスター `progression.passRewards.<free|premium>.tiers`（リモート設定で毎シーズン差し替え可）
+```json
+"premium": { "every": 1, "reward": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }] },
+  "tiers": { "10": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }, { "itemId": "silkpart_color_shokou", "qty": 1 }] }, "20": {…}, "30": {…} } }
+```
+- 段 L の報酬 ＝ `tiers["L"]` があればそれ、無ければ `reward`（L が `every` の倍数の時だけ）。受け取り・シーズンの締めの自動付与・返金の取り戻しは全て段ごとの報酬で行う。
+- 検査（起動時とリモート設定の各版、`passRewardsProblems`）：キーは 1〜`passMaxLevel` の報酬の段、中身は `freeCoins` と `items` だけ（馬・繁殖牝馬・パスXPは不可）、見た目の品は `notForSale` で有償限定でない・数量1、同じ品を無料と有料の両方に置かない。成長に効く品は従来どおり不可（REQ-TRAIN-010）。
+- 出荷の値：有料 10「勝負服の色『曙光』」・20「勝負服の袖『流星』」・30「勝負服の柄『流星群』」、無料 15「勝負服の帽子『流れ星』」（1組のセット。勝負服エディタの入手方法は「シーズンパス 有料ライン ティア30で入手」）。
+
+### Q3.2 `GET /v1/season-pass`（追加）
+```json
+{ "…": "…", "rewards": { "free": { "every": 1, "reward": {…}, "tiers": {…} }, "premium": {…} },
+  "standouts": [ { "track": "premium", "level": 20, "itemId": "silkpart_sleeve_comet", "label": "勝負服の袖「流星」", "purpose": "勝負服の袖が選べるようになります（見た目だけ。…）",
+                   "look": { "part": "sleeve", "ref": "comet" }, "reward": { "freeCoins": 50, "items": [ … ] },
+                   "owned": false, "reached": false, "claimed": false, "claimable": false, "levelsAway": 5, "racesAway": 24 } ],
+  "nextStandout": { "track": "premium", "level": 20, "itemId": "silkpart_sleeve_comet", "label": "勝負服の袖「流星」", "levelsAway": 5, "racesAway": 24 },
+  "totals": { "free": { "freeCoins": 300, "items": [ … ] }, "premium": { "freeCoins": 1500, "items": [ … ] } } }
+```
+- `look.part`：`pattern`／`color`／`sleeve`／`cap`（`ref` は勝負服エディタのパーツ id）か `tack`（`slot`・`asset`）。クライアントは自分の勝負服にその品を当てて見せる（保存しない、C# `PassPreview`）。
+- `racesAway` は `racesToNextLevel` と同じ数え方（`passXpPerRace` で割って切り上げ）。`nextStandout` は有料ラインでまだ届いていない最初の段（無ければ無料ラインの段、どちらも無ければ null）。
+- `claimable` は `claimed` でなく到達済みで、有料ラインはパスを持っている時だけ。
+
+### Q3.3 商品の表示（`pass_premium` に追加）
+- `standouts`（`{ level, itemId, label }[]`）と `standoutLabel`（「ティア10 勝負服の色『曙光』・ティア20 …」、無ければ null）。`total`／`totalLabel` はコインと素材の合計のまま（見た目の品は `standoutLabel` で別に書く）。
+
+### Q3.4 ショップの並びの提案 `progression.shopLayout`（出荷は**オフ**、リモート設定で切り替える）
+```json
+"shopLayout": { "allowanceUnderPass": false, "retiredProducts": [] }
+```
+- `allowanceUnderPass: true`：厩舎手当の `tab` が `pass`（パスの画面の下に並べる）、`GET /v1/shop/offers` の「おすすめ」には出さない。商品・価格・規則は同じ。
+- `retiredProducts`：売るのをやめる商品（コインのパックと昇級記念パックだけ）。一覧・オファー・コイン不足の案内（T6）に出ない、新しい `purchase-intent` は `409 NOT_ELIGIBLE`。**既に決済中の購入はそのまま付与**、持っている品・履歴・返金は変わらない。検査（`shopLayoutProblems`）：コインのパックは4つ以上残す、いちばん小さいパックと大きいパックは残す。提案の値は `["coin_800", "coin_2400", "promo_pack_B", "promo_pack_A", "promo_pack_S"]`（数字は `docs/quality/pass.md` §4）。
+
 ## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
 マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。
 

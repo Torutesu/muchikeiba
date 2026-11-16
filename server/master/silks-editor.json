@@ -23,7 +23,8 @@
     { "id": "laurel", "code": 15, "name": "月桂冠" },
     { "id": "promo_b", "code": 16, "name": "昇級記念B" },
     { "id": "promo_a", "code": 17, "name": "昇級記念A" },
-    { "id": "promo_s", "code": 18, "name": "昇級記念S" }
+    { "id": "promo_s", "code": 18, "name": "昇級記念S" },
+    { "id": "comet", "code": 19, "name": "流星群" }
   ],
   "colors": [
     { "id": "white", "code": 0, "name": "白" },
@@ -47,7 +48,8 @@
     { "id": "platinum", "code": 18, "name": "プラチナ", "hex": "#E5E4E2", "base": "silver", "source": { "kind": "item", "itemId": "silkpart_color_platinum" } },
     { "id": "royal", "code": 19, "name": "ロイヤルパープル", "hex": "#4B2A8C", "base": "purple", "source": { "kind": "achievement", "achievementId": "wins", "tier": 2 } },
     { "id": "sakura", "code": 20, "name": "桜色", "hex": "#F6B6C9", "base": "pink", "source": { "kind": "races", "count": 50 } },
-    { "id": "teal", "code": 21, "name": "ティール", "hex": "#138A8A", "base": "sky", "source": { "kind": "achievement", "achievementId": "podiums", "tier": 2 } }
+    { "id": "teal", "code": 21, "name": "ティール", "hex": "#138A8A", "base": "sky", "source": { "kind": "achievement", "achievementId": "podiums", "tier": 2 } },
+    { "id": "shokou", "code": 22, "name": "曙光", "hex": "#F2A33A", "base": "orange", "source": { "kind": "item", "itemId": "silkpart_color_shokou" } }
   ],
   "sleeves": [
     { "id": "match", "code": 0, "name": "胴と同じ" },
@@ -57,7 +59,8 @@
     { "id": "armlets", "code": 4, "name": "腕輪", "source": { "kind": "races", "count": 10 } },
     { "id": "chevrons", "code": 5, "name": "山形", "source": { "kind": "item", "itemId": "silkpart_sleeve_chevrons" } },
     { "id": "stars", "code": 6, "name": "星", "source": { "kind": "item", "itemId": "silkpart_sleeve_stars" } },
-    { "id": "diamonds", "code": 7, "name": "菱", "source": { "kind": "achievement", "achievementId": "wins", "tier": 3 } }
+    { "id": "diamonds", "code": 7, "name": "菱", "source": { "kind": "achievement", "achievementId": "wins", "tier": 3 } },
+    { "id": "comet", "code": 8, "name": "流星", "source": { "kind": "item", "itemId": "silkpart_sleeve_comet" } }
   ],
   "caps": [
     { "id": "plain", "code": 0, "name": "無地" },
@@ -67,6 +70,7 @@
     { "id": "peak", "code": 4, "name": "つば色" },
     { "id": "spots", "code": 5, "name": "水玉", "source": { "kind": "item", "itemId": "silkpart_cap_spots" } },
     { "id": "checks", "code": 6, "name": "格子", "source": { "kind": "item", "itemId": "silkpart_cap_checks" } },
-    { "id": "diamond", "code": 7, "name": "ダイヤ", "source": { "kind": "achievement", "achievementId": "podiums", "tier": 3 } }
+    { "id": "diamond", "code": 7, "name": "ダイヤ", "source": { "kind": "achievement", "achievementId": "podiums", "tier": 3 } },
+    { "id": "comet", "code": 8, "name": "流れ星", "source": { "kind": "item", "itemId": "silkpart_cap_comet" } }
   ]
 }

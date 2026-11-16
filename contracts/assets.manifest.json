@@ -36,25 +36,25 @@
    "fallback": "silks/pattern/default",
    "description": "勝負服の模様（色はパレットで着色）",
    "dynamic": false,
-   "count": 20
+   "count": 21
   },
   "silks/cap": {
    "fallback": "silks/cap/default",
    "description": "帽子の模様（色はエディタの帽子の2色。旧い勝負服は胴の1色目・2色目）",
    "dynamic": false,
-   "count": 9
+   "count": 10
   },
   "silks/sleeve": {
    "fallback": "silks/sleeve/default",
    "description": "勝負服エディタの袖の模様（マスク。胴の1色目・2色目で着色、REQ-SILK-001）",
    "dynamic": false,
-   "count": 9
+   "count": 10
   },
   "silks/color": {
    "fallback": "silks/color/default",
    "description": "勝負服エディタの特別色の見本アイコン（ショップの一覧用。服そのものは hex で着色）",
    "dynamic": false,
-   "count": 4
+   "count": 5
   },
   "ui/gate": {
    "fallback": "ui/gate/default",
@@ -114,7 +114,7 @@
    "fallback": "item/default",
    "description": "アイテムのアイコン",
    "dynamic": false,
-   "count": 38
+   "count": 42
   },
   "banner/gacha": {
    "fallback": "banner/gacha/default",
@@ -438,6 +438,7 @@
   "item/costume_promo_b",
   "item/costume_promo_s",
   "item/costume_season_limited",
+  "item/costume_silks_comet",
   "item/costume_silks_laurel",
   "item/costume_starter",
   "item/course_autumn_gold",
@@ -455,11 +456,14 @@
   "item/photo_frame_sakura",
   "item/photo_stamp_carrot_pop",
   "item/silkpart_cap_checks",
+  "item/silkpart_cap_comet",
   "item/silkpart_cap_spots",
   "item/silkpart_color_crimson",
   "item/silkpart_color_emerald",
   "item/silkpart_color_platinum",
+  "item/silkpart_color_shokou",
   "item/silkpart_sleeve_chevrons",
+  "item/silkpart_sleeve_comet",
   "item/silkpart_sleeve_stars",
   "item/stamp_carrot",
   "item/stamp_horseshoe",
@@ -545,6 +549,7 @@
   "showcase/bg/stopwatch",
   "showcase/bg/turf_stretch",
   "silks/cap/checks",
+  "silks/cap/comet",
   "silks/cap/default",
   "silks/cap/diamond",
   "silks/cap/hooped",
@@ -557,8 +562,10 @@
   "silks/color/default",
   "silks/color/emerald",
   "silks/color/platinum",
+  "silks/color/shokou",
   "silks/pattern/braces",
   "silks/pattern/chevrons",
+  "silks/pattern/comet",
   "silks/pattern/cross_sashes",
   "silks/pattern/default",
   "silks/pattern/diamonds",
@@ -579,6 +586,7 @@
   "silks/pattern/wings",
   "silks/sleeve/armlets",
   "silks/sleeve/chevrons",
+  "silks/sleeve/comet",
   "silks/sleeve/default",
   "silks/sleeve/diamonds",
   "silks/sleeve/hoops",

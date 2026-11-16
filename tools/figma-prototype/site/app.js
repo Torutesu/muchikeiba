@@ -4365,7 +4365,7 @@ function glW2Name(r) {
   return { ticket_sr_plus: 'SR以上確定券', gacha_ticket_10: '10連券', gacha_ticket: 'スカウト券', breeding_material: '配合素材', costume_login: '勝負服の柄' }[id] ?? (r?.freeCoins ? `無償コイン${fmt(r.freeCoins)}枚` : glReward(r));
 }
 /** Where the current first step is done (the server's fixed screen) — never the shop. */
-const GL_STEP_GO = { training: () => Training(), scout: () => Scout(), silks: () => SilksEditor(), care: () => Care(), race: () => RaceLobby(), breeding: () => Breeding(), friends: () => Friends(), teams: () => TeamFeed(), time_attack: () => TimeAttack(), collection: () => Collection() };
+const GL_STEP_GO = { scout: () => Scout(), silks: () => SilksEditor(), care: () => Care(), race: () => RaceLobby(), breeding: () => Breeding(), friends: () => Friends(), teams: () => TeamFeed(), time_attack: () => TimeAttack(), collection: () => Collection(), training: () => Training() };
 function glStepLock(v) {
   const c = v.path?.current;
   if (!c || c.open !== false) return null;

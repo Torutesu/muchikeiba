@@ -154,6 +154,12 @@ export interface PlayerRepo {
    */
   ledgerPage?(id: string, q: Parameters<LedgerPager>[0]): LedgerEntry[] | Promise<LedgerEntry[]>;
   gachaPage?(id: string, q: Parameters<GachaPager>[0]): GachaLogEntry[] | Promise<GachaLogEntry[]>;
+  /**
+   * get() returns a private deep copy on every call (deserialized from storage; nothing else holds it), so a transaction
+   * can use it as its draft without cloning it again. Absent = the transaction clones (a repo that may hand out a cached
+   * object). The memory repo sets it: the copy was most of the CPU time of the economy simulation (test reliability).
+   */
+  readonly freshCopies?: boolean;
 }
 
 /** REQ-HIST-*: which list `history` reads, and its query. */
@@ -179,6 +185,7 @@ function countBreeding(s: PlayerState) {
 
 export class MemoryPlayerRepo implements PlayerRepo {
   readonly data = new Map<string, string>();
+  readonly freshCopies = true; // get() parses a new object from the stored JSON every time
   /** r10: ids whose account deletion wiped the state (delete() keeps a tombstone, like the Durable Object). */
   readonly tombstones = new Set<string>();
   get(id: string) {
@@ -283,7 +290,8 @@ export class PlayerService {
       const hit = current.idem.find((e) => e.key === idemKey);
       if (hit) return hit.result as T;
     }
-    const draft: PlayerState = structuredClone(current);
+    const teamBefore = current.team?.teamId ?? null;
+    const draft: PlayerState = this.repo.freshCopies ? current : structuredClone(current);
     const now = this.d.clock();
     const rolled = rollSeason(this.d.master, draft, now);
     // §68 × §40 (REQ-PROMO-018): a promotion at the close is one activity entry (linked to that month's recap)
@@ -376,7 +384,7 @@ export class PlayerService {
       });
     }
     const teamId = draft.team?.teamId ?? null;
-    if (!deleting && this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
+    if (!deleting && this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== teamBefore)) {
       await this.d.onTeamPoints({ teamId, playerId: id, seasonId: draft.season.id, points: draft.season.points, displayName: draft.profile.displayName });
     }
     if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance && !draft.deletion?.record) {

@@ -242,7 +242,7 @@ export function nextActionSummary(m: Master, s: PlayerState, now: number, teamGo
     loginBonusClaimable: !sameGameDay(s.loginBonus.lastClaimDate, today),
     missions, extraClaimable: safe(() => {
       // REQ-GOAL-010: the beginner step and season missions were never announced; they are claimed from the same sheet
-      const b = beginnerMissionsView(m, s).steps.find((q) => !q.claimed);
+      const b = beginnerMissionsView(m, s, now).steps.find((q) => !q.claimed);
       return (b?.claimable ? 1 : 0) + seasonMissionsView(m, s).missions.filter((q) => q.claimable).length;
     }, 0), passClaimable, giftExpiries, trainingOpenExpiresAt, trainingSlotsLeft, exchanges, rival, weeklyChallenge,
     teamGoal: tg, horseGoal: safe(() => horseGoalBrief(m, s), null), firstWin: fw ? { remaining: fw.remaining, winsToday: fw.winsToday } : null, scoutTickets: tickets,

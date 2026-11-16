@@ -133,6 +133,8 @@ namespace Muchi.Client
         public Dictionary<string, string> MenuBlocked = new Dictionary<string, string>();
         /// <summary>Per menu: what it would give this horse now (exact; contracts/protocol.md §25.3 outlook). Empty on older servers.</summary>
         public Dictionary<string, TrainingMenuOutlook> MenuOutlook = new Dictionary<string, TrainingMenuOutlook>();
+        /// <summary>REQ-ITEM-010 (quality pass 3): a treat matters now — before → after (null = nothing to suggest / an older server).</summary>
+        public TreatHint Treat;
         public bool CanTrain(string menuId) => MenuBlocked.TryGetValue(menuId, out var b) ? b == null : Blocked == null;
         internal static TrainingHorse Parse(JsonNode o)
         {
@@ -141,7 +143,7 @@ namespace Muchi.Client
                 HorseId = J.Str(o, "horseId"), Name = J.Str(o, "name"), Rarity = J.Str(o, "rarity"), Condition = J.Str(o, "condition"), Blocked = J.Str(o, "blocked"),
                 Trained = Stats.Parse(J.Opt(o, "trained")), TrainedTotal = J.Int(o, "trainedTotal"), Potential = J.Int(o, "potential"), PerStatCap = J.Int(o, "perStatCap"),
                 Fatigue = J.Int(o, "fatigue"), BondLevel = J.Int(o, "bondLevel", 1), TodayCount = J.Int(o, "todayCount"), Sessions = J.Int(o, "sessions"),
-                Log = J.List(o, "log", TrainingLogEntry.Parse), HasLog = J.Opt(o, "log") != null,
+                Log = J.List(o, "log", TrainingLogEntry.Parse), HasLog = J.Opt(o, "log") != null, Treat = TreatHint.Parse(J.Opt(o, "treat")),
             };
             foreach (var m in J.List(o, "menus", x => x))
             {

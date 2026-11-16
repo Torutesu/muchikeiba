@@ -804,11 +804,11 @@
     { "id": "bm_care", "kind": "care", "target": 1, "reward": { "freeCoins": 50 } },
     { "id": "bm_ranked_top3", "kind": "ranked_top3", "target": 1, "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } },
     { "id": "bm_breed", "kind": "breed", "target": 1, "reward": { "freeCoins": 100 } },
-    { "id": "bm_friend", "kind": "friends", "target": 1, "reward": { "freeCoins": 100 } },
-    { "id": "bm_team", "kind": "team", "target": 1, "reward": { "freeCoins": 100 } },
+    { "id": "bm_friend", "kind": "friends", "target": 1, "alt": { "kind": "treat", "target": 1 }, "reward": { "freeCoins": 100 } },
+    { "id": "bm_team", "kind": "team", "target": 1, "alt": { "kind": "breed_extra", "target": 1 }, "reward": { "freeCoins": 100 } },
     { "id": "bm_time_attack", "kind": "ta_finish", "target": 1, "reward": { "freeCoins": 100 } },
     { "id": "bm_ranked5", "kind": "ranked_races", "target": 5, "reward": { "items": [{ "itemId": "breeding_material", "qty": 2 }] } },
-    { "id": "bm_graduate", "kind": "races", "target": 15, "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } }
+    { "id": "bm_graduate", "kind": "races", "target": 15, "fromDay": 8, "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } }
   ],
   "seasonMissions": [
     { "id": "sm_races10", "kind": "ranked_races", "target": 10, "reward": { "passXp": 100 } },

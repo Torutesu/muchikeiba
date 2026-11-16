@@ -788,7 +788,9 @@ namespace Muchi.Client
         public AtavismTrait Atavism;
         /// <summary>Skill the foal inherited (REQ-UXS-050), or null.</summary>
         public string SkillId;
-        internal static BreedResult Parse(JsonNode o) => new BreedResult { Foal = Horse.Parse(J.Opt(o, "foal")), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"), UsedMaterial = J.Bool(o, "usedMaterial"), Atavism = AtavismTrait.Parse(J.Opt(o, "atavism")), SkillId = J.Str(o, "skillId") };
+        /// <summary>REQ-ITEM-011 (quality pass 3): today's allowance after this breeding — one more with material? (null from an older server).</summary>
+        public BreedingAllowance Today;
+        internal static BreedResult Parse(JsonNode o) => new BreedResult { Foal = Horse.Parse(J.Opt(o, "foal")), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"), UsedMaterial = J.Bool(o, "usedMaterial"), Atavism = AtavismTrait.Parse(J.Opt(o, "atavism")), SkillId = J.Str(o, "skillId"), Today = BreedingAllowance.Parse(J.Opt(o, "today")) };
     }
 
     public sealed class LoginBonusResult

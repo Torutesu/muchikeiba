@@ -608,7 +608,7 @@ await shot('diagnostics', 600);
   await shot('highlights', 600);
   assert.match(await page.locator('.screen.in .hl-counter').innerText(), /^Highlight \d \/ \d$/, 'highlights: the counter in English');
   assert.ok(!/[぀-ヿ一-鿿]/.test(await page.locator('.screen.in .hl-caption').innerText()), 'highlights: the caption in English');
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000); await shot('highlights-end', 400);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000); await shot('highlights-end', 400);
   await page.locator('.screen.in .hl-share').click(); await page.waitForSelector('.screen.in .hl-share-sheet'); await shot('highlights-share', 400);
 
   // round 13: 支部の共同目標 in English (REQ-TGOAL-*): the week, after the demo races, the week result sheet

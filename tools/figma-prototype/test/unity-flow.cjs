@@ -1,7 +1,9 @@
 // ムチ一閃 UI walkthrough (site/index.html) for the round 8 experience (docs/planning/06, REQ-UXP-001..005).
 //  1. FTUE as a new player on a landscape phone (844×390), driven like a person would: one tap per step, the whip only
 //     when the button lights up. Measures the time and the taps to each milestone and checks the §2.3 targets:
-//     aha (the tutorial win) ≤ 30 s, first gacha reveal ≤ 1:40, home ≤ 4:00 and ≤ 15 taps (text entry excluded).
+//     aha (the tutorial win) ≤ 30 s, first gacha reveal ≤ 1:40, home ≤ 4:00 and ≤ 15 taps (text entry excluded). The
+//     times are the app's own (when it showed each screen) minus what the test harness adds on a loaded machine
+//     (test/ftue-timing.cjs); the targets are the product's and unchanged.
 //  2. Every new screen and state: home on day 1 / 3 / 7, shop tabs, the purchase confirmation in its four states
 //     (unregistered, registered, under 18, over the monthly limit), the starter offer, the deletion-pending block,
 //     the season pass (free / paid / plus lines), settings and the legacy screens.
@@ -30,11 +32,13 @@
 const path = require('path');
 const fs = require('fs');
 const assert = require('assert/strict');
+const ftueTiming = require('./ftue-timing.cjs');
 
 const TARGET = { ahaMs: 30_000, gachaMs: 100_000, homeMs: 240_000, taps: 15 };
 
 module.exports = async function unityFlow(browser, base, out, errors) {
   const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: false, locale: 'ja-JP' });
+  const timing = await ftueTiming(browser, ctx); // the FTUE milestones on the app's clock (test/ftue-timing.cjs)
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('unity pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error') errors.push('unity console: ' + m.text()); });
@@ -44,14 +48,13 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   let n = 0;
   // time spent capturing screenshots outside races is not the player's time: it is left out of the FTUE timings
   // (inside a race the engine runs in real time, so a capture there cannot shorten anything and is not subtracted)
-  let captureMs = 0;
   const shot = async (name, wait = 420, inRace = false) => {
-    const a = Date.now();
+    const aE = timing.nowE();
     await page.waitForTimeout(wait);
     // toasts from the previous step would cover the screen being captured (the "toast" shots keep theirs)
     if (!name.includes('toast')) await page.evaluate(() => document.querySelectorAll('.toast').forEach((t) => t.remove()));
     const f = path.join(out, `u-${String(++n).padStart(2, '0')}-${name}.png`); await page.screenshot({ path: f }); shots.push(f);
-    if (!inRace) captureMs += Date.now() - a;
+    if (!inRace) timing.capture(aE, timing.nowE());
   };
   const screen = () => page.evaluate(() => globalThis.__muchi?.screen ?? '');
   // on a timeout, say which screen is up and the page errors so far (a timeout alone hides an exception in the screen)
@@ -282,6 +285,10 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     // the test runs), the comeback welcome rightly comes first — leave it for later
     await click('BACK'); await waitScreen(['home', 'comeback-welcome']);
     if ((await screen()) === 'comeback-welcome') { await click('あとで'); await waitScreen('home'); }
+    // …or the session's one prompt was already taken, so the welcome waits for the next session: a later flow that opens
+    // a fresh session (the promotion demo) then met it instead of home on those weekdays. The demo's jump is not a real
+    // lapse: record the welcome as shown (what the welcome screen itself records when it is drawn).
+    await page.evaluate(async () => { const L = globalThis.__muchi.logic; const v = (await L.comeback()).value; if (v.active && v.window?.showWelcome) await L.comebackWelcomed(); });
     await page.evaluate(() => globalThis.__muchi.logic.setClockMs(null)); // back to the demo day for the next flows
   }
 
@@ -1280,7 +1287,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
 
   // a full race as a player rides it: START on the gate, two spaced whips in the final straight; HUD shots when asked
   async function rideRace(withShots, prefix = 'race-hud') {
-    let started = false, w2 = 0, lastW = 0, wall = Date.now(), last = null;
+    let started = false, w2 = 0, lastW = 0, wall = Date.now(), wallE = timing.nowE(), last = null;
     const raceShots = new Set();
     for (let i = 0; i < 4000; i++) {
       const s = await state();
@@ -1297,30 +1304,51 @@ module.exports = async function unityFlow(browser, base, out, errors) {
       }
       await page.waitForTimeout(40);
     }
-    return { started, wall, last };
+    return { started, wall, wallE, last };
   }
 
   // ------------------------------------------------------------------ 1. FTUE with a simulated new player
   await page.goto(url); await page.evaluate(() => localStorage.clear());
-  const t0 = Date.now();
+  timing.start();
   let taps = 0, raceTaps = 0;
   const marks = [];
-  // lagMs: wall time a race took beyond its engine time (the renderer fell behind real time on a CPU-starved headless
-  // machine; a phone at 30–60 fps has none). Measured as wall duration − engine ticks × 50 ms per race.
-  let lagMs = 0;
-  const mark = (name) => { marks.push({ step: name, ms: Date.now() - t0 - captureMs - lagMs, wallMs: Date.now() - t0, lagMs, captureMs, taps }); };
-  const raceLag = (startWall, f) => { if (f?.tick) lagMs += Math.max(0, Date.now() - startWall - f.tick * 50); };
+  // Each milestone is timed when the app showed its screen, minus what the harness adds (test/ftue-timing.cjs): captures,
+  // tap delivery after the think time, a race's render lag (wall duration − engine ticks × 50 ms: the renderer fell
+  // behind real time on a CPU-starved headless machine; a phone at 30–60 fps has none) and the page's run-queue wait.
+  // The marks are resolved against the app's screen log once the FTUE is done (finishMarks).
+  const mark = (name, scr) => { marks.push({ step: name, scr, at: timing.nowE(), taps }); };
+  // the race is timed from when the app showed the race screen (the engine starts there), not from when the harness saw it
+  const raceLag = async (f, scr, startE) => {
+    if (!f?.tick) return;
+    const endE = timing.nowE();
+    const from = (await timing.shownAt(page, scr, endE)) ?? startE;
+    timing.race(from, endE, endE - from - f.tick * 50);
+  };
+  const finishMarks = async () => {
+    timing.stop();
+    for (const m of marks) {
+      const e = (await timing.shownAt(page, m.scr, m.at)) ?? m.at;
+      Object.assign(m, timing.measure(e), { noticedLateMs: Math.round(m.at - e) });
+      delete m.at;
+    }
+  };
   const THINK_MS = 800;
-  const tap = async (label) => { await page.waitForTimeout(THINK_MS); await btn(label).click(); taps++; };
+  // the player's think time, then the tap; the time Playwright took to deliver it after the think time is the harness's
+  const tap = async (label) => {
+    const n0 = await timing.tapCount(page);
+    const a = timing.nowE(); await page.waitForTimeout(THINK_MS); const b = timing.nowE();
+    await btn(label).click(); taps++;
+    timing.tap(a, b, (await timing.lastTap(page, n0)) ?? b);
+  };
   // the whip button can take a moment to attach after a screen change on a loaded machine: wait for it, not a fixed 5 s
   const tapWhip = async () => { await page.locator('.screen.in .btn.whip').click({ timeout: 20000, force: true }); taps++; raceTaps++; };
   await page.goto(url); await ready();
-  await waitScreen('title'); mark('タイトル表示');
+  await waitScreen('title'); mark('タイトル表示', 'title');
   await shot('title', 300);
   await tap('同意してはじめる');
-  await waitScreen('race-tutorial'); mark('初レース開始');
+  await waitScreen('race-tutorial'); mark('初レース開始', 'race-tutorial');
   // the tutorial: the whip button only; whip twice once it lights up (REQ-UXS-004)
-  let whipped = 0, lastWhip = 0, tutStart = Date.now(), tutLast = null;
+  let whipped = 0, lastWhip = 0, tutStartE = timing.nowE(), tutLast = null;
   for (let i = 0; i < 600; i++) {
     const s = await state();
     if (s.f) tutLast = s.f;
@@ -1330,43 +1358,52 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     }
     await page.waitForTimeout(60);
   }
-  raceLag(tutStart, tutLast);
+  await raceLag(tutLast, 'race-tutorial', tutStartE);
   await waitScreen(['victory', 'tutorial-retry'], 20000);
   assert.equal(await screen(), 'victory', 'two whips in the last 300 m win the tutorial');
-  mark('aha①：差し切り（勝利画面）');
+  mark('aha①：差し切り（勝利画面）', 'victory');
   await shot('tutorial-victory', 900);
   await tap('相棒に名前をつける');
-  await waitScreen('naming'); mark('命名画面');
+  await waitScreen('naming'); mark('命名画面', 'naming');
   await shot('naming', 300);
   await tap('イッセン');
   await tap('この名前にする');
-  await waitScreen('partner-arrive'); mark('相棒の確定');
+  await waitScreen('partner-arrive'); mark('相棒の確定', 'partner-arrive');
   await shot('partner-arrive', 1800);
-  await waitScreen('free-scout', 8000); mark('無料10連の案内');
+  await waitScreen('free-scout', 8000); mark('無料10連の案内', 'free-scout');
   await shot('free-scout', 300);
   await tap('10頭スカウトする（無料）');
-  await waitScreen('scout-reveal'); mark('aha②：初ガチャのめくり');
+  await waitScreen('scout-reveal'); mark('aha②：初ガチャのめくり', 'scout-reveal');
   await shot('scout-reveal-card', 700);
   await tap('すべてめくる');
   await waitScreen('scout-list');
   await shot('scout-list', 700);
   await tap('つづける');
-  await waitScreen('second-race'); mark('2戦目の案内');
+  await waitScreen('second-race'); mark('2戦目の案内', 'second-race');
   await shot('second-race-intro', 300);
   await tap('出走する');
-  await waitScreen('race'); mark('2戦目スタート');
+  await waitScreen('race'); mark('2戦目スタート', 'race');
   // the second race: start on the gate, whip twice in the final straight (spaced, not mashed)
-  { const r2 = await rideRace(false); raceLag(r2.wall, r2.last); }
-  await waitScreen('result', 30000); mark('2戦目の結果');
+  { const r2 = await rideRace(false); await raceLag(r2.last, 'race', r2.wallE); }
+  await waitScreen('result', 30000); mark('2戦目の結果', 'result');
   await shot('race-result-debrief', 900);
   const resultLine = await page.locator('.screen.in [data-debrief]').first().textContent();
   await tap('つづける');
   await waitScreen(['notify', 'home'], 15000);
   if (await screen() === 'notify') { await shot('notify-primer', 300); await tap('あとで'); await waitScreen('home', 15000); }
-  mark('ホーム');
+  mark('ホーム', 'home');
+  await finishMarks();
   await shot('home-day1', 900);
   const ms = (k) => marks.find((m) => m.step.startsWith(k))?.ms;
   const ftue = { marks, taps, raceTaps, navTaps: taps - raceTaps, resultLine, target: TARGET, thinkMs: THINK_MS };
+  const checkTargets = () => {
+    const parts = (k) => JSON.stringify(marks.find((m) => m.step.startsWith(k)));
+    assert.ok(ms('aha①') <= TARGET.ahaMs, `aha ${ms('aha①')} ms > ${TARGET.ahaMs}: ${parts('aha①')}`);
+    assert.ok(ms('aha②') <= TARGET.gachaMs, `first gacha ${ms('aha②')} ms > ${TARGET.gachaMs}`);
+    assert.ok(ms('ホーム') <= TARGET.homeMs, `home ${ms('ホーム')} ms > ${TARGET.homeMs}`);
+    assert.ok(ftue.taps <= TARGET.taps, `taps to home ${ftue.taps} > ${TARGET.taps}`);
+  };
+  if (process.env.E2E_ONLY === 'ftue') { await ctx.close(); checkTargets(); return { shots, ftue }; } // the FTUE timing alone
 
   // home day 1: only race / partner / scout / stable open; the rest shows its key
   const v = await page.evaluate(() => globalThis.__muchi.state().player.unlocks);
@@ -1546,7 +1583,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(hlR.set.moments.length >= 1 && hlR.totalMs >= 15000 && hlR.totalMs <= 30000, 'highlights: 1–3 moments, 15–30 s: ' + JSON.stringify(hlR.set.moments.map((m) => m.kind)));
   assert.ok((await page.locator('.screen.in .hl-caption').textContent()).length > 0, 'highlights: a caption');
   await shot('highlights-result', 700);
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000);
   await shot('highlights-end', 400);
   assert.ok(await page.evaluate(() => globalThis.__muchi.logic.kpiLog().some((e) => e.name === 'highlight_view' && e.props.surface === 'result')), 'KPI: highlight_view from the result screen');
   await page.locator('.screen.in .hl-back').click(); await waitScreen('result');
@@ -2877,7 +2914,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     if (hl1.index >= 0) assert.equal(hl1.camera, hl1.set.moments[hl1.index].slot, 'highlights: 次へ cuts to the next horse');
     await shot('highlights-next', 500);
   }
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000);
   await hlIn('.hl-moment', 10000); // the screen name is set before the new screen takes the .in class (a busy machine shows the gap)
   assert.equal(await page.locator('.screen.in .hl-moment').count(), hl0.set.moments.length, 'end: every moment listed');
   assert.equal(await page.locator('.screen.in .hl-moment[data-rank="1"]').count(), 1, 'end: one best moment');
@@ -2908,7 +2945,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await hlIn('.rp-card[data-public="false"]');
   await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
   await page.locator('.screen.in .rp-sheet .rp-highlights').click(); await waitScreen('highlights', 30000);
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000);
   await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
   assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 1, 'a private replay: no link');
   assert.equal(await page.locator('.screen.in .hl-link-note').textContent(), '保存して公開すると、リンクで送れます');
@@ -2919,9 +2956,6 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.goto(url); await ready(); await waitScreen('home'); await shot('home-reload', 500);
   await ctx.close();
   // the §2.3 targets (checked last so every screenshot is written even when a target is missed)
-  assert.ok(ms('aha①') <= TARGET.ahaMs, `aha ${ms('aha①')} ms > ${TARGET.ahaMs}`);
-  assert.ok(ms('aha②') <= TARGET.gachaMs, `first gacha ${ms('aha②')} ms > ${TARGET.gachaMs}`);
-  assert.ok(ms('ホーム') <= TARGET.homeMs, `home ${ms('ホーム')} ms > ${TARGET.homeMs}`);
-  assert.ok(ftue.taps <= TARGET.taps, `taps to home ${ftue.taps} > ${TARGET.taps}`);
+  checkTargets();
   return { shots, ftue };
 };

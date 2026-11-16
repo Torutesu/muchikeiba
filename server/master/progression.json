@@ -88,18 +88,18 @@
   ],
   "raceFreeCoinsByPlace": {
     "ranked": [
-      40,
-      25,
-      18,
-      14,
-      11,
+      26,
+      16,
+      12,
       9,
       7,
       6,
       5,
       4,
-      4,
-      4
+      3,
+      3,
+      3,
+      3
     ],
     "friend": [
       10,
@@ -134,10 +134,14 @@
   "passXpPerLevel": 100,
   "passMaxLevel": 30,
   "passRewards": {
+    "_note": "Quality pass 3 (docs/quality/pass.md): tiers replaces the reward of a named level. The standout tiers keep the line's coins and material and add one looks-only, not-for-sale silks part (premium 10/20/30: colour, sleeve, body pattern of one set; free 15: the cap of the set), so the totals stay 1,500 free coins + 30 materials (premium) and 300 free coins (free). Rotate the cosmetics each season with a remote-config progression.passRewards override; nothing here changes ranked strength.",
     "free": {
       "every": 1,
       "reward": {
         "freeCoins": 10
+      },
+      "tiers": {
+        "15": { "freeCoins": 10, "items": [ { "itemId": "silkpart_cap_comet", "qty": 1 } ] }
       }
     },
     "premium": {
@@ -150,8 +154,18 @@
             "qty": 1
           }
         ]
+      },
+      "tiers": {
+        "10": { "freeCoins": 50, "items": [ { "itemId": "breeding_material", "qty": 1 }, { "itemId": "silkpart_color_shokou", "qty": 1 } ] },
+        "20": { "freeCoins": 50, "items": [ { "itemId": "breeding_material", "qty": 1 }, { "itemId": "silkpart_sleeve_comet", "qty": 1 } ] },
+        "30": { "freeCoins": 50, "items": [ { "itemId": "breeding_material", "qty": 1 }, { "itemId": "costume_silks_comet", "qty": 1 } ] }
       }
     }
+  },
+  "shopLayout": {
+    "_note": "Quality pass 3 (docs/quality/pass.md §4): the owner's shop proposals, ready for remote config and OFF here. allowanceUnderPass: the daily pack (厩舎手当) is listed under the season pass screen (tab pass) instead of the recommended tab — same product, price and rules. retiredProducts: products no longer offered (coin packs and promotion packs only): hidden from the list and the offers, a new purchase intent is refused (NOT_ELIGIBLE); a store purchase already in flight is still credited, owned items stay, history and refunds are unchanged. Proposal: [\"coin_800\", \"coin_2400\"] (8 → 6 packs) and the three promo_pack_* (the ¥1,500 coins plus one pattern). shopLayoutProblems keeps at least 4 coin packs and the smallest and largest one.",
+    "allowanceUnderPass": false,
+    "retiredProducts": []
   },
   "loginBonus": [
     {
@@ -399,9 +413,9 @@
     "effectiveAtMs": 1796065200000
   },
   "firstWinBonus": {
-    "_note": "REQ-UXS-010: その日（ゲーム日、REQ-UXS-011）の最初の勝利（1着）を3回まで、無償コインを上乗せ。ランク戦のみ（フレンド戦は対象外）。経済目標 E1〜E10 は docs/spec/balance-targets.md 4.2・4.3。",
+    "_note": "REQ-UXS-010: その日（ゲーム日、REQ-UXS-011）の最初の勝利（1着）を3回まで、無償コインを上乗せ。ランク戦のみ（フレンド戦は対象外）。経済目標 E1〜E10 は docs/spec/balance-targets.md 4.2・4.3。品質パス3（4.21）で 30/20/10 → 20/10/5（E1 をランク戦の実際の着順で測るようにし、平均的な人で 76.4 → 62.0）。",
     "modes": ["ranked"],
-    "freeCoinsByWin": [30, 20, 10]
+    "freeCoinsByWin": [20, 10, 5]
   },
   "timeAttack": {
     "_note": "REQ-TA-*。statCap はランク戦B級と同じ。メダル秒数は docs/spec/balance-targets.md の方法でシミュレーションから決める（ルールセット1.3.0〔タイムアタックはスキルを送らないので 1.2.0 と同じ計算・同じ秒数〕・タイムアタックは調子の揺らぎなし、全コース、上限いっぱいの馬80本）: gold = 上手い人の上位10%、silver = 上手い人の中央値、bronze = 初心者の中央値。再計算: `dotnet run --project engine/Muchi.Verifier -- ta-thresholds <ruleset.json> <server/master/tracks.json> 3200`（絶対パス）。",
@@ -804,11 +818,11 @@
     { "id": "bm_care", "kind": "care", "target": 1, "reward": { "freeCoins": 50 } },
     { "id": "bm_ranked_top3", "kind": "ranked_top3", "target": 1, "reward": { "items": [{ "itemId": "gacha_ticket", "qty": 1 }] } },
     { "id": "bm_breed", "kind": "breed", "target": 1, "reward": { "freeCoins": 100 } },
-    { "id": "bm_friend", "kind": "friends", "target": 1, "reward": { "freeCoins": 100 } },
-    { "id": "bm_team", "kind": "team", "target": 1, "reward": { "freeCoins": 100 } },
+    { "id": "bm_friend", "kind": "friends", "target": 1, "alt": { "kind": "treat", "target": 1 }, "reward": { "freeCoins": 100 } },
+    { "id": "bm_team", "kind": "team", "target": 1, "alt": { "kind": "breed_extra", "target": 1 }, "reward": { "freeCoins": 100 } },
     { "id": "bm_time_attack", "kind": "ta_finish", "target": 1, "reward": { "freeCoins": 100 } },
     { "id": "bm_ranked5", "kind": "ranked_races", "target": 5, "reward": { "items": [{ "itemId": "breeding_material", "qty": 2 }] } },
-    { "id": "bm_graduate", "kind": "races", "target": 15, "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } }
+    { "id": "bm_graduate", "kind": "races", "target": 15, "fromDay": 8, "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] } }
   ],
   "seasonMissions": [
     { "id": "sm_races10", "kind": "ranked_races", "target": 10, "reward": { "passXp": 100 } },

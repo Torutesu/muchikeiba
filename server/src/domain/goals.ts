@@ -26,6 +26,14 @@
  *                   training log), sessions left today (REQ-GOAL-014). The same stage function as the 馬カード.
  *   path.current    `screen` (fixed in code per kind, never a shop / purchase) and `open` (its feature is unlocked) so the
  *                   next first step is one tap away (REQ-GOAL-015).
+ *
+ * Week 2 (quality pass 3, docs/quality/week2.md, REQ-GOAL-017..020) — still reads only, nothing new is paid:
+ *   path.current.alt / fromDay   the either/or of a social step (its solo way) and the day the last step opens (day 8:
+ *                   はじめの10歩 卒業 is the week-2 goal; the same 10-pull ticket, moved later) (REQ-GOAL-017).
+ *   today.tomorrow.graduate      on day 7, "tomorrow you graduate" with its reward (REQ-GOAL-018).
+ *   week2           days 8..14 (shown from day 7): one reason per day — the login bonus each day brings if the player comes
+ *                   every day (the same tables, projected), graduation on its day, the peak of the week (REQ-GOAL-019).
+ *   partner.treat   the moment a training item matters for the partner (training.treatHint) (REQ-GOAL-020).
  */
 import type { ClassDef, Master, Reward } from './master.js';
 import type { PlayerState } from './player.js';
@@ -34,7 +42,7 @@ import { beginnerMissionsView, claimBeginnerMission, claimSeasonMission, playerD
 import { claimMission, firstWinBonusView, missionsView } from './rewards.js';
 import { levelOf } from './pass.js';
 import { STAT_KEYS } from './master.js';
-import { potentialOf, raceStats, trainedTotal, trainingConfig } from './training.js';
+import { potentialOf, raceStats, trainedTotal, trainingConfig, treatHint } from './training.js';
 import { GROWTH_STAGES, GROWTH_THRESHOLDS_PERMILLE, growthStage } from './horseProfile.js';
 import { weekAt, weeklyChallengeConfig } from './weeklyChallenge.js';
 import { rivalConfig, weekEndMs, weekIdAt } from './rival.js';
@@ -120,6 +128,43 @@ export function nextLoginBonus(m: Master, s: PlayerState) {
 }
 
 /**
+ * REQ-GOAL-019: the login bonus each coming game day brings if the player claims every day — the same tables and order as
+ * claimLoginBonus, projected from the state. Keyed by player day, from today (if not claimed yet) or tomorrow, to `toDay`.
+ */
+export function loginBonusPlan(m: Master, s: PlayerState, now: number, toDay: number) {
+  const beginner = m.progression.beginnerLoginBonus ?? [];
+  const cycle = m.progression.loginBonus;
+  const rule = dayRule(m);
+  const pday = playerDay(s, now, rule);
+  let bDay = s.loginBonus.beginnerDay ?? (s.loginBonus.lastClaimDate === null ? 0 : beginner.length);
+  let streak = s.loginBonus.streakDay;
+  const strip = (d: { day: number } & Reward): Reward => { const { day: _d, ...r } = d; return r; };
+  const out: { playerDay: number; track: 'beginner' | 'normal'; day: number; days: number; reward: Reward }[] = [];
+  for (let d = sameGameDay(s.loginBonus.lastClaimDate, gameDayKey(now, rule)) ? pday + 1 : pday; d <= toDay; d++) {
+    if (bDay < beginner.length) {
+      const def = beginner.find((x) => x.day === bDay + 1);
+      bDay += 1;
+      if (def) out.push({ playerDay: d, track: 'beginner', day: def.day, days: beginner.length, reward: strip(def) });
+      continue;
+    }
+    if (!cycle.length) break;
+    const day = (streak % cycle.length) + 1;
+    streak = day;
+    const def = cycle.find((x) => x.day === day);
+    if (def) out.push({ playerDay: d, track: 'normal', day, days: cycle.length, reward: strip(def) });
+  }
+  return out;
+}
+
+/** The week-2 arc runs over these player days; it is shown from the day before it starts. */
+export const WEEK2 = { fromDay: 8, toDay: 14 } as const;
+/** The headline of a week: the strongest login reward by kind (a guaranteed-SR ticket, a 10-pull, a scout ticket, coins). */
+function rewardRank(r: Reward): number {
+  const has = (id: string) => (r.items ?? []).some((x) => x.itemId === id);
+  return has('gacha_ticket_10') ? 4000 : has('ticket_sr_plus') ? 3000 : has('gacha_ticket') ? 2000 : r.broodmare || r.horse ? 1500 : (r.freeCoins ?? 0);
+}
+
+/**
  * REQ-GOAL-015: where each first step is done (fixed in code; never the shop, a purchase or a paid scout — the scout step is
  * the scout screen the player already used in the FTUE) and the feature that has to be open for it.
  */
@@ -128,6 +173,8 @@ export const PATH_SCREENS: Record<string, { screen: string; feature: string | nu
   ranked_top3: { screen: 'race', feature: null }, ranked_races: { screen: 'race', feature: null }, races: { screen: 'race', feature: null },
   breed: { screen: 'breeding', feature: 'breeding' }, friends: { screen: 'friends', feature: 'friends' }, team: { screen: 'teams', feature: 'teams' },
   ta_finish: { screen: 'time_attack', feature: 'time_attack' }, collect: { screen: 'collection', feature: null },
+  // REQ-GOAL-017: the solo ways of the social steps (a treat for the partner, an extra breeding with material)
+  treat: { screen: 'training', feature: 'training' }, breed_extra: { screen: 'breeding', feature: 'breeding' },
 };
 
 /** REQ-GOAL-014: the partner's growth for home (null without an active partner or with training switched off). */
@@ -151,6 +198,7 @@ function partnerGrowth(m: Master, s: PlayerState, now: number, trainingOpen: boo
   const usedToday = t && sameGameDay(t.day, today) ? t.used : 0;
   const horseToday = rec && sameGameDay(rec.day, today) ? rec.dayCount : 0;
   const full = potential > 0 && tt >= potential;
+  const sessionsLeft = !trainingOpen || full ? 0 : Math.max(0, Math.min(tc.slotsPerDay - usedToday, tc.perHorsePerDay - horseToday));
   return {
     horseId: h.id, name: h.name,
     stage: st.index, stageKey: st.key, stages: GROWTH_STAGES.length,
@@ -158,8 +206,10 @@ function partnerGrowth(m: Master, s: PlayerState, now: number, trainingOpen: boo
     stageFrom: Math.ceil((GROWTH_THRESHOLDS_PERMILLE[st.index]! * potential) / 1000), nextStageAt: st.nextAt,
     trainedTotal: tt, potential, gainedToday, gainedYesterday,
     trainingOpen,
+    /** REQ-GOAL-020: a treat would help the partner train today (null when it does not matter: no session left today, fresh, none owned). */
+    treat: sessionsLeft > 0 ? treatHint(m, tc, s, h, now) : null,
     /** Sessions this horse can still train today (0 once the account's slots or the horse's daily limit are used, or it is full). */
-    sessionsLeft: !trainingOpen || full ? 0 : Math.max(0, Math.min(tc.slotsPerDay - usedToday, tc.perHorsePerDay - horseToday)),
+    sessionsLeft,
     full,
   };
 }
@@ -196,7 +246,7 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
     loginBonus: { open: open('login_bonus'), claimedToday: sameGameDay(s.loginBonus.lastClaimDate, day), next: nextLoginBonus(m, s) },
     /** 1 on the install day, 2 the next game day, … (the first week reads it). */
     playerDay: playerDay(s, now, rule),
-    tomorrow: null as null | { playerDay: number; at: number; loginBonus: ReturnType<typeof nextLoginBonus>; opens: string[]; trainingSlots: number | null },
+    tomorrow: null as null | { playerDay: number; at: number; loginBonus: ReturnType<typeof nextLoginBonus>; opens: string[]; trainingSlots: number | null; graduate: { reward: Reward; ready: boolean } | null },
   };
   // REQ-GOAL-013: tomorrow, facts only. The login bonus once today's is received (before that, today's is the news); the
   // features whose day count is reached tomorrow (they may open earlier by races — then they are simply open today);
@@ -210,11 +260,20 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
       playerDay: pday + 1, at: resetAt,
       loginBonus: today.loginBonus.claimedToday ? today.loginBonus.next : null,
       opens, trainingSlots: trainingTomorrow ? tc!.slotsPerDay : null,
+      graduate: null,
     };
   }
 
   // ---- the beginner path (REQ-GOAL-003): the next step and the last reward, while the list lasts
-  const bv = beginnerMissionsView(m, s);
+  const bv = beginnerMissionsView(m, s, now);
+  // REQ-GOAL-018: the last step opens tomorrow (day 8) — the week-2 goal, said the day before. `ready` = every earlier
+  // step is claimed and its target is reached (it is claimable as soon as the day starts); otherwise it is the goal.
+  {
+    const last = bv.steps[bv.steps.length - 1];
+    if (last && !last.claimed && last.fromDay === today.playerDay + 1) {
+      today.tomorrow!.graduate = { reward: last.reward, ready: last.reached && bv.steps.slice(0, -1).every((x) => x.claimed) };
+    }
+  }
   const path = bv.completed || !bv.steps.length ? null : (() => {
     const cur = bv.steps.find((x) => !x.claimed)!;
     const last = bv.steps[bv.steps.length - 1]!;
@@ -222,10 +281,47 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
       step: cur.step, steps: bv.steps.length, done: bv.steps.filter((x) => x.claimed).length,
       current: { id: cur.id, table: 'beginner' as const, kind: cur.kind, progress: cur.progress, target: cur.target, reward: cur.reward, claimed: false, claimable: cur.claimable,
         // REQ-GOAL-015: one tap to where the step is done, and whether that screen is open yet
-        screen: PATH_SCREENS[cur.kind]?.screen ?? null, open: PATH_SCREENS[cur.kind]?.feature ? open(PATH_SCREENS[cur.kind]!.feature!) : true },
+        screen: PATH_SCREENS[cur.kind]?.screen ?? null, open: PATH_SCREENS[cur.kind]?.feature ? open(PATH_SCREENS[cur.kind]!.feature!) : true,
+        // REQ-GOAL-017: the solo way of a social step, with its own screen; the day the step opens (the target may be met)
+        alt: cur.alt ? { ...cur.alt, screen: PATH_SCREENS[cur.alt.kind]?.screen ?? null, open: PATH_SCREENS[cur.alt.kind]?.feature ? open(PATH_SCREENS[cur.alt.kind]!.feature!) : true } : null,
+        reached: cur.reached, fromDay: cur.fromDay, dayOk: cur.dayOk },
       finalReward: last.reward,
+      /** The day the last step opens (null = no day). */
+      finalFromDay: last.fromDay,
     };
   })();
+
+  // ---- week 2 (REQ-GOAL-019): days 8..14, shown from day 7. One reason per day, as facts: the login bonus of that day if the
+  // player comes every day (projected from the same tables), graduation on its day while the list is unfinished, and the
+  // peak of the week. `day` 0 on the preview day, 1..7 inside the week. Nothing is granted by it.
+  const week2 = today.playerDay >= WEEK2.fromDay - 1 && today.playerDay <= WEEK2.toDay ? (() => {
+    const plan = loginBonusPlan(m, s, now, WEEK2.toDay).filter((x) => x.playerDay >= WEEK2.fromDay);
+    // today's, once received (the plan starts tomorrow then): the entry the claim used
+    if (today.loginBonus.claimedToday && today.playerDay >= WEEK2.fromDay) {
+      const beginnerLen = (m.progression.beginnerLoginBonus ?? []).length;
+      const onBeginner = (s.loginBonus.beginnerDay ?? beginnerLen) < beginnerLen || (s.loginBonus.beginnerDay === beginnerLen && s.loginBonus.streakDay === 0);
+      const def = onBeginner ? null : m.progression.loginBonus.find((x) => x.day === s.loginBonus.streakDay);
+      if (def) { const { day: _d, ...reward } = def; plan.unshift({ playerDay: today.playerDay, track: 'normal', day: def.day, days: m.progression.loginBonus.length, reward }); }
+    }
+    const last = bv.steps[bv.steps.length - 1];
+    const gradDay = last && !last.claimed && last.fromDay !== null ? Math.max(last.fromDay, WEEK2.fromDay, today.playerDay) : null;
+    const days = [];
+    for (let d = WEEK2.fromDay; d <= WEEK2.toDay; d++) {
+      const lb = plan.find((x) => x.playerDay === d) ?? null;
+      days.push({
+        playerDay: d, today: d === today.playerDay, past: d < today.playerDay,
+        loginBonus: lb ? { track: lb.track, day: lb.day, days: lb.days, reward: lb.reward } : null,
+        graduate: gradDay === d && last ? { reward: last.reward, ready: last.reached && bv.steps.slice(0, -1).every((x) => x.claimed) } : null,
+      });
+    }
+    const future = days.filter((x) => !x.past && x.loginBonus);
+    const peak = future.reduce<(typeof days)[number] | null>((a, x) => (!a || rewardRank(x.loginBonus!.reward) > rewardRank(a.loginBonus!.reward) ? x : a), null);
+    return {
+      fromDay: WEEK2.fromDay, toDay: WEEK2.toDay, day: Math.max(0, today.playerDay - WEEK2.fromDay + 1), days,
+      peak: peak ? { playerDay: peak.playerDay, reward: peak.loginBonus!.reward } : null,
+      graduate: last && !last.claimed ? { playerDay: gradDay, reward: last.reward } : null,
+    };
+  })() : null;
 
   // ---- this week (REQ-GOAL-004)
   const wc = weeklyChallengeConfig(m);
@@ -293,7 +389,7 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
   };
 
   const claimable = today.claimable + (path?.current.claimable ? 1 : 0) + seasonItems.filter((x) => x.claimable).length;
-  return { day, now, today, path, week, season, partner: partnerGrowth(m, s, now, open('training')), claimable };
+  return { day, now, today, path, week, week2, season, partner: partnerGrowth(m, s, now, open('training')), claimable };
 }
 export type GoalLadderView = ReturnType<typeof goalLadderView>;
 
@@ -307,7 +403,7 @@ export function claimAllGoals(m: Master, s: PlayerState, now: number) {
   const missionsOpen = unlocksView(m, s, now).features.find((f) => f.key === 'missions')?.unlocked ?? false;
   if (missionsOpen) for (const d of missionsView(m, s, now)) if (!d.claimed && d.progress >= d.target) claimed.push({ id: d.id, table: 'daily', reward: claimMission(m, s, d.id, now) });
   for (let guard = 0; guard < 100; guard++) {
-    const step = beginnerMissionsView(m, s).steps.find((x) => !x.claimed);
+    const step = beginnerMissionsView(m, s, now).steps.find((x) => !x.claimed);
     if (!step || !step.claimable) break;
     claimed.push({ id: step.id, table: 'beginner', reward: claimBeginnerMission(m, s, step.id, now) });
   }

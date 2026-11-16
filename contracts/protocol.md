@@ -359,7 +359,7 @@ v1|{raceId}|{rulesetVersion}|{entry};{entry};…
 - `active` は有料ラインを受け取れるか（＝このシーズンのパスを持っている）。`lastSeason` は前のシーズンの締めで自動付与した分（無ければ null）。締めの処理（`closeSeason`）の結果にも同じ形の `pass` が入る。
 
 ### 13.7 `GET /v1/missions`（追加フィールド、REQ-UXS-010）
-`{ "missions": [ … ], "firstWinBonus": { "modes": ["ranked"], "byWin": [30, 20, 10], "winsToday": 1, "remaining": 2, "next": 20 } }`。レース結果（`applyRace` の戻り値）には `firstWinBonus`（そのレースで付いた無償コイン、0 なら無し）が入る。
+`{ "missions": [ … ], "firstWinBonus": { "modes": ["ranked"], "byWin": [20, 10, 5], "winsToday": 1, "remaining": 2, "next": 10 } }`。レース結果（`applyRace` の戻り値）には `firstWinBonus`（そのレースで付いた無償コイン、0 なら無し）が入る。
 
 ### 13.8 返金（REQ-PUR-006 の拡張）
 ストアの返金通知の結果に `linkedClawback: { "freeCoins": n, "items": { "<itemId>": n } }` が加わる：購入の後にその購入のおかげで付与した分（厩舎手当の受け取り済みの無償コイン、パスの有料ラインの報酬、パス＋の10段でだけ届いた無料ラインの報酬）。足りない分は従来どおり未精算（`debt` / `itemDebt`）になり、精算までガチャと購入が止まる。
@@ -4222,6 +4222,26 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
   - `partner`：相棒（いなければ・引退していれば・調教が無効なら `null`）の成長。段階は Q1 の `growthStage`（馬カードと同じ）、`stageFrom` はいまの段階が始まった伸びの合計。`gainedToday`／`gainedYesterday` は調教日誌（§25 `log`）の今日／前のゲーム日の伸びの合計。`sessionsLeft` はこの馬が今日あと何回調教できるか（アカウントの残りと馬ごとの上限の小さい方、素質いっぱいなら 0）。**表示だけで報酬は付かない**。
   - 端末：C# `GoalTomorrow`・`GoalPartner`・`GoalItem.Screen/Open`、Unity `GoalLadderModel.TomorrowLine`（今日のセットが終わったら今日の段の文、数字は出さない）・`TomorrowLines`・`TomorrowAt`・`Partner`（`PartnerGrowthLine`）・`PathScreen`・`PathLockText`。
   - アカウント引き継ぎの案内（REQ-UXS-073）：3日目の当日はホームを開いた時には出さず、レース結果を閉じた後に出す（4日目以降はホームでも）。1回だけ・FTUE 中なし・§58.11 の1セッション1つは同じ。「いつ」は §58.11 の表の7行目が唯一の正（初めての購入は受け取りの画面を閉じた後）。
+- **2週目と持ち物の使いどころ（品質パス3、REQ-GOAL-017〜020・REQ-UXS-041/042・REQ-ITEM-010/011、docs/quality/week2.md）**：応答に項目を足す（古いクライアントは無視してよい。読むだけ・何も新しく配らない）。
+  ```json
+  "today": { "tomorrow": { "…": "…", "graduate": { "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] }, "ready": true } } },
+  "path": { "current": { "…": "…", "alt": { "kind": "treat", "target": 1, "progress": 0, "screen": "training", "open": true }, "reached": false, "fromDay": null, "dayOk": true },
+            "finalFromDay": 8 },
+  "week2": { "fromDay": 8, "toDay": 14, "day": 0,
+             "days": [{ "playerDay": 8, "today": false, "past": false, "loginBonus": { "track": "normal", "day": 1, "days": 7, "reward": { "freeCoins": 50 } },
+                        "graduate": { "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] }, "ready": true } }, "…"],
+             "peak": { "playerDay": 14, "reward": { "items": [{ "itemId": "ticket_sr_plus", "qty": 1 }] } }, "graduate": { "playerDay": 8, "reward": { "…": "…" } } },
+  "partner": { "…": "…", "treat": { "itemId": "training_apple", "name": "りんごのおやつ", "owned": 2, "fatigue": 30, "fatigueAfter": 0,
+                                    "efficiencyPermille": 850, "efficiencyAfterPermille": 1000, "tired": false, "unblocks": false } }
+  ```
+  - 初心者ミッションの定義に `alt`（`{kind, target}`：その種類でも段に届く。どちらか）と `fromDay`（その段を受け取れるプレイヤー日）。**人が要る段（`friends`・`team`）は必ずひとりでできる `alt` を持つ**（設定の検証が拒否する）。既定：6段目 `friends` ⇔ `treat`（相棒におやつ＝`POST /v1/training/items/:itemId/use` を1回）、7段目 `team` ⇔ `breed_extra`（配合素材でもう1回配合＝`useMaterial` の配合を1回。種牡馬を借りた配合でも数える）、10段目（10連スカウト券）は `fromDay: 8`（同じ報酬を初心者ログボの後の日へ移しただけ。段の報酬の合計は 550枚・券1・素材2・10連券1 で変わらない）。
+  - `path.current.reached`：自分の種類か `alt` の目標に届いた。`dayOk` が false なら `fromDay` まで待つ（`claimable` も false、受け取りは 409 `NOT_ELIGIBLE`）。`alt.screen` はその画面（`training`・`breeding`、ショップは無い）。
+  - `today.tomorrow.graduate`：最後の段が明日開く日（7日目）だけ。`ready` は前の段を全部受け取り目標にも届いている（明日の始まりから受け取れる）。
+  - `week2`：プレイヤー日 7〜14 の間だけ（7日目は予告で `day: 0`）。`days[].loginBonus` は毎日受け取った場合にその日に受け取るログボ（`claimLoginBonus` と同じ表・順番から計算。今日の分は受け取った後も出す、過ぎた日は null のことがある）。`graduate` は卒業の日（`fromDay` か今日の遅い方、受け取るまで）。`peak` はこの先の日のログボで一番大きい物（SR以上確定券 > 10連券 > スカウト券 > コイン）。カウントダウン・煽りなし。
+  - `partner.treat`（REQ-GOAL-020）と §25 の各馬の `treat`（REQ-ITEM-010）：おやつを持っていて、疲れが 20 以上（伸びの効率が 90% 以下）で、素質が残っている時だけ。値は調教と同じ計算（疲れ → おやつ後、効率 → おやつ後、`unblocks` = 疲れていて調教できない馬がおやつで調教できるようになる）。ホームの `partner.treat` は今日まだこの馬を調教できる時だけ。
+  - `POST /v1/breeding` の応答に `today`（`breedingAllowance` と同じ：`perDay`・`used`・`extraPerDay`・`extraUsed`・`materialCost`・`materialOwned`）。生まれた瞬間に「配合素材でもう1回」を出せる（REQ-ITEM-011）。
+  - 成長段階（Q1 `growthStage`）の3段目（充実期）のしきい値を 350‰ → 250‰（表示だけ。報酬・解放・レースの値は段階に依存しない。共有ベクター `contracts/horse-profile.vectors.json` を更新）。
+  - 端末：C# `GoalAlt`・`GoalItem.Alt/FromDay/DayOk/Reached`・`GoalPath.FinalFromDay`・`GoalTomorrow.GraduateReward/GraduateReady`・`GoalWeek2`／`GoalWeek2Day`・`TreatHint`（`GoalPartner.Treat`・`TrainingHorse.Treat`）・`BreedResult.Today`。Unity `GoalLadderModel.PathAltLine/PathAltScreen/PathWaitText/Week2Days/Week2Goal/Week2Short`（7日目からは2週目の段がはじめの10歩の段の場所に入る。卒業だけが残っている時）・`PartnerGrowthLine.TreatLine`・`TrainingModel.TreatLine`・`BreedingModel.AgainWithMaterialLine`。
 
 ## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
 番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。
@@ -4294,6 +4314,41 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `scout_confirm`（クライアント）`{ stage: view|pull|cancel, via: coins|ticket|sr_ticket, count: 1|10 }` → s1 = stage、s2 = via、count。
 - `purchase_receipt`（クライアント）`{ stage: view|next, productId, action: use_sr_ticket|wear_silks|open_pass|claim_allowance|scout|none }` → s1・s2・s3。
 - C# `AnalyticsEvent.ScoutConfirm`・`AnalyticsEvent.PurchaseReceipt`。クエリは `docs/ops/kpi-queries.md`「スカウトの確認・購入の受け取り」。
+
+## Q3. シーズンパスの特別な段・ショップの並びの提案（品質パス3、`server/src/domain/pass.ts`（`passRewardAt`・`passLineTotal`・`passStandouts`・`passRewardsProblems`）・`shop.ts`（`shopLayoutOf`・`shopLayoutProblems`）、C# `Shop.cs`（`PassLine.Tiers`／`At`・`PassStandout`・`PassPreview`）・`Models.cs`（`SeasonPassView.Standouts`／`NextStandout`）・`Muchi.Game.SeasonPassModel`、`docs/quality/pass.md`）
+**合計は変えない**：有料ラインは 無償コイン1,500枚＋配合素材×30、無料ラインは 無償コイン300枚のまま（どの段までの累計も同じ）。特別な段は、その段のいつもの報酬に**見た目だけの品**（非売品・有償限定でない）を1つ足す。ランク戦の能力に効く物は無い。追加はすべて任意のフィールド（古いクライアントは `rewards.<line>.reward` を全段に使い、受け取りでは特別な段の品も届く）。
+
+### Q3.1 マスター `progression.passRewards.<free|premium>.tiers`（リモート設定で毎シーズン差し替え可）
+```json
+"premium": { "every": 1, "reward": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }] },
+  "tiers": { "10": { "freeCoins": 50, "items": [{ "itemId": "breeding_material", "qty": 1 }, { "itemId": "silkpart_color_shokou", "qty": 1 }] }, "20": {…}, "30": {…} } }
+```
+- 段 L の報酬 ＝ `tiers["L"]` があればそれ、無ければ `reward`（L が `every` の倍数の時だけ）。受け取り・シーズンの締めの自動付与・返金の取り戻しは全て段ごとの報酬で行う。
+- 検査（起動時とリモート設定の各版、`passRewardsProblems`）：キーは 1〜`passMaxLevel` の報酬の段、中身は `freeCoins` と `items` だけ（馬・繁殖牝馬・パスXPは不可）、見た目の品は `notForSale` で有償限定でない・数量1、同じ品を無料と有料の両方に置かない。成長に効く品は従来どおり不可（REQ-TRAIN-010）。
+- 出荷の値：有料 10「勝負服の色『曙光』」・20「勝負服の袖『流星』」・30「勝負服の柄『流星群』」、無料 15「勝負服の帽子『流れ星』」（1組のセット。勝負服エディタの入手方法は「シーズンパス 有料ライン ティア30で入手」）。
+
+### Q3.2 `GET /v1/season-pass`（追加）
+```json
+{ "…": "…", "rewards": { "free": { "every": 1, "reward": {…}, "tiers": {…} }, "premium": {…} },
+  "standouts": [ { "track": "premium", "level": 20, "itemId": "silkpart_sleeve_comet", "label": "勝負服の袖「流星」", "purpose": "勝負服の袖が選べるようになります（見た目だけ。…）",
+                   "look": { "part": "sleeve", "ref": "comet" }, "reward": { "freeCoins": 50, "items": [ … ] },
+                   "owned": false, "reached": false, "claimed": false, "claimable": false, "levelsAway": 5, "racesAway": 24 } ],
+  "nextStandout": { "track": "premium", "level": 20, "itemId": "silkpart_sleeve_comet", "label": "勝負服の袖「流星」", "levelsAway": 5, "racesAway": 24 },
+  "totals": { "free": { "freeCoins": 300, "items": [ … ] }, "premium": { "freeCoins": 1500, "items": [ … ] } } }
+```
+- `look.part`：`pattern`／`color`／`sleeve`／`cap`（`ref` は勝負服エディタのパーツ id）か `tack`（`slot`・`asset`）。クライアントは自分の勝負服にその品を当てて見せる（保存しない、C# `PassPreview`）。
+- `racesAway` は `racesToNextLevel` と同じ数え方（`passXpPerRace` で割って切り上げ）。`nextStandout` は有料ラインでまだ届いていない最初の段（無ければ無料ラインの段、どちらも無ければ null）。
+- `claimable` は `claimed` でなく到達済みで、有料ラインはパスを持っている時だけ。
+
+### Q3.3 商品の表示（`pass_premium` に追加）
+- `standouts`（`{ level, itemId, label }[]`）と `standoutLabel`（「ティア10 勝負服の色『曙光』・ティア20 …」、無ければ null）。`total`／`totalLabel` はコインと素材の合計のまま（見た目の品は `standoutLabel` で別に書く）。
+
+### Q3.4 ショップの並びの提案 `progression.shopLayout`（出荷は**オフ**、リモート設定で切り替える）
+```json
+"shopLayout": { "allowanceUnderPass": false, "retiredProducts": [] }
+```
+- `allowanceUnderPass: true`：厩舎手当の `tab` が `pass`（パスの画面の下に並べる）、`GET /v1/shop/offers` の「おすすめ」には出さない。商品・価格・規則は同じ。
+- `retiredProducts`：売るのをやめる商品（コインのパックと昇級記念パックだけ）。一覧・オファー・コイン不足の案内（T6）に出ない、新しい `purchase-intent` は `409 NOT_ELIGIBLE`。**既に決済中の購入はそのまま付与**、持っている品・履歴・返金は変わらない。検査（`shopLayoutProblems`）：コインのパックは4つ以上残す、いちばん小さいパックと大きいパックは残す。提案の値は `["coin_800", "coin_2400", "promo_pack_B", "promo_pack_A", "promo_pack_S"]`（数字は `docs/quality/pass.md` §4）。
 
 ## 66. 騎手の道（single-player career、REQ-CAREER-001〜024、`server/src/domain/career.ts`・`server/src/race/career.ts`・`server/master/career.json`、C# `Career.cs`（`CareerView`・`CareerRun`・`CareerStars`）・`Muchi.Game.CareerModel`、docs/handoff-codex-round22-career.md）
 マッチングを待たずに、自分の馬で CPU と走る章立てのひとりモード。FTUE の後で「ムチ・手綱・馬場・相手の脚質」を順に教える。章（最初は5章）ごとに 3〜5 戦、各レースの前後に短い物語（日本語・英語、ムチ一閃の語り口、賭けの言葉なし）、クリアの目標（星1）と追加の目標（星2・星3）。レースは週替わりチャレンジ（§31）と同じ検証の道：サーバーが設定を発行し、端末がオフラインで CPU と走り、入力だけを送り、C# 検証サーバーが発行した設定で計算し直し、プレイヤーの Durable Object が目標を判定する。**端末の申告だけでクリアにはならない**。

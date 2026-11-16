@@ -566,6 +566,38 @@ static partial class Round8Checks
         check(!free.CanBuy, "deletion pending: the pass cannot be bought");
     }
 
+    // quality pass 3 (docs/quality/pass.md): the standout tiers — the next peak line, the cells, the try-on on the own silks, the claim moment
+    const string SeasonPassStandouts = "{\"seasonId\":\"2026-11\",\"level\":15,\"xp\":1520,\"xpPerLevel\":100,\"maxLevel\":30,\"xpToNextLevel\":80,\"racesToNextLevel\":4,\"active\":true,\"expiresAt\":1796050800000,\"seasonEndsAt\":1796050800000,\"remainingDays\":6,\"lastWeek\":true,\"autoRenew\":false,\"boostLevels\":0,\"owned\":[\"season_pass\"],\"purchasable\":[],\"claimed\":{\"free\":[],\"premium\":[]},\"rewards\":{\"free\":{\"every\":1,\"reward\":{\"freeCoins\":10},\"tiers\":{\"15\":{\"freeCoins\":10,\"items\":[{\"itemId\":\"silkpart_cap_comet\",\"qty\":1}]}}},\"premium\":{\"every\":1,\"reward\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1}]},\"tiers\":{\"10\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1},{\"itemId\":\"silkpart_color_shokou\",\"qty\":1}]},\"20\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1},{\"itemId\":\"silkpart_sleeve_comet\",\"qty\":1}]},\"30\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1},{\"itemId\":\"costume_silks_comet\",\"qty\":1}]}}}},\"autoGrantAtSeasonEnd\":true,\"lastSeason\":null,\"standouts\":[{\"track\":\"premium\",\"level\":10,\"itemId\":\"silkpart_color_shokou\",\"label\":\"勝負服の色「曙光」\",\"purpose\":\"勝負服の色が選べるようになります（見た目だけ。ランク戦の能力は変わりません）\",\"look\":{\"part\":\"color\",\"ref\":\"shokou\"},\"reward\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1},{\"itemId\":\"silkpart_color_shokou\",\"qty\":1}]},\"owned\":false,\"reached\":true,\"claimed\":false,\"claimable\":true,\"levelsAway\":0,\"racesAway\":0},{\"track\":\"free\",\"level\":15,\"itemId\":\"silkpart_cap_comet\",\"label\":\"勝負服の帽子「流れ星」\",\"purpose\":\"勝負服の帽子が選べるようになります（見た目だけ。ランク戦の能力は変わりません）\",\"look\":{\"part\":\"cap\",\"ref\":\"comet\"},\"reward\":{\"freeCoins\":10,\"items\":[{\"itemId\":\"silkpart_cap_comet\",\"qty\":1}]},\"owned\":false,\"reached\":true,\"claimed\":false,\"claimable\":true,\"levelsAway\":0,\"racesAway\":0},{\"track\":\"premium\",\"level\":20,\"itemId\":\"silkpart_sleeve_comet\",\"label\":\"勝負服の袖「流星」\",\"purpose\":\"勝負服の袖が選べるようになります（見た目だけ。ランク戦の能力は変わりません）\",\"look\":{\"part\":\"sleeve\",\"ref\":\"comet\"},\"reward\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1},{\"itemId\":\"silkpart_sleeve_comet\",\"qty\":1}]},\"owned\":false,\"reached\":false,\"claimed\":false,\"claimable\":false,\"levelsAway\":5,\"racesAway\":24},{\"track\":\"premium\",\"level\":30,\"itemId\":\"costume_silks_comet\",\"label\":\"勝負服の柄「流星群」\",\"purpose\":\"勝負服の柄が選べるようになります（見た目だけ。ランク戦の能力は変わりません）\",\"look\":{\"part\":\"pattern\",\"ref\":\"comet\"},\"reward\":{\"freeCoins\":50,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":1},{\"itemId\":\"costume_silks_comet\",\"qty\":1}]},\"owned\":false,\"reached\":false,\"claimed\":false,\"claimable\":false,\"levelsAway\":15,\"racesAway\":74}],\"nextStandout\":{\"track\":\"premium\",\"level\":20,\"itemId\":\"silkpart_sleeve_comet\",\"label\":\"勝負服の袖「流星」\",\"levelsAway\":5,\"racesAway\":24},\"totals\":{\"free\":{\"freeCoins\":300,\"items\":[{\"itemId\":\"silkpart_cap_comet\",\"qty\":1}]},\"premium\":{\"freeCoins\":1500,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":30},{\"itemId\":\"silkpart_color_shokou\",\"qty\":1},{\"itemId\":\"silkpart_sleeve_comet\",\"qty\":1},{\"itemId\":\"costume_silks_comet\",\"qty\":1}]}}}";
+
+    public static async Task PassStandouts(Action<bool, string> check, RulesetParams rs)
+    {
+        var player = new P { ConsentRequired = false, PartnerId = "h1", GachaUsed = true, Horses = "[" + Horse1 + "]", Unlocks = AllUnlocks };
+        var (s, b, kv) = Setup(player, rs);
+        s.Routes["GET /v1/season-pass"] = _ => Ok(SeasonPassStandouts);
+        var p = new SeasonPassModel(b, () => now);
+        await p.LoadAsync();
+        check(p.NextStandoutLine == "次の特別な段　ティア20 勝負服の袖「流星」　あと5段（24戦）", "the next standout and how far it is, from the server");
+        var rows = p.Rows;
+        check(rows[9].PremiumStandout?.ItemId == "silkpart_color_shokou" && rows[14].FreeStandout?.ItemId == "silkpart_cap_comet" && rows[19].PremiumStandout != null && rows[29].PremiumStandout != null && rows.Count(r => r.IsStandout) == 4,
+            "standout cells at premium 10 / 20 / 30 and free 15");
+        check(rows[9].PremiumText == "無償コイン50枚・breeding_material×1・silkpart_color_shokou×1" && rows[10].PremiumText == "無償コイン50枚・breeding_material×1", "a standout tier shows its own reward: the usual coins and material plus the part");
+        var mine = new SilksDesign { Pattern = "hoops", Colors = new[] { "navy", "white" } };
+        var set = p.PreviewSet(mine);
+        check(set.Pattern == "comet" && set.Sleeve == "comet" && set.Colors[1] == "shokou" && mine.Pattern == "hoops", "try-on: the whole premium set on the own silks; the own design is untouched");
+        check(p.PreviewDesign(mine, rows[19].PremiumStandout).Sleeve == "comet", "try-on: one standout");
+        s.Routes["POST /v1/season-pass/claim"] = _ => Ok("{\"freeCoins\":50}");
+        check(p.PendingMoment == null, "no moment before a claim");
+        await p.ClaimAsync(PassTrack.Premium, 11);
+        check(p.PendingMoment == null, "an ordinary tier plays no moment");
+        await p.ClaimAsync(PassTrack.Premium, 10);
+        var mo = p.TakeMoment();
+        check(mo != null && mo.Title == "勝負服の色「曙光」" && mo.Kicker == "ティア10　有料報酬" && mo.ActionLabel == "勝負服に着てみる" && mo.Look.Ref == "shokou" && p.PendingMoment == null,
+            "claiming a standout tier plays its moment once, with the try-on step");
+        await p.ClaimAllAsync();
+        mo = p.TakeMoment();
+        check(mo != null && mo.Level == 15 && mo.Kicker == "ティア15　無料報酬", "まとめて受け取る: the highest standout claimed plays the moment");
+    }
+
     static async Task Deletion(Action<bool, string> check, RulesetParams rs)
     {
         var player = new P { ConsentRequired = false, PartnerId = "h1", GachaUsed = true, Horses = "[" + Horse1 + "]", Unlocks = AllUnlocks };

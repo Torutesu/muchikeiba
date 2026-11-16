@@ -44,6 +44,10 @@
     { "id": "silkpart_sleeve_stars", "name": "勝負服の袖「星」", "kind": "silks_part", "part": "sleeve", "ref": "stars", "asset": "silks/sleeve/stars", "price": 200, "currency": "any" },
     { "id": "silkpart_cap_spots", "name": "勝負服の帽子「水玉」", "kind": "silks_part", "part": "cap", "ref": "spots", "asset": "silks/cap/spots", "price": 150, "currency": "any" },
     { "id": "silkpart_cap_checks", "name": "勝負服の帽子「格子」", "kind": "silks_part", "part": "cap", "ref": "checks", "asset": "silks/cap/checks", "price": 200, "currency": "any" },
+    { "id": "silkpart_color_shokou", "name": "勝負服の色「曙光」", "kind": "silks_part", "part": "color", "ref": "shokou", "asset": "silks/color/shokou", "price": 0, "currency": "any", "notForSale": true },
+    { "id": "silkpart_sleeve_comet", "name": "勝負服の袖「流星」", "kind": "silks_part", "part": "sleeve", "ref": "comet", "asset": "silks/sleeve/comet", "price": 0, "currency": "any", "notForSale": true },
+    { "id": "silkpart_cap_comet", "name": "勝負服の帽子「流れ星」", "kind": "silks_part", "part": "cap", "ref": "comet", "asset": "silks/cap/comet", "price": 0, "currency": "any", "notForSale": true },
+    { "id": "costume_silks_comet", "name": "勝負服「流星群」", "kind": "silks", "pattern": "comet", "price": 0, "currency": "any", "notForSale": true },
     { "id": "photo_frame_sakura", "name": "写真フレーム「桜吹雪」", "kind": "photo", "asset": "photo/frame/sakura", "price": 150, "currency": "any" },
     { "id": "photo_frame_gold_leaf", "name": "写真フレーム「金箔」", "kind": "photo", "asset": "photo/frame/gold_leaf", "price": 300, "currency": "any" },
     { "id": "photo_stamp_carrot_pop", "name": "写真スタンプ「にんじんポップ」", "kind": "photo", "asset": "photo/stamp/carrot_pop", "price": 100, "currency": "any" }

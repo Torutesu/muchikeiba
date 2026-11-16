@@ -788,7 +788,9 @@ namespace Muchi.Client
         public AtavismTrait Atavism;
         /// <summary>Skill the foal inherited (REQ-UXS-050), or null.</summary>
         public string SkillId;
-        internal static BreedResult Parse(JsonNode o) => new BreedResult { Foal = Horse.Parse(J.Opt(o, "foal")), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"), UsedMaterial = J.Bool(o, "usedMaterial"), Atavism = AtavismTrait.Parse(J.Opt(o, "atavism")), SkillId = J.Str(o, "skillId") };
+        /// <summary>REQ-ITEM-011 (quality pass 3): today's allowance after this breeding — one more with material? (null from an older server).</summary>
+        public BreedingAllowance Today;
+        internal static BreedResult Parse(JsonNode o) => new BreedResult { Foal = Horse.Parse(J.Opt(o, "foal")), Nick = J.Bool(o, "nick"), InbreedingCount = J.Int(o, "inbreedingCount"), UsedMaterial = J.Bool(o, "usedMaterial"), Atavism = AtavismTrait.Parse(J.Opt(o, "atavism")), SkillId = J.Str(o, "skillId"), Today = BreedingAllowance.Parse(J.Opt(o, "today")) };
     }
 
     public sealed class LoginBonusResult
@@ -840,6 +842,11 @@ namespace Muchi.Client
         public PassLine FreeLine, PremiumLine;
         /// <summary>The previous season's close (auto-granted levels), or null.</summary>
         public PassSeasonRecord LastSeason;
+        /// <summary>Quality pass 3: the standout tiers (both lines, by level) and the next one not reached yet (premium first; null when none is left or on older servers).</summary>
+        public List<PassStandout> Standouts = new List<PassStandout>();
+        public PassStandout NextStandout;
+        /// <summary>Quality pass 3: each line added up (the totals the restructure kept equal).</summary>
+        public Reward FreeTotal, PremiumTotal;
         internal static SeasonPassView Parse(JsonNode o)
         {
             var c = J.Opt(o, "claimed");
@@ -853,6 +860,9 @@ namespace Muchi.Client
                 Owned = J.List(o, "owned", x => x.AsString()), Purchasable = J.List(o, "purchasable", x => x.AsString()),
                 FreeLine = PassLine.Parse(J.Opt(rw, "free")), PremiumLine = PassLine.Parse(J.Opt(rw, "premium")),
                 LastSeason = PassSeasonRecord.Parse(J.Opt(o, "lastSeason")),
+                Standouts = J.List(o, "standouts", PassStandout.Parse), NextStandout = PassStandout.Parse(J.Opt(o, "nextStandout")),
+                FreeTotal = J.Opt(J.Opt(o, "totals"), "free") == null ? null : Reward.Parse(J.Opt(J.Opt(o, "totals"), "free")),
+                PremiumTotal = J.Opt(J.Opt(o, "totals"), "premium") == null ? null : Reward.Parse(J.Opt(J.Opt(o, "totals"), "premium")),
             };
         }
     }

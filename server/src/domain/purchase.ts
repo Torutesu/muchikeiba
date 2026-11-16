@@ -6,7 +6,7 @@ import { clawbackFree, grantFree, grantPaid, refundPaid } from './wallet.js';
 import { addItems, clawbackItems, hasItemDebt } from './items.js';
 import { grantSeasonPass, passPurchaseInfo, passPurchasesFor, refundSeasonPass } from './pass.js';
 import { revalidateEquippedSilks } from './silksEditor.js';
-import { classReached, firstPurchaseBonusOf, grantAllowance, pendingAllowance, refundAllowance } from './shop.js';
+import { classReached, firstPurchaseBonusOf, grantAllowance, isRetired, pendingAllowance, refundAllowance } from './shop.js';
 import { bindingCap, effectiveLimitYen, pendingAt, selfLimitYenAt, type AgeCap } from './selfLimits.js';
 
 /** Store receipt verification result (Apple App Store Server API / Google Play Developer API behind an adapter). */
@@ -96,6 +96,8 @@ export function registerAge(m: Master, s: PlayerState, birthYear: number, birthM
 export function productBlock(m: Master, s: PlayerState, p: Product, now: number, ab: ReturnType<typeof ageBand>): { code: ErrorCode; message?: string; details?: Record<string, unknown> } | null {
   // once-only products stay used even if refunded (otherwise buy → refund → buy farms the bundle).
   if (p.once && s.purchases.some((x) => x.productId === p.id)) return { code: 'ALREADY_PURCHASED' };
+  // quality pass 3: a product retired by config (shopLayout.retiredProducts) is no longer sold; one already in flight is still credited
+  if (isRetired(m, p.id)) return { code: 'NOT_ELIGIBLE', message: `product ${p.id} is no longer offered` };
   // REQ-UXS-019: a promotion pack is sold once its class has been reached
   if (p.kind === 'promotion' && p.classId && !classReached(m, s, p.classId)) return { code: 'NOT_ELIGIBLE', message: `class ${p.classId} not reached yet` };
   // REQ-UXS-020: one pass (Pass or Pass+) per season

@@ -19,7 +19,7 @@ import { cancelSpendingRaise, selfLimitsDigest, selfLimitsView, setPlaytime, set
 import { ageCapOf, applyRefund, applySubscriptionStatus, applyVerifiedPurchase, checkPurchaseIntent, registerAge, type StoreVerifier, type SubscriptionStatus, type VerifiedReceipt } from './purchase.js';
 import { assertBannerOpen, drawGacha, exchangePity, findBanner, gachaPrice, gachaStatus, settlePityGroups } from './gacha.js';
 import { attachShortfall, coinShortfall } from './shortfall.js';
-import { awaken, breed, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
+import { awaken, breed, breedingAllowance, breedingPreviewWithAllowance, getHorse, nameHorse, pedigree, retire } from './horses.js';
 import { bloodlinesView, breedingPedigree, pedigreeMine, pedigreePublic } from './pedigree.js';
 import { migrateSkills } from './skills.js';
 import { buyCosmetic, cosmeticsCatalog, findCosmetic, setEquipment, useTicket, type EquipmentPatch } from './itemShop.js';
@@ -154,6 +154,12 @@ export interface PlayerRepo {
    */
   ledgerPage?(id: string, q: Parameters<LedgerPager>[0]): LedgerEntry[] | Promise<LedgerEntry[]>;
   gachaPage?(id: string, q: Parameters<GachaPager>[0]): GachaLogEntry[] | Promise<GachaLogEntry[]>;
+  /**
+   * get() returns a private deep copy on every call (deserialized from storage; nothing else holds it), so a transaction
+   * can use it as its draft without cloning it again. Absent = the transaction clones (a repo that may hand out a cached
+   * object). The memory repo sets it: the copy was most of the CPU time of the economy simulation (test reliability).
+   */
+  readonly freshCopies?: boolean;
 }
 
 /** REQ-HIST-*: which list `history` reads, and its query. */
@@ -179,6 +185,7 @@ function countBreeding(s: PlayerState) {
 
 export class MemoryPlayerRepo implements PlayerRepo {
   readonly data = new Map<string, string>();
+  readonly freshCopies = true; // get() parses a new object from the stored JSON every time
   /** r10: ids whose account deletion wiped the state (delete() keeps a tombstone, like the Durable Object). */
   readonly tombstones = new Set<string>();
   get(id: string) {
@@ -283,7 +290,8 @@ export class PlayerService {
       const hit = current.idem.find((e) => e.key === idemKey);
       if (hit) return hit.result as T;
     }
-    const draft: PlayerState = structuredClone(current);
+    const teamBefore = current.team?.teamId ?? null;
+    const draft: PlayerState = this.repo.freshCopies ? current : structuredClone(current);
     const now = this.d.clock();
     const rolled = rollSeason(this.d.master, draft, now);
     // §68 × §40 (REQ-PROMO-018): a promotion at the close is one activity entry (linked to that month's recap)
@@ -376,7 +384,7 @@ export class PlayerService {
       });
     }
     const teamId = draft.team?.teamId ?? null;
-    if (!deleting && this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== (current.team?.teamId ?? null))) {
+    if (!deleting && this.d.onTeamPoints && teamId && (standingKey(draft) !== standingBefore || teamId !== teamBefore)) {
       await this.d.onTeamPoints({ teamId, playerId: id, seasonId: draft.season.id, points: draft.season.points, displayName: draft.profile.displayName });
     }
     if (draft.wallet.paid !== paidBefore && this.d.onPaidBalance && !draft.deletion?.record) {
@@ -764,7 +772,10 @@ export class PlayerService {
     return this.tx(id, key, (s, now) => {
       const r = breed(this.d.master, s, sireId, damId, this.d.rng, now, { useMaterial, ref: key });
       countBreeding(s);
-      return r;
+      // REQ-UXS-041: the solo alternative of the beginner 支部 step (an extra breeding with breeding material)
+      if (r.usedMaterial) countOnboarding(s, 'breed_extra');
+      // quality pass 3 (REQ-ITEM-011): what is left today, so the foal reveal can offer one more with material
+      return { ...r, today: breedingAllowance(this.d.master, s, now) };
     });
   }
 
@@ -796,6 +807,7 @@ export class PlayerService {
       const before = s.stud?.applied[opId];
       const r = studApply(this.d.master, s, opId, snap, damId, this.d.rng, now, useMaterial);
       if (!before) countBreeding(s);
+      if (!before && r.usedMaterial) countOnboarding(s, 'breed_extra'); // REQ-UXS-041
       if (!before) emit({ name: 'stud_breed', s1: snap.ownerId, s2: snap.horseId, count: 1, paidCoins: 0, freeCoins: r.fee, value: r.atavism ? 1 : 0 });
       return r;
     });
@@ -905,7 +917,7 @@ export class PlayerService {
    */
   async missionsAll(id: string) {
     return this.tx(id, null, (s, now, emit) => (noteActivity(this.d.master, s, now, emit), {
-      missions: missionsView(this.d.master, s, now), beginner: beginnerMissionsView(this.d.master, s), season: seasonMissionsView(this.d.master, s),
+      missions: missionsView(this.d.master, s, now), beginner: beginnerMissionsView(this.d.master, s, now), season: seasonMissionsView(this.d.master, s),
       firstWinBonus: firstWinBonusView(this.d.master, s, now),
     }));
   }
@@ -1013,7 +1025,11 @@ export class PlayerService {
   /** POST /v1/training/items/:itemId/use (keyed): fatigue relief on one horse. */
   async trainingUseItem(id: string, itemId: string, horseId: string, idemKey: string | null) {
     const key = this.requireKey(idemKey);
-    return this.tx(id, key, (s, now) => ({ ...useTrainingItem(this.d.master, s, itemId, horseId, now, key), training: trainingDelta(this.d.master, s, now, horseId) }));
+    return this.tx(id, key, (s, now) => {
+      const r = useTrainingItem(this.d.master, s, itemId, horseId, now, key);
+      countOnboarding(s, 'treat'); // REQ-UXS-041: the solo alternative of the beginner friend step
+      return { ...r, training: trainingDelta(this.d.master, s, now, horseId) };
+    });
   }
 
   // ---------------------------------------------------------------- ライバル weekly rival (REQ-RIVAL-*, rival.ts; orchestrated by RivalService)

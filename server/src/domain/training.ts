@@ -445,6 +445,32 @@ function horseView(m: Master, c: TrainingConfig, s: PlayerState, h: HorseInstanc
     todayCount: rec && sameGameDay(rec.day, today) ? rec.dayCount : 0, sessions: rec?.sessions ?? 0, ...(withLog ? { log: rec?.log ?? [] } : {}),
     blocked: blockReason(m, c, s, h, null, now),
     menus: c.menus.map((x) => ({ id: x.id, blocked: blockReason(m, c, s, h, x, now), outlook: menuOutlook(m, c, s, h, x, fatigue, rec) })),
+    treat: treatHint(m, c, s, h, now),
+  };
+}
+
+/** A treat is suggested from this fatigue (the growth efficiency is 90% or lower here). */
+export const TREAT_MIN_FATIGUE = 20;
+/**
+ * Quality pass 3 (docs/quality/week2.md, REQ-ITEM-010): the moment a training item matters — the horse is tired enough that
+ * training grows it less (or not at all), the player owns the item, and the horse still has potential left. What it
+ * changes, from the same numbers training uses: fatigue before → after, growth efficiency before → after, and whether it
+ * lets a tired horse train again. Null otherwise (nothing to suggest). Read only.
+ */
+export function treatHint(m: Master, c: TrainingConfig, s: PlayerState, h: HorseInstance, now: number) {
+  const def = c.items.find((x) => (s.items[x.itemId] ?? 0) > 0);
+  if (!def || h.status !== 'active') return null;
+  const potential = potentialOf(c, h);
+  if (potential > 0 && trainedTotal(h) >= potential) return null;
+  const fatigue = fatigueNow(m, c, s.training?.horses[h.id], now);
+  if (fatigue < TREAT_MIN_FATIGUE) return null;
+  const after = Math.max(0, fatigue - def.fatigueRelief);
+  const eff = (f: number) => Math.max(c.fatigue.minEfficiencyPermille, 1000 - f * c.fatigue.penaltyPermillePerPoint);
+  const tired = fatigue >= c.fatigue.restAt;
+  return {
+    itemId: def.itemId, name: def.name, owned: s.items[def.itemId] ?? 0,
+    fatigue, fatigueAfter: after, efficiencyPermille: eff(fatigue), efficiencyAfterPermille: eff(after),
+    tired, unblocks: tired && after < c.fatigue.restAt,
   };
 }
 

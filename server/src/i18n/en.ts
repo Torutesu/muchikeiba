@@ -73,6 +73,10 @@ export const CODE_EN: Record<string, string> = {
   'はじめての購入時のみ：有償コイン{n}枚をプレゼント': 'First purchase only: {n} paid coins included',
   // quality pass 2 (docs/quality/shop.md): the pass track's total, the scout confirmation (scoutOptions.ts), the receipt (receipt.ts)
   '{levels}段の合計：{reward}': 'All {levels} tiers together: {reward}',
+  // quality pass 3 (docs/quality/pass.md): the standout tiers (shop.ts productContents, silksEditor.ts sourceLabel)
+  'ティア{level} {item}': 'Tier {level}: {item}',
+  'シーズンパス 有料ライン ティア{n}で入手': 'Season Pass premium track, tier {n}',
+  'シーズンパス 無料ライン ティア{n}で入手': 'Season Pass free track, tier {n}',
   '有償コイン{a}枚と無償コイン{b}枚を使います': 'Uses {a} paid coins and {b} free coins',
   '有償コイン{n}枚を使います': 'Uses {n} paid coins',
   '無償コイン{n}枚を使います': 'Uses {n} free coins',

@@ -4,6 +4,8 @@
  * season missions (REQ-UXS-016) and A/B bucket assignment (REQ-UXS-032). Pure per-player logic; the master
  * values live in `progression` (remote config can change them; onboardingProblems validates every change).
  */
+import { passRewardsProblems } from './pass.js';
+import { shopLayoutProblems } from './shop.js';
 import { adsProblems } from './ads.js';
 import { trainingProblems } from './training.js';
 import { giftBoxProblems } from './giftBox.js';
@@ -59,8 +61,17 @@ export interface BeginnerMatchConfig {
 }
 /** §4.3: a feature opens when ANY of the given conditions is met (none given = from the start). Display-only gating. */
 export interface UnlockDef { key: UnlockKey; races?: number | null; days?: number | null; rankedRaces?: number | null; breedings?: number | null }
-export type BeginnerMissionKind = 'gacha' | 'silks' | 'care' | 'ranked_top3' | 'breed' | 'friends' | 'team' | 'ta_finish' | 'ranked_races' | 'races' | 'collect';
-export interface BeginnerMissionDef { id: string; kind: BeginnerMissionKind; target: number; reward: Reward; templateIds?: string[] }
+export type BeginnerMissionKind = 'gacha' | 'silks' | 'care' | 'ranked_top3' | 'breed' | 'friends' | 'team' | 'ta_finish' | 'ranked_races' | 'races' | 'collect' | 'treat' | 'breed_extra';
+/**
+ * Quality pass 3 (docs/quality/week2.md, REQ-UXS-041/042):
+ *   alt      an either/or: the step is reached by its own kind OR by the alternative (a social step always carries a solo
+ *            alternative, so a player who plays alone can finish the list — onboardingProblems checks it)
+ *   fromDay  the player day (1 = install day) from which the step can be claimed: the last step is the week-2 goal (day 8),
+ *            the same reward moved later, never a new one
+ */
+export interface BeginnerMissionDef { id: string; kind: BeginnerMissionKind; target: number; reward: Reward; templateIds?: string[]; alt?: { kind: BeginnerMissionKind; target: number }; fromDay?: number }
+/** Beginner kinds that need another player. A step of one of these kinds must have a solo `alt`. */
+export const SOCIAL_BEGINNER_KINDS: readonly BeginnerMissionKind[] = ['friends', 'team'];
 export type SeasonMissionKind = 'ranked_races' | 'wins' | 'top3' | 'points' | 'promotion_line' | 'collect';
 export interface SeasonMissionDef { id: string; kind: SeasonMissionKind; target: number; reward: Reward; templateIds?: string[] }
 export type AbValue = string | number | boolean | null;
@@ -105,7 +116,7 @@ const rewardSchema = z.object({
   passXp: int.min(0).max(10_000).optional(),
 }).strict();
 const id = z.string().regex(/^[a-z0-9_]{1,40}$/);
-const bmKinds = ['gacha', 'silks', 'care', 'ranked_top3', 'breed', 'friends', 'team', 'ta_finish', 'ranked_races', 'races', 'collect'] as const;
+const bmKinds = ['gacha', 'silks', 'care', 'ranked_top3', 'breed', 'friends', 'team', 'ta_finish', 'ranked_races', 'races', 'collect', 'treat', 'breed_extra'] as const;
 const smKinds = ['ranked_races', 'wins', 'top3', 'points', 'promotion_line', 'collect'] as const;
 const optCount = int.min(0).max(10_000).nullable().optional();
 
@@ -118,7 +129,11 @@ export const onboardingSchemas = {
   }).strict(),
   beginnerLoginBonus: z.array(rewardSchema.extend({ day: int.min(1).max(31) }).strict()).min(1).max(14),
   unlocks: z.array(z.object({ key: z.enum(UNLOCK_KEYS), races: optCount, days: optCount, rankedRaces: optCount, breedings: optCount }).strict()).max(40),
-  beginnerMissions: z.array(z.object({ id, kind: z.enum(bmKinds), target: int.min(1).max(10_000), reward: rewardSchema, templateIds: z.array(z.string()).max(20).optional() }).strict()).max(20),
+  beginnerMissions: z.array(z.object({
+    id, kind: z.enum(bmKinds), target: int.min(1).max(10_000), reward: rewardSchema, templateIds: z.array(z.string()).max(20).optional(),
+    alt: z.object({ kind: z.enum(bmKinds), target: int.min(1).max(10_000) }).strict().optional(),
+    fromDay: int.min(1).max(60).optional(),
+  }).strict()).max(20),
   seasonMissions: z.array(z.object({ id, kind: z.enum(smKinds), target: int.min(0).max(100_000), reward: rewardSchema, templateIds: z.array(z.string()).max(20).optional() }).strict()).max(20),
   experiments: z.array(z.object({
     id, active: z.boolean(),
@@ -171,6 +186,13 @@ export function onboardingProblems(p: Progression, m: Pick<Master, 'templateById
       missionIds.add(d.id);
       if (d.kind === 'collect' && !(d.templateIds && d.templateIds.length)) out.push(`progression.${key}[${i}]: collect needs templateIds`);
       if (key === 'beginnerMissions' && d.reward.passXp) out.push(`progression.${key}[${i}]: passXp is for season missions only`);
+      if (key === 'beginnerMissions') {
+        const b = d as BeginnerMissionDef;
+        // REQ-UXS-041: a step that needs another player always has a solo way (the list never dead-ends for a solo player)
+        if (SOCIAL_BEGINNER_KINDS.includes(b.kind) && (!b.alt || SOCIAL_BEGINNER_KINDS.includes(b.alt.kind))) out.push(`progression.${key}[${i}]: a social step (${b.kind}) needs a solo alt`);
+        if (b.alt && b.alt.kind === b.kind) out.push(`progression.${key}[${i}]: alt must be another kind`);
+        if (b.alt && b.alt.kind === 'collect') out.push(`progression.${key}[${i}]: alt cannot be collect`);
+      }
       if (key === 'seasonMissions' && !d.reward.passXp) out.push(`progression.${key}[${i}]: a season mission gives pass XP`);
       if (d.reward.horse || d.reward.broodmare) out.push(`progression.${key}[${i}]: missions cannot reward horses`);
       rewardRefs(`progression.${key}[${i}]`, d.reward);
@@ -329,16 +351,35 @@ function beginnerProgress(s: PlayerState, d: BeginnerMissionDef): number {
   }
 }
 
-export function beginnerMissionsView(m: Master, s: PlayerState) {
+/** REQ-UXS-041: the step's own kind OR its alternative reached its target. */
+function beginnerReached(s: PlayerState, d: BeginnerMissionDef): boolean {
+  if (beginnerProgress(s, d) >= d.target) return true;
+  return !!d.alt && beginnerProgress(s, { id: d.id, kind: d.alt.kind, target: d.alt.target, reward: {} }) >= d.alt.target;
+}
+
+/**
+ * The beginner list. `now` gives the player day for a step with `fromDay` (REQ-UXS-042): `dayOk` false = the target may be
+ * reached but the step opens on that day (`claimable` waits for it).
+ */
+export function beginnerMissionsView(m: Master, s: PlayerState, now: number) {
   const defs = m.progression.beginnerMissions ?? [];
   const o = ensureOnboarding(s);
   const next = defs.findIndex((d) => !o.claimed.includes(d.id));
+  const pday = playerDay(s, now, dayRule(m));
   return {
     completed: defs.length > 0 && next === -1,
+    playerDay: pday,
     steps: defs.map((d, i) => {
       const progress = Math.min(d.target, beginnerProgress(s, d));
+      const alt = d.alt ? { kind: d.alt.kind, target: d.alt.target, progress: Math.min(d.alt.target, beginnerProgress(s, { id: d.id, kind: d.alt.kind, target: d.alt.target, reward: {} })) } : null;
       const claimed = o.claimed.includes(d.id);
-      return { id: d.id, step: i + 1, kind: d.kind, target: d.target, progress, reward: d.reward, claimed, locked: !claimed && i > next && next !== -1, claimable: !claimed && i === next && progress >= d.target };
+      const reached = progress >= d.target || (!!alt && alt.progress >= alt.target);
+      const dayOk = d.fromDay === undefined || pday >= d.fromDay;
+      return {
+        id: d.id, step: i + 1, kind: d.kind, target: d.target, progress, reward: d.reward, claimed, locked: !claimed && i > next && next !== -1,
+        claimable: !claimed && i === next && reached && dayOk,
+        alt, reached, fromDay: d.fromDay ?? null, dayOk,
+      };
     }),
   };
 }
@@ -352,7 +393,8 @@ export function claimBeginnerMission(m: Master, s: PlayerState, missionId: strin
   if (o.claimed.includes(missionId)) throw new AppError('ALREADY_CLAIMED');
   if (defs.slice(0, i).some((d) => !o.claimed.includes(d.id))) throw new AppError('NOT_ELIGIBLE', 'complete the previous step first');
   const d = defs[i]!;
-  if (beginnerProgress(s, d) < d.target) throw new AppError('NOT_ELIGIBLE');
+  if (!beginnerReached(s, d)) throw new AppError('NOT_ELIGIBLE');
+  if (d.fromDay !== undefined && playerDay(s, now, dayRule(m)) < d.fromDay) throw new AppError('NOT_ELIGIBLE', `opens on day ${d.fromDay}`);
   o.claimed.push(d.id);
   grantReward(s, d.reward, now, `beginner mission ${d.id}`, `bm:${d.id}`, m);
   return d.reward;
@@ -453,7 +495,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
     ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m),
-    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...activityProblems(m), ...fsugProblems(m), ...nextActionProblems(m), ...seasonRecapProblems(m), ...hostedCupsProblems(m), ...reportsProblems(m), ...horseGoalsProblems(m), ...dataExportProblems(m), ...transferProblems(m), ...devicesProblems(m), ...linksProblems(m), ...clientErrorsProblems(m), ...reviewPromptProblems(m), ...localNotificationsProblems(m), ...surveysProblems(m), ...promotionProblems(m), ...selfLimitsProblems(m)]; // REQ-SURVEY-004 // REQ-LIMIT-019, REQ-CERR-001, REQ-REV-002, REQ-LNOTIF-019, REQ-RPT-015, REQ-HGOAL-*, REQ-DEX-*, REQ-TRF-*, REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-ACT-010, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-FSUG-012
+    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...activityProblems(m), ...fsugProblems(m), ...nextActionProblems(m), ...seasonRecapProblems(m), ...hostedCupsProblems(m), ...reportsProblems(m), ...horseGoalsProblems(m), ...dataExportProblems(m), ...transferProblems(m), ...devicesProblems(m), ...linksProblems(m), ...clientErrorsProblems(m), ...reviewPromptProblems(m), ...localNotificationsProblems(m), ...surveysProblems(m), ...promotionProblems(m), ...selfLimitsProblems(m), ...passRewardsProblems(m, knownItems), ...shopLayoutProblems(m)]; // quality pass 3: pass standout tiers, shop layout proposals // REQ-SURVEY-004 // REQ-LIMIT-019, REQ-CERR-001, REQ-REV-002, REQ-LNOTIF-019, REQ-RPT-015, REQ-HGOAL-*, REQ-DEX-*, REQ-TRF-*, REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-ACT-010, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-FSUG-012
 }
 
 /**

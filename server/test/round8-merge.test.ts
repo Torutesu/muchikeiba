@@ -190,7 +190,7 @@ describe('GET /v1/missions (onboarding × monetization)', () => {
     expect(body.beginner.steps[0]).toMatchObject({ id: 'bm_scout', step: 1 });
     expect(body.season).toMatchObject({ seasonId: '2026-11' });
     expect(body.season.missions.find((x: { id: string }) => x.id === 'sm_wins5')).toMatchObject({ progress: 1 });
-    expect(body.firstWinBonus).toEqual({ modes: ['ranked'], byWin: [30, 20, 10], winsToday: 1, remaining: 2, next: 20 });
+    expect(body.firstWinBonus).toEqual({ modes: ['ranked'], byWin: [20, 10, 5], winsToday: 1, remaining: 2, next: 10 });
   });
 });
 

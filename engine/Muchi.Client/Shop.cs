@@ -26,6 +26,9 @@ namespace Muchi.Client
         /// <summary>Quality pass 2 — pass_premium: every tier added up and its label (a sum, never a ratio).</summary>
         public Reward TrackTotal;
         public string TotalLabel;
+        /// <summary>Quality pass 3 — pass_premium: the standout tiers (level, item, label) and one line naming them (null when none).</summary>
+        public List<PassStandoutRef> Standouts = new List<PassStandoutRef>();
+        public string StandoutLabel;
         internal static ProductContent Parse(JsonNode o)
         {
             var total = J.Opt(o, "total");
@@ -37,8 +40,17 @@ namespace Muchi.Client
                 Purpose = J.Str(o, "purpose"),
                 TrackTotal = total != null && total.Kind == JsonKind.Object ? Reward.Parse(total) : null,
                 TotalLabel = J.Str(o, "totalLabel"),
+                Standouts = J.List(o, "standouts", PassStandoutRef.Parse), StandoutLabel = J.Str(o, "standoutLabel"),
             };
         }
+    }
+
+    /// <summary>Quality pass 3: a standout tier named on the product (pass_premium).</summary>
+    public sealed class PassStandoutRef
+    {
+        public int Level;
+        public string ItemId, Label;
+        internal static PassStandoutRef Parse(JsonNode o) => new PassStandoutRef { Level = J.Int(o, "level"), ItemId = J.Str(o, "itemId"), Label = J.Str(o, "label") };
     }
 
     /// <summary>First-purchase bonus of a coin pack: stated as coins ("無償コイン◯枚"), never as a multiplier.</summary>
@@ -89,12 +101,93 @@ namespace Muchi.Client
         };
     }
 
-    /// <summary>A pass line: a reward every <see cref="Every"/> levels.</summary>
+    /// <summary>A pass line: a reward every <see cref="Every"/> levels; quality pass 3: <see cref="Tiers"/> replaces the reward of a few levels (the standout tiers).</summary>
     public sealed class PassLine
     {
         public int Every;
         public Reward Reward;
-        internal static PassLine Parse(JsonNode o) => o == null ? null : new PassLine { Every = J.Int(o, "every"), Reward = Reward.Parse(J.Opt(o, "reward")) };
+        /// <summary>Level (as a string key) → that tier's own reward. Empty on older servers.</summary>
+        public Dictionary<string, Reward> Tiers = new Dictionary<string, Reward>();
+        /// <summary>What a level pays (null = nothing on this line): the tier's own reward, else the line's.</summary>
+        public Reward At(int level)
+        {
+            if (Every <= 0 || level < 1 || level % Every != 0) return null;
+            return Tiers.TryGetValue(level.ToString(System.Globalization.CultureInfo.InvariantCulture), out var r) ? r : Reward;
+        }
+        internal static PassLine Parse(JsonNode o) => o == null ? null : new PassLine { Every = J.Int(o, "every"), Reward = Reward.Parse(J.Opt(o, "reward")), Tiers = J.Map(o, "tiers", Reward.Parse) };
+    }
+
+    /// <summary>How a pass cosmetic is drawn on the player's own silks: Part = pattern | color | sleeve | cap (Ref = the editor part id) or tack (Slot, Asset).</summary>
+    public sealed class PassLook
+    {
+        public string Part, Ref, Slot, Asset;
+        internal static PassLook Parse(JsonNode o) => o == null ? null : new PassLook { Part = J.Str(o, "part"), Ref = J.Str(o, "ref"), Slot = J.Str(o, "slot"), Asset = J.Str(o, "asset") };
+    }
+
+    /// <summary>
+    /// Quality pass 3: the pass screen's try-on — the player's own silks with a standout part put on (nothing is saved or bought).
+    /// A colour goes to body colour 2 (the accent, as the shop's try-on does), sleeves / cap / body pattern replace the part;
+    /// a 3-colour pattern on 2-colour silks gets a third colour that is not already used. Tack looks leave the silks as they are.
+    /// </summary>
+    public static class PassPreview
+    {
+        private static readonly string[] Spare = { "gold", "white", "navy", "red", "black" };
+
+        public static SilksDesign Apply(SilksDesign current, PassLook look, int patternColors = 3)
+        {
+            var d = (current ?? new SilksDesign()).Clone();
+            if (look == null || string.IsNullOrEmpty(look.Ref)) return d;
+            switch (look.Part)
+            {
+                case "color":
+                    if (d.Colors.Length < 2) d.Colors = new[] { d.Colors.Length > 0 ? d.Colors[0] : "white", look.Ref };
+                    else d.Colors[1] = look.Ref;
+                    break;
+                case "sleeve": d.Sleeve = look.Ref; break;
+                case "cap": d.Cap = look.Ref; break;
+                case "pattern":
+                    d.Pattern = look.Ref;
+                    var cols = new List<string>(d.Colors);
+                    foreach (var c in Spare) { if (cols.Count >= patternColors) break; if (!cols.Contains(c)) cols.Add(c); }
+                    while (cols.Count > patternColors && cols.Count > 1) cols.RemoveAt(cols.Count - 1);
+                    d.Colors = cols.ToArray();
+                    break;
+            }
+            return d;
+        }
+
+        /// <summary>Every standout of a line put on at once (the whole set: what the line ends up giving), in level order.</summary>
+        public static SilksDesign ApplyAll(SilksDesign current, IEnumerable<PassStandout> standouts, string track = "premium", int patternColors = 3)
+        {
+            var d = (current ?? new SilksDesign()).Clone();
+            var list = new List<PassStandout>();
+            if (standouts != null) foreach (var x in standouts) if (x != null && (track == null || x.Track == track)) list.Add(x);
+            list.Sort((a, b) => a.Level.CompareTo(b.Level));
+            foreach (var x in list) d = Apply(d, x.Look, patternColors);
+            return d;
+        }
+    }
+
+    /// <summary>
+    /// Quality pass 3 (docs/quality/pass.md): a standout tier of the season pass — a looks-only, not-for-sale cosmetic on top of the
+    /// tier's usual coins and material. Label / Purpose are server-built; LevelsAway / RacesAway count like RacesToNextLevel.
+    /// </summary>
+    public sealed class PassStandout
+    {
+        /// <summary>"premium" or "free".</summary>
+        public string Track, ItemId, Label, Purpose;
+        public int Level, LevelsAway, RacesAway;
+        public PassLook Look;
+        public Reward Reward;
+        public bool Owned, Reached, Claimed, Claimable;
+        public bool Premium => Track == "premium";
+        internal static PassStandout Parse(JsonNode o) => o == null ? null : new PassStandout
+        {
+            Track = J.Str(o, "track"), Level = J.Int(o, "level"), ItemId = J.Str(o, "itemId"), Label = J.Str(o, "label"), Purpose = J.Str(o, "purpose"),
+            Look = PassLook.Parse(J.Opt(o, "look")), Reward = J.Opt(o, "reward") == null ? null : Reward.Parse(J.Opt(o, "reward")),
+            Owned = J.Bool(o, "owned"), Reached = J.Bool(o, "reached"), Claimed = J.Bool(o, "claimed"), Claimable = J.Bool(o, "claimable"),
+            LevelsAway = J.Int(o, "levelsAway"), RacesAway = J.Int(o, "racesAway"),
+        };
     }
 
     /// <summary>REQ-UXS-021: a closed season's pass, incl. the levels granted automatically at the close.</summary>

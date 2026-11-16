@@ -223,3 +223,12 @@ describe('the clients get the same tables (REQ-L10N-011)', () => {
     expect(readFileSync(new URL('../../engine/Muchi.Client/Resources/Muchi/server-en.json', import.meta.url).pathname, 'utf8')).toBe(clientLocaleJson());
   });
 });
+
+describe('numeric placeholders take a bound marker (q3 integration)', () => {
+  it('「SR以上 <0.1%」 matches the 「SR以上 {a}」 template', () => {
+    const cat = compileCatalog({ 'SR以上 {a}': 'SR or better {a}' });
+    expect(translateText('SR以上 <0.1%', cat)).toBe('SR or better <0.1%');
+    expect(translateText('SR以上 2.1%', cat)).toBe('SR or better 2.1%');
+    expect(translateText('SR以上 たくさん', cat)).toBeNull();
+  });
+});

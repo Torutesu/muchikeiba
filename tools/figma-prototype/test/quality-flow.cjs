@@ -68,12 +68,19 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
     const op = (sel) => { const n = document.querySelector('.screen.in ' + sel); return n && !n.hidden ? Number(getComputedStyle(n).opacity) : null; };
     q.iv = setInterval(() => {
       const f = globalThis.__muchi.state().lastFrame; if (!f) return; const t = f.feel?.tactics;
+      if (t) { const k = `${t.phase}|${t.goNow}|${t.gathering}|${t.committed}|${f.whips}`; if (k !== q.lastK) { q.lastK = k; (q.trace ??= []).push(`${f.tick}:${k}`); } }
       if (f.gateOpen && !q.started) { q.started = true; tap(); }
       if (t) {
         if (t.goNow && !q.held && !t.committed) { key('keydown'); q.held = f.tick; }
-        if (q.held && !q.released && t.gathering && f.tick - q.held >= 24) { key('keyup'); q.released = f.tick; }
+        if (q.held && !q.released && t.gathering && f.tick - q.held >= 24) { key('keyup'); q.released = f.tick; q.goBy = 'release'; }
+        // The engine steps its 20 Hz ticks from the clock, so on a starved machine one sample can be many ticks after the
+        // last: the hold may reach the full charge (gatherMaxTicks) and go by itself (溜めきり) before a sample sees the
+        // 24-tick mark, or the go mark can pass before the hold. Either is still the go: let go of the key and sample
+        // the button from the tick the go was made, however it was made.
+        if (t.committed && q.held && !q.released) { key('keyup'); q.released = f.tick; q.goBy = 'full charge'; }
+        if (t.committed && q.goTick == null) { q.goTick = f.tick; q.goBy ??= 'auto mark'; q.released ??= f.tick; }
         if (t.committed && q.released && f.whips > 0 && ((t.rhythm === 'gold' && f.tick - (q.lastWhip ?? 0) > 8) || f.tick - (q.lastWhip ?? 0) > 26)) { tap(); q.lastWhip = f.tick; }
-        if (q.released && !q.go && f.tick - q.released > 4) q.go = { gobar: op('.gobar'), whip: op('.btn.whip') };
+        if (q.goTick != null && !q.go && f.tick - q.goTick > 4) q.go = { gobar: op('.gobar'), whip: op('.btn.whip'), cls: document.querySelector('.screen.in .btn.whip')?.className, tick: f.tick, goTick: q.goTick, goBy: q.goBy, held: q.held, whips: f.whips, phase: t.phase };
       }
       const hint = document.querySelector('.screen.in .hintbox:not(.empty) .hint')?.textContent, pop = document.querySelector('.screen.in .pop.flash')?.textContent;
       if (hint && pop && hint.replace(/[！!]$/, '') === pop.replace(/[！!]$/, '')) q.dups.push(hint);
@@ -107,7 +114,7 @@ module.exports = async function qualityFlow(browser, base, out, errors) {
   assert.ok(!race.overlaps, `quality b: the coaching line never covers the name tag (${race.overlaps} samples, e.g. ${race.overlapEx})`);
   assert.ok((race.maxPlates ?? 0) <= 1, `quality b: at most one skill cut-in plate on screen (${race.maxPlates})`);
   assert.ok(!race.platesInGo, `quality b: cut-in plates stay out of the go area (${race.platesInGo} samples)`);
-  assert.ok(race.go && race.go.whip === 1, 'quality b: the whip button at full strength at the go');
+  assert.ok(race.go && race.go.whip === 1, 'quality b: the whip button at full strength at the go: ' + JSON.stringify({ go: race.go, held: race.held, released: race.released, goBy: race.goBy, trace: race.trace }));
   assert.ok(race.straight, 'quality b: the final straight sampled');
   assert.ok(race.straight.whip === 1 || race.straight.whipDisabled, 'quality b: the whip button stays at full strength in the straight (dimmed only when no whips are left): ' + JSON.stringify(race.straight));
   assert.ok(race.straight.banner === 0 && race.straight.minimap === 0 && race.straight.wind === 0, 'quality b: banner / mini-map / the marker\'s words fade in the straight: ' + JSON.stringify(race.straight));

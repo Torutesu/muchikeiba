@@ -15,7 +15,7 @@ namespace Muchi.Client
     public static class GrowthStages
     {
         public static readonly string[] Keys = { "debut", "growing", "prime", "peak", "complete" };
-        public static readonly int[] ThresholdsPermille = { 0, 100, 350, 650, 1000 };
+        public static readonly int[] ThresholdsPermille = { 0, 100, 250, 650, 1000 }; // prime 250 (quality pass 3, docs/quality/week2.md)
         public static readonly string[] Ja = { "新馬", "成長期", "充実期", "本格化", "完成" };
 
         public struct Stage

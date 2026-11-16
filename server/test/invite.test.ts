@@ -68,16 +68,21 @@ describe('invite codes (REQ-INV-001)', () => {
     const rng = seededRng(1);
     const seen = new Set<string>();
     let blocked = 0;
+    // every code is checked; the failures are collected and asserted once (an expect() per check and code was ~200k
+    // matcher calls: 2 s quiet, past the 20 s test timeout on a loaded machine)
+    const shape = new RegExp(`^[${INVITE_ALPHABET}]{8}$`);
+    const bad: { code: string; shard: number; why: string }[] = [];
     for (let i = 0; i < 20_000; i++) {
       const shard = i % DIRECTORY_SHARDS;
       const c = makeInviteCode(shard, rng);
       if (!c) { blocked++; continue; }
-      expect(c).toMatch(new RegExp(`^[${INVITE_ALPHABET}]{8}$`));
-      expect(inviteShardOf(c)).toBe(shard);
-      expect(normalizeInviteCode(c)).toBe(c);
-      for (const w of INVITE_BLOCKLIST) expect(c.includes(w)).toBe(false);
+      if (!shape.test(c)) bad.push({ code: c, shard, why: 'shape' });
+      if (inviteShardOf(c) !== shard) bad.push({ code: c, shard, why: 'shard' });
+      if (normalizeInviteCode(c) !== c) bad.push({ code: c, shard, why: 'normalize' });
+      for (const w of INVITE_BLOCKLIST) if (c.includes(w)) bad.push({ code: c, shard, why: 'blocked run ' + w });
       seen.add(c);
     }
+    expect(bad).toEqual([]);
     expect(blocked).toBeLessThan(4000); // the blocklist costs well under a fifth of the space
     expect(seen.size).toBeGreaterThan(20_000 - blocked - 3); // 27^6 per shard: collisions are rare (and retried by the directory)
   });

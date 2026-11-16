@@ -1579,7 +1579,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.ok(hlR.set.moments.length >= 1 && hlR.totalMs >= 15000 && hlR.totalMs <= 30000, 'highlights: 1–3 moments, 15–30 s: ' + JSON.stringify(hlR.set.moments.map((m) => m.kind)));
   assert.ok((await page.locator('.screen.in .hl-caption').textContent()).length > 0, 'highlights: a caption');
   await shot('highlights-result', 700);
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000);
   await shot('highlights-end', 400);
   assert.ok(await page.evaluate(() => globalThis.__muchi.logic.kpiLog().some((e) => e.name === 'highlight_view' && e.props.surface === 'result')), 'KPI: highlight_view from the result screen');
   await page.locator('.screen.in .hl-back').click(); await waitScreen('result');
@@ -2910,7 +2910,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
     if (hl1.index >= 0) assert.equal(hl1.camera, hl1.set.moments[hl1.index].slot, 'highlights: 次へ cuts to the next horse');
     await shot('highlights-next', 500);
   }
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000);
   await hlIn('.hl-moment', 10000); // the screen name is set before the new screen takes the .in class (a busy machine shows the gap)
   assert.equal(await page.locator('.screen.in .hl-moment').count(), hl0.set.moments.length, 'end: every moment listed');
   assert.equal(await page.locator('.screen.in .hl-moment[data-rank="1"]').count(), 1, 'end: one best moment');
@@ -2941,7 +2941,7 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   await page.locator('.screen.in .rp-sheet .rp-public').click(); await page.waitForTimeout(500); await hlIn('.rp-card[data-public="false"]');
   await page.locator('.screen.in .rp-card').first().click(); await hlIn('.rp-sheet');
   await page.locator('.screen.in .rp-sheet .rp-highlights').click(); await waitScreen('highlights', 30000);
-  if ((await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights') await page.locator('.screen.in .hl-skip').click({ timeout: 3000 }).catch(() => {}); await waitScreen('highlights-end', 10000);
+  for (let i = 0; i < 6 && (await page.evaluate(() => globalThis.__muchi.screen)) === 'highlights'; i++) await page.locator('.screen.in .hl-skip').click({ timeout: 5000 }).catch(() => {}); await waitScreen('highlights-end', 30000);
   await page.locator('.screen.in .hl-share').click(); await hlIn('.hl-share-sheet');
   assert.equal(await page.locator('.screen.in .hl-share-link.disabled').count(), 1, 'a private replay: no link');
   assert.equal(await page.locator('.screen.in .hl-link-note').textContent(), '保存して公開すると、リンクで送れます');

@@ -7,7 +7,7 @@
 //   4. round 15 (REQ-A11Y-*): the アクセシビリティ settings applied across the prototype, and the overflow check of key
 //      screens at the largest text size in Japanese and English (a11y-flow.cjs; a11y-<nn>-<name>.png)
 //   5. the quality integration (quality-flow.cjs; q-<name>.png): the four quality passes working together
-//   E2E_ONLY=club | unity | en | a11y | quality runs one part.
+//   E2E_ONLY=club | unity | en | a11y | quality runs one part; ftue runs only the FTUE timing (title → home).
 // Fails on any console error / page error. Screenshots go to <outDir> (default: tools/figma-prototype/.screens), plus
 // contact-sheet.png of every ムチ一閃 screen (contact-sheet.py).
 // usage: node tools/figma-prototype/test/e2e.cjs [outDir]
@@ -78,15 +78,16 @@ function serve() {
     if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
     console.log('E2E OK (en)'); return;
   }
-  const clubShots = process.env.E2E_ONLY === 'unity' ? [] : await clubFlow(browser, base, OUT, errors);
+  const clubShots = ['unity', 'ftue'].includes(process.env.E2E_ONLY) ? [] : await clubFlow(browser, base, OUT, errors);
   console.log(`club UI: ${clubShots.length} screenshots`);
   if (process.env.E2E_ONLY === 'club') { await browser.close(); server.close(); if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); } return; }
   const { shots, ftue } = await unityFlow(browser, base, OUT, errors);
   fs.writeFileSync(path.join(OUT, 'ftue.json'), JSON.stringify(ftue, null, 2));
   console.log('FTUE (simulated new player, 844×390):');
-  for (const m of ftue.marks) console.log(`  ${(m.ms / 1000).toFixed(1).padStart(6)} s  ${String(m.taps).padStart(2)} taps  ${m.step}   (wall ${(m.wallMs / 1000).toFixed(1)} s − capture ${(m.captureMs / 1000).toFixed(1)} − render lag ${(m.lagMs / 1000).toFixed(1)})`);
+  for (const m of ftue.marks) console.log(`  ${(m.ms / 1000).toFixed(1).padStart(6)} s  ${String(m.taps).padStart(2)} taps  ${m.step}   (app clock ${(m.wallMs / 1000).toFixed(1)} s − capture ${(m.captureMs / 1000).toFixed(1)} − tap delivery ${(m.tapLagMs / 1000).toFixed(1)} − render lag ${(m.lagMs / 1000).toFixed(1)} − run-queue wait ${(m.starveMs / 1000).toFixed(1)}; noticed ${(m.noticedLateMs / 1000).toFixed(1)} s later)`);
   console.log(`  taps to home ${ftue.taps} (navigation ${ftue.navTaps} + race ${ftue.raceTaps}); targets: aha ≤ 30 s, gacha ≤ 100 s, home ≤ 240 s, ≤ 15 taps; ${ftue.thinkMs} ms think time before each navigation tap`);
   console.log('  2nd race debrief: ' + ftue.resultLine);
+  if (process.env.E2E_ONLY === 'ftue') { await browser.close(); server.close(); if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); } console.log('E2E OK (ftue)'); return; }
   const n = shots.length;
   const q = await qualityFlow(browser, base, OUT, errors);
   console.log(`Quality integration: place ${q.res.place}, lesson "${q.res.lesson}", peaks ${[...new Set(q.race.fx)].join('/')}`);

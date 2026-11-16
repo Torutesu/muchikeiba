@@ -214,6 +214,8 @@ describe('shop layout proposals (progression.shopLayout, off by default)', () =>
     const o = shopOffers(mm, s, NOW);
     expect(o.offers.some((x) => x.touchpoint === 'T4')).toBe(false);
     expect(o.firstPurchase.productIds).not.toContain('coin_2400');
+    expect(o.offers.some((x) => x.productId === 'stable_allowance_30d')).toBe(false); // listed under the pass instead
+    expect(shopOffers(m, s, NOW).offers.some((x) => x.productId === 'stable_allowance_30d')).toBe(true);
     // the shortfall sheet never names a retired pack
     const sh = coinShortfall(mm, s, { coinKind: 'any', need: (s.wallet.paid + s.wallet.free) + 1500 }, NOW) as any;
     expect(sh.offer?.productId).not.toBe('coin_2400');

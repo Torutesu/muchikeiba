@@ -414,8 +414,8 @@ export function shopOffers(m: Master, s: PlayerState, now: number) {
     if (!classReached(m, s, p.classId!)) continue;
     add(p.id, p, 'T4', true, trigger(sh, p.id, `class_${p.classId}`, now));
   }
-  // daily pack: shop placement only, while none is running or queued
-  if (!pendingAllowance(m, s, now)) for (const p of m.products.filter((x) => x.kind === 'allowance')) add(p.id, p, 'shop', false, null);
+  // daily pack: shop placement only, while none is running or queued (quality pass 3: not on the recommended tab when it is listed under the pass)
+  if (!pendingAllowance(m, s, now) && !shopLayoutOf(m).allowanceUnderPass) for (const p of m.products.filter((x) => x.kind === 'allowance')) add(p.id, p, 'shop', false, null);
   const coins = m.products.filter((p) => p.kind === 'coins' && !isRetired(m, p.id));
   const remaining = coins.filter((p) => !s.firstPurchased.includes(p.id)).map((p) => p.id);
   return {

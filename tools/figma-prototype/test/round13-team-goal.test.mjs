@@ -61,7 +61,13 @@ assert.strictEqual(report.ok, false, 'a goal item cannot be reported');
 
 // the week closes on the clock: the reached tier's fixed reward, once
 const tier = v.value.current.tier;
-const before = (await L.view()).wallet.free;
+// The close moves the clock past the week's end, which can also cross a season end (any week that holds the last day of
+// a month): the season's unclaimed pass rewards are then delivered to the wallet by their own rules. So the wallet is
+// checked against the coin ledger: everything the close added is listed there, and none of it is the team goal's reward.
+const freeLedger = async () => (await L.history('coins', { limit: 50, currency: 'free' })).value.items;
+const lastRef = (await freeLedger())[0]?.ref ?? null;
+const sinceClose = async () => { const xs = await freeLedger(); const i = xs.findIndex((x) => x.ref === lastRef); return i < 0 ? xs : xs.slice(0, i); };
+const before0 = (await L.view()).wallet.free;
 v = await L.teamGoalCloseWeek();
 assert.ok(v.ok && v.value.lastWeek, 'last week result');
 assert.strictEqual(v.value.lastWeek.tier, tier);
@@ -69,7 +75,11 @@ const mine = v.value.lastWeek;
 // §26.1 (Round 13 integration): the week reward is a background payout, so it waits in the gift box until claimed
 const box = await L.giftBox('box');
 const goalGifts = box.value.entries.filter((g) => g.source === 'team_goal');
-assert.strictEqual((await L.view()).wallet.free, before, 'nothing reaches the wallet before the claim');
+const atClose = await sinceClose();
+assert.deepStrictEqual(atClose.filter((x) => x.category === 'team_goal'), [], 'nothing of the team goal reaches the wallet before the claim');
+assert.ok(atClose.every((x) => x.direction === 'earned' && x.category === 'pass'), 'only a season end\'s pass delivery may land with the close: ' + JSON.stringify(atClose));
+const before = (await L.view()).wallet.free;
+assert.strictEqual(before - before0, atClose.reduce((a, x) => a + x.amount, 0), 'the wallet moved only by the ledger rows of the close');
 if (mine.eligible) {
   assert.ok(mine.paid, 'paid');
   assert.strictEqual(goalGifts.length, 1, 'one team-goal gift');
@@ -77,7 +87,10 @@ if (mine.eligible) {
   await L.giftClaimAll();
 }
 const after = (await L.view()).wallet.free;
-if (mine.eligible) assert.strictEqual(after - before, mine.reward.freeCoins, 'free coins of the tier (claimed from the box)');
+if (mine.eligible) {
+  assert.strictEqual(after - before, mine.reward.freeCoins, 'free coins of the tier (claimed from the box)');
+  assert.deepStrictEqual((await freeLedger()).filter((x) => x.category === 'team_goal').map((x) => x.amount), [mine.reward.freeCoins], 'one team-goal row in the ledger, at the claim');
+}
 const again = await L.teamGoalCloseWeek();
 assert.strictEqual((await L.giftBox('box')).value.entries.filter((g) => g.source === 'team_goal').length, 0, 'closing again delivers nothing more');
 assert.strictEqual((await L.view()).wallet.free, after, 'closing again pays nothing more');

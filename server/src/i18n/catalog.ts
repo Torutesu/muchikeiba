@@ -38,14 +38,14 @@ export function ordinal(n: number): string {
 }
 
 /**
- * What a placeholder may capture. Number-like names only match numbers ("1,020", "2.5%"), so a template such as
+ * What a placeholder may capture. Number-like names only match numbers ("1,020", "2.5%", "<0.1%"), so a template such as
  * `{n}秒間 {parts}` cannot swallow the text before it; any other name matches any text (translated recursively).
  */
 const NUMERIC = new Set(['n', 'm', 'v', 'p', 'a', 'b', 'i', 'y', 'days', 'levels', 'qty', 'minutes', 'points']);
 const CAPTURE: Record<string, string> = { id: '([A-Za-z0-9]+)', code: '([A-Z0-9-]+)', url: '(\\S+)', hm: '([0-9]{1,2}:[0-9]{2})' };
 /** Placeholders that carry player-written text (display names, team names): kept as written when not in the table. */
 const VERBATIM = new Set(['name', 'team', 'url', 'code', 'id', 'cup']); // cup: a hosted cup's name (§42, player text)
-const captureOf = (name: string) => (NUMERIC.has(name) ? '([+\\-−]?[0-9][0-9.,]*%?)' : CAPTURE[name] ?? '(.+?)');
+const captureOf = (name: string) => (NUMERIC.has(name) ? '([<>≤≥]?[+\\-−]?[0-9][0-9.,]*%?)' : CAPTURE[name] ?? '(.+?)');
 
 function compileTemplate(ja: string, en: string): Template {
   const names: string[] = [];

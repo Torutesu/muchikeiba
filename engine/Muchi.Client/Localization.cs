@@ -127,7 +127,7 @@ namespace Muchi.Client
             {
                 src.Append(Regex.Escape(ja.Substring(last, m.Index - last)));
                 string n = m.Groups[1].Value;
-                src.Append(Numeric.Contains(n) ? @"([+\-−]?[0-9][0-9.,]*%?)" : n == "hm" ? "([0-9]{1,2}:[0-9]{2})" : n == "id" ? "([A-Za-z0-9]+)" : n == "url" ? @"(\S+)" : "(.+?)");
+                src.Append(Numeric.Contains(n) ? @"([<>≤≥]?[+\-−]?[0-9][0-9.,]*%?)" : n == "hm" ? "([0-9]{1,2}:[0-9]{2})" : n == "id" ? "([A-Za-z0-9]+)" : n == "url" ? @"(\S+)" : "(.+?)");
                 names.Add(n);
                 last = m.Index + m.Length;
             }

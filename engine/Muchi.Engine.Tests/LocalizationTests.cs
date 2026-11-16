@@ -88,6 +88,7 @@ namespace Muchi.Engine.Tests
         {
             var en = Loc.English;
             Assert.Equal("3rd", en.Translate("3着"));
+            Assert.Equal("Pass XP <0.1%", en.Translate("パスXP <0.1%")); // a bound marker before a number (q3 integration; same as the server catalog)
             Assert.Equal("Pity pts 37 / 100 (63 more scouts, 6,300 coins)", en.Translate("交換pt 37 / 100（あと63回・6,300コイン）"));
             Assert.Equal("Used 1,000 paid, 500 free coins", en.Translate("有償 1,000・無償 500 コインを使いました"));
             Assert.Equal("Resets tomorrow 4:00", en.Translate("明日 4:00 に更新"));

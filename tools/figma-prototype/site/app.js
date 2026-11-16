@@ -5135,8 +5135,10 @@ async function Collection(tab) {
   const horses = colState.tab === 'horses';
   // more than 20 cosmetics (R14 silks parts + R15 photo frames / stamps): six shorter rows so the grid stays in the panel
   const dense = !horses && colState.tab !== 'courses' && c.entries.length > 20;
-  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : dense ? 84 : 104;
-  const oy = dense ? [10, 36, 58] : [16, 44, 72];
+  // quality pass 3: more than 24 cosmetics (the season pass set) — rows shrink to keep every row inside the 520 px grid
+  const tight = dense && c.entries.length > 24;
+  const cols = horses ? 7 : 4, cw = horses ? 136 : 238, ch = horses ? 124 : tight ? Math.min(84, Math.floor(520 / Math.ceil(c.entries.length / 4)) - 6) : dense ? 84 : 104;
+  const oy = tight ? [7, 29, 48] : dense ? [10, 36, 58] : [16, 44, 72];
   const grid = el('col-grid', 36, 124, 988, 520, p);
   c.entries.forEach((e, i) => {
     const cell = el('col-cell ' + e.state + (colState.sel === e.id ? ' sel' : ''), (i % cols) * (cw + 6), Math.floor(i / cols) * (ch + 6), cw, ch, grid);

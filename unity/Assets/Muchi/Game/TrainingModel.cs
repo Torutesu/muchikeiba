@@ -109,6 +109,12 @@ namespace Muchi.Game
         public bool FatigueWarning => Horse != null && Horse.Fatigue >= View.RestAt;
         public TrainingItem Apple => View?.Items.FirstOrDefault(i => i.Owned > 0);
         public bool CanUseItem => Apple != null && Horse != null && Horse.Fatigue > 0 && Phase == TrainingPhase.Choose;
+        /// <summary>REQ-ITEM-010 (quality pass 3): the treat matters now (the server's hint) — the screen raises it from a quiet button
+        /// to a line with what it changes: 「りんごのおやつで伸び 72% → 87%」.</summary>
+        public bool TreatSuggested => Horse?.Treat != null && Phase == TrainingPhase.Choose;
+        public string TreatLine => TreatSuggested ? GoalLadderModel.TreatText(Horse.Treat) : null;
+        /// <summary>「疲れ 55 → 25」 for the suggestion's second line.</summary>
+        public string TreatFatigueLine => TreatSuggested ? "疲れ " + Horse.Treat.Fatigue.ToString(CultureInfo.InvariantCulture) + " → " + Horse.Treat.FatigueAfter.ToString(CultureInfo.InvariantCulture) + "（残り " + Horse.Treat.Owned.ToString(CultureInfo.InvariantCulture) + "個）" : null;
 
         public static string ConditionText(string c) => c != null && ConditionTexts.TryGetValue(c, out var t) ? t : "ふつう";
 

@@ -23,6 +23,7 @@ import { groundFor } from '../../../server/src/domain/ground.js';
 import { skillCatalog, horseSkill, skillView } from '../../../server/src/domain/skills.js';
 import { classDef } from '../../../server/src/domain/season.js';
 import { startTimeAttack } from '../../../server/src/domain/timeAttack.js';
+import { countOnboarding } from '../../../server/src/domain/onboarding.js';
 import { BREED, breed as breedHorses, createHorseFromTemplate, lineageSnap } from '../../../server/src/domain/horses.js';
 import { finishBreedingPedigree, finishPedigree } from '../../../server/src/domain/pedigree.js';
 import { seededRng } from '../../../server/src/domain/rng.js';
@@ -1531,6 +1532,13 @@ export const MuchiLogic = {
    * Demo state 「次にやること」: 3 game days of play, then today's login bonus left unclaimed is claimed by home itself, so
    * the card shows what is left: a gift that expires in 2 days (an ops campaign grant) and 2 owned scout tickets (a chip).
    */
+  /**
+   * quality pass 3 (week 2 demo, docs/quality/week2.md): records first-step actions a headless demo cannot play here (a 飼い葉,
+   * a time attack finish), like the economy sim's record(); every claim still goes through the real goals claim.
+   */
+  async seedStepActions(kinds: string[]) {
+    await svc.tx(ID, null, (s) => { for (const k of kinds) countOnboarding(s, k); });
+  },
   async seedNext() {
     await this.seedDemo(3, [2, 2, 2]);
     await svc.adminGrant(ID, { freeCoins: 30 }, 'campaign', 'ops', 'demo-next-gift', true, { expiryDays: 2 });

@@ -1131,3 +1131,12 @@ html[data-reduce-motion="on"] .el.hl-wipe { display: none; }
 .spend-bar i.paid { background: var(--gold); }
 .spend-bar i.free { background: var(--cyan); }
 html[data-reduce-motion="on"] .screen .receipt-row { animation: none; }
+
+/* quality pass 3 — week 2 and using what you have (docs/quality/week2.md): the week-2 arc strip, the solo way of a first step,
+   the treat suggestion on the training screen, the one-more-breeding line. Tokens only. */
+.btn.link.gl-alt-link { font-size: 15px; }
+.gl-week2 .gl-w2-day { border-radius: 4px; background: rgba(25, 54, 75, .55); border: 1px solid transparent; }
+.gl-week2 .gl-w2-day.today { border-color: var(--cyan); background: rgba(var(--cyan-rgb), .10); }
+.gl-week2 .gl-w2-day.peak, .gl-week2 .gl-w2-day.grad { border-color: rgba(255, 211, 79, .55); }
+.gl-week2 .gl-w2-day.past { opacity: .55; }
+.tr-treat { border-left: 3px solid var(--gold); }

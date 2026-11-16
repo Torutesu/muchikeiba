@@ -46,7 +46,7 @@ namespace Muchi.Engine.Tests
         private const string ProfileJson = "{\"horseId\":\"h1\",\"name\":\"アカツキ\",\"rarity\":\"SR\",\"sex\":\"male\",\"style\":\"sashi\",\"status\":\"active\",\"surface\":\"turf\",\"distMinM\":1600,\"distMaxM\":2400,\"goingAptitude\":\"any\",\"partner\":true,"
             + "\"stats\":[{\"key\":\"speed\",\"base\":700,\"awakening\":0,\"trained\":0,\"race\":700,\"ranked\":589},{\"key\":\"burst\",\"base\":720,\"awakening\":0,\"trained\":6,\"race\":726,\"ranked\":611}],"
             + "\"totals\":{\"base\":3320,\"effective\":3320,\"race\":3332,\"ranked\":2799,\"classId\":\"C\",\"cap\":2800,\"capped\":true,\"toCap\":0},"
-            + "\"growth\":{\"trainedTotal\":30,\"potential\":240,\"perStatCap\":96,\"stage\":1,\"stageKey\":\"growing\",\"nextStageAt\":84,\"sessions\":5},"
+            + "\"growth\":{\"trainedTotal\":30,\"potential\":240,\"perStatCap\":96,\"stage\":1,\"stageKey\":\"growing\",\"nextStageAt\":60,\"sessions\":5},"
             + "\"leaning\":{\"stat\":\"burst\",\"trained\":12,\"sharePermilleBefore\":216,\"sharePermilleNow\":218},"
             + "\"lineage\":{\"generation\":2,\"line\":\"x\",\"sireName\":\"チチ\",\"damName\":\"ハハ\",\"studSire\":false,\"bred\":true,\"skill\":{\"id\":\"sk1\",\"name\":\"末脚一閃\"},\"skillFrom\":\"dam\",\"atavism\":{\"trait\":\"style\",\"value\":\"nige\",\"from\":\"ソフ\"}},"
             + "\"career\":{\"races\":12,\"wins\":3,\"places\":6,\"rivalWins\":1,\"tournamentWins\":0,\"biggestWin\":null,\"firstRaceAt\":1},"
@@ -65,7 +65,7 @@ namespace Muchi.Engine.Tests
             Assert.Equal(2800, p.Totals.Cap);
             Assert.Equal("growing", p.Growth.StageKey);
             Assert.Equal("成長期", p.Stage.Name);
-            Assert.Equal(84, p.Growth.NextStageAt);
+            Assert.Equal(60, p.Growth.NextStageAt);
             Assert.Equal("burst", p.Leaning.Stat);
             Assert.Equal(2, p.Lineage.Generation);
             Assert.Equal("dam", p.Lineage.SkillFrom);

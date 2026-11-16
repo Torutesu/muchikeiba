@@ -29,7 +29,7 @@ static class RaisingQualityChecks
     const string Profile = "{\"horseId\":\"h3\",\"name\":\"アイボウ\",\"rarity\":\"SR\",\"sex\":\"male\",\"style\":\"senko\",\"status\":\"active\",\"surface\":\"turf\",\"distMinM\":1600,\"distMaxM\":2400,\"goingAptitude\":\"any\",\"partner\":true,"
         + "\"stats\":[{\"key\":\"speed\",\"base\":700,\"awakening\":20,\"trained\":0,\"race\":720,\"ranked\":600},{\"key\":\"stamina\",\"base\":650,\"awakening\":0,\"trained\":8,\"race\":658,\"ranked\":549},{\"key\":\"burst\",\"base\":720,\"awakening\":0,\"trained\":14,\"race\":734,\"ranked\":612},{\"key\":\"guts\",\"base\":600,\"awakening\":0,\"trained\":8,\"race\":608,\"ranked\":507},{\"key\":\"temper\",\"base\":640,\"awakening\":0,\"trained\":0,\"race\":640,\"ranked\":533}],"
         + "\"totals\":{\"base\":3310,\"effective\":3330,\"race\":3360,\"ranked\":2801,\"classId\":\"C\",\"cap\":2800,\"capped\":true,\"toCap\":0},"
-        + "\"growth\":{\"trainedTotal\":30,\"potential\":240,\"perStatCap\":96,\"stage\":1,\"stageKey\":\"growing\",\"nextStageAt\":84,\"sessions\":5},"
+        + "\"growth\":{\"trainedTotal\":30,\"potential\":240,\"perStatCap\":96,\"stage\":1,\"stageKey\":\"growing\",\"nextStageAt\":60,\"sessions\":5},"
         + "\"leaning\":{\"stat\":\"burst\",\"trained\":14,\"sharePermilleBefore\":216,\"sharePermilleNow\":218},"
         + "\"lineage\":{\"generation\":2,\"line\":\"x\",\"sireName\":\"アカツキ\",\"damName\":\"サクラ\",\"studSire\":false,\"bred\":true,\"skill\":{\"id\":\"sk1\",\"name\":\"末脚一閃\"},\"skillFrom\":\"dam\",\"atavism\":{\"trait\":\"style\",\"value\":\"nige\",\"from\":\"ハツユキソウ\"}},"
         + "\"career\":{\"races\":12,\"wins\":3,\"places\":6,\"rivalWins\":1,\"tournamentWins\":0,\"biggestWin\":null,\"firstRaceAt\":1},\"recentTraining\":[]}";
@@ -81,8 +81,8 @@ static class RaisingQualityChecks
         var burst = p.Bars.First(x => x.Key == "burst");
         check(burst.ValueText == "734" && burst.TrainedText == "+14" && burst.Leaning && Math.Abs(burst.BaseRatio + burst.AwakeningRatio + burst.TrainedRatio - 0.734f) < 0.0001f, "raising: a bar is base + awakening + training on the engine's scale; the leaning stat is marked");
         check(p.Bars.First(x => x.Key == "speed").TrainedText == null && p.Bars.First(x => x.Key == "speed").AwakeningRatio > 0, "raising: an untrained stat has no +; awakening is its own segment");
-        check(p.StageText == "成長期" && p.NextStageText == "充実期まで あと54" && p.PotentialText == "素質 30 / 240", "raising: stage 成長期, the next stage and the potential (" + p.NextStageText + ")");
-        check(Math.Abs(p.StageProgress - (30 - 24) / 60f) < 0.0001f, "raising: progress inside the stage (24 → 84)");
+        check(p.StageText == "成長期" && p.NextStageText == "充実期まで あと30" && p.PotentialText == "素質 30 / 240", "raising: stage 成長期, the next stage and the potential (" + p.NextStageText + ")");
+        check(Math.Abs(p.StageProgress - (30 - 24) / 36f) < 0.0001f, "raising: progress inside the stage (24 → 60)");
         check(p.RankedText == "ランク戦（C級 上限 2,800）：合計は上限にそろえ、配分はそのまま", "raising: the ranked line says what survives the cap (" + p.RankedText + ")");
         check(p.LeaningText == "得意：瞬発（21.6% → 21.8%）", "raising: the leaning line (" + p.LeaningText + ")");
         check(p.GenerationText == "第2世代" && p.SkillOriginText == "固有スキル「末脚一閃」：母から" && p.AtavismText == "隔世遺伝：逃げ（ハツユキソウ）", "raising: lineage — generation, where the skill came from, 隔世遺伝");

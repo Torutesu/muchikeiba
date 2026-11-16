@@ -26,7 +26,8 @@ import { perStatCap, potentialOf, raceStats, trainedTotal, trainingConfig } from
 /** Stage keys in order. Thresholds are permille of the potential used; `complete` needs the whole potential. */
 export const GROWTH_STAGES = ['debut', 'growing', 'prime', 'peak', 'complete'] as const;
 export type GrowthStage = (typeof GROWTH_STAGES)[number];
-export const GROWTH_THRESHOLDS_PERMILLE = [0, 100, 350, 650, 1000] as const;
+// quality pass 3 (docs/quality/week2.md): prime at 250‰ (was 350‰) so the first week has a second stage-up. Display only.
+export const GROWTH_THRESHOLDS_PERMILLE = [0, 100, 250, 650, 1000] as const;
 
 /**
  * The growth stage of a horse from its training growth (pure; C# GrowthStages.Of is the same, contracts/horse-profile.vectors.json).

@@ -1737,7 +1737,11 @@ async function Home() {
     Txt(`${p.rarity}　·　${pg.line}`, 134, 132, 210, 16, WHITE, pc, { weight: 700, nowrap: true }).classList.add('pp-growth');
     if (pg.delta) Txt(pg.delta, 344, 132, 96, 16, GOLD, pc, { weight: 700, align: 'right', nowrap: true, cls: 'num' }).classList.add('pp-delta');
     const g = Gauge(29, 160, 411, pg.fill, pc, { gold: !!pg.delta }); g.style.height = '3px'; g.classList.add('pp-gauge');
-    Txt(pg.trainingOpen ? (pg.next ?? '') : `${pg.stageName}　·　調教は${unlockText('training')}`, 29, 168, 411, 14, MUTED, pc, { weight: 500, nowrap: true }).classList.add('pp-next');
+    if (pg.treat) {
+      // quality pass 3 (REQ-GOAL-020): the moment a treat matters — what it does, one tap to the training screen
+      const t = Txt(pg.treat + ' ›', 29, 168, 411, 14, GOLD, pc, { weight: 700, nowrap: true }); t.classList.add('pp-next', 'pp-treat');
+      t.style.cursor = 'pointer'; t.addEventListener('click', (e) => { e.stopPropagation(); Training(); });
+    } else Txt(pg.trainingOpen ? (pg.next ?? '') : `${pg.stageName}　·　調教は${unlockText('training')}`, 29, 168, 411, 14, MUTED, pc, { weight: 500, nowrap: true }).classList.add('pp-next');
   } else if (p) {
     Txt(`${p.rarity}　·　${STYLE_JA[p.style] ?? p.style}　·　${surfaceJa(p.surface)} ${fmt(p.distMinM)}〜${fmt(p.distMaxM)}m`, 29, 150, 420, 16, MUTED, pc, { weight: 500, nowrap: true });
   } else Txt('無料スカウトで相棒を迎えよう', 29, 150, 420, 16, WHITE, pc);
@@ -4269,8 +4273,10 @@ async function Demo(kind) {
 // of the partner the class lets race), and one 「まとめて受け取る」 claims every claimable mission with a short moment.
 // The figures are the server's (MuchiLogic.goals = GET /v1/home/goals); nothing here invents a pace or a deadline.
 const GL_BOX = { x: 32, y: 32, w: 469 };
-const GL_KIND = { races: 'レースに出る', wins: '1着になる', top3: '3着以内に入る', training: '調教をする', first_win: '今日の初勝利（ランク戦）', gacha: 'スカウトを1回', silks: '勝負服を変える', care: '飼い葉をあげる', ranked_top3: 'ランク戦で3着以内', breed: '配合を1回', friends: 'フレンドを追加', team: '支部に入る', ta_finish: 'タイムアタックを完走', ranked_races: 'ランク戦に出る', points: 'シーズンptを集める', promotion_line: '昇級ラインに届く', collect: '図鑑の馬を迎える' };
+const GL_KIND = { races: 'レースに出る', wins: '1着になる', top3: '3着以内に入る', training: '調教をする', first_win: '今日の初勝利（ランク戦）', gacha: 'スカウトを1回', silks: '勝負服を変える', care: '飼い葉をあげる', ranked_top3: 'ランク戦で3着以内', breed: '配合を1回', friends: 'フレンドを追加', team: '支部に入る', ta_finish: 'タイムアタックを完走', ranked_races: 'ランク戦に出る', points: 'シーズンptを集める', promotion_line: '昇級ラインに届く', collect: '図鑑の馬を迎える', treat: '相棒におやつをあげる', breed_extra: '配合素材でもう1回配合' };
 const glTitle = (k) => GL_KIND[k] ?? k;
+/** The solo way's short name on the home rung (the goals screen says it in full). */
+const GL_ALT_SHORT = { treat: '相棒におやつ', breed_extra: '素材でもう1回配合' };
 const glItemName = (id) => ({ breeding_material: '配合素材', training_apple: 'りんごのおやつ' })[id] ?? L.master.itemLabels[id] ?? id;
 /** A reward in one line (coins, items, pass XP). */
 function glReward(r) {
@@ -4307,6 +4313,12 @@ function glTomorrow(v) {
   const names = (t.opens ?? []).map((k) => GL_FEATURE[k]).filter(Boolean);
   if (names.length) { home.push(names[0] + 'が開く'); lines.push(names.join('・') + 'が開きます'); }
   if (t.trainingSlots != null) { if (!home.length) home.push(`調教 ${t.trainingSlots}回`); lines.push(`調教がまた${t.trainingSlots}回できます`); }
+  // quality pass 3 (REQ-GOAL-018): graduation tomorrow leads the day-7 line — the week-2 goal, not the 50 coins alone
+  if (t.graduate) {
+    const g = glReward(t.graduate.reward);
+    home.splice(0, home.length, t.graduate.ready ? `はじめの10歩 卒業（${g}）` : `卒業が開く（${g}）`);
+    lines.unshift(t.graduate.ready ? `はじめの10歩を卒業：${g}` : `はじめの10歩の卒業が開きます：${g}`);
+  }
   if (!lines.length) return null;
   const a = new Date(t.at + 9 * 3600e3), n = new Date(L.now() + 9 * 3600e3);
   const at = `${a.getUTCDate() === n.getUTCDate() ? '今日' : '明日'} ${a.getUTCHours()}:${String(a.getUTCMinutes()).padStart(2, '0')}`;
@@ -4325,10 +4337,35 @@ function glPartner(v) {
     delta: p.gainedToday > 0 ? `今日 +${fmt(p.gainedToday)}` : p.gainedYesterday > 0 ? `昨日 +${fmt(p.gainedYesterday)}` : null,
     next: p.full ? '完成' : p.nextStageAt != null ? `${GL_STAGE[Math.min(i + 1, 4)]}まで あと${fmt(Math.max(0, p.nextStageAt - p.trainedTotal))}` : null,
     trainingOpen: p.trainingOpen, sessionsLeft: p.sessionsLeft,
+    treat: glTreatText(p.treat),
   };
 }
+/** quality pass 3 (REQ-GOAL-020 / REQ-ITEM-010): a treat in one line from the server's numbers (= GoalLadderModel.TreatText). */
+function glTreatText(h) {
+  if (!h) return null;
+  if (h.unblocks) return `${h.name}で疲れをとると、今日も調教できます`;
+  return `${h.name}で伸び ${Math.floor(h.efficiencyPermille / 10)}% → ${Math.floor(h.efficiencyAfterPermille / 10)}%`;
+}
+// ---- quality pass 3: week 2 (docs/quality/week2.md, REQ-GOAL-017..019; = GoalLadderModel PathAltLine / PathWaitText / week2)
+/** 「明日 受け取れます」 / 「8日目から受け取れます」 when the current step is done but waits for its day. */
+function glWait(v) {
+  const c = v.path?.current;
+  if (!c || !c.reached || c.dayOk !== false || c.fromDay == null) return null;
+  return c.fromDay - v.today.playerDay === 1 ? '明日 受け取れます' : `${c.fromDay}日目から受け取れます`;
+}
+/** The arc takes the path's place on home once only graduation is left (the ladder keeps at most four rungs). */
+const glArcRung = (v) => !!v.week2 && (!v.path || v.path.step === v.path.steps);
+/** The week's headline: its peak (graduation has its own line and the 明日 line the day before). */
+const glWeek2Goal = (w) => (w?.peak ? `${w.peak.playerDay}日目：${glReward(w.peak.reward)}` : null);
+/** The same on the home rung, short enough for one line beside the day figure. */
+const glWeek2Short = (w) => (w?.peak ? `${w.peak.playerDay}日目 ${glW2Name(w.peak.reward)}` : null);
+/** A reward in a word (the home rung): the full name is on the goals screen's headline. */
+function glW2Name(r) {
+  const id = r?.items?.[0]?.itemId;
+  return { ticket_sr_plus: 'SR以上確定券', gacha_ticket_10: '10連券', gacha_ticket: 'スカウト券', breeding_material: '配合素材', costume_login: '勝負服の柄' }[id] ?? (r?.freeCoins ? `無償コイン${fmt(r.freeCoins)}枚` : glReward(r));
+}
 /** Where the current first step is done (the server's fixed screen) — never the shop. */
-const GL_STEP_GO = { scout: () => Scout(), silks: () => SilksEditor(), care: () => Care(), race: () => RaceLobby(), breeding: () => Breeding(), friends: () => Friends(), teams: () => TeamFeed(), time_attack: () => TimeAttack(), collection: () => Collection() };
+const GL_STEP_GO = { scout: () => Scout(), silks: () => SilksEditor(), care: () => Care(), race: () => RaceLobby(), breeding: () => Breeding(), friends: () => Friends(), teams: () => TeamFeed(), time_attack: () => TimeAttack(), collection: () => Collection(), training: () => Training() };
 function glStepLock(v) {
   const c = v.path?.current;
   if (!c || c.open !== false) return null;
@@ -4345,7 +4382,15 @@ function glRungs(v) {
     out.push({ key: 'today', label: '今日', main: t.complete ? (glTomorrow(v)?.home ?? '今日の目標は完了') : t.claimable > 0 ? '受け取れる報酬があります' : next ? `${glTitle(next.kind)} ${Math.min(next.progress, next.target)}/${next.target}` : '今日の目標は完了',
       figure: t.complete && glTomorrow(v)?.home ? null : `${t.done}/${t.total}`, fill: t.total ? t.done / t.total : 0, ready: t.claimable > 0 });
   }
-  if (v.path) out.push({ key: 'path', label: `はじめの${v.path.steps}歩`, main: v.path.current.claimable ? '受け取れる報酬があります' : glTitle(v.path.current.kind), figure: `${v.path.done}/${v.path.steps}`, fill: v.path.done / Math.max(1, v.path.steps), ready: v.path.current.claimable });
+  const arc = glArcRung(v), wait = glWait(v), c0 = v.path?.current;
+  // quality pass 3 (REQ-GOAL-017): a social step names its solo way on the same line (「フレンドを追加 か 相棒におやつ」)
+  const pathMain = !c0 ? '' : c0.claimable ? '受け取れる報酬があります' : wait ? `卒業：${glReward(c0.reward)}` : c0.alt && !c0.reached ? `${glTitle(c0.kind)} か ${GL_ALT_SHORT[c0.alt.kind] ?? glTitle(c0.alt.kind)}` : glTitle(c0.kind);
+  if (v.path && !arc) out.push({ key: 'path', label: `はじめの${v.path.steps}歩`, main: pathMain, figure: `${v.path.done}/${v.path.steps}`, fill: v.path.done / Math.max(1, v.path.steps), ready: c0.claimable, alt: !!(c0.alt && !c0.reached) });
+  if (arc) {
+    // quality pass 3 (REQ-GOAL-019): days 8..14 — the week's headline, the day of seven, tomorrow's reason
+    const w = v.week2, ready = !!c0?.claimable;
+    out.push({ key: 'week2', label: '2週目', main: ready ? '受け取れる報酬があります' : glWeek2Short(w) ?? '毎日ログインボーナス', figure: w.day > 0 ? `${w.day}/7` : null, fill: w.day / 7, ready });
+  }
   if (v.week) {
     const w = v.week, parts = [];
     if (w.challenge) parts.push(`チャレンジ ${w.challenge.cleared}/${w.challenge.total}`);
@@ -4370,7 +4415,7 @@ function GoalLadderPanel(v) {
   // line at the bottom of the ladder opens 目標, where everything is received at once
   const READY = '受け取れる報酬があります', anyReady = rungs.some((x) => x.ready);
   for (const x of rungs) if (x.main === READY) {
-    x.main = x.key === 'today' ? (v.today.complete ? '今日の目標は完了' : `今日の目標 ${v.today.done}/${v.today.total}`) : x.key === 'path' ? glTitle(v.path.current.kind) : x.main;
+    x.main = x.key === 'today' ? (v.today.complete ? '今日の目標は完了' : `今日の目標 ${v.today.done}/${v.today.total}`) : x.key === 'path' ? glTitle(v.path.current.kind) : x.key === 'week2' ? (glWeek2Short(v.week2) ?? '2週目') : x.main;
   }
   const p = Glass('Goals', GL_BOX.x, GL_BOX.y, GL_BOX.w, 16 + rungs.length * 50 + (anyReady ? 50 : 0), undefined, .8);
   p.classList.add('gl-panel'); p.dataset.rungs = rungs.map((x) => x.key).join(',');
@@ -4383,7 +4428,7 @@ function GoalLadderPanel(v) {
     if (x.ready) { el('gl-dot', 10, 16, 6, 6, row); row.dataset.ready = '1'; }
     // quality pass 2 (REQ-GOAL-015): the next first step is one tap away — the path rung opens where it is done
     const c = v.path?.current;
-    if (x.key === 'path' && !x.ready && c?.screen && c.open !== false && GL_STEP_GO[c.screen]) {
+    if (x.key === 'path' && !x.ready && !x.alt && !glWait(v) && c?.screen && c.open !== false && GL_STEP_GO[c.screen]) {
       row.dataset.go = c.screen; row.setAttribute('role', 'button');
       row.querySelector('.gl-main').textContent = x.main + ' ›';
       row.addEventListener('click', (e) => { e.stopPropagation(); GL_STEP_GO[c.screen](); });
@@ -4432,7 +4477,12 @@ async function Goals() {
   // ② 今週 / はじめの10歩
   const c2 = Glass('Goals week', COL[1].x, Y, W, H, undefined, .88); c2.dataset.col = v.path && v.week ? 'path,week' : v.path ? 'path' : 'week'; c2.classList.add('gl-col');
   let wy = 118;
-  if (v.path && v.week) {
+  if (glArcRung(v)) {
+    // quality pass 3 (REQ-GOAL-019): from day 7 the column opens on the week-2 arc (graduation is its first headline)
+    Kicker(v.week ? '2週目　/　今週' : '2週目', 32, 24, c2, { size: 16, w: W - 64 });
+    GlWeek2(c2, v, 92);
+    wy = 284;
+  } else if (v.path && v.week) {
     // compact: the next step, the pips and the last reward, then the week
     Kicker(`はじめの${v.path.steps}歩　/　今週`, 32, 24, c2, { size: 16, w: W - 64 });
     GlPath(c2, v.path, 104, true);
@@ -4444,21 +4494,22 @@ async function Goals() {
     Txt('1歩ずつ順に受け取ります。週替わりチャレンジ・ライバルが開くと、ここに「今週」の目標も並びます。', 32, 520, W - 64, 13, SOFT, c2, { lh: 1.6 });
   } else Kicker('今週', 32, 24, c2, { size: 16 });
   const w = v.week;
+  const cw = !!v.path || glArcRung(v); // quality pass 3: the arc sits above the week like the first steps do (compact rows)
   if (!v.path && !w) Txt('週替わりチャレンジ・ライバルが開くと、ここに並びます。', 32, 120, W - 64, 16, MUTED, c2, { lh: 1.7 });
   if (w) {
-    Txt(`${jstDate(w.endsAt - 60_000)}まで`, 230, v.path ? wy - 30 : 66, 228, 13, MUTED, c2, { align: 'right', nowrap: true });
-    const step = v.path ? 112 : 132;
+    Txt(`${jstDate(w.endsAt - 60_000)}まで`, 230, cw ? wy - 30 : 66, 228, 13, MUTED, c2, { align: 'right', nowrap: true });
+    const step = cw ? 104 : 132;
     if (w.challenge) {
       const ch = w.challenge;
-      GlWeekRow(c2, wy, '週替わりチャレンジ', `${ch.cleared}/${ch.total}`, ch.cleared / Math.max(1, ch.total), `${glReward(ch.reward)}　·　3つで「${ch.badgeName}」`, v.path ? '' : glPurpose(ch.reward), () => WeeklyChallenge(), 'challenge');
+      GlWeekRow(c2, wy, '週替わりチャレンジ', `${ch.cleared}/${ch.total}`, ch.cleared / Math.max(1, ch.total), `${glReward(ch.reward)}　·　3つで「${ch.badgeName}」`, cw ? '' : glPurpose(ch.reward), () => WeeklyChallenge(), 'challenge');
       wy += step;
     }
     if (w.rivalResult) {
       const rr = w.rivalResult;
       GlWeekRow(c2, wy, '先週のライバル', `${rr.me} - ${rr.them}`, null, `${{ win: '勝ち越し', lose: '負け越し', draw: '引き分け', no_contest: '勝負なし', not_enough: 'レース数が足りませんでした' }[rr.outcome] ?? ''}${rr.freeCoins ? `　·　無償コイン${fmt(rr.freeCoins)}枚` : ''}`, '', () => Rival(), 'rival-result');
-      wy += v.path ? 112 : 132;
+      wy += step;
     }
-    if (w.rival && !(v.path && w.rivalResult && w.challenge)) {
+    if (w.rival && !(cw && w.rivalResult && w.challenge)) {
       const rv = w.rival;
       const sub = rv.rankedRaces < rv.minRaces ? `ランク戦 ${rv.rankedRaces}/${rv.minRaces}戦で結果が出ます` : '同じランク戦で先着すれば1点';
       GlWeekRow(c2, wy, 'ライバル', `${rv.me} - ${rv.them}`, null, `勝ち越すと 無償コイン${fmt(rv.winReward.freeCoins)}枚　·　${sub}`, '', () => Rival(), 'rival');
@@ -4509,6 +4560,36 @@ async function Goals() {
   else Txt(v.today.complete ? `今日の目標は完了　·　${jstDate(v.today.resetAt).slice(-5)} に更新` : '受け取れる報酬はありません', 1074, 770, 490, 15, MUTED, undefined, { align: 'right' });
   Back(Home, 'BACK', 40, 834);
 }
+/** quality pass 3 (REQ-GOAL-019): the week-2 arc — seven days, one reason each (the login bonus of that day if the player comes
+ * every day, graduation on its day), the peak marked, today outlined; the headline and, while graduation waits, its day. */
+function GlWeek2(parent, v, y) {
+  const w = v.week2, W = 426, cw = Math.floor(W / 7);
+  const strip = el('gl-week2', 32, y, W, 96, parent); strip.dataset.day = String(w.day);
+  w.days.forEach((d, i) => {
+    const c = el('gl-w2-day', i * cw, 0, cw - 4, 96, strip);
+    c.dataset.day = String(d.playerDay); if (d.today) c.classList.add('today'); if (d.past) c.classList.add('past');
+    const peak = w.peak?.playerDay === d.playerDay; if (peak) c.classList.add('peak');
+    if (d.graduate) c.classList.add('grad');
+    Txt(`${d.playerDay}日目`, 0, 8, cw - 4, 12, d.today ? CYAN : MUTED, c, { weight: 700, align: 'center', nowrap: true });
+    Txt(d.past ? '✓' : d.graduate ? '卒業' : d.loginBonus ? glW2Short(d.loginBonus.reward) : '—', 0, 38, cw - 4, 13, d.past ? OK : d.graduate || peak ? GOLD : WHITE, c, { weight: 700, align: 'center', nowrap: true });
+    if (d.graduate && d.loginBonus && !d.past) Txt(glW2Short(d.loginBonus.reward), 0, 62, cw - 4, 12, MUTED, c, { align: 'center', nowrap: true });
+    if (peak && !d.past) Txt('★', 0, 70, cw - 4, 12, GOLD, c, { align: 'center' });
+  });
+  const goal = glWeek2Goal(w);
+  if (goal) Txt(goal, 32, y + 108, W, 15, GOLD, parent, { weight: 700, nowrap: true }).classList.add('gl-w2-goal');
+  const wait = glWait(v);
+  const c = v.path?.current;
+  if (c?.claimable) Txt('はじめの10歩の卒業を受け取れます（まとめて受け取る）', 32, y + 136, W, 13, WHITE, parent, { weight: 500 });
+  else if (wait) Txt(`はじめの10歩：${glReward(c.reward)}　·　${wait}`, 32, y + 136, W, 13, MUTED, parent, { weight: 500, nowrap: true }).classList.add('gl-w2-wait');
+  else Txt('毎日のログインボーナスが、この週の1日ずつの理由です', 32, y + 136, W, 13, SOFT, parent);
+}
+/** One word or two for a day cell (the full reward is on the headline / the claim). */
+function glW2Short(r) {
+  const id = r?.items?.[0]?.itemId;
+  if (id) return { ticket_sr_plus: 'SR以上', gacha_ticket_10: '10連', gacha_ticket: 'スカウト', breeding_material: `素材×${r.items[0].qty}`, costume_login: '勝負服' }[id] ?? glItemName(id).slice(0, 4);
+  if (r?.freeCoins) return `◎${fmt(r.freeCoins)}`;
+  return '';
+}
 /** The first steps: pips, the current step (a goal row) and the last step's reward. compact = above the week. */
 function GlPath(parent, path, y, compact) {
   const W = 426;
@@ -4535,6 +4616,14 @@ function GlPath(parent, path, y, compact) {
 function GlStepLink(parent, path, x, y, w) {
   const c = path.current;
   if (c.claimable) return null;
+  // quality pass 3 (REQ-GOAL-017): done but waiting for its day → when; a social step → its solo way first, then the social one
+  const wait = globalThis.__glLast ? glWait(globalThis.__glLast) : null;
+  if (wait) { const t = Txt(wait, x + w - 260, y + 8, 260, 13, GOLD, parent, { weight: 700, align: 'right', nowrap: true }); t.classList.add('gl-step-wait'); return t; }
+  if (c.alt && !c.reached && c.alt.screen && GL_STEP_GO[c.alt.screen]) {
+    const solo = TextLink('ひとりでも', x, y, w - 184, () => GL_STEP_GO[c.alt.screen](), parent, `ひとりでも：${GL_ALT_SHORT[c.alt.kind] ?? glTitle(c.alt.kind)} ›`);
+    solo.dataset.action = 'gl-step-alt'; solo.dataset.go = c.alt.screen; solo.classList.add('gl-alt-link'); solo.title = glTitle(c.alt.kind);
+    if (c.alt.open === false) { solo.classList.add('locked'); solo.style.pointerEvents = 'none'; }
+  }
   const lock = c.open === false ? (globalThis.__glLast ? glStepLock(globalThis.__glLast) : 'レースを重ねると開きます') : null;
   if (lock) { const t = Txt(lock, x + w - 260, y + 8, 260, 13, MUTED, parent, { align: 'right', nowrap: true }); t.classList.add('gl-step-lock'); return t; }
   if (!c.screen || !GL_STEP_GO[c.screen]) return null;
@@ -6394,13 +6483,19 @@ async function Training() {
   const rs = L.trainingRaceStats(h.horseId);
   if (rs) Txt(`レースでの能力合計 ${fmt(rs.total)}　·　ランク戦（${player.season.classId}級 上限 ${fmt(rs.cap)}）では ${fmt(rs.ranked)}${rs.capped ? '（上限にそろえます）' : ''}`, 36, 486, 488, 16, SOFT, hp).classList.add('tr-ranked');
   const apple = v.items.find((x) => x.owned > 0);
-  if (apple && h.fatigue > 0) {
-    const ab = Ghost(`${apple.name}（${apple.owned}）`, 36, 530, 300, 54, async () => {
-      const u = await L.trainingUseItem(apple.itemId, h.horseId);
-      toast(u.ok ? `疲れ ${u.value.fatigueBefore} → ${u.value.fatigue}` : u.code === 'NOT_ELIGIBLE' ? '疲れていません' : u.message);
-      Training();
-    }, hp, 'small');
-    ab.classList.add('tr-item');
+  const useApple = async () => {
+    const u = await L.trainingUseItem(apple.itemId, h.horseId);
+    toast(u.ok ? `疲れ ${u.value.fatigueBefore} → ${u.value.fatigue}` : u.code === 'NOT_ELIGIBLE' ? '疲れていません' : u.message);
+    Training();
+  };
+  if (h.treat) {
+    // quality pass 3 (REQ-ITEM-010): the treat when it matters — what it changes, from the server's numbers, and one button
+    const box = el('tr-treat', 36, 536, 488, 60, hp); box.dataset.unblocks = h.treat.unblocks ? '1' : '0';
+    Txt(glTreatText(h.treat), 16, 4, 290, 16, GOLD, box, { weight: 700, nowrap: true }).classList.add('tr-treat-line');
+    Txt(`疲れ ${h.treat.fatigue} → ${h.treat.fatigueAfter}（残り ${h.treat.owned}個）`, 16, 34, 290, 14, MUTED, box, { weight: 500, nowrap: true, cls: 'num' });
+    Ghost('おやつをあげる', 308, 4, 180, 54, useApple, box, 'small').classList.add('tr-item');
+  } else if (apple && h.fatigue > 0) {
+    Ghost(`${apple.name}（${apple.owned}）`, 36, 530, 300, 54, useApple, hp, 'small quiet').classList.add('tr-item');
   } else Txt('りんごのおやつはデイリーミッション「調教を1回」でもらえます', 36, 540, 488, 16, DIM, hp);
   Txt(TR_RULES, 36, 600, 488, 14, SOFT, hp, { lh: 1.55 }).classList.add('tr-rules');
   // ② the menus (2 × 2), one is chosen; then one CTA
@@ -6580,7 +6675,7 @@ async function TrainingResult(res) {
 // (choose → outlook → reveal) on the real breedingPreview / breed. Mirrors unity/Assets/Muchi/Game/HorseProfileModel.cs and
 // BreedingModel (ParentGifts, RarityLine, Reveal). Read-only except the breeding itself; every chance shown is the server's.
 const QR_STAGES = ['新馬', '成長期', '充実期', '本格化', '完成'];
-const QR_STAGE_TH = [0, 100, 350, 650, 1000];
+const QR_STAGE_TH = [0, 100, 250, 650, 1000]; // prime 250 (quality pass 3, docs/quality/week2.md)
 /** growthStage (server horseProfile.ts / C# GrowthStages.Of, contracts/horse-profile.vectors.json). */
 function qrStage(trained, potential) {
   if (!(potential > 0)) return { index: 0, nextAt: null };
@@ -6888,7 +6983,20 @@ async function FoalReveal(res, pv, sire, dam) {
   const allBtn = Ghost('すべて見る', 430, 660, 220, 56, () => { while (shown < steps.length) show(); }, d, 'quiet');
   const done = () => {
     Cta('馬カードを見る', 40, 650, 360, () => HorseCard(foal.id, () => Breeding()), d).classList.add('qr-to-card');
-    Ghost('配合へ戻る', 430, 660, 220, 56, () => Breeding(), d, 'quiet');
+    // quality pass 3 (REQ-ITEM-011): today's breeding is used and breeding material allows one more — offered here, where it
+    // matters (the same pair, the same preview), instead of the material sitting in the bag
+    const t = res.today;
+    const again = t && t.used >= t.perDay && t.extraUsed < t.extraPerDay && t.materialOwned >= t.materialCost;
+    if (again) {
+      const g = Ghost('もう1回配合する', 430, 660, 300, 56, async () => {
+        const b = await L.breed(sire.id, dam.id, true);
+        if (!b.ok) { toast(b.code === 'BREEDING_DAILY_LIMIT' ? '今日の配合はおしまい。4:00に戻ります' : b.message); return; }
+        FoalReveal(b.value, pv, sire, dam);
+      }, d, 'small');
+      g.classList.add('qr-again');
+      Txt(`配合素材を${t.materialCost}個使って、もう1回（残り ${t.materialOwned}個）`, 430, 724, 560, 14, MUTED, d, { weight: 500, nowrap: true }).classList.add('qr-again-line');
+      Ghost('配合へ戻る', 760, 660, 220, 56, () => Breeding(), d, 'quiet');
+    } else Ghost('配合へ戻る', 430, 660, 220, 56, () => Breeding(), d, 'quiet');
   };
   if (globalThis.__muchi) globalThis.__muchi.lastFoal = { foal, rarity: pv.rarity, high };
   // integration (presentation's shared helpers): a tap anywhere completes the step's motion (Skippable → .fx-skip); with reduce

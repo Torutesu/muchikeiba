@@ -1,5 +1,5 @@
 {
-  "_note": "Quality pass (docs/quality/raising-breeding.md): server/src/domain/horseProfile.ts growthStage and C# Muchi.Client GrowthStages.Of must agree. Thresholds: permille of the training potential used (0 / 100 / 350 / 650 / 1000).",
+  "_note": "Quality pass (docs/quality/raising-breeding.md; thresholds re-based in quality pass 3, docs/quality/week2.md): server/src/domain/horseProfile.ts growthStage and C# Muchi.Client GrowthStages.Of must agree. Thresholds: permille of the training potential used (0 / 100 / 250 / 650 / 1000). Display only: no reward, unlock or race value depends on the stage.",
   "v": 1,
   "stages": [
     "debut",
@@ -28,17 +28,24 @@
       "potential": 240,
       "index": 1,
       "key": "growing",
-      "nextAt": 84
+      "nextAt": 60
     },
     {
-      "trained": 83,
+      "trained": 59,
       "potential": 240,
       "index": 1,
       "key": "growing",
-      "nextAt": 84
+      "nextAt": 60
     },
     {
-      "trained": 84,
+      "trained": 60,
+      "potential": 240,
+      "index": 2,
+      "key": "prime",
+      "nextAt": 156
+    },
+    {
+      "trained": 83,
       "potential": 240,
       "index": 2,
       "key": "prime",
@@ -105,10 +112,17 @@
       "potential": 300,
       "index": 1,
       "key": "growing",
-      "nextAt": 105
+      "nextAt": 75
     },
     {
-      "trained": 105,
+      "trained": 74,
+      "potential": 300,
+      "index": 1,
+      "key": "growing",
+      "nextAt": 75
+    },
+    {
+      "trained": 75,
       "potential": 300,
       "index": 2,
       "key": "prime",
@@ -140,7 +154,7 @@
       "potential": 180,
       "index": 1,
       "key": "growing",
-      "nextAt": 63
+      "nextAt": 45
     },
     {
       "trained": 17,
@@ -148,6 +162,20 @@
       "index": 0,
       "key": "debut",
       "nextAt": 18
+    },
+    {
+      "trained": 44,
+      "potential": 180,
+      "index": 1,
+      "key": "growing",
+      "nextAt": 45
+    },
+    {
+      "trained": 45,
+      "potential": 180,
+      "index": 2,
+      "key": "prime",
+      "nextAt": 117
     },
     {
       "trained": 117,

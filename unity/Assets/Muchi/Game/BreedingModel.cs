@@ -42,6 +42,11 @@ namespace Muchi.Game
         /// <summary>"pending" right after a stud breeding whose fee the owner has not confirmed yet (server retries).</summary>
         public string LastFeeStatus;
         public StudMine Mine;
+        /// <summary>REQ-ITEM-011 (quality pass 3): today's allowance after the last breeding (own pair), so the reveal can offer one more.</summary>
+        public BreedingAllowance LastToday;
+        /// <summary>The reveal's 「配合素材を1個使って、もう1回（残り 6個）」 when today's breeding is used and material allows one more; else null.</summary>
+        public string AgainWithMaterialLine => LastToday != null && LastToday.CanBreedWithMaterial
+            ? "配合素材を" + LastToday.MaterialCost.ToString(CultureInfo.InvariantCulture) + "個使って、もう1回（残り " + LastToday.MaterialOwned.ToString(CultureInfo.InvariantCulture) + "個）" : null;
 
         public BreedingModel(GameBackend backend, IKeyValueStore store) : base(backend, store) { }
 
@@ -183,7 +188,7 @@ namespace Muchi.Game
                 else
                 {
                     var r = await B.Api.BreedAsync(Sire.HorseId, Dam.Id, key, ct, useMaterial);
-                    Foal = r.Foal; LastAtavism = r.Atavism; LastFeeStatus = null;
+                    Foal = r.Foal; LastAtavism = r.Atavism; LastFeeStatus = null; LastToday = r.Today;
                 }
                 Kv.Set(slot, null);
                 Reveal = Foal == null ? null : FoalReveal.Build(Preview, Foal, Sire.Style, Dam.Style);

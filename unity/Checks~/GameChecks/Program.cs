@@ -174,6 +174,8 @@ static class Program
         await GoalLadderChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 2: the first week on the ladder (GoalLadderModel TomorrowLine / Partner / PathScreen; REQ-GOAL-013..015)");
         await FirstWeekChecks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== quality pass 3: week 2 (the solo way of a social first step, graduation on day 8, the week-2 arc, the treat line; REQ-GOAL-017..020)");
+        await Week2Checks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality integration: home says each thing once (NextActionModel.HomeLine, one link), the ladder counts the pass rewards and links its cap to the horse card");
         await QualityIntegrationChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 2: the scout confirmation (paid / free split, tickets, the SR+ ticket, shortfall route) and the purchase receipt (rows, next step, KPI)");

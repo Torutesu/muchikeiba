@@ -61,9 +61,22 @@ namespace Muchi.Game
         /// <summary>「今日あと2回 調教できます」 / 「今日の調教は終わりました」 / null (training not open yet).</summary>
         public string TrainLine;
         public bool CanTrain;
+        /// <summary>REQ-GOAL-020 (quality pass 3): 「おやつで伸び 85% → 100%」 when a treat matters for the partner today (null otherwise);
+        /// the tap goes to the training screen (the treat is given there, with its numbers).</summary>
+        public string TreatLine;
     }
 
     /// <summary>One class of the ladder sheet.</summary>
+    /// <summary>REQ-GOAL-019: one day of the week-2 arc on the goals screen.</summary>
+    public sealed class Week2DayRow
+    {
+        public int PlayerDay;
+        public string DayLabel, RewardText, GraduateText;
+        /// <summary>The cell's word (「SR以上」「素材×3」「◎100」).</summary>
+        public string ShortText;
+        public bool Today, Past, Peak;
+    }
+
     public sealed class ClassRow
     {
         public string ClassId, Title, CapText, LineText, RewardText;
@@ -123,6 +136,18 @@ namespace Muchi.Game
         /// time_attack | collection — fixed in code on the server, never the shop) and, while that screen is not open yet, why.</summary>
         public string PathScreen { get; private set; }
         public string PathLockText { get; private set; }
+        /// <summary>REQ-GOAL-017: the solo way of the current step (「ひとりでも：相棒におやつをあげる」) and its screen, or null.</summary>
+        public string PathAltLine { get; private set; }
+        public string PathAltScreen { get; private set; }
+        /// <summary>REQ-GOAL-017: 「明日 受け取れます」/「8日目から受け取れます」 when the step is done but waits for its day, else null.</summary>
+        public string PathWaitText { get; private set; }
+        /// <summary>REQ-GOAL-019: the week-2 arc's days (8..14) for the goals screen; empty outside days 7..14.</summary>
+        public List<Week2DayRow> Week2Days { get; private set; } = new List<Week2DayRow>();
+        /// <summary>The week-2 headline, its peak (「14日目：SR以上確定スカウト券×1」), or null. Graduation has its own line
+        /// (<see cref="PathWaitText"/>, the day cell, and the 明日 line the day before).</summary>
+        public string Week2Goal { get; private set; }
+        /// <summary>The same in a word for the home rung (「14日目 SR以上確定券」).</summary>
+        public string Week2Short { get; private set; }
         /// <summary>At most this many features in the one home line (the sheet lists them all).</summary>
         public const int TomorrowHomeFeatures = 1;
 
@@ -132,6 +157,8 @@ namespace Muchi.Game
             ["gacha"] = "スカウトを1回", ["silks"] = "勝負服を変える", ["care"] = "飼い葉をあげる", ["ranked_top3"] = "ランク戦で3着以内", ["breed"] = "配合を1回",
             ["friends"] = "フレンドを追加", ["team"] = "支部に入る", ["ta_finish"] = "タイムアタックを完走", ["ranked_races"] = "ランク戦に出る", ["points"] = "シーズンptを集める",
             ["promotion_line"] = "昇級ラインに届く", ["collect"] = "図鑑の馬を迎える",
+            // quality pass 3: the solo ways of the social first steps
+            ["treat"] = "相棒におやつをあげる", ["breed_extra"] = "配合素材でもう1回配合",
         };
 
         /// <summary>Item names when the screen has no catalog (the server's master names; English in server-en.json).</summary>
@@ -264,14 +291,29 @@ namespace Muchi.Game
                     Figure = v.Today.Complete && TomorrowLine != null ? null : v.Today.Done + "/" + v.Today.Total, Fill = v.Today.Total == 0 ? 0 : (float)v.Today.Done / v.Today.Total,
                     Sub = v.Today.Complete ? GameDay.NextResetLabel(_now()) + " に更新" : null, Ready = v.Today.Claimable > 0,
                 });
-            // はじめの10歩 (a new player) or 今週
-            if (v.Path != null)
+            // はじめの10歩 (a new player) or, from day 7, the week-2 arc in its place once only graduation is left (REQ-GOAL-019:
+            // graduation is the arc's first headline; the ladder keeps at most four rungs)
+            bool arcRung = v.Week2 != null && (v.Path == null || v.Path.Step == v.Path.Steps);
+            if (v.Path != null && !arcRung)
                 Rungs.Add(new GoalRung
                 {
-                    Key = "path", Label = "はじめの" + v.Path.Steps + "歩", Main = v.Path.Current.Claimable ? "受け取れる報酬があります" : Title(v.Path.Current.Kind),
+                    Key = "path", Label = "はじめの" + v.Path.Steps + "歩", Main = v.Path.Current.Claimable ? "受け取れる報酬があります" : PathWaitText != null ? "卒業：" + UxText.Reward(v.Path.Current.Reward, _itemName) : Title(v.Path.Current.Kind),
                     Figure = v.Path.Done + "/" + v.Path.Steps, Fill = (float)v.Path.Done / Math.Max(1, v.Path.Steps),
-                    Sub = "最後に " + UxText.Reward(v.Path.FinalReward, _itemName), Ready = v.Path.Current.Claimable,
+                    Sub = PathWaitText ?? (PathAltLine != null ? PathAltLine : "最後に " + UxText.Reward(v.Path.FinalReward, _itemName)), Ready = v.Path.Current.Claimable,
                 });
+            if (arcRung)
+            {
+                var w = v.Week2;
+                var tomorrowDay = w.Days.FirstOrDefault(d => d.PlayerDay == v.Today.PlayerDay + 1);
+                Rungs.Add(new GoalRung
+                {
+                    Key = "week2", Label = "2週目",
+                    Main = v.Path != null && v.Path.Current.Claimable ? "受け取れる報酬があります" : Week2Short ?? "毎日ログインボーナス",
+                    Figure = w.Day > 0 ? w.Day + "/7" : null, Fill = w.Day / 7f,
+                    Sub = w.Day == 0 ? "明日から2週目" : tomorrowDay?.LoginReward != null ? "明日：" + UxText.Reward(tomorrowDay.LoginReward, _itemName) : null,
+                    Ready = v.Path != null && v.Path.Current.Claimable,
+                });
+            }
             if (v.Week != null)
             {
                 var parts = new List<string>();
@@ -352,6 +394,14 @@ namespace Muchi.Game
                     if (home.Count == 0) home.Add("調教 " + t.TrainingSlots.Value + "回");
                     TomorrowLines.Add("調教がまた" + t.TrainingSlots.Value + "回できます");
                 }
+                // REQ-GOAL-018: graduation tomorrow is the headline of the day-7 line (the week-2 goal), before the login bonus
+                if (t.GraduateReward != null)
+                {
+                    var g = UxText.Reward(t.GraduateReward, _itemName);
+                    home.Clear(); // the one headline on home (the sheet lists the rest)
+                    home.Add(t.GraduateReady ? "はじめの10歩 卒業（" + g + "）" : "卒業が開く（" + g + "）");
+                    TomorrowLines.Insert(0, t.GraduateReady ? "はじめの10歩を卒業：" + g : "はじめの10歩の卒業が開きます：" + g);
+                }
                 if (home.Count > 0) TomorrowLine = "明日：" + string.Join("　·　", home);
                 if (TomorrowLines.Count > 0) TomorrowAt = AtLabel(t.At);
             }
@@ -371,12 +421,75 @@ namespace Muchi.Game
                     NextLine = p.Full ? "完成" : p.NextStageAt.HasValue ? GrowthStages.Ja[Math.Min(idx + 1, GrowthStages.Ja.Length - 1)] + "まで あと" + Num(Math.Max(0, p.NextStageAt.Value - p.TrainedTotal)) : null,
                     TrainLine = !p.TrainingOpen || p.Full ? null : p.SessionsLeft > 0 ? "今日あと" + p.SessionsLeft + "回 調教できます" : "今日の調教は終わりました",
                     CanTrain = p.TrainingOpen && !p.Full && p.SessionsLeft > 0,
+                    TreatLine = TreatText(p.Treat),
                 };
             }
 
             var cur = v.Path?.Current;
             PathScreen = cur?.Screen;
             PathLockText = cur != null && !cur.Open ? LockText(cur.Kind, t) : null;
+            PathAltLine = cur?.Alt != null && !cur.Reached ? "ひとりでも：" + Title(cur.Alt.Kind) : null;
+            PathAltScreen = cur?.Alt?.Screen;
+            PathWaitText = cur != null && cur.Reached && !cur.DayOk && cur.FromDay.HasValue
+                ? (cur.FromDay.Value - v.Today.PlayerDay == 1 ? "明日 受け取れます" : cur.FromDay.Value + "日目から受け取れます") : null;
+
+            // REQ-GOAL-019: the week-2 arc, one row a day; the headline is graduation while it is ahead, else the peak
+            Week2Days = new List<Week2DayRow>();
+            Week2Goal = null; Week2Short = null;
+            var w = v.Week2;
+            if (w != null)
+            {
+                foreach (var d in w.Days)
+                    Week2Days.Add(new Week2DayRow
+                    {
+                        PlayerDay = d.PlayerDay, DayLabel = d.PlayerDay + "日目", Today = d.Today, Past = d.Past, Peak = w.PeakDay == d.PlayerDay,
+                        RewardText = d.LoginReward == null ? null : UxText.Reward(d.LoginReward, _itemName), ShortText = d.LoginReward == null ? null : CellWord(d.LoginReward),
+                        GraduateText = d.GraduateReward == null ? null : "はじめの10歩 卒業：" + UxText.Reward(d.GraduateReward, _itemName),
+                    });
+                if (w.PeakDay.HasValue && w.PeakReward != null)
+                {
+                    Week2Goal = w.PeakDay.Value + "日目：" + UxText.Reward(w.PeakReward, _itemName);
+                    Week2Short = w.PeakDay.Value + "日目 " + RewardWord(w.PeakReward);
+                }
+            }
+        }
+
+        /// <summary>A reward in a word for the home rung (the goals screen has the full name).</summary>
+        public static string RewardWord(Reward r)
+        {
+            var id = r != null && r.Items.Count > 0 ? r.Items[0].ItemId : null;
+            switch (id)
+            {
+                case "ticket_sr_plus": return "SR以上確定券";
+                case "gacha_ticket_10": return "10連券";
+                case "gacha_ticket": return "スカウト券";
+                case "breeding_material": return "配合素材";
+                case "costume_login": return "勝負服の柄";
+            }
+            return r != null && r.FreeCoins > 0 ? "無償コイン" + Num(r.FreeCoins) + "枚" : UxText.Reward(r);
+        }
+
+        /// <summary>A day cell of the arc (four or five characters).</summary>
+        public static string CellWord(Reward r)
+        {
+            var id = r != null && r.Items.Count > 0 ? r.Items[0].ItemId : null;
+            switch (id)
+            {
+                case "ticket_sr_plus": return "SR以上";
+                case "gacha_ticket_10": return "10連";
+                case "gacha_ticket": return "スカウト";
+                case "breeding_material": return "素材×" + r.Items[0].Qty.ToString(CultureInfo.InvariantCulture);
+                case "costume_login": return "勝負服";
+            }
+            return r != null && r.FreeCoins > 0 ? "◎" + Num(r.FreeCoins) : null;
+        }
+
+        /// <summary>REQ-GOAL-020 / REQ-ITEM-010: the treat in one line, from the server's numbers (growth efficiency before → after).</summary>
+        public static string TreatText(TreatHint h)
+        {
+            if (h == null) return null;
+            if (h.Unblocks) return h.Name + "で疲れをとると、今日も調教できます";
+            return h.Name + "で伸び " + (h.EfficiencyPermille / 10) + "% → " + (h.EfficiencyAfterPermille / 10) + "%";
         }
 
         /// <summary>「明日 4:00」 for the server's next game day start (a time of day, never a countdown).</summary>

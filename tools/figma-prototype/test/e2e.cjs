@@ -21,6 +21,7 @@ const enFlow = require('./en-flow.cjs');
 const a11yFlow = require('./a11y-flow.cjs');
 const qualityFlow = require('./quality-flow.cjs'); // quality integration (claude/quality-1)
 const firstWeekFlow = require('./first-week-flow.cjs'); // quality pass 2: the first week (docs/quality/first-week.md)
+const week2Flow = require('./week2-flow.cjs'); // quality pass 3: week 2 and using what you have (docs/quality/week2.md)
 
 const SITE = path.join(__dirname, '..', 'site');
 const OUT = path.resolve(process.argv[2] || path.join(__dirname, '..', '.screens'));
@@ -67,6 +68,8 @@ function serve() {
   if (process.env.E2E_ONLY === 'week') {
     const w = await firstWeekFlow(browser, base, OUT, errors);
     console.log(`First week: ${w.shots.length} screenshots`);
+    const w2 = await week2Flow(browser, base, OUT, errors);
+    console.log(`Week 2: ${w2.shots.length} screenshots`);
     await browser.close(); server.close();
     if (errors.length) { console.error('ERRORS:\n' + errors.join('\n')); process.exit(1); }
     console.log('E2E OK (week)'); return;
@@ -92,6 +95,8 @@ function serve() {
   console.log(`Quality integration: place ${q.res.place}, lesson "${q.res.lesson}", peaks ${[...new Set(q.race.fx)].join('/')}`);
   const wk = await firstWeekFlow(browser, base, OUT, errors);
   console.log(`First week (docs/quality/first-week.md): ${wk.shots.length} screenshots`);
+  const wk2 = await week2Flow(browser, base, OUT, errors);
+  console.log(`Week 2 (docs/quality/week2.md): ${wk2.shots.length} screenshots`);
   const en = await enFlow(browser, base, OUT, errors);
   console.log(`English (REQ-L10N-013): ${en.shots.length} screenshots, ${en.report.reduce((a, r) => a + r.shrunk, 0)} texts shrunk to fit, ${en.misses.length} texts without English`);
   const a11y = await a11yFlow(browser, base, OUT, errors);

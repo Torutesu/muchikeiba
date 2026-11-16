@@ -4222,6 +4222,26 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
   - `partner`：相棒（いなければ・引退していれば・調教が無効なら `null`）の成長。段階は Q1 の `growthStage`（馬カードと同じ）、`stageFrom` はいまの段階が始まった伸びの合計。`gainedToday`／`gainedYesterday` は調教日誌（§25 `log`）の今日／前のゲーム日の伸びの合計。`sessionsLeft` はこの馬が今日あと何回調教できるか（アカウントの残りと馬ごとの上限の小さい方、素質いっぱいなら 0）。**表示だけで報酬は付かない**。
   - 端末：C# `GoalTomorrow`・`GoalPartner`・`GoalItem.Screen/Open`、Unity `GoalLadderModel.TomorrowLine`（今日のセットが終わったら今日の段の文、数字は出さない）・`TomorrowLines`・`TomorrowAt`・`Partner`（`PartnerGrowthLine`）・`PathScreen`・`PathLockText`。
   - アカウント引き継ぎの案内（REQ-UXS-073）：3日目の当日はホームを開いた時には出さず、レース結果を閉じた後に出す（4日目以降はホームでも）。1回だけ・FTUE 中なし・§58.11 の1セッション1つは同じ。「いつ」は §58.11 の表の7行目が唯一の正（初めての購入は受け取りの画面を閉じた後）。
+- **2週目と持ち物の使いどころ（品質パス3、REQ-GOAL-017〜020・REQ-UXS-041/042・REQ-ITEM-010/011、docs/quality/week2.md）**：応答に項目を足す（古いクライアントは無視してよい。読むだけ・何も新しく配らない）。
+  ```json
+  "today": { "tomorrow": { "…": "…", "graduate": { "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] }, "ready": true } } },
+  "path": { "current": { "…": "…", "alt": { "kind": "treat", "target": 1, "progress": 0, "screen": "training", "open": true }, "reached": false, "fromDay": null, "dayOk": true },
+            "finalFromDay": 8 },
+  "week2": { "fromDay": 8, "toDay": 14, "day": 0,
+             "days": [{ "playerDay": 8, "today": false, "past": false, "loginBonus": { "track": "normal", "day": 1, "days": 7, "reward": { "freeCoins": 50 } },
+                        "graduate": { "reward": { "items": [{ "itemId": "gacha_ticket_10", "qty": 1 }] }, "ready": true } }, "…"],
+             "peak": { "playerDay": 14, "reward": { "items": [{ "itemId": "ticket_sr_plus", "qty": 1 }] } }, "graduate": { "playerDay": 8, "reward": { "…": "…" } } },
+  "partner": { "…": "…", "treat": { "itemId": "training_apple", "name": "りんごのおやつ", "owned": 2, "fatigue": 30, "fatigueAfter": 0,
+                                    "efficiencyPermille": 850, "efficiencyAfterPermille": 1000, "tired": false, "unblocks": false } }
+  ```
+  - 初心者ミッションの定義に `alt`（`{kind, target}`：その種類でも段に届く。どちらか）と `fromDay`（その段を受け取れるプレイヤー日）。**人が要る段（`friends`・`team`）は必ずひとりでできる `alt` を持つ**（設定の検証が拒否する）。既定：6段目 `friends` ⇔ `treat`（相棒におやつ＝`POST /v1/training/items/:itemId/use` を1回）、7段目 `team` ⇔ `breed_extra`（配合素材でもう1回配合＝`useMaterial` の配合を1回。種牡馬を借りた配合でも数える）、10段目（10連スカウト券）は `fromDay: 8`（同じ報酬を初心者ログボの後の日へ移しただけ。段の報酬の合計は 550枚・券1・素材2・10連券1 で変わらない）。
+  - `path.current.reached`：自分の種類か `alt` の目標に届いた。`dayOk` が false なら `fromDay` まで待つ（`claimable` も false、受け取りは 409 `NOT_ELIGIBLE`）。`alt.screen` はその画面（`training`・`breeding`、ショップは無い）。
+  - `today.tomorrow.graduate`：最後の段が明日開く日（7日目）だけ。`ready` は前の段を全部受け取り目標にも届いている（明日の始まりから受け取れる）。
+  - `week2`：プレイヤー日 7〜14 の間だけ（7日目は予告で `day: 0`）。`days[].loginBonus` は毎日受け取った場合にその日に受け取るログボ（`claimLoginBonus` と同じ表・順番から計算。今日の分は受け取った後も出す、過ぎた日は null のことがある）。`graduate` は卒業の日（`fromDay` か今日の遅い方、受け取るまで）。`peak` はこの先の日のログボで一番大きい物（SR以上確定券 > 10連券 > スカウト券 > コイン）。カウントダウン・煽りなし。
+  - `partner.treat`（REQ-GOAL-020）と §25 の各馬の `treat`（REQ-ITEM-010）：おやつを持っていて、疲れが 20 以上（伸びの効率が 90% 以下）で、素質が残っている時だけ。値は調教と同じ計算（疲れ → おやつ後、効率 → おやつ後、`unblocks` = 疲れていて調教できない馬がおやつで調教できるようになる）。ホームの `partner.treat` は今日まだこの馬を調教できる時だけ。
+  - `POST /v1/breeding` の応答に `today`（`breedingAllowance` と同じ：`perDay`・`used`・`extraPerDay`・`extraUsed`・`materialCost`・`materialOwned`）。生まれた瞬間に「配合素材でもう1回」を出せる（REQ-ITEM-011）。
+  - 成長段階（Q1 `growthStage`）の3段目（充実期）のしきい値を 350‰ → 250‰（表示だけ。報酬・解放・レースの値は段階に依存しない。共有ベクター `contracts/horse-profile.vectors.json` を更新）。
+  - 端末：C# `GoalAlt`・`GoalItem.Alt/FromDay/DayOk/Reached`・`GoalPath.FinalFromDay`・`GoalTomorrow.GraduateReward/GraduateReady`・`GoalWeek2`／`GoalWeek2Day`・`TreatHint`（`GoalPartner.Treat`・`TrainingHorse.Treat`）・`BreedResult.Today`。Unity `GoalLadderModel.PathAltLine/PathAltScreen/PathWaitText/Week2Days/Week2Goal/Week2Short`（7日目からは2週目の段がはじめの10歩の段の場所に入る。卒業だけが残っている時）・`PartnerGrowthLine.TreatLine`・`TrainingModel.TreatLine`・`BreedingModel.AgainWithMaterialLine`。
 
 ## Q1. 馬カード・配合の見込み（品質パス：育成・配合、`server/src/domain/horseProfile.ts`・`horses.ts` `foalRarityOdds`、C# `HorseProfile.cs`（`HorseProfile`・`GrowthStages`・`FoalReveal`）・`Muchi.Game.HorseProfileModel`／`BreedingModel`、共有ベクター `contracts/horse-profile.vectors.json`、`docs/quality/raising-breeding.md`）
 番号は Round 23 の §70〜§73 と重ならないよう Q を付ける。**読み取りだけ**：書き込み・付与・抽選は無いので、経済（E1〜E19）・レースの結果・ランク戦の数字は変わらない。

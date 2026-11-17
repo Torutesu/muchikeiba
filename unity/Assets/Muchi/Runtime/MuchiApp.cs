@@ -195,35 +195,8 @@ namespace Muchi.Client
             Label("SEASON 01    •    TURF SERIES",1110,828,450,34,16,Color.white);
             Label(ModeLabel,1110,792,450,30,14,new Color(.82f,.92f,1f));
         }
-        void Home()
-        {
-            currentScreen=Home;Clear();SetArt("Art/home-paddock");
-            var profile=backend.Profile();
-            if(profile.Online)horseName=profile.PartnerName;
-            Panel("Player identity",38,34,440,104,navy);
-            Label(profile.Online?"CLASS "+profile.ClassId+"  /  "+profile.SeasonPoints+" PT":"ROOKIE II  /  SEASON 01",60,47,390,36,20,cyan);
-            Label(profile.Online?"JOCKEY  "+profile.DisplayName:"JOCKEY  001  ·  TURF SERIES",60,90,390,30,17);
-            Panel("Wallet",1210,35,350,86,navy);
-            Label(profile.Online?"FREE  ◎  "+profile.FreeCoins.ToString("N0"):"FREE  ◎  1,200",1230,46,155,29,17,Color.white);
-            Label(profile.Online?"PAID  ◈  "+profile.PaidCoins.ToString("N0"):"PAID  ◈  240",1390,46,155,29,17,gold);
-            Label(profile.Online?(profile.Debt>0?"Unsettled refund  ◈ "+profile.Debt:"Wallet balance"):"Sample balance (offline)",1230,79,300,25,14,new Color(.75f,.85f,.91f));
-            Panel("Home greeting",38,244,480,230,navy);
-            Label("YOUR PARTNER",66,275,420,36,20,cyan);
-            Label(horseName,66,318,425,78,49);
-            Label(PartnerLine(profile),66,408,425,35,18);
-            Button("STABLE",1180,248,176,Stable,navy);
-            Button("SCOUT",1374,248,176,Scout,navy);
-            Button("WARDROBE",1180,328,176,Wardrobe,navy);
-            Button("COURSE",1374,328,176,CourseThemes,navy);
-            Button("SEASON PASS",1180,408,176,SeasonPass,navy);
-            Button("SHOP",1374,408,176,()=>{storeTab=0;Store();},navy);
-            Button("CARE / FEED",1180,488,176,Care,navy);
-            Button("CONDITIONS",1374,488,176,Conditions,navy);
-            var raceButton=Button("RACE  >>",1160,668,392,()=>Entry());
-            raceButton.GetComponent<Image>().color=cyan;
-            Label(profile.Online?"RANKED  /  ONLINE MATCH":"PRACTICE  /  OFFLINE",1180,754,380,35,17,Color.white);
-            Label("HOME   ·   "+ModeLabel,48,836,700,32,16,Color.white);
-        }
+        // U1-A hook: Home() now lives in MuchiApp.Daily.cs (the prototype's home: goal ladder, 次にやること, partner plate,
+        // menu, race CTA — drawn from Muchi.Game.DailyLayout and audited by GameChecks).
         static string PartnerLine(ProfileModel p)
         {
             string style=p.PartnerStyle=="nige"?"FRONT RUNNER":p.PartnerStyle=="senko"?"STALKER":p.PartnerStyle=="oikomi"?"DEEP CLOSER":"CLOSER";

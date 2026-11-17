@@ -8,7 +8,7 @@ using Muchi.Game;
 
 static class TrainingChecks
 {
-    sealed class FakeServer : IHttp
+    internal sealed class FakeServer : IHttp
     {
         public readonly List<HttpRequest> Sent = new List<HttpRequest>();
         public readonly Dictionary<string, Func<HttpRequest, HttpResponse>> Routes = new Dictionary<string, Func<HttpRequest, HttpResponse>>();
@@ -19,22 +19,22 @@ static class TrainingChecks
             return Task.FromResult(new HttpResponse(404, "{\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"no route\"}}"));
         }
     }
-    sealed class Tokens : IAuthTokenProvider { public Task<string> GetTokenAsync(bool f, CancellationToken ct) => Task.FromResult("tok"); }
+    internal sealed class Tokens : IAuthTokenProvider { public Task<string> GetTokenAsync(bool f, CancellationToken ct) => Task.FromResult("tok"); }
 
-    const string PlayerJson = "{\"id\":\"t\",\"wallet\":{\"paid\":0,\"free\":500,\"total\":500,\"debt\":0},\"season\":{\"id\":\"2026-12\",\"classId\":\"C\",\"points\":0},\"items\":{},\"horses\":[{\"id\":\"h1\",\"name\":\"アイボウ\",\"rarity\":\"SR\",\"status\":\"active\",\"base\":{\"speed\":700},\"trained\":{\"burst\":3}}],\"equipment\":{\"tack\":{},\"decor\":[]}}";
+    internal const string PlayerJson = "{\"id\":\"t\",\"wallet\":{\"paid\":0,\"free\":500,\"total\":500,\"debt\":0},\"season\":{\"id\":\"2026-12\",\"classId\":\"C\",\"points\":0},\"items\":{},\"horses\":[{\"id\":\"h1\",\"name\":\"アイボウ\",\"rarity\":\"SR\",\"status\":\"active\",\"base\":{\"speed\":700},\"trained\":{\"burst\":3}}],\"equipment\":{\"tack\":{},\"decor\":[]}}";
 
-    static string Horse(int fatigue, string condition, int slotsLeft, string awaseBlocked = null, int owned = 0) =>
+    internal static string Horse(int fatigue, string condition, int slotsLeft, string awaseBlocked = null, int owned = 0) =>
         "{\"horseId\":\"h1\",\"name\":\"アイボウ\",\"rarity\":\"SR\",\"trained\":{\"speed\":0,\"stamina\":2,\"burst\":3,\"guts\":1,\"temper\":0},\"trainedTotal\":6,\"potential\":240,\"perStatCap\":96,"
         + "\"fatigue\":" + fatigue + ",\"condition\":\"" + condition + "\",\"bondLevel\":1,\"todayCount\":1,\"sessions\":1,\"log\":[],\"blocked\":" + (slotsLeft > 0 ? "null" : "\"no_slots\"") + ","
         + "\"menus\":[{\"id\":\"hill\",\"blocked\":" + (awaseBlocked == null ? "null" : "\"" + awaseBlocked + "\"") + "},{\"id\":\"wood\",\"blocked\":null},{\"id\":\"pool\",\"blocked\":null},{\"id\":\"awase\",\"blocked\":" + (awaseBlocked == null ? "null" : "\"" + awaseBlocked + "\"") + "}]}";
-    static string View(int slotsLeft = 2, int fatigue = 30, string condition = "fresh", string blocked = null, string open = "null", int owned = 0) =>
+    internal static string View(int slotsLeft = 2, int fatigue = 30, string condition = "fresh", string blocked = null, string open = "null", int owned = 0) =>
         "{\"enabled\":true,\"slotsPerDay\":3,\"usedToday\":" + (3 - slotsLeft) + ",\"slotsLeft\":" + slotsLeft + ",\"perHorsePerDay\":2,"
         + "\"menus\":[{\"id\":\"hill\",\"name\":\"坂路\",\"baseGain\":6,\"fatigue\":30,\"weights\":{\"burst\":2,\"guts\":1,\"stamina\":1},\"bondMultiplier\":1},{\"id\":\"wood\",\"name\":\"ウッド\",\"baseGain\":6,\"fatigue\":25,\"weights\":{\"speed\":2,\"stamina\":1,\"temper\":1},\"bondMultiplier\":1},{\"id\":\"pool\",\"name\":\"プール\",\"baseGain\":3,\"fatigue\":-20,\"weights\":{\"stamina\":2,\"temper\":1},\"bondMultiplier\":1},{\"id\":\"awase\",\"name\":\"併せ馬\",\"baseGain\":7,\"fatigue\":35,\"weights\":{\"guts\":2,\"speed\":1,\"burst\":1},\"bondMultiplier\":2}],"
         + "\"timing\":{\"beats\":5,\"durationMs\":6000,\"leadMs\":800,\"tailMs\":200,\"perfectMs\":60,\"goodMs\":150,\"perfectPoints\":2,\"goodPoints\":1,\"strayPenalty\":1,\"permillePerPoint\":10,\"maxTaps\":10,\"minTapGapMs\":80,\"maxScore\":10},"
         + "\"fatigue\":{\"max\":100,\"restAt\":80,\"recoveryPerDay\":40},\"items\":[{\"itemId\":\"training_apple\",\"name\":\"りんごのおやつ\",\"fatigueRelief\":30,\"owned\":" + owned + "}],"
         + "\"horses\":[" + Horse(fatigue, condition, slotsLeft, blocked, owned) + "],\"open\":" + open + ",\"rules\":{\"rankedNormalized\":true,\"fatigueAffectsRaces\":false,\"inherited\":false,\"paidBoosts\":false}}";
-    const string Session = "{\"sessionId\":\"tr_a\",\"horseId\":\"h1\",\"menuId\":\"hill\",\"startedAt\":1,\"expiresAt\":600001,\"beats\":[814,1916,3236,4273,4887],\"durationMs\":6000}";
-    static string Finish(string settled, int perfect, int score) =>
+    internal const string Session = "{\"sessionId\":\"tr_a\",\"horseId\":\"h1\",\"menuId\":\"hill\",\"startedAt\":1,\"expiresAt\":600001,\"beats\":[814,1916,3236,4273,4887],\"durationMs\":6000}";
+    internal static string Finish(string settled, int perfect, int score) =>
         "{\"sessionId\":\"tr_a\",\"horseId\":\"h1\",\"menuId\":\"hill\",\"grade\":\"" + (score >= 9 ? "great" : score >= 5 ? "good" : "normal") + "\",\"timing\":{\"perfect\":" + perfect + ",\"good\":0,\"miss\":" + (5 - perfect) + ",\"stray\":0,\"score\":" + score + ",\"bonusPermille\":" + (score * 10) + "},"
         + "\"gain\":{\"speed\":0,\"stamina\":2,\"burst\":3,\"guts\":1,\"temper\":0},\"total\":6,\"capped\":false,\"breakdown\":{\"efficiencyPermille\":1000,\"bondPermille\":0,\"timingPermille\":" + (score * 10) + ",\"softPermille\":1000},"
         + "\"trained\":{\"speed\":0,\"stamina\":4,\"burst\":6,\"guts\":2,\"temper\":0},\"trainedTotal\":12,\"potential\":240,\"fatigue\":60,\"settled\":\"" + settled + "\",\"void\":false,\"training\":" + View(1, 60, "normal") + "}";

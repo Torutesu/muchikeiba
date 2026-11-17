@@ -16,44 +16,44 @@ namespace Muchi.Game
     public enum BoxKind { Text, Cta, Ghost, Card, Shape }
 
     /// <summary>One rectangle of a screen (top-left origin, canvas pixels). Size is the font size of a text box.</summary>
-    public sealed class LayoutBox
+    public sealed class ShopBox
     {
         public readonly string Name;
         public readonly BoxKind Kind;
         public readonly float X, Y, W, H;
         public readonly int Size;
-        public LayoutBox(string name, BoxKind kind, float x, float y, float w, float h, int size = 0) { Name = name; Kind = kind; X = x; Y = y; W = w; H = h; Size = size; }
-        public bool Overlaps(LayoutBox o) => X < o.X + o.W && o.X < X + W && Y < o.Y + o.H && o.Y < Y + H;
+        public ShopBox(string name, BoxKind kind, float x, float y, float w, float h, int size = 0) { Name = name; Kind = kind; X = x; Y = y; W = w; H = h; Size = size; }
+        public bool Overlaps(ShopBox o) => X < o.X + o.W && o.X < X + W && Y < o.Y + o.H && o.Y < Y + H;
         public bool Inside(float w, float h) => X >= 0 && Y >= 0 && X + W <= w && Y + H <= h;
         public override string ToString() => Name + " (" + X.ToString(CultureInfo.InvariantCulture) + "," + Y.ToString(CultureInfo.InvariantCulture) + " " + W.ToString(CultureInfo.InvariantCulture) + "×" + H.ToString(CultureInfo.InvariantCulture) + ")";
     }
 
     /// <summary>The boxes of one screen (one state of it). Boxes are looked up by name; a missing name throws (a typo is a bug).</summary>
-    public sealed class ScreenLayout
+    public sealed class ShopScreenLayout
     {
         public const float CanvasW = 1600, CanvasH = 900;
         /// <summary>The kit's fixed heights (MuchiApp.Kit.cs: Cta 76, Ghost 64, Kicker 24 at 16 px).</summary>
         public const float CtaH = 76, GhostH = 64, KickerH = 24;
         public const int BodyMin = 16;
         /// <summary>MuchiApp.Clear() puts the language button here on every screen.</summary>
-        public static readonly LayoutBox LanguageButton = new LayoutBox("language button", BoxKind.Ghost, 1370, 132, 195, 72);
+        public static readonly ShopBox LanguageButton = new ShopBox("language button", BoxKind.Ghost, 1370, 132, 195, 72);
 
         public readonly string Screen;
-        private readonly List<LayoutBox> _boxes = new List<LayoutBox>();
-        public ScreenLayout(string screen) { Screen = screen; }
-        public IReadOnlyList<LayoutBox> Boxes => _boxes;
+        private readonly List<ShopBox> _boxes = new List<ShopBox>();
+        public ShopScreenLayout(string screen) { Screen = screen; }
+        public IReadOnlyList<ShopBox> Boxes => _boxes;
 
-        public LayoutBox this[string name] => _boxes.FirstOrDefault(b => b.Name == name) ?? throw new KeyNotFoundException(Screen + ": no box " + name);
+        public ShopBox this[string name] => _boxes.FirstOrDefault(b => b.Name == name) ?? throw new KeyNotFoundException(Screen + ": no box " + name);
         public bool Has(string name) => _boxes.Any(b => b.Name == name);
 
-        public ScreenLayout Text(string name, float x, float y, float w, float h, int size) { _boxes.Add(new LayoutBox(name, BoxKind.Text, x, y, w, h, size)); return this; }
-        public ScreenLayout Kicker(string name, float x, float y, float w) => Text(name, x, y, w, KickerH, BodyMin);
-        public ScreenLayout Cta(string name, float x, float y, float w) { _boxes.Add(new LayoutBox(name, BoxKind.Cta, x, y, w, CtaH)); return this; }
-        public ScreenLayout Ghost(string name, float x, float y, float w) { _boxes.Add(new LayoutBox(name, BoxKind.Ghost, x, y, w, GhostH)); return this; }
-        public ScreenLayout Card(string name, float x, float y, float w, float h) { _boxes.Add(new LayoutBox(name, BoxKind.Card, x, y, w, h)); return this; }
-        public ScreenLayout Shape(string name, float x, float y, float w, float h) { _boxes.Add(new LayoutBox(name, BoxKind.Shape, x, y, w, h)); return this; }
+        public ShopScreenLayout Text(string name, float x, float y, float w, float h, int size) { _boxes.Add(new ShopBox(name, BoxKind.Text, x, y, w, h, size)); return this; }
+        public ShopScreenLayout Kicker(string name, float x, float y, float w) => Text(name, x, y, w, KickerH, BodyMin);
+        public ShopScreenLayout Cta(string name, float x, float y, float w) { _boxes.Add(new ShopBox(name, BoxKind.Cta, x, y, w, CtaH)); return this; }
+        public ShopScreenLayout Ghost(string name, float x, float y, float w) { _boxes.Add(new ShopBox(name, BoxKind.Ghost, x, y, w, GhostH)); return this; }
+        public ShopScreenLayout Card(string name, float x, float y, float w, float h) { _boxes.Add(new ShopBox(name, BoxKind.Card, x, y, w, h)); return this; }
+        public ShopScreenLayout Shape(string name, float x, float y, float w, float h) { _boxes.Add(new ShopBox(name, BoxKind.Shape, x, y, w, h)); return this; }
 
-        private static bool Readable(LayoutBox b) => b.Kind == BoxKind.Text || b.Kind == BoxKind.Cta || b.Kind == BoxKind.Ghost;
+        private static bool Readable(ShopBox b) => b.Kind == BoxKind.Text || b.Kind == BoxKind.Cta || b.Kind == BoxKind.Ghost;
 
         /// <summary>The audit: every rule the brief sets for a screen; empty when the layout is clean.</summary>
         public List<string> Problems()
@@ -79,13 +79,13 @@ namespace Muchi.Game
     public static class ShopLayout
     {
         // ---- shared frame: header (kicker, title, sub line) and the back button above the language button
-        private static ScreenLayout Framed(string screen)
-            => new ScreenLayout(screen).Kicker("head kicker", 40, 30, 900).Text("head title", 40, 58, 1000, 44, 30).Text("head sub", 40, 106, 1300, 24, 16).Ghost("back", 1380, 40, 180);
+        private static ShopScreenLayout Framed(string screen)
+            => new ShopScreenLayout(screen).Kicker("head kicker", 40, 30, 900).Text("head title", 40, 58, 1000, 44, 30).Text("head sub", 40, 106, 1300, 24, 16).Ghost("back", 1380, 40, 180);
 
         /// <summary>Scout confirmation (prototype ScoutConfirm: dialog 1000×640). Coins: bar + split + after + notice; ticket: after only.</summary>
-        public static ScreenLayout ScoutConfirm(bool coins)
+        public static ShopScreenLayout ScoutConfirm(bool coins)
         {
-            var l = new ScreenLayout("scout confirm " + (coins ? "coins" : "ticket"))
+            var l = new ShopScreenLayout("scout confirm " + (coins ? "coins" : "ticket"))
                 .Card("dialog", 300, 130, 1000, 640)
                 .Kicker("kicker", 352, 170, 896)
                 .Text("title", 352, 206, 896, 48, 34)
@@ -99,9 +99,9 @@ namespace Muchi.Game
         }
 
         /// <summary>The ways to pull on a banner (tickets are offered here, where they are used). Up to 5 ways.</summary>
-        public static ScreenLayout ScoutWays(int ways)
+        public static ShopScreenLayout ScoutWays(int ways)
         {
-            var l = new ScreenLayout("scout ways " + ways)
+            var l = new ShopScreenLayout("scout ways " + ways)
                 .Card("panel", 40, 60, 620, 780)
                 .Kicker("kicker", 78, 96, 540)
                 .Text("title", 78, 128, 540, 48, 34)
@@ -112,9 +112,9 @@ namespace Muchi.Game
         public const int MaxWays = 5;
 
         /// <summary>Odds: the rarity totals of a banner or of the SR+ ticket's own table.</summary>
-        public static ScreenLayout Odds(int rows)
+        public static ShopScreenLayout Odds(int rows)
         {
-            var l = new ScreenLayout("odds " + rows).Card("dialog", 300, 130, 1000, 640).Kicker("kicker", 352, 170, 896).Text("title", 352, 204, 896, 44, 30);
+            var l = new ShopScreenLayout("odds " + rows).Card("dialog", 300, 130, 1000, 640).Kicker("kicker", 352, 170, 896).Text("title", 352, 204, 896, 44, 30);
             for (int i = 0; i < Math.Min(rows, MaxOddsRows); i++) l.Text("rarity " + i, 352, 270 + i * 44, 200, 32, 20).Text("rate " + i, 572, 270 + i * 44, 300, 32, 20);
             return l.Text("notice", 352, 560, 896, 72, 16).Cta("close", 352, 676, 360);
         }
@@ -124,7 +124,7 @@ namespace Muchi.Game
         /// The shop: tabs, the wallet, the first-purchase note, the tab's cards, the legal line. coins: up to 8 packs in 2×4;
         /// recommended: up to 4 cards in 2×2; looks: one card with the two ways to the try-on screens.
         /// </summary>
-        public static ScreenLayout Shop(string tab, int cards)
+        public static ShopScreenLayout Shop(string tab, int cards)
         {
             var l = Framed("shop " + tab + " " + cards).Card("panel", 40, 150, 1520, 700);
             for (int i = 0; i < 4; i++) l.Ghost("tab " + i, 64 + i * 156, 170, 144);
@@ -153,9 +153,9 @@ namespace Muchi.Game
         public const int MaxCoinPacks = 8, MaxRecommended = 4;
 
         /// <summary>T6 coin shortfall (prototype Shortfall: dialog 1080×660, closing is the call to action).</summary>
-        public static ScreenLayout Shortfall(bool offer)
+        public static ShopScreenLayout Shortfall(bool offer)
         {
-            var l = new ScreenLayout("shortfall " + (offer ? "pack" : "none"))
+            var l = new ShopScreenLayout("shortfall " + (offer ? "pack" : "none"))
                 .Card("dialog", 260, 110, 1080, 690)
                 .Kicker("kicker", 312, 150, 976)
                 .Text("headline", 312, 184, 976, 48, 34)
@@ -170,9 +170,9 @@ namespace Muchi.Game
         }
 
         /// <summary>The purchase confirmation (prototype PurchaseConfirm: dialog 1100×820). The state area differs per stage.</summary>
-        public static ScreenLayout PurchaseConfirm(PurchaseStage stage)
+        public static ShopScreenLayout PurchaseConfirm(PurchaseStage stage)
         {
-            var l = new ScreenLayout("purchase " + stage)
+            var l = new ShopScreenLayout("purchase " + stage)
                 .Card("dialog", 250, 40, 1100, 820)
                 .Kicker("kicker", 298, 72, 600)
                 .Text("sub", 298, 102, 600, 24, 16)
@@ -194,10 +194,10 @@ namespace Muchi.Game
         }
 
         /// <summary>The receipt (prototype Receipt: dialog 1100×780): a row per thing received, the wallet, the notes, ONE next step.</summary>
-        public static ScreenLayout Receipt(int lines, bool next)
+        public static ShopScreenLayout Receipt(int lines, bool next)
         {
             int n = Math.Min(lines, MaxReceiptLines);
-            var l = new ScreenLayout("receipt " + n + (next ? " next" : ""))
+            var l = new ShopScreenLayout("receipt " + n + (next ? " next" : ""))
                 .Card("dialog", 250, 60, 1100, 780)
                 .Kicker("kicker", 298, 96, 700)
                 .Text("name", 298, 130, 680, 40, 30)
@@ -211,8 +211,8 @@ namespace Muchi.Game
         public const int MaxReceiptLines = 5;
 
         /// <summary>A purchase that cannot start here (a cosmetic shown with a proposed price, no product on the server yet).</summary>
-        public static ScreenLayout LockedReview()
-            => new ScreenLayout("locked review").Card("dialog", 250, 120, 1100, 600).Kicker("kicker", 298, 156, 700).Text("name", 298, 192, 1004, 40, 30)
+        public static ShopScreenLayout LockedReview()
+            => new ShopScreenLayout("locked review").Card("dialog", 250, 120, 1100, 600).Kicker("kicker", 298, 156, 700).Text("name", 298, 192, 1004, 40, 30)
                 .Text("price", 298, 244, 1004, 30, 22).Text("lock", 298, 300, 1004, 96, 18).Ghost("close", 298, 620, 220);
 
         // ---- the season pass (prototype SeasonPass: preview on the left, level and the road, the tiers, the price line)
@@ -221,7 +221,7 @@ namespace Muchi.Game
         public const int PassChips = 6;
 
         /// <summary>The season pass screen: the try-on preview, the road of 30 with its standout marks, one page of tiers.</summary>
-        public static ScreenLayout SeasonPass(int standouts, int maxLevel = 30)
+        public static ShopScreenLayout SeasonPass(int standouts, int maxLevel = 30)
         {
             var l = Framed("season pass " + standouts)
                 .Card("preview", 40, 150, 388, 662)
@@ -243,7 +243,7 @@ namespace Muchi.Game
         }
 
         /// <summary>Tier cell (column c of the page, row 0 free / 1 premium).</summary>
-        private static void Cell(ScreenLayout l, int c, int r)
+        private static void Cell(ShopScreenLayout l, int c, int r)
         {
             float x = 460 + c * 180, y = 356 + r * 158;
             string k = "cell " + c + " " + r;
@@ -262,7 +262,7 @@ namespace Muchi.Game
         public static int PageStart(int level) => (Math.Max(1, level) - 1) / PassPageSize * PassPageSize + 1;
 
         /// <summary>Every screen state of the money area, for the audit.</summary>
-        public static IEnumerable<ScreenLayout> All()
+        public static IEnumerable<ShopScreenLayout> All()
         {
             yield return ScoutConfirm(true);
             yield return ScoutConfirm(false);

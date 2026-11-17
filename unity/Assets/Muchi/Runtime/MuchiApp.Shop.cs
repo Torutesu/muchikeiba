@@ -55,22 +55,22 @@ namespace Muchi.Client
 
         /// <summary>Japanese source text in the player's language (Loc's English table; Japanese unchanged).</summary>
         static string ShopT(string ja) => ja == null ? null : LocaleService.IsJapanese ? ja : (Loc.English.Translate(ja) ?? ja);
-        Text ShopText(LayoutBox b, string value, Color? color = null, TextAnchor align = TextAnchor.UpperLeft)
+        Text ShopText(ShopBox b, string value, Color? color = null, TextAnchor align = TextAnchor.UpperLeft)
         {
             var t = Body(ShopT(value) ?? "", b.X, b.Y, b.W, b.H, b.Size, color);
             t.alignment = align;
             return t;
         }
-        Text ShopKicker(LayoutBox b, string value) => Kicker(ShopT(value), b.X, b.Y, b.W);
-        RectTransform ShopCard(LayoutBox b) => Card("Shop / " + b.Name, b.X, b.Y, b.W, b.H);
-        Button ShopCta(LayoutBox b, string label, Action action, bool enabled = true) { var x = Cta(ShopT(label), b.X, b.Y, b.W, action); if (!enabled) ShopDisable(x); return x; }
-        Button ShopGhost(LayoutBox b, string label, Action action, bool enabled = true) { var x = Ghost(ShopT(label), b.X, b.Y, b.W, action); if (!enabled) ShopDisable(x); return x; }
+        Text ShopKicker(ShopBox b, string value) => Kicker(ShopT(value), b.X, b.Y, b.W);
+        RectTransform ShopCard(ShopBox b) => Card("Shop / " + b.Name, b.X, b.Y, b.W, b.H);
+        Button ShopCta(ShopBox b, string label, Action action, bool enabled = true) { var x = Cta(ShopT(label), b.X, b.Y, b.W, action); if (!enabled) ShopDisable(x); return x; }
+        Button ShopGhost(ShopBox b, string label, Action action, bool enabled = true) { var x = Ghost(ShopT(label), b.X, b.Y, b.W, action); if (!enabled) ShopDisable(x); return x; }
         static void ShopDisable(Button b)
         {
             b.interactable = false;
             foreach (var g in b.GetComponentsInChildren<Graphic>()) { var c = g.color; c.a *= .45f; g.color = c; }
         }
-        void ShopFrame(ScreenLayout l, string kicker, string title, string sub, Action back)
+        void ShopFrame(ShopScreenLayout l, string kicker, string title, string sub, Action back)
         {
             ShopKicker(l["head kicker"], kicker);
             ShopText(l["head title"], title, Color.white).fontStyle = FontStyle.Bold;
@@ -139,7 +139,7 @@ namespace Muchi.Client
             ShopText(l["checkout"], "決済の前に商品と年齢区分を確認します", KitMuted);
         }
 
-        void ShopPack(ScreenLayout l, int i, Muchi.Game.ProductCard p)
+        void ShopPack(ShopScreenLayout l, int i, Muchi.Game.ProductCard p)
         {
             string k = "pack " + i;
             ShopCard(l[k]);
@@ -149,7 +149,7 @@ namespace Muchi.Client
             ShopGhost(l[k + " buy"], "購入を確認", () => ShopPurchaseConfirm(p.Id, ShopStoreScreen), p.Purchasable);
         }
 
-        void ShopRecommended(ScreenLayout l, int i, Muchi.Game.ProductCard c)
+        void ShopRecommended(ShopScreenLayout l, int i, Muchi.Game.ProductCard c)
         {
             string k = "card " + i;
             ShopCard(l[k]);
@@ -344,7 +344,7 @@ namespace Muchi.Client
         }
 
         /// <summary>Birth year and month by steppers (no value is chosen for the player), and the guardian's consent under 18.</summary>
-        void ShopAgeForm(ScreenLayout l, PurchaseStage stage)
+        void ShopAgeForm(ShopScreenLayout l, PurchaseStage stage)
         {
             int nowYear = DateTimeOffset.FromUnixTimeMilliseconds(MuchiServices.NowMs + 9L * 3600 * 1000).UtcDateTime.Year;
             ShopText(l["year"], ageYear == 0 ? "----年" : ageYear.ToString(CultureInfo.InvariantCulture) + "年", Color.white).fontStyle = FontStyle.Bold;
@@ -728,7 +728,7 @@ namespace Muchi.Client
         string PartName(string type, string id) => ShopT(passSilks?.View?.Part(type, id)?.Name ?? id);
 
         /// <summary>One tier cell: tier number, what it pays (a standout names its part), and its one action.</summary>
-        void ShopPassCell(ScreenLayout l, int c, int r, PassLevelRow row)
+        void ShopPassCell(ShopScreenLayout l, int c, int r, PassLevelRow row)
         {
             bool premium = r == 1;
             var standout = premium ? row.PremiumStandout : row.FreeStandout;
@@ -779,7 +779,7 @@ namespace Muchi.Client
         /// The silks drawn from the design (cap, body, the pattern's second colour, sleeves) with the editor's colour hexes, so a
         /// standout is seen on the player's own colours. The full painted render lives in the silks editor; this is its plate.
         /// </summary>
-        void ShopSilksPlate(LayoutBox b, SilksDesign d)
+        void ShopSilksPlate(ShopBox b, SilksDesign d)
         {
             Color C(string id)
             {

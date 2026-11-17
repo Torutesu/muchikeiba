@@ -146,7 +146,7 @@ static class ShopScreenChecks
         check(all.Count > 40 && problems.Count == 0, "layout audit: " + all.Count + " money screen states inside 1600×900, clear of the language button, text ≥ 16 px, no overlaps, one CTA");
         check(all.All(l => l.Boxes.Count(x => x.Kind == BoxKind.Cta) <= 1), "at most one call to action on every money screen");
         // the audit catches what it should
-        var bad = new ScreenLayout("bad").Text("a", 0, 0, 100, 30, 14).Text("b", 50, 10, 100, 30, 20).Cta("x", 1500, 880, 200).Cta("y", 0, 400, 100).Text("c", 1400, 150, 100, 24, 16);
+        var bad = new ShopScreenLayout("bad").Text("a", 0, 0, 100, 30, 14).Text("b", 50, 10, 100, 30, 20).Cta("x", 1500, 880, 200).Cta("y", 0, 400, 100).Text("c", 1400, 150, 100, 24, 16);
         var bp = bad.Problems();
         check(bp.Any(p => p.Contains("under 16")) && bp.Any(p => p.Contains("overlap")) && bp.Any(p => p.Contains("outside")) && bp.Any(p => p.Contains("calls to action")) && bp.Any(p => p.Contains("language button")),
             "the audit flags small text, overlaps, boxes off the canvas, two CTAs and text under the language button");

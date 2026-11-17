@@ -206,8 +206,8 @@ namespace Muchi.Client
                 case "care": Care(); break;
                 case "pass": SeasonPass(); break;
                 case "shop": storeTab = 0; Store(); break;
-                // TODO(U1 merge): stream C's horse card (MuchiApp.Raising.cs) — the cap link and the partner plate open it
-                case "partner_card": case "cap_card": Stable(); break;
+                // the cap link and the partner plate open stream C's horse card (MuchiApp.Raising.cs); BACK returns home
+                case "partner_card": case "cap_card": OpenHorseCard(null, Home); break;
                 default: DailyToast(DailyLayout.NotYet); break;
             }
         }

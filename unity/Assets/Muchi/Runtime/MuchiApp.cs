@@ -10,7 +10,7 @@ using UnityEngine.EventSystems;
 
 namespace Muchi.Client
 {
-    public sealed class MuchiApp : MonoBehaviour
+    public sealed partial class MuchiApp : MonoBehaviour
     {
         public GameObject HorsePrefab;
         RaceWorld world;

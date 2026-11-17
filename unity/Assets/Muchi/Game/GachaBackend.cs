@@ -47,6 +47,19 @@ namespace Muchi.Game
         }
 
         /// <summary>
+        /// U1: every way to pull on this banner now (coins with the paid / free split, the tickets the player holds, the SR+ ticket) —
+        /// the scout screen offers the tickets where they are used. Null and a sentence offline or on an error.
+        /// </summary>
+        public async Task<(ScoutOptions options, string message)> ScoutOptionsAsync(string bannerId, CancellationToken ct = default)
+        {
+            if (!_b.Online || _b.Api == null) return (null, OfflineNotice);
+            if (string.IsNullOrEmpty(bannerId)) return (null, "スカウトできませんでした");
+            try { return (await _b.Api.GetScoutOptionsAsync(bannerId, ct), null); }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (ApiException e) { return (null, BannerListModel.ErrorText(e.Code)); }
+        }
+
+        /// <summary>
         /// REQ-SHORT-004: the last pull refused for lack of coins (null after any other outcome). Hand it to
         /// <see cref="CoinShortfallModel.FromError"/> with ShortfallContext.ScoutConfirm and ShortfallOrigin.Gacha.
         /// </summary>

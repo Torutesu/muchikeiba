@@ -7,7 +7,7 @@ using Muchi.Game;
 
 static class MonetizationQualityChecks
 {
-    const string Options = "{\"bannerId\":\"pickup_ginga\",\"name\":\"ピックアップ：ギンガノカナタ\",\"status\":\"active\",\"paidOnly\":false,\"stepUp\":false,"
+    internal const string Options = "{\"bannerId\":\"pickup_ginga\",\"name\":\"ピックアップ：ギンガノカナタ\",\"status\":\"active\",\"paidOnly\":false,\"stepUp\":false,"
         + "\"wallet\":{\"paid\":300,\"free\":2144},\"ways\":["
         + "{\"id\":\"coins_1\",\"via\":\"coins\",\"count\":1,\"itemId\":null,\"label\":\"1回引く\",\"price\":100,\"pays\":{\"paid\":100,\"free\":0},\"after\":{\"paid\":200,\"free\":2144},\"owned\":null,\"available\":true,\"block\":null,\"shortfall\":null,\"line\":\"有償コイン100枚を使います\",\"pityGain\":1},"
         + "{\"id\":\"coins_10\",\"via\":\"coins\",\"count\":10,\"itemId\":null,\"label\":\"10回引く\",\"price\":1000,\"pays\":{\"paid\":300,\"free\":700},\"after\":{\"paid\":0,\"free\":1444},\"owned\":null,\"available\":true,\"block\":null,\"shortfall\":null,\"line\":\"有償コイン300枚と無償コイン700枚を使います\",\"pityGain\":10},"

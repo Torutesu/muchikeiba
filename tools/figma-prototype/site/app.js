@@ -11592,10 +11592,10 @@ async function PlaytimeDemo() {
   const pt = await playtimeDue('home');
   return pt ? PlaytimeSheet(pt, Home) : Home();
 }
-/** Review: the refused purchase (own limit ¥3,000, ¥2,400 spent, a ¥800 pack). */
+/** Review: the refused purchase (own limit ¥3,000, ¥2,400 spent, a ¥1,500 pack — stream D retired the ¥800 one). */
 async function SelfLimitRefusedDemo() {
   await L.selfLimits.seedDemo();
-  return PurchaseConfirm('coin_800', () => Store('coins'));
+  return PurchaseConfirm('coin_1500', () => Store('coins'));
 }
 async function SelfLimits(back) {
   if (back) slState.back = back;

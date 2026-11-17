@@ -182,6 +182,8 @@ static class Program
         MonetizationQualityChecks.Run(Check);
         Console.WriteLine("== quality pass 3: the season pass standout tiers (next peak line, standout cells, try-on on the own silks, the claim moment)");
         await Round8Checks.PassStandouts(Check, Ruleset());
+        Console.WriteLine("== U1 money screens: coin packs and the pass products from the server list (retired packs, the daily pack under the pass), the totals line, scout ways, the layout audit, English");
+        await ShopScreenChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");

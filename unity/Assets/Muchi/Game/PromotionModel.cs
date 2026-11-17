@@ -34,6 +34,11 @@ namespace Muchi.Game
         public bool OutcomeSheetVisible { get; private set; }
         /// <summary>The outcome as one line inside the result screen (always set when decided by this race).</summary>
         public string OutcomeInline { get; private set; }
+        /// <summary>
+        /// U1 raising (docs/quality/unity-raising.md): the last <see cref="AfterRankedResultAsync"/> found a series this race started,
+        /// counted or decided. A series settled in an earlier race does not sit next to an unrelated result (its sheet still shows once).
+        /// </summary>
+        public bool TouchedByLastResult { get; private set; }
 
         public string HomeLabel => PromotionPips.HomeLabel(View);
         public string GraceLabel => PromotionPips.GraceLabel(View);
@@ -61,11 +66,15 @@ namespace Muchi.Game
         public async Task<ActionResult> AfterRankedResultAsync(CancellationToken ct = default)
         {
             string before = View?.Series?.Id;
-            ResultBanner = null; OutcomeInline = null;
+            int beforeN = View?.Series?.Results?.Count ?? -1;
+            string beforeStatus = View?.Series?.Status;
+            ResultBanner = null; OutcomeInline = null; TouchedByLastResult = false;
             var r = await RefreshAsync(ct);
             if (!r.Ok) return r;
             var x = View?.Series;
             if (!View.Enabled || x == null) return r;
+            // U1 raising: the result card speaks only for a series this race started, counted or decided (prototype PromoResultCard)
+            TouchedByLastResult = x.Id != before || x.Results.Count != beforeN || x.Status != beforeStatus;
             if (x.Active && x.Results.Count == 0 && x.Id != before) ResultBanner = StartBanner;
             if (x.OutcomePending)
             {
@@ -108,7 +117,7 @@ namespace Muchi.Game
         /// </summary>
         public void ForgetAccount()
         {
-            View = null; ResultBanner = null; OutcomeInline = null; OutcomeSheetVisible = false;
+            View = null; ResultBanner = null; OutcomeInline = null; OutcomeSheetVisible = false; TouchedByLastResult = false;
             Kv.Set(KeyCache, "");
         }
 

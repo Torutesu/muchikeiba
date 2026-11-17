@@ -148,6 +148,8 @@ static class Program
         await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== quality pass: raising & breeding (horse card, training outlook & stage up, breeding intent & foal reveal)");
         await RaisingQualityChecks.Run(Check, Ruleset());
+        Console.WriteLine("== U1 raising screens: horse card, breeding aims, foal reveal, pedigree, result (place coins, lesson, promotion popup or card) and their layout audit");
+        await RaisingScreenChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 22: 昇級戦と降級の猶予 (PromotionModel: start banner, pips, 「昇級戦 2/3」, outcome sheet through the one-prompt gate, ack once, offline copy, grace, kill switch, English; REQ-PROMO-*)");

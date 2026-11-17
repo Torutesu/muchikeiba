@@ -283,6 +283,8 @@ namespace Muchi.Client
             var raceButton=Button("SELECT FOR RACE  >>",1030,680,470,()=>Entry());raceButton.GetComponent<Image>().color=cyan;
             Button("BACK",1030,760,170,Home,navy);
             Button("CARE / FEED",1215,760,285,Care,navy);
+            // U1 raising: the horse card and breeding (MuchiApp.Raising.cs)
+            Ghost(RaisingTr(HorseProfileModel.Title),990,826,270,()=>OpenHorseCard(real?sp.PartnerId:null,Stable));Ghost(RaisingTr(RaisingText.BreedingTitle),1290,826,270,()=>{currentScreen=null;Breeding();});
         }
         void Scout()
         {
@@ -687,6 +689,7 @@ namespace Muchi.Client
             observer=new RaceObserver(driver);raceMode=mode; // round 8: attaches to Sim/Config itself once the driver has them
             if(firstRide)Ftue("race1_start");
             resultSeasonPointsBefore=backend.Player!=null?backend.Player.SeasonPoints:-1;
+            RaisingRaceStarted(); // U1 raising: the wallet / points before the race (the result's place-coin line)
             MuchiServices.Track(Muchi.Client.AnalyticsEvent.RaceStart(MuchiServices.NowMs,mode));
             BuildRaceScreen();
         }
@@ -803,39 +806,9 @@ namespace Muchi.Client
                 default:return "";
             }
         }
-        void Result()
-        {
-            currentScreen=Result;
-            bool first=tutorial;
-            var hud=driver!=null?HudModel.Build(driver,MuchiServices.NowMs):new HudSnapshot();
-            // round 8 (REQ-UXU-009): place / time / the tutorial retry come from RaceResultModel (same order the server
-            // confirmed for online races). The layout below is unchanged.
-            // TODO(Codex, REQ-UXU-009): draw result.Headline, result.DebriefLine / DebriefTip, result.Rows and result.Status,
-            // and rebuild once driver.Phase turns Confirmed / Void (handoff §3); the rewards panel needs its own model.
-            var result=driver!=null?RaceResultModel.Build(driver,observer):new RaceResultModel();
-            int place=result.HasResult&&result.Place>0?result.Place:hud.FinishPlace>0?hud.FinishPlace:hud.Rank;long timeMs=result.HasResult?result.TimeMs:hud.ElapsedMs;
-            bool online=driver!=null&&driver.Online;
-            string verdict=!online?"PRACTICE  /  NO RANK POINTS":driver.Phase==RacePhase.Confirmed?"CONFIRMED BY THE SERVER":driver.Phase==RacePhase.Void?"RACE VOID  /  NO REWARDS":"CONNECTION FAILED  /  "+(driver.FailureReason??"");
-            Clear();SetArt("Art/race-result");Panel("Result detail",42,55,620,780,navy);
-            Label(online?"RACE RESULT  /  RANKED":"RACE RESULT  /  "+(first?"FIRST RIDE":"PRACTICE"),80,99,540,34,17,cyan);
-            Label(place<=0?"—":LocaleService.IsJapanese?place+"位":place==1?"1ST":place==2?"2ND":place==3?"3RD":place+"TH",80,166,540,130,89,gold);
-            Label(place==1?"VICTORY":"RACE COMPLETE",80,300,540,60,33);
-            Label(horseName+"  /  "+(driver?.Config!=null?(driver.Config.Track.Surface==Surface.Dirt?"DIRT ":"TURF ")+driver.Config.Track.DistanceM.ToString("N0")+" m":""),80,377,520,35,18);
-            Panel("Result rule",80,440,500,2,new Color(.45f,.62f,.71f));
-            Label("TIME",80,482,120,30,16,cyan);Label(HudModel.FormatTime(timeMs),80,520,230,45,31);
-            Label(online?"SEASON PT":"MODE",340,482,210,30,16,cyan);
-            var points=Label(online?(backend.Player!=null?backend.Player.SeasonPoints+" pt":"—"):"OFFLINE",340,520,230,45,31,gold);
-            Label(verdict,80,600,520,38,16,new Color(.82f,.9f,.96f));
-            if(online&&driver.Phase==RacePhase.Confirmed)RefreshPoints(points);
-            // round 8 (REQ-UXS-004 / F1): a lost tutorial no longer goes on to naming — the main button is 「もう一度」 and starts the
-            // next (stored) attempt; the 3rd is assisted to a win. A win goes to naming as before.
-            bool retry=first&&result.TutorialRetry;
-            Action nextAction=retry?(Action)(()=>StartDriver(backend.CreateTutorialRace(),"tutorial",true)):first?(Action)NamePartner:Home;
-            var next=Button(retry?result.PrimaryAction:first?"MEET YOUR PARTNER":"CONTINUE  >>",80,675,500,nextAction);next.GetComponent<Image>().color=cyan;
-            Label(ModeLabel,80,780,500,26,13,new Color(.72f,.83f,.91f));
-            if(first&&result.Won)Ftue("race1_win",Math.Max(0,backend.TutorialAttempts-1));
-            if(!first&&online&&raceMode=="ranked"&&driver.Phase==RacePhase.Confirmed&&result.HasResult)Ftue("race2_done",result.Place); // 06 §8.1 row 8
-        }
+        // U1 raising (docs/quality/unity-raising.md): the result screen on the 1.4 HUD rules lives in MuchiApp.Raising.cs
+        // (place, the server's place coins, the debrief and the lesson row, the promotion popup or card).
+        void Result()=>RaisingResult();
         // FTUE funnel steps go through OnboardingFlow.TrackOnce: a retry, the title's tutorial ride or a screen rebuilt by the
         // language switch never sends a step twice (the server counts the funnel by step).
         void Ftue(string step,int? value=null)

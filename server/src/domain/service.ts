@@ -126,7 +126,7 @@ import {
 import { horseGoalsView, noteHorseGoals, pinHorseGoal, pinnedGoalView } from './horseGoals.js';
 import { horseProfile } from './horseProfile.js';
 import { answerReviewPrompt, checkReviewPrompt, reviewPromptStatus, type ReviewCheckInput, type ReviewStep } from './reviewPrompt.js';
-import { ackPromotion, notePromotionRace, promotionEnabled, promotionView } from './promotion.js';
+import { ackPromotion, ackPromotionReward, notePromotionRace, promotionEnabled, promotionView } from './promotion.js';
 import { localRemindersView } from './localNotify.js';
 import {
   dataExportAdminView, dataExportDeleted, dataExportDeletionKeys, dataExportFile, dataExportView, markDataExportFailed, markDataExportReady,
@@ -700,7 +700,7 @@ export class PlayerService {
     return this.tx(id, null, (s, now, emit) => answerReviewPrompt(s, promptId, step, now, emit));
   }
 
-  // ---- 昇級戦と降級の猶予 (REQ-PROMO-*, promotion.ts) — nothing here ever grants anything ----
+  // ---- 昇級戦と降級の猶予 (REQ-PROMO-*, promotion.ts) — the series grants nothing; the promotion reward (stream D) is granted by rollSeason ----
   /** REQ-PROMO-013: the series, the grace window, the rules (a read on a copy: a season close is not saved by a read). */
   async promotion(id: string) {
     const s = structuredClone(await this.load(id));
@@ -709,6 +709,8 @@ export class PlayerService {
   }
   /** REQ-PROMO-014: the result sheet of an ended series was seen (idempotent). */
   promotionAck(id: string, seriesId: string) { return this.tx(id, null, (s) => ackPromotion(s, seriesId)); }
+  /** Stream D: the promotion reward's moment was shown (POST /v1/promotion/ack { rewardClassId }; idempotent). */
+  promotionRewardAck(id: string, classId: string) { return this.tx(id, null, (s) => ackPromotionReward(s, classId)); }
 
   // ---- ゲーム内アンケート (REQ-SURVEY-*, surveys.ts, protocol §69) — nothing here ever grants anything ----
   private async notWiped(id: string, placement?: string) {

@@ -393,6 +393,11 @@ export function visualsCatalog(m: Master, v: VisualsMaster = VISUALS) {
   };
 }
 
+/** Stream D: an item that only changes looks (a silks pattern / course look unlock, or a cosmetic of items.json). */
+export function isLooksOnlyItem(m: Pick<Master, 'items'>, itemId: string, v: VisualsMaster = VISUALS): boolean {
+  return v.silks.patterns.some((p) => p.unlockItem === itemId) || v.courseLooks.some((c) => c.unlockItem === itemId) || m.items.cosmetics.some((c) => c.id === itemId);
+}
+
 /** Every item id that master data can grant, charge or unlock. */
 export function collectItemIds(m: Master, v: VisualsMaster = VISUALS): string[] {
   const ids = new Set<string>();

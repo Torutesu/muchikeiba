@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { m } from './helpers.js';
+import { mAllProducts as m } from './helpers.js'; // stream D: every pack on sale (the shipped layout retires some; shopcfg.test.ts)
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { FakeStoreVerifier } from '../src/domain/purchase.js';
 import { seededRng } from '../src/domain/rng.js';

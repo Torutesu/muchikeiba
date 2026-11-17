@@ -36,10 +36,10 @@ assert.strictEqual((await S.setSpending(2550)).code, 'BAD_REQUEST');
 
 // the refused confirmation (own ¥3,000, ¥2,400 spent)
 await S.seedDemo();
-const pi = await L.purchaseIntent('coin_800');
+const pi = await L.purchaseIntent('coin_1500'); // stream D: ¥800 is retired
 assert.strictEqual(pi.ok, false);
 assert.strictEqual(pi.code, 'SELF_LIMIT_EXCEEDED');
-assert.deepStrictEqual({ ...pi.details, month: undefined }, { selfLimitYen: 3000, monthSpentYen: 2400, priceYen: 800, month: undefined, settings: 'self_limits' });
+assert.deepStrictEqual({ ...pi.details, month: undefined }, { selfLimitYen: 3000, monthSpentYen: 2400, priceYen: 1500, month: undefined, settings: 'self_limits' });
 assert.strictEqual((await L.purchaseIntent('coin_480')).ok, true);
 const sf = (await L.coinShortfall({ for: 'coins', coins: 99999, kind: 'any' })).value;
 assert.ok(!sf.offer || sf.offer.priceYen <= 600, 'the shortfall never offers a pack over the own limit: ' + sf.offer?.productId);

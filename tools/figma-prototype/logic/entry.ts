@@ -1683,6 +1683,18 @@ export const MuchiLogic = {
   promotion: {
     view: () => wrap(() => svc.promotion(ID)),
     ack: (seriesId: string) => wrap(() => svc.promotionAck(ID, seriesId)),
+    /** Stream D: the promotion reward's moment was shown (POST /v1/promotion/ack { rewardClassId }). */
+    ackReward: (classId: string) => wrap(() => svc.promotionRewardAck(ID, classId)),
+    /** Stream D demo: the month closes with the player over the line, so rollSeason promotes and grants the class's pattern. */
+    demoReward: () => wrap(async () => {
+      await svc.tx(ID, null, (st) => {
+        const line = classDef(master, st.season.classId).promotePoints ?? 300;
+        st.season.points = line + 10; st.flags.tutorialGachaUsed = true;
+        st.season.id = '2000-01'; // a closed month: the next transaction runs the real close (rollSeason)
+      });
+      await svc.tx(ID, null, () => {});
+      return true;
+    }),
     /** The kill switch (progression.promotion.enabled) on the local master; the walkthroughs that race for other reasons turn it off. */
     setEnabled: (on: boolean) => { const prog = master.progression as { promotion?: { enabled: boolean } }; if (prog.promotion) prog.promotion.enabled = on; return on; },
     demo: (state: 'near' | 'start' | 'one' | 'passed' | 'failed' | 'grace' | 'off') => wrap(async () => {

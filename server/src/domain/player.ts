@@ -149,7 +149,8 @@ export interface PlayerState {
    * streakDay: normal 7-day cycle days claimed. beginnerDay (REQ-UXS-013): beginner-table days claimed; absent on
    * states stored before it existed (players who never claimed start the beginner table, the others skip it).
    */
-  loginBonus: { streakDay: number; lastClaimDate: string | null; beginnerDay?: number };
+  /** swappedFrom (stream D): the last claim gave the loginBonusOwnedSwap substitute for this owned item. */
+  loginBonus: { streakDay: number; lastClaimDate: string | null; beginnerDay?: number; swappedFrom?: string };
   missions: { date: string; progress: Record<string, number>; claimed: string[] };
   breeding: { date: string | null; count: number };
   rating: { r: number; rd: number; vol: number; rankedRaces: number };

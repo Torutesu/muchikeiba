@@ -186,14 +186,16 @@ describe('the pass screen: the next standout, the claim, the silks editor', () =
   });
 });
 
-describe('shop layout proposals (progression.shopLayout, off by default)', () => {
+describe('shop layout proposals (progression.shopLayout; shipped ON since stream D, docs/quality/shopcfg.md)', () => {
   const RETIRE = ['coin_800', 'coin_2400', 'promo_pack_B', 'promo_pack_A', 'promo_pack_S'];
+  // the layout switched off by remote config (the promotion reward goes with it: its patterns cannot be free and on sale)
+  const OFF = withProgression({ shopLayout: { allowanceUnderPass: false, retiredProducts: [] }, promotionRewards: {} });
 
-  it('off by default: every product is listed and the daily pack stays on the recommended tab', () => {
-    const list = shopProducts(m).products;
+  it('switched off: every product is listed and the daily pack stays on the recommended tab', () => {
+    const list = shopProducts(OFF).products;
     expect(list.filter((p) => p.kind === 'coins')).toHaveLength(8);
     expect(list.find((p) => p.kind === 'allowance')!.tab).toBe('recommended');
-    expect(shopLayoutProblems(m)).toEqual([]);
+    expect(shopLayoutProblems(OFF)).toEqual([]);
   });
 
   it('retired packs: not listed, no offer, a new intent refused; a purchase already in flight is still credited', async () => {
@@ -215,7 +217,7 @@ describe('shop layout proposals (progression.shopLayout, off by default)', () =>
     expect(o.offers.some((x) => x.touchpoint === 'T4')).toBe(false);
     expect(o.firstPurchase.productIds).not.toContain('coin_2400');
     expect(o.offers.some((x) => x.productId === 'stable_allowance_30d')).toBe(false); // listed under the pass instead
-    expect(shopOffers(m, s, NOW).offers.some((x) => x.productId === 'stable_allowance_30d')).toBe(true);
+    expect(shopOffers(OFF, s, NOW).offers.some((x) => x.productId === 'stable_allowance_30d')).toBe(true);
     // the shortfall sheet never names a retired pack
     const sh = coinShortfall(mm, s, { coinKind: 'any', need: (s.wallet.paid + s.wallet.free) + 1500 }, NOW) as any;
     expect(sh.offer?.productId).not.toBe('coin_2400');

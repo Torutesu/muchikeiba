@@ -103,13 +103,55 @@ static class PromotionChecks
         await m.RefreshAsync();
         check(m.HomeLabel == null && m.GraceLabel == null, "promo: kill switch → nothing shown");
 
+        // stream D (docs/quality/shopcfg.md): the retired 昇級記念パック's pattern is the free reward on reaching the class.
+        // The passed sheet names it; after the close the claim moment shows it once (ack = seen); never while the outcome sheet is up.
+        string names(string id) => id == "costume_promo_b" ? "B級昇級記念の勝負服の柄" : id == "costume_promo_a" ? "A級昇級記念の勝負服の柄" : id;
+        m.ItemName = names;
+        int rewardAcks = 0;
+        s.Routes["POST /v1/promotion/ack"] = r =>
+        {
+            if (r.Body.Contains("rewardClassId")) { rewardAcks++; view = view.Replace(",\"reward\":{\"classId\":\"B\",\"seasonId\":\"2026-11\",\"items\":[{\"itemId\":\"costume_promo_b\",\"qty\":1}]}", ",\"reward\":null"); return new HttpResponse(200, "{\"classId\":\"B\",\"seen\":true}"); }
+            acks++; view = view.Replace("\"seen\":false", "\"seen\":true"); return new HttpResponse(200, "{\"seriesId\":\"2026-11:C:1\",\"seen\":true}");
+        };
+        const string NextB = ",\"nextReward\":{\"classId\":\"B\",\"items\":[{\"itemId\":\"costume_promo_b\",\"qty\":1}]}";
+        view = View(Series("passed", "\"top\",\"top\",\"skip\"", 2, "null")).Replace(",\"series\":", NextB + ",\"series\":");
+        gate.NewSession();
+        await m.AfterRankedResultAsync();
+        check(m.OutcomeSheetVisible && m.OutcomeRewardLine == "B級に上がると：B級昇級記念の勝負服の柄", "promo reward: the passed sheet names the B pattern (" + m.OutcomeRewardLine + ")");
+        check(!m.TryShowRewardMoment(), "promo reward: no moment while nothing was granted");
+        await m.CloseOutcomeAsync();
+        // the close granted it: the next home shows the moment once
+        view = "{\"enabled\":true,\"seasonId\":\"2026-12\",\"classId\":\"B\",\"toClassId\":\"A\",\"line\":400,\"points\":0,\"earned\":0," + Rules +
+            ",\"reward\":{\"classId\":\"B\",\"seasonId\":\"2026-11\",\"items\":[{\"itemId\":\"costume_promo_b\",\"qty\":1}]},\"nextReward\":{\"classId\":\"A\",\"items\":[{\"itemId\":\"costume_promo_a\",\"qty\":1}]},\"series\":null,\"passedThisSeason\":false,\"grace\":null,\"shieldUsedThisSeason\":false}";
+        await m.RefreshAsync();
+        check(m.TryShowRewardMoment() && m.RewardMomentVisible, "promo reward: the claim moment shows");
+        check(m.RewardMomentTitle == "昇級の記念" && m.RewardMomentKicker == "B級に昇級" && m.RewardMomentItems == "B級昇級記念の勝負服の柄" && m.RewardMomentSub == "B級に昇級した記念です。勝負服の画面で着られます",
+            "promo reward: moment words (" + m.RewardMomentKicker + " / " + m.RewardMomentItems + ")");
+        check(m.OutcomeRewardLine == null, "promo reward: no reward line without a passed series");
+        await m.CloseRewardMomentAsync();
+        check(rewardAcks == 1 && !m.RewardMomentVisible && m.View.Reward == null, "promo reward: closed = acked with the class");
+        check(s.Sent.Any(r => r.Path == "/v1/promotion/ack" && r.Body.Contains("\"rewardClassId\":\"B\"")), "promo reward: ack carries rewardClassId");
+        await m.RefreshAsync();
+        check(!m.TryShowRewardMoment(), "promo reward: never again");
+
+        // stream D: the login bonus swap note (an owned 「翼」 → 2 breeding material)
+        var swapped = new LoginBonusResult { Day = 3, Track = "normal", SwappedFrom = "costume_login", Reward = new Reward { Items = new List<ItemQty> { new ItemQty { ItemId = "breeding_material", Qty = 2 } } } };
+        string lbNames(string id) => id == "costume_login" ? "記念の勝負服の柄「翼」" : id == "breeding_material" ? "配合素材" : id;
+        check(LoginBonusModel.ToastFor(swapped, lbNames) == "ログインボーナス 3日目：配合素材×2", "login swap: the toast says what was given (" + LoginBonusModel.ToastFor(swapped, lbNames) + ")");
+        check(LoginBonusModel.SwapNoteFor(swapped, lbNames) == "記念の勝負服の柄「翼」は持っているので、かわりに配合素材を受け取りました", "login swap: the note says why");
+        check(LoginBonusModel.SwapNoteFor(new LoginBonusResult { Day = 3, Reward = new Reward() }, lbNames) == null, "login swap: no note without a swap");
+
         // English
+        Loc.LoadEnglish(File.ReadAllText(Path.Combine(root, "engine", "Muchi.Client", "Resources", "Muchi", "server-en.json"))); // item names
         Loc.LoadEnglish(File.ReadAllText(Path.Combine(root, "engine", "Muchi.Client", "Resources", "Muchi", "ui-en.json")));
         try
         {
             Loc.SetLocale("en");
             foreach (var (ja, en) in new[] { ("昇級戦 2/3", "Promotion series 2/3"), ("B級へ昇級確定", "Promotion to Class B confirmed"), ("昇級ならず", "Not promoted this time"),
-                         ("降級の猶予 残り7戦", "Demotion protection: 7 races left"), (PromotionModel.StartBanner, "Promotion series begins"), ("3戦で3着以内が2回で突破", "Win with 2 top-3 finishes in 3 races") })
+                         ("降級の猶予 残り7戦", "Demotion protection: 7 races left"), (PromotionModel.StartBanner, "Promotion series begins"), ("3戦で3着以内が2回で突破", "Win with 2 top-3 finishes in 3 races"),
+                         ("昇級の記念", "Promotion keepsake"), ("B級に上がると：B級昇級記念の勝負服の柄", "Reach Class B for: Class B promotion silks pattern"),
+                         ("B級に昇級した記念です。勝負服の画面で着られます", "A keepsake for reaching Class B. Wear it from the silks screen"),
+                         ("記念の勝負服の柄「翼」は持っているので、かわりに配合素材を受け取りました", "You already have Commemorative silks pattern \"Wings\", so you got breeding material instead") })
                 check(Loc.T(ja) == en, "promo: English for " + ja + " → " + Loc.T(ja));
         }
         finally { Loc.SetLocale("ja"); }

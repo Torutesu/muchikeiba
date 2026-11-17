@@ -2,7 +2,7 @@
 // (POST /v1/shop/purchase → receipt) and the pass track's total on the product list. Read-only views on the real rules:
 // the split they show is exactly what the pull then takes; the receipt's next step only ever uses what was bought.
 import { describe, expect, it } from 'vitest';
-import { m } from './helpers.js';
+import { mAllProducts as m } from './helpers.js'; // stream D: every pack on sale (the shipped layout retires some; shopcfg.test.ts)
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { seededRng } from '../src/domain/rng.js';
 import { AppError } from '../src/domain/errors.js';

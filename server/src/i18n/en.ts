@@ -92,6 +92,7 @@ export const CODE_EN: Record<string, string> = {
   'はじめての購入の有償コイン{n}枚': 'First-purchase paid coins: {n}',
   'シーズンパス有料ライン 全{levels}段': 'Season Pass premium track: {levels} tiers',
   '届いている段の報酬は、パスの画面ですぐ受け取れます': 'Rewards for the tiers you have reached can be claimed on the pass screen now',
+  '毎日の分はシーズンパスの画面で受け取れます': "Claim each day's coins on the season pass screen", // stream D: allowanceUnderPass
   'パスのレベル＋{n}': '+{n} pass levels',
   '{ticket}を使う': 'Use the {ticket}',
   'シーズンパスを見る': 'Open the season pass',

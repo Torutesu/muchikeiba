@@ -14,8 +14,10 @@
  * close, no shield).
  */
 import { AppError } from './errors.js';
+import { addItems, logItem } from './items.js';
 import type { KpiEvent } from './kpi.js';
-import type { Master } from './master.js';
+import type { Master, Reward } from './master.js';
+import { isLooksOnlyItem } from './visuals.js';
 import { moderationOf, type PlayerState } from './player.js';
 import type { RaceResultForPlayer } from './rewards.js';
 
@@ -109,7 +111,10 @@ export interface PromotionState {
   setback: { seasonId: string; points: number } | null;
   grace: { classId: string; races: number; since: string } | null;
   shields: { seasonId: string; classId: string; at: number }[];
+  /** Stream D: promotion rewards given, one per class ever (progression.promotionRewards). `seen` = its moment was shown. */
+  rewards?: PromoRewardRecord[];
 }
+export interface PromoRewardRecord { classId: string; seasonId: string; items: { itemId: string; qty: number }[]; at: number; seen: boolean }
 export const PROMO_HISTORY_KEEP = 10;
 export const PROMO_KEYS_KEEP = 24;
 
@@ -304,6 +309,7 @@ export function promotionView(m: Pick<Master, 'progression'>, s: PlayerState) {
     enabled: rules.enabled, seasonId: s.season.id, classId: s.season.classId, toClassId: nc?.next.id ?? null,
     line: nc?.cur.promotePoints ?? null, points: s.season.points, earned: seasonPointsEarned(s),
     rules: { races: rules.races, needTop: rules.needTop, topPlace: rules.topPlace, setbackPoints: rules.setbackPoints, graceRaces: rules.graceRaces },
+    ...promotionRewardView(m, s),
   };
   if (!rules.enabled) return { ...base, series: null, passedThisSeason: false, grace: null, shieldUsedThisSeason: false };
   const x = st?.series && st.series.seasonId === s.season.id && st.series.classId === s.season.classId ? st.series : null;
@@ -324,4 +330,84 @@ export function ackPromotion(s: PlayerState, seriesId: string): { seriesId: stri
   if (!x || x.status === 'active') throw new AppError('NOT_FOUND', 'no ended promotion series with that id');
   x.seen = true;
   return { seriesId, seen: true };
+}
+
+// ------------------------------------------------------------------------------------------------ promotion reward (stream D)
+//
+// docs/quality/shopcfg.md (pass.md §4-3 案 A): the retired 昇級記念パック's patterns are a free reward the first time a
+// player reaches a class at a season close. Once per class per account (the record is kept for ever, a few entries at most),
+// idempotent (rollSeason closes a month once per player). Looks-only, never for sale, no coins: the economy is unchanged.
+// It is granted whether or not the promotion series is switched on (the class reached is what counts).
+
+/** The configured reward for reaching `classId`, or null (`_note` and non-objects are skipped). */
+export function promotionRewardFor(m: Pick<Master, 'progression'>, classId: string): Reward | null {
+  const r = m.progression.promotionRewards?.[classId];
+  return r && typeof r === 'object' ? r : null;
+}
+
+/** Boot and every remote-config version: known classes above the lowest, looks-only items (qty 1), none of them on sale. */
+export function promotionRewardsProblems(m: Pick<Master, 'progression' | 'products' | 'items'>): string[] {
+  const c = m.progression.promotionRewards;
+  if (c === undefined) return [];
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return ['progression.promotionRewards must be an object'];
+  const out: string[] = [];
+  const classes = m.progression.classes ?? [];
+  const retired = new Set(m.progression.shopLayout?.retiredProducts ?? []);
+  for (const [cls, r] of Object.entries(c)) {
+    if (cls === '_note') continue;
+    const path = `progression.promotionRewards.${cls}`;
+    const i = classes.findIndex((x) => x.id === cls);
+    if (i < 0) { out.push(`${path}: unknown class ${cls}`); continue; }
+    if (i === 0) out.push(`${path}: the lowest class is never reached by a promotion`);
+    if (!r || typeof r !== 'object') { out.push(`${path}: must be a reward`); continue; }
+    if (Object.keys(r).some((k) => k !== 'items') || !r.items?.length) { out.push(`${path}: looks-only items only (no coins, tickets, horses or pass XP)`); continue; }
+    for (const it of r.items) {
+      if (!isLooksOnlyItem(m, it.itemId)) out.push(`${path}: ${it.itemId} is not a looks-only item (looks-only items only)`);
+      if (it.qty !== 1) out.push(`${path}: ${it.itemId} comes once (qty 1)`);
+      const cos = m.items.cosmetics.find((x) => x.id === it.itemId);
+      if (cos && !cos.notForSale) out.push(`${path}: ${it.itemId} is on sale in the cosmetics shop`);
+      for (const p of m.products) if (!retired.has(p.id) && (p.items ?? []).some((x) => x.itemId === it.itemId)) out.push(`${path}: ${it.itemId} is on sale in ${p.id} (retire it with shopLayout.retiredProducts first)`);
+    }
+  }
+  return out;
+}
+
+/** Called by rollSeason after a promotion to `classId`: gives the class's reward once (items already owned are skipped). */
+export function grantPromotionReward(m: Pick<Master, 'progression'>, s: PlayerState, classId: string, seasonId: string, now: number): PromoRewardRecord | null {
+  const r = promotionRewardFor(m, classId);
+  if (!r?.items?.length) return null;
+  const st = ensurePromotion(s);
+  st.rewards ??= [];
+  if (st.rewards.some((x) => x.classId === classId)) return null;
+  const items = r.items.filter((it) => !((s.items[it.itemId] ?? 0) > 0)).map((it) => ({ itemId: it.itemId, qty: it.qty }));
+  if (items.length) {
+    addItems(s, items);
+    for (const it of items) logItem(s, now, it.itemId, it.qty, 'promotion reward', `promotion:${classId}`);
+  }
+  // nothing new (the old pack was bought): recorded as seen, so no moment shows for it
+  const rec: PromoRewardRecord = { classId, seasonId, items, at: now, seen: items.length === 0 };
+  st.rewards.push(rec);
+  return rec;
+}
+
+/** GET /v1/promotion: the reward whose moment is due (oldest unseen) and what reaching the next class would give. */
+export function promotionRewardView(m: Pick<Master, 'progression'>, s: PlayerState) {
+  const got = peek(s)?.rewards ?? [];
+  const due = got.find((x) => !x.seen) ?? null;
+  const nc = nextClassOf(m, s.season.classId);
+  const nr = nc ? promotionRewardFor(m, nc.next.id) : null;
+  const nextReward = nc && nr?.items?.length && !got.some((x) => x.classId === nc.next.id)
+    ? { classId: nc.next.id, items: nr.items.map((x) => ({ itemId: x.itemId, qty: x.qty })) } : null;
+  return {
+    reward: due ? { classId: due.classId, seasonId: due.seasonId, items: due.items.map((x) => ({ itemId: x.itemId, qty: x.qty })) } : null,
+    nextReward,
+  };
+}
+
+/** POST /v1/promotion/ack { rewardClassId }: the reward's moment was shown (idempotent). */
+export function ackPromotionReward(s: PlayerState, classId: string): { classId: string; seen: true } {
+  const x = peek(s)?.rewards?.find((r) => r.classId === classId);
+  if (!x) throw new AppError('NOT_FOUND', 'no promotion reward for that class');
+  x.seen = true;
+  return { classId, seen: true };
 }

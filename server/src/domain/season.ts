@@ -6,7 +6,7 @@ import { grantReward } from './items.js';
 import type { PlayerState } from './player.js';
 import { jstMonthKey } from './time.js';
 import { closePassSeason } from './pass.js';
-import { closePromotionSeason, shieldApplies, type PromoCloseOutcome } from './promotion.js';
+import { closePromotionSeason, grantPromotionReward, shieldApplies, type PromoCloseOutcome } from './promotion.js';
 
 export const seasonIdFor = (now: number) => jstMonthKey(now);
 
@@ -59,6 +59,8 @@ export function rollSeason(m: Master, s: PlayerState, now: number): { closed: bo
     });
     if (s.seasonHistory.length > SEASON_HISTORY_KEEP) s.seasonHistory.splice(0, s.seasonHistory.length - SEASON_HISTORY_KEEP);
   }
+  // stream D (docs/quality/shopcfg.md): reaching a class for the first time gives its looks-only reward (once per class)
+  if (next > idx) grantPromotionReward(m, s, classes[next]!.id, closedId, now);
   s.season = { id, classId: classes[next]!.id, points: 0, races: 0 };
   // REQ-UXS-021: unclaimed pass rewards of the closing season are granted in this same transaction as the reset
   closePassSeason(m, s, now);

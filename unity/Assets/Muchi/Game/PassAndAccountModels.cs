@@ -111,6 +111,19 @@ namespace Muchi.Game
             }
         }
 
+        /// <summary>
+        /// U1: the state line under a standout on the pass screen (the server's flags said in words): received, claimable, reached
+        /// but waiting for the pass, or how far away it is ("あと5段（24戦）", the server's count).
+        /// </summary>
+        public string StandoutState(PassStandout x)
+        {
+            if (x == null) return null;
+            if (x.Claimed || x.Owned) return "受け取り済み・勝負服エディタで選べます";
+            if (x.Claimable) return "受け取れます";
+            if (x.Reached) return x.Premium && !Owned ? "到達済み・パスを買うとすぐ受け取れます" : "受け取れます";
+            return "あと" + x.LevelsAway.ToString(CultureInfo.InvariantCulture) + "段（" + x.RacesAway.ToString(CultureInfo.InvariantCulture) + "戦）";
+        }
+
         /// <summary>The player's own silks with a standout put on (the pass screen's try-on; nothing is saved or bought).</summary>
         public SilksDesign PreviewDesign(SilksDesign mine, PassStandout standout) => PassPreview.Apply(mine, standout?.Look);
         /// <summary>The whole premium set on the player's own silks (what the paid line ends up giving).</summary>

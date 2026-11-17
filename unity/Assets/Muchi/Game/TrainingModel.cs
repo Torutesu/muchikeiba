@@ -297,6 +297,20 @@ namespace Muchi.Game
         public string StageText => Result == null || Result.Potential <= 0 ? null : GrowthStages.Of(Result.TrainedTotal, Result.Potential).Name;
         /// <summary>"成長段階が上がりました：充実期" when <see cref="StageUp"/>, else null.</summary>
         public string StageUpText => StageUp ? "成長段階が上がりました：" + StageText : null;
+        /// <summary>U1-A: "新馬" — the stage before this session (null before a result).</summary>
+        public string StageFromText => Result == null || Result.Potential <= 0 ? null : GrowthStages.Of(Result.TrainedTotal - Result.Total, Result.Potential).Name;
+        /// <summary>U1-A: the stage-up moment's line "新馬　→　成長期" when <see cref="StageUp"/>, else null.</summary>
+        public string StageMomentLine => StageUp ? StageFromText + "　→　" + StageText : null;
+        /// <summary>U1-A: "充実期まで あと30" after the session, null at 完成 or before a result.</summary>
+        public string StageNextText
+        {
+            get
+            {
+                if (Result == null || Result.Potential <= 0) return null;
+                var s = GrowthStages.Of(Result.TrainedTotal, Result.Potential);
+                return s.NextAt < 0 ? null : GrowthStages.Ja[s.Index + 1] + "まで あと" + Math.Max(0, s.NextAt - Result.TrainedTotal).ToString(CultureInfo.InvariantCulture);
+            }
+        }
 
         /// <summary>"見込み +6〜+7" from the start preview (in whole points, the fraction carries over).</summary>
         public string PreviewText => Started == null ? null : "見込み +" + Started.PreviewMinMilli / 1000 + "." + (Started.PreviewMinMilli % 1000) / 100 + "〜+" + Started.PreviewMaxMilli / 1000 + "." + (Started.PreviewMaxMilli % 1000) / 100;

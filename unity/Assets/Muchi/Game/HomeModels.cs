@@ -156,10 +156,20 @@ namespace Muchi.Game
             return head + "：" + UxText.Reward(r.Reward, itemName);
         }
 
+        /// <summary>
+        /// Stream D (progression.loginBonusOwnedSwap): why the day gave breeding material instead of its looks-only item
+        /// (「記念の勝負服の柄「翼」は持っているので、かわりに配合素材を受け取りました」); null when nothing was swapped.
+        /// </summary>
+        public static string SwapNoteFor(LoginBonusResult r, Func<string, string> itemName = null)
+            => r?.SwappedFrom == null ? null : (itemName?.Invoke(r.SwappedFrom) ?? r.SwappedFrom) + "は持っているので、かわりに配合素材を受け取りました";
+
+        /// <summary>The swap note to show under the toast once (null = nothing was swapped).</summary>
+        public string SwapNote { get; private set; }
+
         /// <summary>Claim if open and not claimed today. Returns true when a reward was granted now (show <see cref="Toast"/>).</summary>
         public async Task<bool> AutoClaimAsync(Func<string, string> itemName = null, CancellationToken ct = default)
         {
-            Toast = null; Message = null;
+            Toast = null; Message = null; SwapNote = null;
             if (!ServerAvailable || B.Player == null) return false;
             if (!new UnlockGate(B).IsUnlocked("login_bonus") || ClaimedToday) return false;
             string day = GameDay.Key(_now());
@@ -171,6 +181,7 @@ namespace Muchi.Game
                 Last = await B.Api.ClaimLoginBonusAsync(key, ct);
                 Kv.Set(KeyPending, "");
                 Toast = ToastFor(Last, itemName);
+                SwapNote = SwapNoteFor(Last, itemName);
                 Online = true;
                 await B.RefreshAsync(ct);
                 return true;

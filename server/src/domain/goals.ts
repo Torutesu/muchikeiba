@@ -39,7 +39,7 @@ import type { ClassDef, Master, Reward } from './master.js';
 import type { PlayerState } from './player.js';
 import { addJstDays, dayRule, gameDayKey, gameDayStartMs, jstMonthEndMs, sameGameDay } from './time.js';
 import { beginnerMissionsView, claimBeginnerMission, claimSeasonMission, playerDay, seasonMissionsView, unlocksView } from './onboarding.js';
-import { claimMission, firstWinBonusView, missionsView } from './rewards.js';
+import { claimMission, firstWinBonusView, loginRewardFor, missionsView } from './rewards.js';
 import { levelOf } from './pass.js';
 import { STAT_KEYS } from './master.js';
 import { potentialOf, raceStats, trainedTotal, trainingConfig, treatHint } from './training.js';
@@ -115,16 +115,17 @@ function rewardBands(m: Master, classId: string) {
 export function nextLoginBonus(m: Master, s: PlayerState) {
   const beginner = m.progression.beginnerLoginBonus ?? [];
   const bDay = s.loginBonus.beginnerDay ?? (s.loginBonus.lastClaimDate === null ? 0 : beginner.length);
-  const strip = (d: { day: number } & Reward): Reward => { const { day: _d, ...r } = d; return r; };
+  // stream D: what the claim would really give (an owned looks-only item is swapped, rewards.ts loginRewardFor)
+  const strip = (d: { day: number } & Reward) => { const x = loginRewardFor(m, s, d); return { reward: x.reward, ...(x.swappedFrom ? { swappedFrom: x.swappedFrom } : {}) }; };
   if (bDay < beginner.length) {
     const d = beginner.find((x) => x.day === bDay + 1);
-    return d ? { track: 'beginner' as const, day: bDay + 1, days: beginner.length, reward: strip(d) } : null;
+    return d ? { track: 'beginner' as const, day: bDay + 1, days: beginner.length, ...strip(d) } : null;
   }
   const cycle = m.progression.loginBonus;
   if (!cycle.length) return null;
   const day = (s.loginBonus.streakDay % cycle.length) + 1;
   const d = cycle.find((x) => x.day === day);
-  return d ? { track: 'normal' as const, day, days: cycle.length, reward: strip(d) } : null;
+  return d ? { track: 'normal' as const, day, days: cycle.length, ...strip(d) } : null;
 }
 
 /**
@@ -138,20 +139,26 @@ export function loginBonusPlan(m: Master, s: PlayerState, now: number, toDay: nu
   const pday = playerDay(s, now, rule);
   let bDay = s.loginBonus.beginnerDay ?? (s.loginBonus.lastClaimDate === null ? 0 : beginner.length);
   let streak = s.loginBonus.streakDay;
-  const strip = (d: { day: number } & Reward): Reward => { const { day: _d, ...r } = d; return r; };
-  const out: { playerDay: number; track: 'beginner' | 'normal'; day: number; days: number; reward: Reward }[] = [];
+  // stream D: the projection swaps an owned looks-only item too, counting what earlier projected days would have given
+  const owned = new Set(Object.keys(s.items).filter((k) => (s.items[k] ?? 0) > 0));
+  const strip = (d: { day: number } & Reward) => {
+    const x = loginRewardFor(m, s, d, owned);
+    for (const it of x.reward.items ?? []) owned.add(it.itemId);
+    return { reward: x.reward, ...(x.swappedFrom ? { swappedFrom: x.swappedFrom } : {}) };
+  };
+  const out: { playerDay: number; track: 'beginner' | 'normal'; day: number; days: number; reward: Reward; swappedFrom?: string }[] = [];
   for (let d = sameGameDay(s.loginBonus.lastClaimDate, gameDayKey(now, rule)) ? pday + 1 : pday; d <= toDay; d++) {
     if (bDay < beginner.length) {
       const def = beginner.find((x) => x.day === bDay + 1);
       bDay += 1;
-      if (def) out.push({ playerDay: d, track: 'beginner', day: def.day, days: beginner.length, reward: strip(def) });
+      if (def) out.push({ playerDay: d, track: 'beginner', day: def.day, days: beginner.length, ...strip(def) });
       continue;
     }
     if (!cycle.length) break;
     const day = (streak % cycle.length) + 1;
     streak = day;
     const def = cycle.find((x) => x.day === day);
-    if (def) out.push({ playerDay: d, track: 'normal', day, days: cycle.length, reward: strip(def) });
+    if (def) out.push({ playerDay: d, track: 'normal', day, days: cycle.length, ...strip(def) });
   }
   return out;
 }
@@ -301,7 +308,12 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
       const beginnerLen = (m.progression.beginnerLoginBonus ?? []).length;
       const onBeginner = (s.loginBonus.beginnerDay ?? beginnerLen) < beginnerLen || (s.loginBonus.beginnerDay === beginnerLen && s.loginBonus.streakDay === 0);
       const def = onBeginner ? null : m.progression.loginBonus.find((x) => x.day === s.loginBonus.streakDay);
-      if (def) { const { day: _d, ...reward } = def; plan.unshift({ playerDay: today.playerDay, track: 'normal', day: def.day, days: m.progression.loginBonus.length, reward }); }
+      // stream D: the entry the claim used (swapped when the claim recorded a swap)
+      if (def) {
+        const sw = s.loginBonus.swappedFrom;
+        const x = sw ? loginRewardFor(m, s, def, new Set([sw])) : loginRewardFor(m, s, def, new Set());
+        plan.unshift({ playerDay: today.playerDay, track: 'normal', day: def.day, days: m.progression.loginBonus.length, reward: x.reward, ...(x.swappedFrom ? { swappedFrom: x.swappedFrom } : {}) });
+      }
     }
     const last = bv.steps[bv.steps.length - 1];
     const gradDay = last && !last.claimed && last.fromDay !== null ? Math.max(last.fromDay, WEEK2.fromDay, today.playerDay) : null;
@@ -310,7 +322,7 @@ export function goalLadderView(m: Master, s: PlayerState, now: number, extras: G
       const lb = plan.find((x) => x.playerDay === d) ?? null;
       days.push({
         playerDay: d, today: d === today.playerDay, past: d < today.playerDay,
-        loginBonus: lb ? { track: lb.track, day: lb.day, days: lb.days, reward: lb.reward } : null,
+        loginBonus: lb ? { track: lb.track, day: lb.day, days: lb.days, reward: lb.reward, ...(lb.swappedFrom ? { swappedFrom: lb.swappedFrom } : {}) } : null,
         graduate: gradDay === d && last ? { reward: last.reward, ready: last.reached && bv.steps.slice(0, -1).every((x) => x.claimed) } : null,
       });
     }

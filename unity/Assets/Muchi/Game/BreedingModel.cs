@@ -121,6 +121,84 @@ namespace Muchi.Game
         public string RevealStyleText => Reveal == null ? null : "脚質 " + TraitLabel(new AtavismTrait { Trait = "style", Value = Reveal.Foal.Style }) + "：" + StyleFromText(Reveal.StyleFrom);
         public static string StyleFromText(string from) => from switch { "sire" => "父から", "dam" => "母から", "both" => "父と母から", "atavism" => "隔世遺伝", _ => "新しい脚質" };
 
+        // ---- U1 raising screens (docs/quality/unity-raising.md): the lines the Unity breeding screen and foal reveal draw. Every
+        // number is the server's preview / breeding answer; nothing here invents a chance.
+
+        /// <summary>Each candidate's preview against the other chosen parent ("sire:" + key / "dam:" + horse id), from <see cref="LoadAimsAsync"/>.</summary>
+        public Dictionary<string, BreedingPreview> Aims = new Dictionary<string, BreedingPreview>();
+
+        /// <summary>
+        /// The aim on each parent card (the prototype's qr-aim): previews the first <paramref name="max"/> sires against the chosen dam
+        /// and the first dams against the chosen sire. A failed preview leaves that card without an aim line (it is a hint, not a gate).
+        /// </summary>
+        public async Task LoadAimsAsync(int max = 3, CancellationToken ct = default)
+        {
+            Aims = new Dictionary<string, BreedingPreview>();
+            if (!ServerAvailable) return;
+            async Task<BreedingPreview> Of(SireChoice sire, Horse dam)
+            {
+                try
+                {
+                    if (sire.IsStud) return (await B.Api.StudPreviewAsync(sire.Stud.OwnerId, sire.HorseId, dam.Id, ct)).Breeding;
+                    return await B.Api.BreedingPreviewAsync(sire.HorseId, dam.Id, ct);
+                }
+                catch (ApiException) { return null; }
+            }
+            if (Dam != null)
+                foreach (var c in Sires.Take(max)) { var p = c == Sire && Preview != null ? Preview : await Of(c, Dam); if (p != null) Aims["sire:" + c.Key] = p; }
+            if (Sire != null)
+                foreach (var d in Dams.Take(max)) { var p = d == Dam && Preview != null ? Preview : await Of(Sire, d); if (p != null) Aims["dam:" + d.Id] = p; }
+        }
+
+        /// <summary>"SR以上 22.0%　·　◎ ニックス　·　近親" for a candidate card; null without an aim.</summary>
+        public string AimLine(string who, string key) => key != null && Aims.TryGetValue(who + ":" + key, out var p) ? AimText(p) : null;
+
+        public static string AimText(BreedingPreview p)
+        {
+            if (p?.Rarity == null || !p.Rarity.Known) return null;
+            return "SR以上 " + FoalRarityOdds.Percent(p.Rarity.SR + p.Rarity.SSR) + (p.Nick ? "　·　◎ ニックス" : "") + (p.InbreedingCount > 0 ? "　·　近親" : "");
+        }
+
+        /// <summary>True when a candidate's aim is worth the gold accent (some SR-or-better chance, or a nick).</summary>
+        public bool AimIsUp(string who, string key) => key != null && Aims.TryGetValue(who + ":" + key, out var p) && p?.Rarity != null && (p.Rarity.SR + p.Rarity.SSR > 0 || p.Nick);
+
+        /// <summary>"今日あと1回" / "配合素材を1個使って、もう1回" / "今日の配合はおしまい。4:00に戻ります" (null before a preview).</summary>
+        public string TodayLine => Preview?.Today == null ? null : NormalLeft > 0 ? "今日あと" + NormalLeft.ToString(CultureInfo.InvariantCulture) + "回"
+            : CanUseMaterial ? "配合素材を" + Preview.Today.MaterialCost.ToString(CultureInfo.InvariantCulture) + "個使って、もう1回" : "今日の配合はおしまい。4:00に戻ります";
+
+        /// <summary>"SSR 1.5%　·　SR 20.5%　·　R 78.0%" under the stacked bar (null on older servers).</summary>
+        public string RarityOddsText => Preview?.Rarity == null || !Preview.Rarity.Known ? null
+            : "SSR " + FoalRarityOdds.Percent(Preview.Rarity.SSR) + "　·　SR " + FoalRarityOdds.Percent(Preview.Rarity.SR) + "　·　R " + FoalRarityOdds.Percent(Preview.Rarity.R);
+
+        /// <summary>"◎ ニックス（相性がよい）" / "○ 通常の相性　·　近親 1（能力 −50）".</summary>
+        public string CompatibilityText => Preview == null ? null
+            : (Preview.Nick ? "◎ ニックス（相性がよい）" : "○ 通常の相性") + (Preview.InbreedingCount > 0 ? "　·　近親 " + Preview.InbreedingCount + "（能力 −" + Preview.InbreedingCount * 50 + "）" : "");
+
+        /// <summary>"距離 1,400〜2,400m　·　芝".</summary>
+        public string DistanceText => Preview == null ? null
+            : "距離 " + Preview.DistanceMinM.ToString("N0", CultureInfo.InvariantCulture) + "〜" + Preview.DistanceMaxM.ToString("N0", CultureInfo.InvariantCulture) + "m　·　"
+              + (Preview.Surface == "turf" ? "芝" : Preview.Surface == "dirt" ? "ダート" : "芝・ダートのどちらか");
+
+        /// <summary>Reveal step 1: "牝馬　·　脚質 差し：父から".</summary>
+        public string RevealSexStyleText => Reveal == null ? null : (Reveal.Foal.Sex == "female" ? "牝馬" : "牡馬") + "　·　" + RevealStyleText;
+        /// <summary>Reveal step 3: "期待以上が2つ　·　能力合計 3,320　·　見込み 20.5%".</summary>
+        public string RevealSummaryText => Reveal == null ? null
+            : RevealVerdict + "　·　能力合計 " + Reveal.Total.ToString("N0", CultureInfo.InvariantCulture) + (Reveal.RarityChancePpm >= 0 ? "　·　見込み " + FoalRarityOdds.Percent(Reveal.RarityChancePpm) : "");
+        /// <summary>Reveal step 4: "固有スキル「末脚一閃」を母から受け継ぎました" (null with no skill).</summary>
+        public string RevealSkillText
+        {
+            get
+            {
+                if (Reveal?.SkillFrom == null || Preview?.Skill == null) return null;
+                var c = Preview.Skill.Candidates.FirstOrDefault(x => x.Skill?.Id == Reveal.Foal.SkillId);
+                return c == null ? null : "固有スキル「" + c.Skill.Name + "」を" + StyleFromText(Reveal.SkillFrom) + "受け継ぎました";
+            }
+        }
+        /// <summary>Reveal step 4: "隔世遺伝：逃げ（ハツユキソウ）" (null without one).</summary>
+        public string RevealAtavismText => Reveal?.Atavism == null ? null : "隔世遺伝：" + TraitLabel(Reveal.Atavism) + "（" + Reveal.Atavism.From + "）";
+        /// <summary>Reveal step 4: "父 アカツキ　·　母 サクラ" (names as typed).</summary>
+        public string RevealParentsText => Reveal == null || Sire == null || Dam == null ? null : "父 " + Sire.Name + "　·　母 " + Dam.Name;
+
         /// <summary>Retired stallions/mares from the stable, plus friends' and public stud listings when online.</summary>
         public async Task LoadAsync(CancellationToken ct = default)
         {

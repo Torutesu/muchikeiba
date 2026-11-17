@@ -122,6 +122,20 @@ namespace Muchi.Game
         public string ClaimText => View != null && View.Claimable > 0 ? "まとめて受け取る（" + View.Claimable + "件）" : null;
         /// <summary>After a claim: the lines of the moment (「無償コイン 45枚」「配合素材 ×1」…) and the total.</summary>
         public List<string> LastClaimLines { get; private set; } = new List<string>();
+        /// <summary>How many goals the last claim received (0 before a claim).</summary>
+        public int LastClaimCount { get; private set; }
+
+        // ---- U1-A (Unity daily loop): the one claim moment (the kit's Moment: a kicker, one headline, one line)
+        /// <summary>「4件受け取りました」 after a claim, else null.</summary>
+        public string ClaimMomentKicker => LastClaimCount > 0 ? LastClaimCount + "件受け取りました" : null;
+        /// <summary>What arrived in one headline: both rewards when there are two kinds or fewer (「無償コイン 45枚　·　りんごのおやつ ×1」),
+        /// else the first and how many more (「無償コイン 45枚　ほか2つ」) — the goals screen behind lists every row.</summary>
+        public string ClaimMomentHeadline => LastClaimCount == 0 || LastClaimLines.Count == 0 ? null
+            : LastClaimLines.Count <= 2 ? string.Join("　·　", LastClaimLines) : LastClaimLines[0] + "　ほか" + (LastClaimLines.Count - 1) + "つ";
+        /// <summary>Tomorrow's reason once today's set is done (<see cref="TomorrowLine"/>), else today's honest figure
+        /// (「今日の目標 4/5」); null before a claim or while the daily goals are not open.</summary>
+        public string ClaimMomentLine => LastClaimCount == 0 || View == null || !View.Today.Open ? null
+            : View.Today.Complete ? TomorrowLine ?? "今日の目標は完了" : "今日の目標 " + View.Today.Done + "/" + View.Today.Total;
 
         // ---- the first week (quality pass 2, docs/quality/first-week.md)
         /// <summary>REQ-GOAL-013: one line for home once today's set is done — 「明日：繁殖牝馬1頭・配合が開く」 (facts from the server:
@@ -231,6 +245,7 @@ namespace Muchi.Game
                 var r = await B.Api.ClaimGoalsAsync(key, ct);
                 Kv.Set(slot, "");
                 LastClaimLines = RewardLines(r.Total);
+                LastClaimCount = r.Claimed.Count;
                 Use(r.Ladder);
                 await B.RefreshAsync(ct);
                 Message = r.Claimed.Count + "件受け取りました";

@@ -34,6 +34,11 @@ namespace Muchi.Game
         public bool OutcomeSheetVisible { get; private set; }
         /// <summary>The outcome as one line inside the result screen (always set when decided by this race).</summary>
         public string OutcomeInline { get; private set; }
+        /// <summary>
+        /// U1 raising (docs/quality/unity-raising.md): the last <see cref="AfterRankedResultAsync"/> found a series this race started,
+        /// counted or decided. A series settled in an earlier race does not sit next to an unrelated result (its sheet still shows once).
+        /// </summary>
+        public bool TouchedByLastResult { get; private set; }
 
         public string HomeLabel => PromotionPips.HomeLabel(View);
         public string GraceLabel => PromotionPips.GraceLabel(View);
@@ -42,6 +47,46 @@ namespace Muchi.Game
         public string OutcomeTitle => PromotionPips.OutcomeTitle(View);
         public string OutcomeBody => PromotionPips.OutcomeBody(View);
         public bool Passed => View?.Series?.Passed == true;
+
+        // ---- stream D (docs/quality/shopcfg.md): the promotion reward (the retired 昇級記念パック's pattern, free on reaching the class)
+
+        /// <summary>Item names for the reward lines (the game passes its item-name lookup; the id otherwise).</summary>
+        public Func<string, string> ItemName { get; set; }
+        /// <summary>The passed outcome sheet / promotion card line: 「B級に上がると：B級昇級記念の勝負服の柄」 (null when not passed or nothing waits).</summary>
+        public string OutcomeRewardLine => Passed ? PromotionPips.NextRewardLine(View, ItemName) : null;
+        /// <summary>The claim moment is up (Codex draws it with the shared Moment; close with <see cref="CloseRewardMomentAsync"/>).</summary>
+        public bool RewardMomentVisible { get; private set; }
+        public string RewardMomentTitle => PromotionPips.RewardMomentTitle;
+        /// <summary>「B級に昇級」.</summary>
+        public string RewardMomentKicker => View?.Reward == null ? null : View.Reward.ClassId + "級に昇級";
+        /// <summary>The pattern's name (gold: it is a rank reward).</summary>
+        public string RewardMomentItems => PromotionPips.RewardItems(View?.Reward, ItemName);
+        public string RewardMomentSub => View?.Reward == null ? null : View.Reward.ClassId + "級に昇級した記念です。勝負服の画面で着られます";
+
+        /// <summary>On the home (or the season start): show the reward's moment once if one is due and the outcome sheet is not up.</summary>
+        public bool TryShowRewardMoment()
+        {
+            if (RewardMomentVisible) return true;
+            if (View?.Reward == null || View.Reward.Items.Count == 0 || OutcomeSheetVisible) return false;
+            RewardMomentVisible = true;
+            return true;
+        }
+
+        /// <summary>The moment was closed: mark it seen on the server (idempotent; offline it shows again next time).</summary>
+        public async Task<ActionResult> CloseRewardMomentAsync(CancellationToken ct = default)
+        {
+            RewardMomentVisible = false;
+            var cls = View?.Reward?.ClassId;
+            if (cls == null) return ActionResult.Success();
+            if (!ServerAvailable) return Offline("promotion reward ack");
+            try
+            {
+                await B.Api.AckPromotionRewardAsync(cls, ct);
+                View.Reward = null;
+                return ActionResult.Success();
+            }
+            catch (ApiException e) { return Fail(e); }
+        }
 
         /// <summary>GET /v1/promotion (offline: the last copy, so the home still says 「昇級戦 2/3」).</summary>
         public async Task<ActionResult> RefreshAsync(CancellationToken ct = default)
@@ -61,11 +106,15 @@ namespace Muchi.Game
         public async Task<ActionResult> AfterRankedResultAsync(CancellationToken ct = default)
         {
             string before = View?.Series?.Id;
-            ResultBanner = null; OutcomeInline = null;
+            int beforeN = View?.Series?.Results?.Count ?? -1;
+            string beforeStatus = View?.Series?.Status;
+            ResultBanner = null; OutcomeInline = null; TouchedByLastResult = false;
             var r = await RefreshAsync(ct);
             if (!r.Ok) return r;
             var x = View?.Series;
             if (!View.Enabled || x == null) return r;
+            // U1 raising: the result card speaks only for a series this race started, counted or decided (prototype PromoResultCard)
+            TouchedByLastResult = x.Id != before || x.Results.Count != beforeN || x.Status != beforeStatus;
             if (x.Active && x.Results.Count == 0 && x.Id != before) ResultBanner = StartBanner;
             if (x.OutcomePending)
             {
@@ -108,7 +157,7 @@ namespace Muchi.Game
         /// </summary>
         public void ForgetAccount()
         {
-            View = null; ResultBanner = null; OutcomeInline = null; OutcomeSheetVisible = false;
+            View = null; ResultBanner = null; OutcomeInline = null; OutcomeSheetVisible = false; TouchedByLastResult = false; RewardMomentVisible = false;
             Kv.Set(KeyCache, "");
         }
 

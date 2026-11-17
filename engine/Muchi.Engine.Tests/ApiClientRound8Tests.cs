@@ -239,6 +239,12 @@ namespace Muchi.Engine.Tests
             Assert.Equal("t_broodmare", day2.Reward.Broodmare);
             var normal = await Via(() => _api.ClaimLoginBonusAsync(), "{\"day\":3,\"reward\":{\"freeCoins\":10}}");
             Assert.False(normal.IsBeginner); // older servers send no track
+            Assert.Null(normal.SwappedFrom);
+            // stream D: the cycle's day 3 「翼」 is owned already → the server sends the material it gave instead and says what it replaced
+            var swapped = await Via(() => _api.ClaimLoginBonusAsync(), "{\"day\":3,\"track\":\"normal\",\"reward\":{\"day\":3,\"items\":[{\"itemId\":\"breeding_material\",\"qty\":2}]},\"beginnerDaysLeft\":0,\"swappedFrom\":\"costume_login\"}");
+            Assert.Equal("costume_login", swapped.SwappedFrom);
+            Assert.True(swapped.Swapped);
+            Assert.Equal(2, swapped.Reward.Items[0].Qty);
         }
 
         [Fact]

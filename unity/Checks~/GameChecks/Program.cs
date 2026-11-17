@@ -148,6 +148,8 @@ static class Program
         await HorseGoalsChecks.Run(Check, Ruleset());
         Console.WriteLine("== quality pass: raising & breeding (horse card, training outlook & stage up, breeding intent & foal reveal)");
         await RaisingQualityChecks.Run(Check, Ruleset());
+        Console.WriteLine("== U1 raising screens: horse card, breeding aims, foal reveal, pedigree, result (place coins, lesson, promotion popup or card) and their layout audit");
+        await RaisingScreenChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 20: レビュー依頼のタイミング (ReviewPromptModel: OS API only, FTUE / loss / error / session / offline skips, native, soft sheet → store or inquiry, English; REQ-REV-*)");
         await ReviewPromptChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 22: 昇級戦と降級の猶予 (PromotionModel: start banner, pips, 「昇級戦 2/3」, outcome sheet through the one-prompt gate, ack once, offline copy, grace, kill switch, English; REQ-PROMO-*)");
@@ -176,12 +178,16 @@ static class Program
         await FirstWeekChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 3: week 2 (the solo way of a social first step, graduation on day 8, the week-2 arc, the treat line; REQ-GOAL-017..020)");
         await Week2Checks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== U1-A daily loop in Unity: home / 目標 / 調教 layouts audited (inside 1600×900, no text overlap, body ≥ 16 px, fits, one CTA), English, the claim and stage-up moments");
+        await DailyScreensChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality integration: home says each thing once (NextActionModel.HomeLine, one link), the ladder counts the pass rewards and links its cap to the horse card");
         await QualityIntegrationChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 2: the scout confirmation (paid / free split, tickets, the SR+ ticket, shortfall route) and the purchase receipt (rows, next step, KPI)");
         MonetizationQualityChecks.Run(Check);
         Console.WriteLine("== quality pass 3: the season pass standout tiers (next peak line, standout cells, try-on on the own silks, the claim moment)");
         await Round8Checks.PassStandouts(Check, Ruleset());
+        Console.WriteLine("== U1 money screens: coin packs and the pass products from the server list (retired packs, the daily pack under the pass), the totals line, scout ways, the layout audit, English");
+        await ShopScreenChecks.Run(Check, Ruleset(), Root);
         Console.WriteLine("== round 16: シーズンの振り返り (SeasonRecapModel: list badge, open / complete once, skip, short version, 順位を隠す, share; REQ-RECAP-*)");
         await SeasonRecapChecks.Run(Check, Ruleset());
         Console.WriteLine("== round 18: 個人データの開示・ダウンロード (DataExportModel: request, preparing, ready links, expiry / cooldown dates, deletion note, English; REQ-DEX-*)");

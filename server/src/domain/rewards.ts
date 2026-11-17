@@ -1,6 +1,7 @@
 import { AppError } from './errors.js';
 import { grantReward } from './items.js';
-import type { Master } from './master.js';
+import type { Master, Reward } from './master.js';
+import { isLooksOnlyItem } from './visuals.js';
 import type { PlayerState } from './player.js';
 import type { RaceMode } from './schemas.js';
 import { seasonPointsFor } from './season.js';
@@ -41,6 +42,45 @@ import { comebackRaceXp } from './comeback.js';
  * REQ-REW-002: 7-day login bonus, once per game day, cumulative (missing days does not reset).
  * REQ-UXS-013: a new player first gets the beginner table once (day 2 = a broodmare), then the normal 7-day cycle.
  */
+/**
+ * Stream D (docs/quality/shopcfg.md): a looks-only item on a login bonus day that the player already owns is swapped for
+ * progression.loginBonusOwnedSwap[itemId] (the 7-day cycle's day 3 「翼」 → 2 breeding material). A player who does not own
+ * it gets the item. `owned` lets a projection (goals.ts) count items the plan itself would have given by then.
+ */
+export function loginRewardFor(m: Pick<Master, 'progression'>, s: PlayerState, def: Reward, owned?: Set<string>): { reward: Reward; swappedFrom?: string } {
+  const { day: _d, ...reward } = def as Reward & { day?: number };
+  const swap = m.progression.loginBonusOwnedSwap;
+  if (!swap || !reward.items?.length) return { reward };
+  const has = (id: string) => owned ? owned.has(id) : (s.items[id] ?? 0) > 0;
+  const hit = reward.items.find((it) => { const sub = swap[it.itemId]; return sub && typeof sub === 'object' && has(it.itemId); });
+  if (!hit) return { reward };
+  const sub = swap[hit.itemId] as Reward;
+  const items = new Map<string, number>();
+  for (const it of [...reward.items.filter((x) => x !== hit), ...(sub.items ?? [])]) items.set(it.itemId, (items.get(it.itemId) ?? 0) + it.qty);
+  const out: Reward = { ...reward };
+  if (items.size) out.items = [...items].map(([itemId, qty]) => ({ itemId, qty })); else delete out.items;
+  return { reward: out, swappedFrom: hit.itemId };
+}
+
+/** Boot and every remote-config version: the swapped item is looks-only; the substitute is 1..5 breeding material, nothing else. */
+export function loginBonusSwapProblems(m: Pick<Master, 'progression' | 'items'>): string[] {
+  const c = m.progression.loginBonusOwnedSwap;
+  if (c === undefined) return [];
+  if (!c || typeof c !== 'object' || Array.isArray(c)) return ['progression.loginBonusOwnedSwap must be an object'];
+  const out: string[] = [];
+  for (const [id, r] of Object.entries(c)) {
+    if (id === '_note') continue;
+    const path = `progression.loginBonusOwnedSwap.${id}`;
+    if (!isLooksOnlyItem(m, id)) out.push(`${path}: only a looks-only item is swapped when owned`);
+    if (!r || typeof r !== 'object' || Object.keys(r).some((k) => k !== 'items') || !r.items?.length) { out.push(`${path}: items only (breeding material)`); continue; }
+    for (const it of r.items) {
+      if (it.itemId !== 'breeding_material') out.push(`${path}: the substitute is breeding material only (${it.itemId})`);
+      if (!Number.isInteger(it.qty) || it.qty < 1 || it.qty > 5) out.push(`${path}: at most 5 breeding material (qty 1..5)`);
+    }
+  }
+  return out;
+}
+
 export function claimLoginBonus(m: Master, s: PlayerState, now: number) {
   const today = gameDayKey(now, dayRule(m));
   if (sameGameDay(s.loginBonus.lastClaimDate, today)) throw new AppError('ALREADY_CLAIMED');
@@ -50,15 +90,17 @@ export function claimLoginBonus(m: Master, s: PlayerState, now: number) {
   if (bDay < beginner.length) {
     const day = bDay + 1;
     const def = beginner.find((d) => d.day === day)!;
-    grantReward(s, def, now, `beginner login bonus day ${day}`, `b:${today}`, m);
-    s.loginBonus = { streakDay: s.loginBonus.streakDay, lastClaimDate: today, beginnerDay: day };
-    return { day, track: 'beginner' as const, reward: def, beginnerDaysLeft: beginner.length - day };
+    const { reward, swappedFrom } = loginRewardFor(m, s, def);
+    grantReward(s, reward, now, `beginner login bonus day ${day}`, `b:${today}`, m);
+    s.loginBonus = { streakDay: s.loginBonus.streakDay, lastClaimDate: today, beginnerDay: day, ...(swappedFrom ? { swappedFrom } : {}) };
+    return { day, track: 'beginner' as const, reward: { day, ...reward }, beginnerDaysLeft: beginner.length - day, ...(swappedFrom ? { swappedFrom } : {}) };
   }
   const day = (s.loginBonus.streakDay % m.progression.loginBonus.length) + 1;
   const def = m.progression.loginBonus.find((d) => d.day === day)!;
-  grantReward(s, def, now, `login bonus day ${day}`, today, m);
-  s.loginBonus = { streakDay: day, lastClaimDate: today, beginnerDay: bDay };
-  return { day, track: 'normal' as const, reward: def, beginnerDaysLeft: 0 };
+  const { reward, swappedFrom } = loginRewardFor(m, s, def);
+  grantReward(s, reward, now, `login bonus day ${day}`, today, m);
+  s.loginBonus = { streakDay: day, lastClaimDate: today, beginnerDay: bDay, ...(swappedFrom ? { swappedFrom } : {}) };
+  return { day, track: 'normal' as const, reward: { day, ...reward }, beginnerDaysLeft: 0, ...(swappedFrom ? { swappedFrom } : {}) };
 }
 
 function ensureMissionDay(m: Master, s: PlayerState, now: number) {

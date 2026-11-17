@@ -73,9 +73,42 @@ namespace Muchi.Engine.Tests
             Assert.Null(PromotionPips.HomeLabel(off));
             Assert.Null(PromotionPips.GraceLabel(off));
             Assert.Contains(ActivityKinds.ClassPromoted, ActivityKinds.All);
-            foreach (var t in new[] { typeof(PromotionView), typeof(PromotionSeries), typeof(PromotionRules), typeof(PromotionGrace) })
+            // the series itself grants nothing; the view's only reward is the looks-only promotion reward (stream D), never coins or a price
+            foreach (var t in new[] { typeof(PromotionSeries), typeof(PromotionRules), typeof(PromotionGrace) })
                 foreach (var mbr in t.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
                     Assert.DoesNotMatch("(?i)reward|coin|price|purchase|grant|gift", mbr.Name);
+            foreach (var t in new[] { typeof(PromotionView), typeof(PromotionReward) })
+                foreach (var mbr in t.GetMembers(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+                    Assert.DoesNotMatch("(?i)coin|price|purchase", mbr.Name);
+        }
+
+        [Fact]
+        public async Task PromotionRewardViewLinesAndAck()
+        {
+            // stream D (docs/quality/shopcfg.md): the retired 昇級記念パック's pattern is the free reward on reaching the class
+            _http.Reply(200, "{\"enabled\":true,\"seasonId\":\"2026-12\",\"classId\":\"B\",\"toClassId\":\"A\",\"line\":400,\"points\":0,\"earned\":0," + Rules +
+                ",\"reward\":{\"classId\":\"B\",\"seasonId\":\"2026-11\",\"items\":[{\"itemId\":\"costume_promo_b\",\"qty\":1}]}," +
+                "\"nextReward\":{\"classId\":\"A\",\"items\":[{\"itemId\":\"costume_promo_a\",\"qty\":1}]},\"series\":null,\"passedThisSeason\":false,\"grace\":null,\"shieldUsedThisSeason\":false}");
+            var v = await _api.GetPromotionAsync();
+            Assert.Equal("B", v.Reward.ClassId);
+            Assert.Equal("2026-11", v.Reward.SeasonId);
+            Assert.Equal("costume_promo_b", v.Reward.Items[0].ItemId);
+            Assert.Equal("A", v.NextReward.ClassId);
+            System.Func<string, string> name = id => id == "costume_promo_b" ? "B級昇級記念の勝負服の柄" : id == "costume_promo_a" ? "A級昇級記念の勝負服の柄" : id;
+            Assert.Equal("昇級の記念", PromotionPips.RewardMomentTitle);
+            Assert.Equal("B級昇級記念の勝負服の柄", PromotionPips.RewardItems(v.Reward, name));
+            Assert.Equal("A級に上がると：A級昇級記念の勝負服の柄", PromotionPips.NextRewardLine(v, name));
+
+            _http.Reply(200, "{\"classId\":\"B\",\"seen\":true}");
+            Assert.True(await _api.AckPromotionRewardAsync("B"));
+            Assert.Equal("/v1/promotion/ack", _http.Requests[1].Path);
+            Assert.Contains("\"rewardClassId\":\"B\"", _http.Requests[1].Body);
+
+            // an older server: no reward fields, nothing to show
+            var old = PromotionView.FromJson("{\"enabled\":true,\"classId\":\"C\"," + Rules + ",\"series\":null}");
+            Assert.Null(old.Reward);
+            Assert.Null(old.NextReward);
+            Assert.Null(PromotionPips.NextRewardLine(old, name));
         }
     }
 }

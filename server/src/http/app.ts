@@ -119,7 +119,7 @@ export type PlayerMethod =
   | 'roster' | 'rosterLock' | 'rosterFavorite' | 'rosterPreview' | 'rosterBulk' | 'rosterTournament'
   | 'horseGoals' | 'pinHorseGoal' | 'pinnedHorseGoal' | 'horseProfile'
   | 'reviewPrompt' | 'reviewPromptCheck' | 'reviewPromptAnswer'
-  | 'promotion' | 'promotionAck'
+  | 'promotion' | 'promotionAck' | 'promotionRewardAck'
   | 'surveyOffer' | 'surveyShown' | 'surveySkip' | 'surveyAnswer' | 'surveySynced'
   | 'myReplays' | 'replayPrepareSave' | 'replayCommitSave' | 'replayForget' | 'replayUpdate' | 'replayDelete' | 'replayOwnRef' | 'replayShared' | 'replayViewed'
   | 'raceAdvice' | 'practiceCatalog'
@@ -840,8 +840,12 @@ export const routes: Route[] = [
   // 昇級戦と降級の猶予 (REQ-PROMO-013/014, contracts/protocol.md §68): reads and a seen mark — maintenance group `core`
   { method: 'GET', path: '/v1/promotion', auth: 'player', handler: async (_r, _p, c, u) => c.player(u).invoke('promotion', u) },
   { method: 'POST', path: '/v1/promotion/ack', auth: 'player', handler: async (r, _p, c, u) => {
-    const b = await body(r, z.object({ seriesId: z.string().regex(/^\d{4}-\d{2}:[A-Za-z0-9_]{1,16}:\d{1,3}$/) }).strict());
-    return c.player(u).invoke('promotionAck', u, b.seriesId);
+    // stream D (docs/quality/shopcfg.md): the same seen mark for the promotion reward's moment ({ rewardClassId })
+    const b = await body(r, z.union([
+      z.object({ seriesId: z.string().regex(/^\d{4}-\d{2}:[A-Za-z0-9_]{1,16}:\d{1,3}$/) }).strict(),
+      z.object({ rewardClassId: z.string().regex(/^[A-Za-z0-9_]{1,16}$/) }).strict(),
+    ]));
+    return 'rewardClassId' in b ? c.player(u).invoke('promotionRewardAck', u, b.rewardClassId) : c.player(u).invoke('promotionAck', u, b.seriesId);
   } },
   // ゲーム内アンケート (REQ-SURVEY-*, contracts/protocol.md §69): nothing is ever granted for answering
   { method: 'GET', path: '/v1/surveys/current', auth: 'player', handler: async (r, _p, c, u) => {

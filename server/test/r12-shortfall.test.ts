@@ -1,7 +1,7 @@
 // T6 コイン不足の案内 (contracts/protocol.md §29, REQ-SHORT-001..008): which coins are short, by how much, and the one
 // smallest pack this player can buy now; on the INSUFFICIENT_COINS error and on GET /v1/shop/shortfall.
 import { describe, expect, it } from 'vitest';
-import { m, freshPlayer } from './helpers.js';
+import { mAllProducts as m, freshPlayer } from './helpers.js'; // stream D: every pack on sale (the shipped layout retires some; shopcfg.test.ts)
 import { MemoryPlayerRepo, PlayerService } from '../src/domain/service.js';
 import { FakeStoreVerifier } from '../src/domain/purchase.js';
 import { seededRng } from '../src/domain/rng.js';

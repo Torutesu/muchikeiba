@@ -75,6 +75,8 @@ namespace Muchi.Client
         public string LoginNextTrack;
         public int LoginNextDay, LoginNextDays;
         public Reward LoginNextReward;
+        /// <summary>Stream D: the looks-only item the next claim replaces because the player owns it (LoginNextReward is what it gives instead), else null.</summary>
+        public string LoginNextSwappedFrom;
         public List<GoalItem> Items = new List<GoalItem>();
         public int Done, Total, Claimable;
         /// <summary>Start of the next game day (the daily set renews). A real time, shown as a time of day, never a countdown.</summary>
@@ -92,6 +94,7 @@ namespace Muchi.Client
                 Open = J.Bool(o, "open"), Complete = J.Bool(o, "complete"), Items = J.List(o, "items", GoalItem.Parse), Done = J.Int(o, "done"), Total = J.Int(o, "total"),
                 Claimable = J.Int(o, "claimable"), ResetAt = J.Long(o, "resetAt"), LoginBonusOpen = J.Bool(lb, "open"), LoginBonusClaimedToday = J.Bool(lb, "claimedToday"),
                 LoginNextTrack = J.Str(nx, "track"), LoginNextDay = J.Int(nx, "day"), LoginNextDays = J.Int(nx, "days"), LoginNextReward = nx == null ? null : Reward.Parse(J.Opt(nx, "reward")),
+                LoginNextSwappedFrom = J.Str(nx, "swappedFrom"),
             };
         }
     }
@@ -106,6 +109,8 @@ namespace Muchi.Client
         public string LoginTrack;
         public int LoginDay, LoginDays;
         public Reward LoginReward;
+        /// <summary>Stream D: the owned looks-only item tomorrow's bonus replaces (null when nothing is replaced).</summary>
+        public string LoginSwappedFrom;
         /// <summary>Feature keys (progression.unlocks) that open tomorrow by day count, in the unlock table's order.</summary>
         public List<string> Opens = new List<string>();
         /// <summary>Training slots tomorrow (null when training is not open by then).</summary>
@@ -121,7 +126,7 @@ namespace Muchi.Client
             return new GoalTomorrow
             {
                 PlayerDay = J.Int(o, "playerDay"), At = J.Long(o, "at"), LoginTrack = J.Str(lb, "track"), LoginDay = J.Int(lb, "day"), LoginDays = J.Int(lb, "days"),
-                LoginReward = lb == null ? null : Reward.Parse(J.Opt(lb, "reward")), Opens = new List<string>(J.Strs(o, "opens") ?? new string[0]), TrainingSlots = J.IntN(o, "trainingSlots"),
+                LoginReward = lb == null ? null : Reward.Parse(J.Opt(lb, "reward")), LoginSwappedFrom = J.Str(lb, "swappedFrom"), Opens = new List<string>(J.Strs(o, "opens") ?? new string[0]), TrainingSlots = J.IntN(o, "trainingSlots"),
                 GraduateReward = gr == null ? null : Reward.Parse(J.Opt(gr, "reward")), GraduateReady = J.Bool(gr, "ready"),
             };
         }
@@ -136,6 +141,8 @@ namespace Muchi.Client
         public string LoginTrack;
         public int LoginDay, LoginDays;
         public Reward LoginReward, GraduateReward;
+        /// <summary>Stream D: the owned looks-only item that day's bonus replaces (null when nothing is replaced).</summary>
+        public string LoginSwappedFrom;
         public bool GraduateReady;
         internal static GoalWeek2Day Parse(JsonNode o)
         {
@@ -143,7 +150,7 @@ namespace Muchi.Client
             return new GoalWeek2Day
             {
                 PlayerDay = J.Int(o, "playerDay"), Today = J.Bool(o, "today"), Past = J.Bool(o, "past"), LoginTrack = J.Str(lb, "track"), LoginDay = J.Int(lb, "day"), LoginDays = J.Int(lb, "days"),
-                LoginReward = lb == null ? null : Reward.Parse(J.Opt(lb, "reward")), GraduateReward = gr == null ? null : Reward.Parse(J.Opt(gr, "reward")), GraduateReady = J.Bool(gr, "ready"),
+                LoginReward = lb == null ? null : Reward.Parse(J.Opt(lb, "reward")), LoginSwappedFrom = J.Str(lb, "swappedFrom"), GraduateReward = gr == null ? null : Reward.Parse(J.Opt(gr, "reward")), GraduateReady = J.Bool(gr, "ready"),
             };
         }
     }

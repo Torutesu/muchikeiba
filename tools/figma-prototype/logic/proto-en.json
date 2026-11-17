@@ -1,6 +1,8 @@
 {
  "_note": "REQ-L10N-013: English of the web prototype's own screen texts (site/app.js), keyed by the Japanese it renders. Server texts come from server/master/locale-en.json + server/src/i18n/en.ts, game-layer texts from engine/Muchi.Client/Resources/Muchi/ui-en.json; all three are compiled into one catalog in logic/entry.ts (MuchiLogic.l10n). The EN toggle translates every text node on the stage through it (app.js). test/en-flow.cjs fails on any Japanese left on the key screens and on text that overflows its box.",
  "strings": {
+  "_shopcfg": "---- stream D: the promotion reward moment",
+  "勝負服の画面で着られます": "Wear it from the silks screen",
   "_shell": "---- shell, tabs, wallet",
   "日本語に戻しました": "Switched to Japanese",
   "無償": "Free",

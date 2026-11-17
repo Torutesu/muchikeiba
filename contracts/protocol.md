@@ -4599,6 +4599,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 |---|---|---|
 | GET | `/v1/promotion` | 見る（下）。ホームの「昇級戦 2/3」と結果画面の印の元 |
 | POST | `/v1/promotion/ack` | `{ "seriesId": "2026-11:C:1" }`。終わった昇級戦の結果シートを見た印。冪等（同じ ID を何度送っても同じ）。知らない ID・進行中は 404 `NOT_FOUND` |
+| POST | `/v1/promotion/ack` | 品質・ストリーム D：`{ "rewardClassId": "B" }`。昇級の記念（下の `reward`）の瞬間を見た印。冪等。まだ届いていないクラスは 404 `NOT_FOUND` |
 ```json
 { "enabled": true, "seasonId": "2026-11", "classId": "C", "toClassId": "B", "line": 300, "points": 315, "earned": 315,
   "rules": { "races": 3, "needTop": 2, "topPlace": 3, "setbackPoints": 40, "graceRaces": 10 },
@@ -4612,6 +4613,7 @@ App Store / Google Play の評価を、**OS の標準のアプリ内レビュー
 - `series` は進行中、または最後に終わった昇級戦（このシーズン・このクラスのもの。無ければ null）。`pips` は `top`／`miss`／`open`（まだ）／`skip`（決まって走らなかった分）で長さ `races`。`next` は次に走るのが何戦目か（1〜`races`、終わっていれば null）＝ホームの「昇級戦 {next}/{races}」。
 - `grace`：`{ classId, racesLeft }`（猶予の残りレース数）か null。`enabled: false` の時は `series`・`grace` も null（止めた間は何も出さない）。
 - メンテナンスの区分は `core`（§46.2。読むだけと見た印で、レースは `ranked` の区分が止める）。
+- **昇級の記念**（品質・ストリーム D、docs/quality/shopcfg.md）：`reward`：`{ classId, seasonId, items: [{ itemId, qty }] }` か null（締めで届き、まだ瞬間を見ていない最も古いもの）。`nextReward`：`{ classId, items }` か null（次のクラスに初めて上がった時に届く物。もう届いたクラスなら null）。どちらも `enabled` に関係なく出る。中身は `progression.promotionRewards`（クラスごとの見た目だけの品。売り物にはしない）。**付与はシーズンの締め（`rollSeason`）で、そのクラスに初めて上がった時に1回だけ**（昇級戦の突破の時ではない）。持っている品は重ねて渡さない（旧・昇級記念パックを買った人には瞬間を出さない）。
 
 ### 68.8 KPI（REQ-PROMO-015、§58 の分類はすべて `optional`）
 | 名前 | s1 | s2 | s3 | 数 |

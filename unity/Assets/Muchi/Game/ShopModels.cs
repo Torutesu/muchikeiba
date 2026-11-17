@@ -12,6 +12,8 @@ namespace Muchi.Game
     public sealed class ProductCard
     {
         public string Id, Name, Tab, PriceText;
+        /// <summary>The server's product kind (coins | season_pass | allowance | starter | promotion …).</summary>
+        public string Kind;
         public int PriceYen;
         /// <summary>Contents in display order ("有償コイン100枚", "30日間、毎日 無償コイン30枚…").</summary>
         public List<string> Lines = new List<string>();
@@ -150,7 +152,7 @@ namespace Muchi.Game
         {
             var c = new ProductCard
             {
-                Id = p.Id, Name = p.Name ?? p.Id, Tab = p.Tab, PriceYen = p.PriceYen, PriceText = "¥" + p.PriceYen.ToString("N0", CultureInfo.InvariantCulture),
+                Id = p.Id, Name = p.Name ?? p.Id, Tab = p.Tab, Kind = p.Kind, PriceYen = p.PriceYen, PriceText = "¥" + p.PriceYen.ToString("N0", CultureInfo.InvariantCulture),
                 Lines = p.Contents.Select(x => x.Label).Where(x => !string.IsNullOrEmpty(x)).ToList(),
                 BonusLabel = PackHasBonus(p) ? p.FirstPurchaseBonus.Label : null,
                 OneTimeText = !p.OneTime ? null : p.OneTimeScope == "class" ? "各クラス1回" : "1回限り",
@@ -169,6 +171,52 @@ namespace Muchi.Game
                 : p.Owned == true ? "厩舎手当の受け取り期間中です（終わると購入できます）" : null;
             c.Purchasable = c.DisabledReason == null && Products != null;
             return c;
+        }
+
+        // ------------------------------------------------------------------ U1 screens (docs/quality/unity-shop.md)
+        // The list is the server's per-player list: a pack retired by remote config (progression.shopLayout.retiredProducts) is
+        // not in it, and the daily pack's tab is "pass" while shopLayout.allowanceUnderPass is on. The client lists what the
+        // server lists, under the tab the server names — no product id is written here.
+
+        /// <summary>The コイン tab: every coin pack the server lists, cheapest first.</summary>
+        public List<ProductCard> CoinPacks => Cards("coins").OrderBy(c => c.PriceYen).ToList();
+
+        /// <summary>The season pass products (パス, パス＋), cheapest first — shown on the pass screen, all contents visible before buying.</summary>
+        public List<ProductCard> PassProducts => Products == null ? new List<ProductCard>()
+            : Products.Products.Where(p => p.Kind == "season_pass").OrderBy(p => p.PriceYen).Select(Card).ToList();
+
+        /// <summary>
+        /// The daily pack (厩舎手当) when the server lists it under the pass screen (tab "pass": allowanceUnderPass on); null while it
+        /// stays on おすすめ. Same product, price and rules either way.
+        /// </summary>
+        public ProductCard PassScreenAllowance
+        {
+            get
+            {
+                var p = Products?.Products.FirstOrDefault(x => x.Tab == "pass" && (x.Allowance != null || x.Kind == "allowance"));
+                return p == null ? null : Card(p);
+            }
+        }
+
+        /// <summary>Today's 厩舎手当 coins can be claimed now (a pack is running and today's share is not taken yet).</summary>
+        public bool AllowanceClaimable => ServerAvailable && !DeletionPending && Offers?.Allowance != null && Offers.Allowance.CanClaim;
+
+        /// <summary>
+        /// The pass screen's totals line: the paid line added up (the server's totalLabel — a sum, never a ratio), its standout looks
+        /// by count, and the tiers already reached that open at once when bought ("有料ライン 無償コイン1,500枚・配合素材30個　＋　特別な段の見た目3点").
+        /// Null when the server sends no total.
+        /// </summary>
+        public string PassTotalLine(SeasonPassView v)
+        {
+            var c = Products?.Products.Where(p => p.Kind == "season_pass").OrderBy(p => p.PriceYen).SelectMany(p => p.Contents)
+                .FirstOrDefault(x => x.Type == "pass_premium" && !string.IsNullOrEmpty(x.TotalLabel));
+            if (c == null) return null;
+            string s = "有料ライン " + c.TotalLabel;
+            if (c.Standouts.Count > 0) s += "　＋　特別な段の見た目" + c.Standouts.Count.ToString(CultureInfo.InvariantCulture) + "点";
+            int every = v?.PremiumLine?.Every ?? 0;
+            int waiting = v == null || v.Active || every <= 0 ? 0 : v.Level / every;
+            if (waiting > 0) s += "　·　届いている" + waiting.ToString(CultureInfo.InvariantCulture) + "段は購入後すぐ受け取れます";
+            return s;
         }
 
         private string PeriodText(Product p)

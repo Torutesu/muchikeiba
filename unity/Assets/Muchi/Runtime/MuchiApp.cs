@@ -10,7 +10,7 @@ using UnityEngine.EventSystems;
 
 namespace Muchi.Client
 {
-    public sealed class MuchiApp : MonoBehaviour
+    public sealed partial class MuchiApp : MonoBehaviour
     {
         public GameObject HorsePrefab;
         RaceWorld world;
@@ -28,10 +28,6 @@ namespace Muchi.Client
         // SPUR, REIN, lane buttons and the whip count: hidden while spectating (HudSnapshot.RiderControls)
         readonly List<GameObject> riderControls=new List<GameObject>();
         bool worldPrepared, cancelMatch;
-        List<Muchi.Client.Product> products;
-        bool loadingProducts;
-        Muchi.Client.SeasonPassView passView;
-        string pendingProductId, purchaseCheckMessage;
         int resultSeasonPointsBefore=-1;
         // Round 6: server-backed care / course looks / room conditions (offline: PlayerPrefs via PrefsStore).
         CareModel careModel;
@@ -63,11 +59,8 @@ namespace Muchi.Client
         bool inRace, tutorial;
         Action currentScreen;
         string horseName, pendingName;
-        string pendingPurchaseTitle, pendingPurchasePrice, pendingPurchaseKind;
         float messageUntil;
-        int storeTab, previewCourse=-1, selectedAgeGroup=-1;
-        bool purchaseReviewOpen;
-        Action purchaseReturnScreen;
+        int storeTab, previewCourse=-1;
         readonly Color navy = new Color(.025f,.075f,.14f,.9f);
         readonly Color cyan = new Color(0,.8f,.95f);
         readonly Color gold = new Color(1,.83f,.08f);
@@ -202,35 +195,8 @@ namespace Muchi.Client
             Label("SEASON 01    •    TURF SERIES",1110,828,450,34,16,Color.white);
             Label(ModeLabel,1110,792,450,30,14,new Color(.82f,.92f,1f));
         }
-        void Home()
-        {
-            currentScreen=Home;Clear();SetArt("Art/home-paddock");
-            var profile=backend.Profile();
-            if(profile.Online)horseName=profile.PartnerName;
-            Panel("Player identity",38,34,440,104,navy);
-            Label(profile.Online?"CLASS "+profile.ClassId+"  /  "+profile.SeasonPoints+" PT":"ROOKIE II  /  SEASON 01",60,47,390,36,20,cyan);
-            Label(profile.Online?"JOCKEY  "+profile.DisplayName:"JOCKEY  001  ·  TURF SERIES",60,90,390,30,17);
-            Panel("Wallet",1210,35,350,86,navy);
-            Label(profile.Online?"FREE  ◎  "+profile.FreeCoins.ToString("N0"):"FREE  ◎  1,200",1230,46,155,29,17,Color.white);
-            Label(profile.Online?"PAID  ◈  "+profile.PaidCoins.ToString("N0"):"PAID  ◈  240",1390,46,155,29,17,gold);
-            Label(profile.Online?(profile.Debt>0?"Unsettled refund  ◈ "+profile.Debt:"Wallet balance"):"Sample balance (offline)",1230,79,300,25,14,new Color(.75f,.85f,.91f));
-            Panel("Home greeting",38,244,480,230,navy);
-            Label("YOUR PARTNER",66,275,420,36,20,cyan);
-            Label(horseName,66,318,425,78,49);
-            Label(PartnerLine(profile),66,408,425,35,18);
-            Button("STABLE",1180,248,176,Stable,navy);
-            Button("SCOUT",1374,248,176,Scout,navy);
-            Button("WARDROBE",1180,328,176,Wardrobe,navy);
-            Button("COURSE",1374,328,176,CourseThemes,navy);
-            Button("SEASON PASS",1180,408,176,SeasonPass,navy);
-            Button("SHOP",1374,408,176,()=>{storeTab=0;Store();},navy);
-            Button("CARE / FEED",1180,488,176,Care,navy);
-            Button("CONDITIONS",1374,488,176,Conditions,navy);
-            var raceButton=Button("RACE  >>",1160,668,392,()=>Entry());
-            raceButton.GetComponent<Image>().color=cyan;
-            Label(profile.Online?"RANKED  /  ONLINE MATCH":"PRACTICE  /  OFFLINE",1180,754,380,35,17,Color.white);
-            Label("HOME   ·   "+ModeLabel,48,836,700,32,16,Color.white);
-        }
+        // U1-A hook: Home() now lives in MuchiApp.Daily.cs (the prototype's home: goal ladder, 次にやること, partner plate,
+        // menu, race CTA — drawn from Muchi.Game.DailyLayout and audited by GameChecks).
         static string PartnerLine(ProfileModel p)
         {
             string style=p.PartnerStyle=="nige"?"FRONT RUNNER":p.PartnerStyle=="senko"?"STALKER":p.PartnerStyle=="oikomi"?"DEEP CLOSER":"CLOSER";
@@ -283,6 +249,8 @@ namespace Muchi.Client
             var raceButton=Button("SELECT FOR RACE  >>",1030,680,470,()=>Entry());raceButton.GetComponent<Image>().color=cyan;
             Button("BACK",1030,760,170,Home,navy);
             Button("CARE / FEED",1215,760,285,Care,navy);
+            // U1 raising: the horse card and breeding (MuchiApp.Raising.cs)
+            Ghost(RaisingTr(HorseProfileModel.Title),990,826,270,()=>OpenHorseCard(real?sp.PartnerId:null,Stable));Ghost(RaisingTr(RaisingText.BreedingTitle),1290,826,270,()=>{currentScreen=null;Breeding();});
         }
         void Scout()
         {
@@ -303,7 +271,7 @@ namespace Muchi.Client
                 Label("Paid scout: 100 coins / 1 pull\n10-pull: 1 SR+ guaranteed\nExchange at 100 pulls.",78,470,455,105,19);
                 Label("PAID SCOUT PAUSED  /  RATE TABLE NOT SET",78,586,450,45,14,gold);
                 Label("We will enable draws after official rates are configured.",78,627,445,52,15,new Color(.82f,.9f,.96f));
-                Button("VIEW COIN SHOP",78,690,280,()=>{storeTab=0;Store();},cyan);
+                Button(ShopT("引き方を選ぶ"),78,690,280,ShopScoutWays,cyan); // U1: the ways to pull (coins, tickets) → scout confirmation
             }
             Button("BACK TO HOME",78,774,200,Home,navy);
         }
@@ -477,168 +445,12 @@ namespace Muchi.Client
             Button("BACK",72,785,180,Home,navy);
         }
         void SelectFeed(int choice)=>RunScreenAction(()=>careModel.CareAsync(choice),Care);
-        void Store()
-        {
-            currentScreen=Store;Clear();SetArt("Art/home-paddock");
-            Panel("Store frame",32,42,1536,790,navy);
-            Label("MUCHI STORE  /  DIRECT, CLEAR PRICES",64,59,750,42,24,cyan);
-            var wp=backend.Profile();
-            Label(wp.Online?"FREE  ◎  "+wp.FreeCoins.ToString("N0")+"     PAID  ◈  "+wp.PaidCoins.ToString("N0"):"FREE  ◎  1,200     PAID  ◈  240",930,64,390,34,19,gold);
-            if(backend.Online&&products==null&&!loadingProducts)LoadProducts();
-            Button("COINS",55,132,250,()=>{storeTab=0;Store();},storeTab==0?cyan:navy);
-            Button("COSMETICS",325,132,250,()=>{storeTab=1;Store();},storeTab==1?cyan:navy);
-            Button("COURSE THEMES",595,132,250,()=>{storeTab=2;Store();},storeTab==2?cyan:navy);
-            Button("SEASON PASS",865,132,250,()=>SeasonPass(),storeTab==3?cyan:navy);
-            if(storeTab==0)DrawCoinPackages();
-            else if(storeTab==1)DrawCosmetics();
-            else if(storeTab==2)DrawCourseProducts();
-            Label("Store checkout is not connected in this build. No purchase can be completed here.",62,777,1100,28,15,new Color(.8f,.89f,.95f));
-            Button("BACK",1340,775,170,Home,navy);
-        }
-        async void LoadProducts()
-        {
-            loadingProducts=true;products=await backend.ProductsAsync();loadingProducts=false;
-            if(products!=null&&currentScreen==(Action)Store)Store();
-        }
-        void DrawCoinPackages()
-        {
-            int[] amounts={100,310,530,1020,1660,2680,3600,7400};
-            string[] prices={"¥160","¥480","¥800","¥1,500","¥2,400","¥3,800","¥5,000","¥10,000"};
-            string[] ids={"coin_160","coin_480","coin_800","coin_1500","coin_2400","coin_3800","coin_5000","coin_10000"};
-            var coins=products?.Where(p=>p.Kind=="coins").OrderBy(p=>p.PriceYen).Take(8).ToList();
-            if(coins!=null&&coins.Count>0)
-            {
-                amounts=coins.Select(p=>p.PaidCoins).ToArray();prices=coins.Select(p=>"¥"+p.PriceYen.ToString("N0")).ToArray();ids=coins.Select(p=>p.Id).ToArray();
-            }
-            for(int i=0;i<amounts.Length;i++)
-            {
-                int package=i;int col=i%2,row=i/2;float x=62+col*755,y=225+row*132;
-                Panel("Coin pack "+i,x,y,705,116,new Color(.045f,.12f,.19f,.97f));
-                Label(prices[i],x+22,y+13,170,38,23,gold);
-                Label(amounts[i].ToString("N0")+" PAID COINS",x+22,y+54,360,34,21);
-                Label("FIRST BUY  /  SAME AMOUNT FREE",x+390,y+18,265,26,14,cyan);
-                var select=Button("VIEW",x+488,y+48,194,()=>PurchaseReview(amounts[package].ToString("N0")+" PAID COINS",prices[package],"COIN PACK",ids[package]),navy);
-                select.GetComponent<Image>().color=cyan;
-            }
-            Label("Paid and free coins are shown separately. Bonus is limited to one first purchase per pack.",64,756,1280,27,15,new Color(.8f,.89f,.95f));
-        }
-        void DrawCosmetics()
-        {
-            StoreCosmeticCard("Art/Cosmetics/silk-jacket","CRIMSON SILK JACKET","SSR  ·  COSMETIC","¥480 (proposed)",64,222,"Racewear");
-            StoreCosmeticCard("Art/Cosmetics/bridle","BRASS-FIT BRIDLE","SR  ·  COSMETIC","¥320 (proposed)",572,222,"Horse tack");
-            StoreCosmeticCard("Art/Cosmetics/saddlecloth","STAR SADDLECLOTH","R  ·  COSMETIC","¥320 (proposed)",1080,222,"Horse tack");
-            StoreCosmeticCard("Art/Cosmetics/stable-plaque","STABLE NAMEPLATE","SSR  ·  COSMETIC","¥480 (proposed)",64,474,"Stable decor");
-            StoreCosmeticCard("Art/Food/premium-bowl","STAR STABLE BOWL","SSR  ·  DECOR ONLY","¥240 (proposed)",572,474,"Stable decor");
-            Label("No random draw. The item and rarity are visible before purchase.",64,744,1180,28,16,new Color(.8f,.89f,.95f));
-        }
-        void StoreCosmeticCard(string art,string name,string rarity,string price,float x,float y,string kind)
-        {
-            Panel("Cosmetic "+name,x,y,470,230,new Color(.045f,.12f,.19f,.97f));
-            ArtImage(art,x+7,y+13,146,200);
-            Label(name,x+164,y+18,292,50,18);
-            Label(rarity,x+164,y+68,292,28,14,gold);
-            Label(kind+"  /  no ranked stat bonus",x+164,y+99,292,34,13,new Color(.8f,.89f,.95f));
-            Label(price,x+164,y+136,292,28,16,cyan);
-            Button("REVIEW",x+164,y+166,286,58,()=>PurchaseReview(name,price,"COSMETIC"),navy);
-        }
-        void DrawCourseProducts()
-        {
-            CourseProductCard(1,"SPRING MEADOW","SR  ·  COURSE SKIN","¥680 (proposed)",68,222);
-            CourseProductCard(2,"AUTUMN GOLD","SSR  ·  COURSE SKIN","¥680 (proposed)",816,222);
-            Panel("Weather pack tile",68,555,1430,174,new Color(.045f,.12f,.19f,.97f));
-            ArtImage("Art/Weather/rain",82,563,200,156);
-            Label("TWILIGHT RAIN ATMOSPHERE",300,576,760,36,21);
-            Label("SSR  ·  LIGHTING AND WEATHER EFFECTS ONLY",300,615,760,30,15,gold);
-            Label("Visual add-on for private rooms. Ranked weather is fixed by the event.",300,647,770,36,15,new Color(.8f,.89f,.95f));
-            Label("¥240 (proposed)",1140,570,300,28,17,gold);
-            Button("REVIEW",1130,623,340,()=>PurchaseReview("Twilight rain atmosphere","¥240 (proposed)","COSMETIC"),navy);
-        }
-        void CourseProductCard(int index,string name,string rarity,string price,float x,float y)
-        {
-            Panel("Course product "+name,x,y,680,308,new Color(.045f,.12f,.19f,.97f));
-            ArtImage(CourseArt(index),x+10,y+10,660,175);
-            Label(name,x+22,y+195,400,34,21);
-            Label(rarity+"  ·  no gameplay change",x+22,y+232,405,28,15,gold);
-            Label(price,x+435,y+220,220,25,16,gold);
-            Button("REVIEW",x+435,y+250,220,()=>PurchaseReview(name,price,"COSMETIC"),navy);
-        }
-        void SeasonPass()
-        {
-            currentScreen=SeasonPass;Clear();SetArt("Art/home-paddock");
-            Panel("Pass frame",36,46,1528,772,navy);
-            Label("TURF SERIES  /  SEASON 01",70,68,760,40,24,cyan);
-            Panel("Pass hero panel",66,126,405,606,new Color(.04f,.1f,.17f,.96f));
-            ArtImage("Art/Cosmetics/jockey-violet",94,138,350,420);
-            Label("VIOLET STAR SILKS",90,568,350,34,22,gold);
-            Label("Immediate reward with Premium Pass.",90,605,345,46,17);
-            Label("FREE + PREMIUM REWARD TRACKS",520,92,850,37,22);
-            Label(passView!=null?"LEVEL "+passView.Level+"  ·  XP "+passView.Xp+"  ·  PREMIUM "+(passView.Active?"ACTIVE":"NOT ACTIVE"):"Earn tiers by racing. No stamina gate.",520,129,850,30,16,new Color(.8f,.89f,.95f));
-            if(backend.Online&&passView==null)LoadPass();
-            string[] free={"100 COINS","R CARE KIT","100 COINS","SADDLE TAG","200 COINS"};
-            string[] premium={"SILK SET","SR TICKET","STABLE DECOR","300 COINS","SSR TACK"};
-            for(int i=0;i<5;i++)
-            {
-                float x=520+i*198;
-                Panel("Free reward "+i,x,217,180,178,new Color(.055f,.14f,.22f,.97f));
-                Label("TIER  "+(i+1),x+14,231,150,28,15,cyan);
-                Label(free[i],x+14,281,150,72,19);
-                Label("FREE",x+14,357,150,24,14,new Color(.78f,.88f,.94f));
-                Panel("Premium reward "+i,x,412,180,178,new Color(.09f,.13f,.22f,.97f));
-                Label("TIER  "+(i+1),x+14,426,150,28,15,gold);
-                Label(premium[i],x+14,475,150,72,19);
-                Label("PREMIUM",x+14,552,150,24,14,gold);
-            }
-            Panel("Pass price",520,594,980,74,new Color(.04f,.11f,.18f,.97f));
-            Label("¥1,000 / 30 days  ·  renews through platform settings",544,609,720,29,19,gold);
-            Label("No charge until platform billing and age checks are configured.",544,638,740,24,14,new Color(.8f,.89f,.95f));
-            Button("REVIEW PREMIUM PASS",520,683,470,()=>PurchaseReview("TURF SERIES PREMIUM PASS","¥1,000 / 30 days","SEASON PASS","season_pass"),cyan);
-            Button("BACK",70,775,180,Home,navy);
-            Button("OPEN STORE",1110,775,350,()=>{storeTab=0;Store();},navy);
-        }
-        async void LoadPass()
-        {
-            passView=await backend.SeasonPassAsync();
-            if(passView!=null&&currentScreen==(Action)SeasonPass)SeasonPass();
-        }
-        // Coin packs and the pass ask the server first (age registered, monthly limit, once-only). No billing starts.
-        void PurchaseReview(string title,string price,string kind,string productId)
-        {
-            if(pendingProductId!=productId||!purchaseReviewOpen){purchaseCheckMessage=null;pendingProductId=productId;if(productId!=null)RunPurchaseCheck(productId);}
-            PurchaseReview(title,price,kind);
-        }
-        async void RunPurchaseCheck(string productId)
-        {
-            purchaseCheckMessage="CHECKING WITH SERVER…";
-            var r=await backend.PurchaseCheckAsync(productId);
-            if(pendingProductId!=productId)return;
-            purchaseCheckMessage=r.Message;
-            if(purchaseReviewOpen)PurchaseReview(pendingPurchaseTitle,pendingPurchasePrice,pendingPurchaseKind);
-        }
-        void PurchaseReview(string title,string price,string kind)
-        {
-            if(!purchaseReviewOpen){purchaseReturnScreen=currentScreen;selectedAgeGroup=-1;}
-            purchaseReviewOpen=true;
-            pendingPurchaseTitle=title;pendingPurchasePrice=price;pendingPurchaseKind=kind;
-            currentScreen=()=>PurchaseReview(pendingPurchaseTitle,pendingPurchasePrice,pendingPurchaseKind);
-            Clear();SetArt("Art/home-paddock");Panel("Purchase review veil",0,0,1600,900,new Color(.01f,.035f,.07f,.58f));
-            Panel("Purchase review",225,105,1150,690,navy);
-            Label("PURCHASE REVIEW  /  AGE AND BILLING CHECK",275,140,950,40,23,cyan);
-            Label("Selected item",278,220,220,28,16,new Color(.8f,.89f,.95f));
-            Label(title,278,257,735,54,32);
-            Label(LocaleService.Text(kind)+"  ·  "+LocaleService.Text(price),278,320,740,36,21,gold);
-            Panel("Review divider",278,378,1000,2,new Color(.35f,.55f,.66f));
-            Label("Select the age range to design the age-check step.",278,405,900,34,18);
-            string[] age={"UNDER 16","16–17","18+"};
-            for(int i=0;i<3;i++){int choice=i;var b=Button(age[i],278+i*235,458,210,()=>SelectAgeGroup(choice),selectedAgeGroup==i?cyan:navy);if(selectedAgeGroup==i)b.interactable=false;}
-            Label(purchaseCheckMessage??"Age-based monthly limits and guardian consent rules must be supplied by the service.",278,548,960,58,17,new Color(.82f,.9f,.96f));
-            Panel("Checkout lock",278,625,995,88,new Color(.16f,.07f,.08f,.95f));
-            Label("CHECKOUT DISABLED  /  PLATFORM BILLING NOT CONNECTED",300,640,930,30,18,new Color(1f,.72f,.55f));
-            Label("Displayed prices for cosmetics are proposals. No charge is made in this prototype.",300,675,930,28,15,new Color(.9f,.82f,.78f));
-            Button("BACK",278,736,290,ReturnFromPurchase,navy);
-            Button("CLOSE",1090,736,180,()=>{purchaseReviewOpen=false;pendingProductId=null;Home();},navy);
-        }
-        void SelectAgeGroup(int choice){selectedAgeGroup=choice;PurchaseReview(pendingPurchaseTitle,pendingPurchasePrice,pendingPurchaseKind);}
-        void ReturnFromPurchase(){purchaseReviewOpen=false;pendingProductId=null;if(purchaseReturnScreen!=null)purchaseReturnScreen();else Home();}
+        // U1 money screens (MuchiApp.Shop.cs): the old store, pass and purchase review open the kit screens on the game models.
+        // storeTab: 0 shop (おすすめ), 1/2 見た目, 3 pass — the values the existing buttons set.
+        void Store()=>ShopStore(storeTab==3?"pass":storeTab==1||storeTab==2?"cosmetics":"recommended");
+        void SeasonPass()=>ShopSeasonPass();
+        void PurchaseReview(string title,string price,string kind,string productId){if(productId!=null)ShopPurchaseConfirm(productId,currentScreen);else ShopLockedReview(title,price,kind);}
+        void PurchaseReview(string title,string price,string kind)=>ShopLockedReview(title,price,kind);
         void Info(string title,string body,Action next)
         {
             currentScreen=()=>Info(title,body,next);Clear();SetArt("Art/home-paddock");Panel("Information",300,170,1000,540,navy);Label(title,350,220,900,80,44,cyan);
@@ -687,6 +499,7 @@ namespace Muchi.Client
             observer=new RaceObserver(driver);raceMode=mode; // round 8: attaches to Sim/Config itself once the driver has them
             if(firstRide)Ftue("race1_start");
             resultSeasonPointsBefore=backend.Player!=null?backend.Player.SeasonPoints:-1;
+            RaisingRaceStarted(); // U1 raising: the wallet / points before the race (the result's place-coin line)
             MuchiServices.Track(Muchi.Client.AnalyticsEvent.RaceStart(MuchiServices.NowMs,mode));
             BuildRaceScreen();
         }
@@ -803,39 +616,9 @@ namespace Muchi.Client
                 default:return "";
             }
         }
-        void Result()
-        {
-            currentScreen=Result;
-            bool first=tutorial;
-            var hud=driver!=null?HudModel.Build(driver,MuchiServices.NowMs):new HudSnapshot();
-            // round 8 (REQ-UXU-009): place / time / the tutorial retry come from RaceResultModel (same order the server
-            // confirmed for online races). The layout below is unchanged.
-            // TODO(Codex, REQ-UXU-009): draw result.Headline, result.DebriefLine / DebriefTip, result.Rows and result.Status,
-            // and rebuild once driver.Phase turns Confirmed / Void (handoff §3); the rewards panel needs its own model.
-            var result=driver!=null?RaceResultModel.Build(driver,observer):new RaceResultModel();
-            int place=result.HasResult&&result.Place>0?result.Place:hud.FinishPlace>0?hud.FinishPlace:hud.Rank;long timeMs=result.HasResult?result.TimeMs:hud.ElapsedMs;
-            bool online=driver!=null&&driver.Online;
-            string verdict=!online?"PRACTICE  /  NO RANK POINTS":driver.Phase==RacePhase.Confirmed?"CONFIRMED BY THE SERVER":driver.Phase==RacePhase.Void?"RACE VOID  /  NO REWARDS":"CONNECTION FAILED  /  "+(driver.FailureReason??"");
-            Clear();SetArt("Art/race-result");Panel("Result detail",42,55,620,780,navy);
-            Label(online?"RACE RESULT  /  RANKED":"RACE RESULT  /  "+(first?"FIRST RIDE":"PRACTICE"),80,99,540,34,17,cyan);
-            Label(place<=0?"—":LocaleService.IsJapanese?place+"位":place==1?"1ST":place==2?"2ND":place==3?"3RD":place+"TH",80,166,540,130,89,gold);
-            Label(place==1?"VICTORY":"RACE COMPLETE",80,300,540,60,33);
-            Label(horseName+"  /  "+(driver?.Config!=null?(driver.Config.Track.Surface==Surface.Dirt?"DIRT ":"TURF ")+driver.Config.Track.DistanceM.ToString("N0")+" m":""),80,377,520,35,18);
-            Panel("Result rule",80,440,500,2,new Color(.45f,.62f,.71f));
-            Label("TIME",80,482,120,30,16,cyan);Label(HudModel.FormatTime(timeMs),80,520,230,45,31);
-            Label(online?"SEASON PT":"MODE",340,482,210,30,16,cyan);
-            var points=Label(online?(backend.Player!=null?backend.Player.SeasonPoints+" pt":"—"):"OFFLINE",340,520,230,45,31,gold);
-            Label(verdict,80,600,520,38,16,new Color(.82f,.9f,.96f));
-            if(online&&driver.Phase==RacePhase.Confirmed)RefreshPoints(points);
-            // round 8 (REQ-UXS-004 / F1): a lost tutorial no longer goes on to naming — the main button is 「もう一度」 and starts the
-            // next (stored) attempt; the 3rd is assisted to a win. A win goes to naming as before.
-            bool retry=first&&result.TutorialRetry;
-            Action nextAction=retry?(Action)(()=>StartDriver(backend.CreateTutorialRace(),"tutorial",true)):first?(Action)NamePartner:Home;
-            var next=Button(retry?result.PrimaryAction:first?"MEET YOUR PARTNER":"CONTINUE  >>",80,675,500,nextAction);next.GetComponent<Image>().color=cyan;
-            Label(ModeLabel,80,780,500,26,13,new Color(.72f,.83f,.91f));
-            if(first&&result.Won)Ftue("race1_win",Math.Max(0,backend.TutorialAttempts-1));
-            if(!first&&online&&raceMode=="ranked"&&driver.Phase==RacePhase.Confirmed&&result.HasResult)Ftue("race2_done",result.Place); // 06 §8.1 row 8
-        }
+        // U1 raising (docs/quality/unity-raising.md): the result screen on the 1.4 HUD rules lives in MuchiApp.Raising.cs
+        // (place, the server's place coins, the debrief and the lesson row, the promotion popup or card).
+        void Result()=>RaisingResult();
         // FTUE funnel steps go through OnboardingFlow.TrackOnce: a retry, the title's tutorial ride or a screen rebuilt by the
         // language switch never sends a step twice (the server counts the funnel by step).
         void Ftue(string step,int? value=null)

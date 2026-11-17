@@ -255,6 +255,10 @@ export interface Progression {
   surveys?: Partial<import('./surveys.js').SurveysConfig>;
   /** Quality pass 3 (docs/quality/pass.md §4): the owner's shop proposals behind remote config (shop.ts shopLayoutOf; off by default). */
   shopLayout?: { allowanceUnderPass?: boolean; retiredProducts?: string[] };
+  /** Stream D (docs/quality/shopcfg.md): a free looks-only reward on first reaching a class (promotion.ts grantPromotionReward). Keys are class ids (plus `_note`). */
+  promotionRewards?: Record<string, Reward | string>;
+  /** Stream D: a looks-only login bonus item the player already owns is swapped for this (rewards.ts loginRewardFor). Keys are item ids (plus `_note`). */
+  loginBonusOwnedSwap?: Record<string, Reward | string>;
 }
 export interface StudConfig {
   /** Highest fee an owner may ask, in free coins. */

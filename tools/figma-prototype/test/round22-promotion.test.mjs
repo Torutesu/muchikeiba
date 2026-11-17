@@ -73,4 +73,17 @@ assert.strictEqual(after.paid, wallet.paid, 'no paid coins');
 // English for the prototype's sheet texts
 const en = JSON.parse(readFileSync(join(here, '..', 'logic', 'proto-en.json'), 'utf8')).strings;
 for (const k of ['昇級戦　/　突破', '昇級戦　/　届かず', '一閃、届いた。', '次の一閃で取り返せ。']) assert.ok(en[k], 'English for ' + k);
+assert.ok(en['勝負服の画面で着られます'], 'English for the promotion reward moment');
+
+// stream D (docs/quality/shopcfg.md): a real season close over the line promotes to B and grants the B pattern once;
+// the view names it until the moment is acked; the next class's reward is shown beforehand
+const before = (await L.promotion.view()).value;
+assert.ok(before.nextReward && before.nextReward.items[0].itemId.startsWith('costume_promo_'), 'the next class reward is named: ' + JSON.stringify(before.nextReward));
+assert.ok((await L.promotion.demoReward()).ok);
+const pv = (await L.promotion.view()).value;
+assert.ok(pv.reward && pv.reward.items.length === 1, 'the reward is due: ' + JSON.stringify(pv.reward));
+const owned = (await L.view()).items[pv.reward.items[0].itemId];
+assert.strictEqual(owned, 1, 'the pattern is owned');
+assert.ok((await L.promotion.ackReward(pv.reward.classId)).ok);
+assert.strictEqual((await L.promotion.view()).value.reward, null, 'shown once');
 console.log('round22 promotion: OK');

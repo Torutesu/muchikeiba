@@ -176,6 +176,8 @@ static class Program
         await FirstWeekChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 3: week 2 (the solo way of a social first step, graduation on day 8, the week-2 arc, the treat line; REQ-GOAL-017..020)");
         await Week2Checks.Run(Check, Root, Ruleset());
+        Console.WriteLine("== U1-A daily loop in Unity: home / 目標 / 調教 layouts audited (inside 1600×900, no text overlap, body ≥ 16 px, fits, one CTA), English, the claim and stage-up moments");
+        await DailyScreensChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality integration: home says each thing once (NextActionModel.HomeLine, one link), the ladder counts the pass rewards and links its cap to the horse card");
         await QualityIntegrationChecks.Run(Check, Root, Ruleset());
         Console.WriteLine("== quality pass 2: the scout confirmation (paid / free split, tickets, the SR+ ticket, shortfall route) and the purchase receipt (rows, next step, KPI)");

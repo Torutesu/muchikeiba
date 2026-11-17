@@ -13,6 +13,7 @@ import type { PlayerState, PurchaseRecord } from './player.js';
 import { findProduct } from './purchase.js';
 import { VISUALS, type VisualsMaster } from './visuals.js';
 import { passLineLevels, seasonEndMs } from './pass.js';
+import { shopLayoutOf } from './shop.js';
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 const itemLabel = (m: Master, id: string) =>
@@ -53,6 +54,8 @@ export interface PurchaseReceipt {
 }
 
 export const RECEIPT_HISTORY_NOTE = '購入の記録は「その他」→「購入履歴」でいつでも確かめられます';
+/** Stream D: with shopLayout.allowanceUnderPass on, the daily pack lives under the season pass screen (claimed there each day). */
+export const ALLOWANCE_UNDER_PASS_NOTE = '毎日の分はシーズンパスの画面で受け取れます';
 export const RECEIPT_SANDBOX_NOTE = 'テスト購入のため、コインは無償コインとして付与しました';
 
 /** The next step for what was bought: the SR+ ticket first (the headline of a starter pack), then the pass, the daily pack, a silks pattern, coins. */
@@ -86,7 +89,7 @@ export function purchaseReceipt(m: Master, s: PlayerState, rec: PurchaseRecord):
     lines.push({ kind: 'pass', label: `シーズンパス有料ライン 全${levels}段`, purpose: '届いている段の報酬は、パスの画面ですぐ受け取れます', ...(until !== null ? { endsAt: until } : {}) });
     if (p.pass?.levels) lines.push({ kind: 'pass_levels', label: `パスのレベル＋${p.pass.levels}`, purpose: null, qty: p.pass.levels });
   }
-  if (p.allowance) lines.push({ kind: 'allowance', label: `${p.allowance.days}日間、毎日 無償コイン${fmt(p.allowance.dailyFreeCoins)}枚（1日1回受け取り）`, purpose: null, qty: p.allowance.dailyFreeCoins });
+  if (p.allowance) lines.push({ kind: 'allowance', label: `${p.allowance.days}日間、毎日 無償コイン${fmt(p.allowance.dailyFreeCoins)}枚（1日1回受け取り）`, purpose: shopLayoutOf(m).allowanceUnderPass ? ALLOWANCE_UNDER_PASS_NOTE : null, qty: p.allowance.dailyFreeCoins });
   for (const it of p.items ?? []) lines.push({ kind: 'item', label: `${itemLabel(m, it.itemId)}×${it.qty}`, purpose: itemPurpose(m, it.itemId), itemId: it.itemId, qty: it.qty });
   const notes: string[] = [];
   if (rec.sandbox) notes.push(RECEIPT_SANDBOX_NOTE);

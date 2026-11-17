@@ -802,9 +802,16 @@ namespace Muchi.Client
         /// <summary>Beginner days still to come (0 on the normal track).</summary>
         public int BeginnerDaysLeft;
         public bool IsBeginner => Track == "beginner";
+        /// <summary>
+        /// Stream D (progression.loginBonusOwnedSwap): the day's looks-only item the player already owned (e.g. 「翼」 costume_login);
+        /// <see cref="Reward"/> is then what was given instead (2 breeding material). Null when nothing was swapped / an older server.
+        /// </summary>
+        public string SwappedFrom;
+        public bool Swapped => SwappedFrom != null;
         internal static LoginBonusResult Parse(JsonNode o) => new LoginBonusResult
         {
             Day = J.Int(o, "day"), Reward = Reward.Parse(J.Opt(o, "reward")), Track = J.Str(o, "track") ?? "normal", BeginnerDaysLeft = J.Int(o, "beginnerDaysLeft"),
+            SwappedFrom = J.Str(o, "swappedFrom"),
         };
     }
 

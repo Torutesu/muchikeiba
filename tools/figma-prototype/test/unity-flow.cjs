@@ -1873,8 +1873,8 @@ module.exports = async function unityFlow(browser, base, out, errors) {
   assert.match(sheetText, /有償コインが500枚足りません/);
   assert.ok(!/倍|お得|今だけ|残りわずか|通常価格/.test(sheetText), 'shortfall sheet: no multiplier / deal / urgency wording');
   assert.equal(await sheet.locator('[data-product]').count(), 1, 'exactly one pack card');
-  assert.equal(await sheet.locator('[data-product="coin_800"]').count(), 1, 'the smallest pack that covers 500 paid coins');
-  assert.match(await sheet.locator('[data-bonus]').innerText(), /^はじめての購入時のみ：無償コイン530枚をプレゼント$/, 'the first-purchase line exactly as the shop says it');
+  assert.equal(await sheet.locator('[data-product="coin_1500"]').count(), 1, 'the smallest pack on sale that covers 500 paid coins (stream D: ¥800 retired)');
+  assert.match(await sheet.locator('[data-bonus]').innerText(), /^はじめての購入時のみ：無償コイン1,020枚をプレゼント$/, 'the first-purchase line exactly as the shop says it');
   await shot('shortfall-paid', 400);
   await sheet.locator('[data-label="購入を確認"]').click(); await waitScreen('purchase');
   const kpis = await page.evaluate(() => globalThis.__muchi.logic.kpiLog().map((e) => e.name + ':' + e.props.offerId + ':' + e.props.trigger));

@@ -506,9 +506,34 @@ namespace Muchi.Client
         }
 
         /// <summary>
-        /// The free class pattern granted on promotion (quality/shopcfg, option A). TODO(U1 merge with quality/shopcfg): read the
-        /// server's promotion reward field from PromotionView once that branch adds it; until then no reward words are shown.
+        /// The free class pattern granted on promotion (quality/shopcfg, option A). The server grants it at the season close, so
+        /// right after a passed series the result shows what reaching the class will give (PromotionView.NextReward); a reward
+        /// already granted and not yet acknowledged (PromotionView.Reward) reads as received. Its moment is shown on Home.
         /// </summary>
-        PromotionRewardInfo RaisingPromotionReward() => null;
+        PromotionRewardInfo RaisingPromotionReward()
+        {
+            var v = raisingPromotion?.View;
+            if (v == null) return null;
+            if (v.Reward != null && v.Reward.Items.Count > 0) return new PromotionRewardInfo { Name = PromotionPips.RewardItems(v.Reward, GoalLadderModel.ItemName), Granted = true };
+            if (v.NextReward != null && v.NextReward.Items.Count > 0) return new PromotionRewardInfo { Name = PromotionPips.RewardItems(v.NextReward, GoalLadderModel.ItemName), Granted = false };
+            return null;
+        }
+
+        /// <summary>Home: the promotion reward granted at the season close gets its moment once (then acknowledged on the server).</summary>
+        async void RaisingRewardMomentOnHome()
+        {
+            if (!backend.Online || raisingRewardMomentUp) return;
+            if (raisingPromotion == null) raisingPromotion = new PromotionModel(backend) { Prompts = raisingPrompts };
+            raisingPromotion.ItemName = GoalLadderModel.ItemName;
+            try { await raisingPromotion.RefreshAsync(); } catch (Exception e) { Debug.LogWarning("promotion: " + e.Message); return; }
+            if (inRace || currentScreen != (Action)Home || raisingRewardMomentUp || !raisingPromotion.TryShowRewardMoment()) return;
+            raisingRewardMomentUp = true;
+            Moment(RaisingTr(raisingPromotion.RewardMomentKicker), RaisingTr(raisingPromotion.RewardMomentItems), RaisingTr(raisingPromotion.RewardMomentSub), null, RaisingTr(RaisingText.Continue), async () =>
+            {
+                raisingRewardMomentUp = false;
+                try { await raisingPromotion.CloseRewardMomentAsync(); } catch (Exception e) { Debug.LogWarning("promotion reward ack: " + e.Message); }
+            });
+        }
+        bool raisingRewardMomentUp;
     }
 }

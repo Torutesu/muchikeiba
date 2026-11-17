@@ -161,7 +161,12 @@ describe('the week-2 arc (REQ-GOAL-019)', () => {
     expect(a.days.map((x) => x.playerDay)).toEqual([8, 9, 10, 11, 12, 13, 14]);
     expect(a.days.every((x) => x.loginBonus !== null && !x.past && !x.today)).toBe(true);
     const cycle = m.progression.loginBonus;
-    a.days.forEach((x, i) => { const { day: _d, ...r } = cycle[i]!; expect(x.loginBonus).toEqual({ track: 'normal', day: i + 1, days: cycle.length, reward: r }); });
+    // stream D: day 10 is the cycle's day 3 「翼」, which beginner day 3 already gave → the 2 breeding material it gives instead
+    a.days.forEach((x, i) => {
+      const { day: _d, ...r } = cycle[i]!;
+      if (i === 2) expect(x.loginBonus).toEqual({ track: 'normal', day: 3, days: cycle.length, reward: { items: [{ itemId: 'breeding_material', qty: 2 }] }, swappedFrom: 'costume_login' });
+      else expect(x.loginBonus).toEqual({ track: 'normal', day: i + 1, days: cycle.length, reward: r });
+    });
     expect(a.peak).toEqual({ playerDay: 14, reward: { items: [{ itemId: 'ticket_sr_plus', qty: 1 }] } });
     expect(a.days[0]!.graduate).toMatchObject({ reward: { items: [{ itemId: 'gacha_ticket_10', qty: 1 }] } });
     expect(a.graduate).toMatchObject({ playerDay: 8 });
@@ -171,7 +176,8 @@ describe('the week-2 arc (REQ-GOAL-019)', () => {
     expect(b.day).toBe(3);
     expect(b.days.filter((x) => x.past).map((x) => x.playerDay)).toEqual([8, 9]);
     expect(b.days.find((x) => x.today)!.playerDay).toBe(10);
-    { const { day: _d, ...r } = m.progression.loginBonus[2]!; expect(b.days.find((x) => x.today)!.loginBonus).toEqual({ track: 'normal', day: 3, days: 7, reward: r }); } // today's, received
+    // today's, received — what the claim really gave (stream D: the owned 「翼」 came as 2 breeding material)
+    expect(b.days.find((x) => x.today)!.loginBonus).toEqual({ track: 'normal', day: 3, days: 7, reward: { items: [{ itemId: 'breeding_material', qty: 2 }] }, swappedFrom: 'costume_login' });
     expect(b.peak!.playerDay).toBe(14);
     for (let d = 11; d <= 15; d++) await w.nextDay('p');
     expect((await goals(w)).week2).toBeNull();

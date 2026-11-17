@@ -163,9 +163,19 @@
     }
   },
   "shopLayout": {
-    "_note": "Quality pass 3 (docs/quality/pass.md §4): the owner's shop proposals, ready for remote config and OFF here. allowanceUnderPass: the daily pack (厩舎手当) is listed under the season pass screen (tab pass) instead of the recommended tab — same product, price and rules. retiredProducts: products no longer offered (coin packs and promotion packs only): hidden from the list and the offers, a new purchase intent is refused (NOT_ELIGIBLE); a store purchase already in flight is still credited, owned items stay, history and refunds are unchanged. Proposal: [\"coin_800\", \"coin_2400\"] (8 → 6 packs) and the three promo_pack_* (the ¥1,500 coins plus one pattern). shopLayoutProblems keeps at least 4 coin packs and the smallest and largest one.",
-    "allowanceUnderPass": false,
-    "retiredProducts": []
+    "_note": "Quality pass 3 (docs/quality/pass.md §4), ON since stream D (docs/quality/shopcfg.md, the owner's decision). allowanceUnderPass: the daily pack (厩舎手当) is listed under the season pass screen (tab pass) instead of the recommended tab — same product, price and rules. retiredProducts: products no longer offered (coin packs and promotion packs only): hidden from the list and the offers, a new purchase intent is refused (NOT_ELIGIBLE); a store purchase already in flight is still credited, owned items stay, history and refunds are unchanged. Retired: coin_800 and coin_2400 (8 → 6 packs) and the three promo_pack_* (their patterns are now the free promotion reward, progression.promotionRewards). shopLayoutProblems keeps at least 4 coin packs and the smallest and largest one. To undo: set allowanceUnderPass false / remove ids (the store SKUs stay).",
+    "allowanceUnderPass": true,
+    "retiredProducts": ["coin_800", "coin_2400", "promo_pack_B", "promo_pack_A", "promo_pack_S"]
+  },
+  "promotionRewards": {
+    "_note": "Stream D (docs/quality/shopcfg.md, pass.md §4-3 案 A): a free, looks-only reward the first time the player reaches a class at a season close (promotion.ts grantPromotionReward). Once per class per account, idempotent; an item already owned (the old 昇級記念パック) is not given twice. Never for sale: promotionRewardsProblems refuses an item that a product still on sale contains. No coins, no tickets, no material (E1–E20 unchanged).",
+    "B": { "items": [ { "itemId": "costume_promo_b", "qty": 1 } ] },
+    "A": { "items": [ { "itemId": "costume_promo_a", "qty": 1 } ] },
+    "S": { "items": [ { "itemId": "costume_promo_s", "qty": 1 } ] }
+  },
+  "loginBonusOwnedSwap": {
+    "_note": "Stream D (docs/quality/shopcfg.md): a looks-only item on a login bonus day that the player already owns is swapped for this (rewards.ts loginRewardFor). The 7-day cycle's day 3 is the pattern 「翼」, which the beginner week's day 3 already gave: a player who owns it gets 2 breeding material instead; a player who does not own it still gets the pattern. Breeding material only (loginBonusSwapProblems), at most 5.",
+    "costume_login": { "items": [ { "itemId": "breeding_material", "qty": 2 } ] }
   },
   "loginBonus": [
     {

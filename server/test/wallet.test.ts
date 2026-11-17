@@ -69,7 +69,7 @@ describe('purchase flow (REQ-PUR-*)', () => {
     registerAge(m, s, 2012, 4, true, NOW); // under16: 5000 (未確定)
     applyVerifiedPurchase(m, s, 'fake', receipt('coin_3800', 3800), NOW);
     expect(code(() => checkPurchaseIntent(m, s, 'coin_1500', NOW))).toBe('AGE_LIMIT_EXCEEDED');
-    expect(checkPurchaseIntent(m, s, 'coin_800', NOW).remainingYen).toBe(1200);
+    expect(checkPurchaseIntent(m, s, 'coin_480', NOW).remainingYen).toBe(1200);
     const nextMonth = Date.UTC(2026, 10, 30, 15, 0); // 2026-12-01 00:00 JST
     expect(checkPurchaseIntent(m, s, 'coin_1500', nextMonth).monthSpentYen).toBe(0);
   });

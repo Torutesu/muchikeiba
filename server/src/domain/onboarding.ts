@@ -6,6 +6,7 @@
  */
 import { passRewardsProblems } from './pass.js';
 import { shopLayoutProblems } from './shop.js';
+import { loginBonusSwapProblems } from './rewards.js';
 import { adsProblems } from './ads.js';
 import { trainingProblems } from './training.js';
 import { giftBoxProblems } from './giftBox.js';
@@ -20,7 +21,7 @@ import { horseGoalsProblems } from './horseGoals.js';
 import { transferProblems } from './transferCode.js';
 import { devicesProblems } from './devices.js';
 import { reviewPromptProblems } from './reviewPrompt.js';
-import { promotionProblems, seasonPointsEarned } from './promotion.js';
+import { promotionProblems, promotionRewardsProblems, seasonPointsEarned } from './promotion.js';
 import { surveysProblems } from './surveys.js';
 import { localNotificationsProblems } from './localNotify.js';
 import { linksProblems } from './deepLinks.js';
@@ -495,7 +496,7 @@ export function firstRaceOf(m: Master, s: PlayerState): { cpuFillAfterMs: number
 export function uxProblems(m: Master, knownItems: Set<string>): string[] {
   return [...onboardingProblems(m.progression, m, knownItems), ...nudgeProblems(m.progression.nudges), ...accountDeletionProblems(m.progression.accountDeletion), ...dayRolloverProblems(m.progression.dayRollover),
     ...inviteProblems(m), ...comebackProblems(m), ...changelogProblems(m.changelog), ...adsProblems(m.progression.ads), ...trainingProblems(m), ...giftBoxProblems(m), ...rivalProblems(m),
-    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...activityProblems(m), ...fsugProblems(m), ...nextActionProblems(m), ...seasonRecapProblems(m), ...hostedCupsProblems(m), ...reportsProblems(m), ...horseGoalsProblems(m), ...dataExportProblems(m), ...transferProblems(m), ...devicesProblems(m), ...linksProblems(m), ...clientErrorsProblems(m), ...reviewPromptProblems(m), ...localNotificationsProblems(m), ...surveysProblems(m), ...promotionProblems(m), ...selfLimitsProblems(m), ...passRewardsProblems(m, knownItems), ...shopLayoutProblems(m)]; // quality pass 3: pass standout tiers, shop layout proposals // REQ-SURVEY-004 // REQ-LIMIT-019, REQ-CERR-001, REQ-REV-002, REQ-LNOTIF-019, REQ-RPT-015, REQ-HGOAL-*, REQ-DEX-*, REQ-TRF-*, REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-ACT-010, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-FSUG-012
+    ...weeklyChallengeProblems(m), ...teamGoalProblems(m), ...weekStartProblems(m), ...hallProblems(m), ...myReplaysProblems(m), ...activityProblems(m), ...fsugProblems(m), ...nextActionProblems(m), ...seasonRecapProblems(m), ...hostedCupsProblems(m), ...reportsProblems(m), ...horseGoalsProblems(m), ...dataExportProblems(m), ...transferProblems(m), ...devicesProblems(m), ...linksProblems(m), ...clientErrorsProblems(m), ...reviewPromptProblems(m), ...localNotificationsProblems(m), ...surveysProblems(m), ...promotionProblems(m), ...selfLimitsProblems(m), ...passRewardsProblems(m, knownItems), ...shopLayoutProblems(m), ...promotionRewardsProblems(m), ...loginBonusSwapProblems(m)]; // stream D: promotion reward, login swap; // quality pass 3: pass standout tiers, shop layout proposals // REQ-SURVEY-004 // REQ-LIMIT-019, REQ-CERR-001, REQ-REV-002, REQ-LNOTIF-019, REQ-RPT-015, REQ-HGOAL-*, REQ-DEX-*, REQ-TRF-*, REQ-INV-*, REQ-CB-*, REQ-AD-002, REQ-TRAIN-012, REQ-BOX-012, REQ-RIVAL-012, REQ-WCH-012, REQ-ACT-010, REQ-TGOAL-010, REQ-HOF-*, REQ-MYRP-013, REQ-FSUG-012
 }
 
 /**

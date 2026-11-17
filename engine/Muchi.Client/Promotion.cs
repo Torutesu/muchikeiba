@@ -10,7 +10,8 @@ namespace Muchi.Client
     // REQ-PROMO-001..020: 昇級戦と降級の猶予 (server/src/domain/promotion.ts, contracts/protocol.md §68).
     // When the ranked season points reach the class's promotion line, a short promotion series decides the month's promotion
     // (the class still changes at the season close). The server decides everything from verified ranked results; the client
-    // only shows the series (pips, 「昇級戦 2/3」), its outcome and the grace window. Nothing here is purchasable or granted.
+    // only shows the series (pips, 「昇級戦 2/3」), its outcome and the grace window. Nothing here is purchasable. Stream D: the
+    // view also carries the looks-only promotion reward the server granted at the close (PromotionReward), shown once.
 
     /// <summary>Pip values of <see cref="PromotionSeries.Pips"/>.</summary>
     public static class PromotionPip
@@ -82,6 +83,19 @@ namespace Muchi.Client
         internal static PromotionGrace Parse(JsonNode o) => o == null ? null : new PromotionGrace { ClassId = J.Str(o, "classId"), RacesLeft = J.Int(o, "racesLeft") };
     }
 
+    /// <summary>
+    /// Stream D (docs/quality/shopcfg.md): the looks-only reward for first reaching a class (the retired 昇級記念パック's pattern).
+    /// Granted by the server at the season close, once per class; never for sale, never coins.
+    /// </summary>
+    public sealed class PromotionReward
+    {
+        public string ClassId;
+        /// <summary>The closed season it came with (null on <see cref="PromotionView.NextReward"/>).</summary>
+        public string SeasonId;
+        public List<ItemQty> Items = new List<ItemQty>();
+        internal static PromotionReward Parse(JsonNode o) => o == null ? null : new PromotionReward { ClassId = J.Str(o, "classId"), SeasonId = J.Str(o, "seasonId"), Items = J.List(o, "items", ItemQty.Parse) };
+    }
+
     /// <summary>GET /v1/promotion.</summary>
     public sealed class PromotionView
     {
@@ -94,12 +108,17 @@ namespace Muchi.Client
         public PromotionSeries Series;
         public bool PassedThisSeason, ShieldUsedThisSeason;
         public PromotionGrace Grace;
+        /// <summary>Stream D: a promotion reward whose moment is due (show it once, then <see cref="ApiClient.AckPromotionRewardAsync"/>); null = none.</summary>
+        public PromotionReward Reward;
+        /// <summary>Stream D: what reaching the next class gives (null when there is none or it was already given).</summary>
+        public PromotionReward NextReward;
         internal static PromotionView Parse(JsonNode o) => new PromotionView
         {
             Enabled = J.Bool(o, "enabled"), SeasonId = J.Str(o, "seasonId"), ClassId = J.Str(o, "classId"), ToClassId = J.Str(o, "toClassId"),
             Line = J.IntN(o, "line"), Points = J.Int(o, "points"), Earned = J.Int(o, "earned"), Rules = PromotionRules.Parse(J.Opt(o, "rules")),
             Series = PromotionSeries.Parse(J.Opt(o, "series")), PassedThisSeason = J.Bool(o, "passedThisSeason"),
             ShieldUsedThisSeason = J.Bool(o, "shieldUsedThisSeason"), Grace = PromotionGrace.Parse(J.Opt(o, "grace")),
+            Reward = PromotionReward.Parse(J.Opt(o, "reward")), NextReward = PromotionReward.Parse(J.Opt(o, "nextReward")),
         };
         public static PromotionView FromJson(string json) => Parse(JsonNode.Parse(json));
         /// <summary>A series is running (the home shows 「昇級戦 {next}/{races}」).</summary>
@@ -147,6 +166,22 @@ namespace Muchi.Client
             return null;
         }
 
+        /// <summary>Stream D: the title of the promotion reward's moment.</summary>
+        public const string RewardMomentTitle = "昇級の記念";
+
+        /// <summary>The reward's items as one line (「B級昇級記念の勝負服の柄」), names from <paramref name="itemName"/>.</summary>
+        public static string RewardItems(PromotionReward r, Func<string, string> itemName = null)
+        {
+            if (r == null) return null;
+            var parts = new List<string>();
+            foreach (var it in r.Items) parts.Add((itemName?.Invoke(it.ItemId) ?? it.ItemId) + (it.Qty > 1 ? "×" + it.Qty : ""));
+            return string.Join("・", parts);
+        }
+
+        /// <summary>The line on the passed sheet / the promotion card: 「A級に上がると：A級昇級記念の勝負服の柄」 (null when nothing is waiting).</summary>
+        public static string NextRewardLine(PromotionView v, Func<string, string> itemName = null)
+            => v?.NextReward == null || v.NextReward.Items.Count == 0 ? null : v.NextReward.ClassId + "級に上がると：" + RewardItems(v.NextReward, itemName);
+
         /// <summary>Body of the outcome sheet.</summary>
         public static string OutcomeBody(PromotionView v)
         {
@@ -166,5 +201,9 @@ namespace Muchi.Client
         /// <summary>REQ-PROMO-014: the outcome sheet of an ended series was seen (idempotent; safe to retry).</summary>
         public Task<bool> AckPromotionAsync(string seriesId, CancellationToken ct = default)
             => Call("POST", "/v1/promotion/ack", JsonNode.Obj().Set("seriesId", seriesId), true, null, true, o => J.Bool(o, "seen"), ct);
+
+        /// <summary>Stream D: the promotion reward's moment was shown (idempotent; safe to retry).</summary>
+        public Task<bool> AckPromotionRewardAsync(string classId, CancellationToken ct = default)
+            => Call("POST", "/v1/promotion/ack", JsonNode.Obj().Set("rewardClassId", classId), true, null, true, o => J.Bool(o, "seen"), ct);
     }
 }

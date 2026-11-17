@@ -1369,7 +1369,8 @@ function PromoOutcome(v, after) {
   promoLog({ sheet: x.status, id: x.id });
   const host = cur;
   const scrim = document.createElement('div'); scrim.className = 'scrim'; host.appendChild(scrim);
-  const d = Dialog('Promotion outcome', 760, 470); d.classList.add('pp-sheet', pass ? 'pass' : 'fail'); d.style.zIndex = 41;
+  const rw = pass && v.nextReward ? 40 : 0; // stream D: room for the reward line
+  const d = Dialog('Promotion outcome', 760, 470 + rw); d.classList.add('pp-sheet', pass ? 'pass' : 'fail'); d.style.zIndex = 41;
   Kicker(pass ? '昇級戦　/　突破' : '昇級戦　/　届かず', 48, 36, d, { w: 600, gold: pass });
   Txt(pass ? `${v.toClassId}級へ昇級確定` : '昇級ならず', 48, 112, 664, 44, pass ? GOLD : WHITE, d, { weight: 700, ls: '.06em', nowrap: true }).classList.add('pp-sheet-title');
   Txt(pass ? '一閃、届いた。' : '次の一閃で取り返せ。', 48, 172, 664, 20, WHITE, d, { weight: 500, nowrap: true }).classList.add('pp-tag');
@@ -1378,15 +1379,28 @@ function PromoOutcome(v, after) {
     ? `シーズンの締めで${v.toClassId}級に上がります。上がった後の最初の${v.rules.graceRaces}戦は、締めで一度だけ降級しません。`
     : `ポイントは${fmt(x.setbackTo ?? v.points)}ptに戻りました。あと${fmt(Math.max(0, (v.line ?? 0) - (x.setbackTo ?? v.points)))}ptでもう一度挑めます。`;
   Txt(body, 48, 290, 664, 16, MUTED, d, { lh: 1.6 }).classList.add('pp-body');
+  // stream D: what reaching the class gives (free, looks-only; it arrives with the close) — gold: a rank reward
+  if (pass && v.nextReward) Txt(`${v.nextReward.classId}級に上がると：${promoRewardItems(v.nextReward)}`, 48, 352, 664, 16, GOLD, d, { weight: 500, nowrap: true }).classList.add('pp-reward');
   const close = async () => {
     const a = await L.promotion.ack(x.id);
     promoLog({ ack: x.id, ok: a.ok });
     scrim.remove(); d.remove();
     after();
   };
-  Cta('つづける', 48, 368, 330, close, d).classList.add('pp-close');
-  TextLink('昇級戦のルール', 420, 386, 220, () => HelpArticle('promotion_series', 'list', currentScreen), d).classList.add('pp-help');
+  Cta('つづける', 48, 368 + rw, 330, close, d).classList.add('pp-close');
+  TextLink('昇級戦のルール', 420, 386 + rw, 220, () => HelpArticle('promotion_series', 'list', currentScreen), d).classList.add('pp-help');
   return d;
+}
+/**
+ * Stream D (docs/quality/shopcfg.md): the retired 昇級記念パック's pattern is the free reward on first reaching a class (granted by
+ * the server at the season close, once per class). The claim moment shows it once; closing it is the seen mark.
+ */
+const promoRewardItems = (r) => (r?.items ?? []).map((it) => L.master.itemLabels[it.itemId] ?? it.itemId).join('・');
+function PromoRewardMoment(r) {
+  promoLog({ reward: r.classId });
+  const m = Moment('昇級の記念', { kicker: `${r.classId}級に昇級`, sub: `${promoRewardItems(r)}　·　勝負服の画面で着られます`, kind: 'promotion_reward', ms: 3200 });
+  L.promotion.ackReward(r.classId).then((a) => promoLog({ rewardAck: r.classId, ok: a.ok }));
+  return m;
 }
 /** Demo entry (show('PromotionResult', state)): a ranked result after the real results of the demo state. */
 async function PromoResultDemo(state = 'start', fresh = true, res = null) {
@@ -1756,7 +1770,8 @@ async function Home() {
   else if (promo?.enabled && promo.grace && player.rating.rankedRaces >= L.master.beginnerRaces) Caption(`ランク戦　·　降級の猶予 残り${promo.grace.racesLeft}戦`, 1134, 604, undefined, 15, CYAN).classList.add('tshadow', 'pp-grace');
   else Caption(player.rating.rankedRaces < L.master.beginnerRaces ? `初心者マッチ　あと${L.master.beginnerRaces - player.rating.rankedRaces}戦　·　12頭` : 'ランク戦　·　12頭　·　約90秒', 1134, 604, undefined, 15, WHITE).classList.add('tshadow');
   Cta('レースへ', 1110, 636, 416, RaceLobby, undefined, 'hero');
-  if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}`);
+  // stream D: an owned looks-only item (「翼」 on the cycle's day 3) came as breeding material instead — the toast says why
+  if (bonus) toast(`ログインボーナス ${bonus.track === 'beginner' ? '初心者' : ''}${bonus.day}日目：${rewardText(bonus.reward)}` + (bonus.swappedFrom ? `\n${L.master.itemLabels[bonus.swappedFrom] ?? bonus.swappedFrom}は持っているので、かわりに配合素材を受け取りました` : ''));
   NavBar(0);
   await GoalPinStrip(); // round 18: the pinned horse goal — quality pass: a rung of the ladder, not its own panel
   await HomeCard(comeback); // round 10: one card at a time (what's new > comeback campaign > ad offer — the ad is a small top-bar entry)
@@ -1764,6 +1779,7 @@ async function Home() {
   lnRefresh().catch(() => {}); // round 20 (REQ-LNOTIF-011): the app came to the front → plan the device reminders again
   if (await MaybeReleaseNotes()) return; // round 21 (REQ-NEW-006/012): what's new once per updated version, before the account-link prompt
   if (promoPending(promo) && promo.series.id === promoDeferred && sessionPrompt.claim('promotion_outcome')) { promoDeferred = null; PromoOutcome(promo, () => {}); } // round 22: an outcome that waited
+  else if (promo?.reward) PromoRewardMoment(promo.reward); // stream D: the class's pattern granted at the close, once
   const ctx = linkFromResult ? 'ResultClosed' : 'Home'; linkFromResult = false;
   MaybeLinkPrompt(ctx, Home);
 }
@@ -11576,10 +11592,10 @@ async function PlaytimeDemo() {
   const pt = await playtimeDue('home');
   return pt ? PlaytimeSheet(pt, Home) : Home();
 }
-/** Review: the refused purchase (own limit ¥3,000, ¥2,400 spent, a ¥800 pack). */
+/** Review: the refused purchase (own limit ¥3,000, ¥2,400 spent, a ¥1,500 pack — stream D retired the ¥800 one). */
 async function SelfLimitRefusedDemo() {
   await L.selfLimits.seedDemo();
-  return PurchaseConfirm('coin_800', () => Store('coins'));
+  return PurchaseConfirm('coin_1500', () => Store('coins'));
 }
 async function SelfLimits(back) {
   if (back) slState.back = back;

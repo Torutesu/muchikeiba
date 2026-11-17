@@ -1,4 +1,5 @@
 import { loadMaster } from '../src/domain/master.js';
+import { resolveBundle } from '../src/ops/config.js';
 import { buildRaceConfig, toRaceHorse } from '../src/domain/raceConfig.js';
 import { seededRng } from '../src/domain/rng.js';
 import { newPlayer } from '../src/domain/player.js';
@@ -6,6 +7,13 @@ import { createHorseFromTemplate } from '../src/domain/horses.js';
 import type { RaceMode } from '../src/domain/schemas.js';
 
 export const m = loadMaster();
+
+/**
+ * Stream D (docs/quality/shopcfg.md): the shipped master retires coin_800 / coin_2400 and the promotion packs and lists the
+ * daily pack under the pass. Tests of the catalogue mechanics with every product on sale use this: the layout switched off
+ * by remote config, with the promotion reward off too (its patterns cannot be free and on sale at once).
+ */
+export const mAllProducts = resolveBundle(m, { progression: { shopLayout: { allowanceUnderPass: false, retiredProducts: [] }, promotionRewards: {} } } as never).master;
 
 export function makeConfig(humans: number, mode: RaceMode = 'ranked', cpu = 12 - humans, seed = 1) {
   const p = newPlayer('tmp', 0, '2026-11');

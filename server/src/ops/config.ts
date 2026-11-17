@@ -256,6 +256,8 @@ export function assetCatalogVersionProblems(next: AssetCatalog, base: AssetCatal
  * the base is an integer, and `every` ≥ 1. Rejects e.g. `loginBonus: []`, `passRewards.every: 0` or
  * negative reward coins before they can crash claims or stall a rollover.
  */
+/** Lists that a remote config may set to [] although the shipped one is not empty (stream D: undo every retirement). */
+const MAY_BE_EMPTIED = new Set(['progression.shopLayout.retiredProducts']);
 export function shapeProblems(path: string, base: unknown, v: unknown): string[] {
   if (base === undefined) return [];
   if (v === null) return base === null || typeof base === 'number' ? [] : [`${path}: must not be null`];
@@ -269,7 +271,7 @@ export function shapeProblems(path: string, base: unknown, v: unknown): string[]
   }
   if (Array.isArray(base)) {
     if (!Array.isArray(v)) return [`${path}: must be an array`];
-    if (base.length > 0 && v.length === 0) return [`${path}: must not be empty`];
+    if (base.length > 0 && v.length === 0 && !MAY_BE_EMPTIED.has(path)) return [`${path}: must not be empty`];
     return v.flatMap((x, i) => shapeProblems(`${path}[${i}]`, base[i] ?? base[0], x));
   }
   if (typeof base === 'object') {

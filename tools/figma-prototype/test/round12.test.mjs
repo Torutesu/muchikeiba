@@ -27,10 +27,10 @@ assert.ok(pre.ok, JSON.stringify(pre));
 const sf = pre.value;
 assert.deepEqual([sf.short, sf.coinKind, sf.need, sf.have, sf.shortfall, sf.status], [true, 'paid', 500, 0, 500, 'covered']);
 assert.equal(sf.headline, '有償コインが500枚足りません');
-assert.equal(sf.offer.productId, 'coin_800');
+assert.equal(sf.offer.productId, 'coin_1500');
 assert.equal(sf.offer.offerId, 'shortfall');
 assert.equal(sf.offer.touchpoint, 'T6');
-assert.equal(sf.offer.firstPurchaseBonus.label, L.shopProducts().products.find((p) => p.id === 'coin_800').firstPurchaseBonus.label, 'the bonus line is the shop\'s own');
+assert.equal(sf.offer.firstPurchaseBonus.label, L.shopProducts().products.find((p) => p.id === 'coin_1500').firstPurchaseBonus.label, 'the bonus line is the shop\'s own');
 const words = [sf.headline, sf.line, ...sf.notes, sf.offer.name, sf.offer.firstPurchaseBonus.label, ...sf.offer.contents.map((c) => c.label)];
 for (const w of ['倍', 'お得', '今だけ', '残りわずか', '通常価格']) assert.ok(words.every((t) => !t.includes(w)), 'no ' + w);
 for (const t of words) assert.ok(L.l10n.translate(t), 'English for ' + t);
@@ -57,7 +57,7 @@ assert.equal(pulled.value.results.length, 10);
 assert.equal(pulled.value.spent.paid, 500);
 // the pack's first-purchase bonus is used now: the next offer of it says nothing about a bonus
 const again = await L.coinShortfall({ for: 'coins', coins: (await L.view()).wallet.paid + 400, kind: 'paid' });
-assert.equal(again.value.offer.productId, 'coin_800');
+assert.equal(again.value.offer.productId, 'coin_1500');
 assert.equal(again.value.offer.firstPurchaseBonus, null);
 
 // cosmetics: a paid-only item counts paid coins; enough coins → not short
@@ -73,7 +73,8 @@ assert.equal(mine.starter_pack.owned, true);
 assert.equal(mine.season_pass.owned, true);
 assert.equal(mine.season_pass.purchasedThisSeason, true);
 assert.equal(mine.season_pass_plus.owned, true, 'one pass per season');
-assert.equal(mine.coin_800.owned, false, 'coin packs are never owned');
+assert.equal(mine.coin_480.owned, false, 'coin packs are never owned');
+assert.equal(mine.coin_800, undefined, 'stream D: the retired ¥800 pack is not listed');
 // a bought once-only bundle is never the shortfall's pack
 for (const n of [250, 300, 5000]) assert.notEqual((await L.coinShortfall({ for: 'coins', coins: (await L.view()).wallet.paid + n, kind: 'paid' })).value.offer?.productId, 'starter_pack');
 console.log('round 12 logic OK (coin shortfall T6, bought packs owned)');

@@ -178,13 +178,15 @@ namespace Muchi.Client
         }
 
         /// <summary>A short note at the top centre that leaves by itself (errors, a locked row).</summary>
-        void DailyToast(string text)
+        void DailyToast(string text, string note = null)
         {
             if (string.IsNullOrEmpty(text)) return;
-            var c = Card("Daily toast", 450, 36, 700, 64);
+            bool two = !string.IsNullOrEmpty(note);
+            var c = Card("Daily toast", 450, 36, 700, two ? 98 : 64);
             var t = Body(DailyT(text), 24, 18, 652, 30, 18, Color.white, c);
             t.alignment = TextAnchor.UpperCenter;
-            Destroy(c.gameObject, 2.6f);
+            if (two) Body(DailyT(note), 24, 52, 652, 30, 16, KitSoft, c).alignment = TextAnchor.UpperCenter; // stream D: the swap note
+            Destroy(c.gameObject, two ? 3.6f : 2.6f);
         }
 
         /// <summary>Where a step / 次にやること / menu action leads (DailyLayout.ScreenFor names the Unity screen).</summary>
@@ -225,11 +227,12 @@ namespace Muchi.Client
 
         async void DailyLoadHome()
         {
-            string toast = null;
+            string toast = null, swapNote = null;
             try
             {
                 await dailyHome.LoadAsync(GoalLadderModel.ItemName); // the day's login bonus is received automatically (a toast)
                 toast = dailyHome.Toast;
+                swapNote = dailyHome.LoginBonus.SwapNote; // stream D: an owned 「翼」 became breeding material
                 await dailyGoals.LoadAsync();
                 await dailyNext.LoadAsync();
                 if (dailyHome.Unlocks.IsUnlocked("training") && dailyTraining.Phase == TrainingPhase.Choose) await dailyTraining.LoadAsync();
@@ -238,7 +241,8 @@ namespace Muchi.Client
             if (inRace || currentScreen != (Action)Home) return;
             DailyHomeDraw();
             dailyNext.ReportViews();
-            DailyToast(toast);
+            DailyToast(toast, swapNote);
+            RaisingRewardMomentOnHome(); // stream D: the season close's promotion reward, once
         }
 
         void DailyHomeDraw()
